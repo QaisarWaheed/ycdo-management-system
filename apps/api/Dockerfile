@@ -1,16 +1,16 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY tsconfig*.json ./
+# Copy API package files
+COPY apps/api/package*.json ./
+COPY apps/api/tsconfig*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy source
-COPY prisma ./prisma
-COPY src ./src
+# Copy prisma and source
+COPY apps/api/prisma ./prisma
+COPY apps/api/src ./src
 
 # Generate Prisma client
 RUN npx prisma generate
@@ -21,7 +21,6 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Install chromium for puppeteer
 RUN apk add --no-cache \
   chromium \
   nss \
@@ -37,7 +36,7 @@ ENV NODE_ENV=production
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
-COPY package*.json ./
+COPY apps/api/package*.json ./
 
 RUN mkdir -p uploads/documents uploads/letters
 
