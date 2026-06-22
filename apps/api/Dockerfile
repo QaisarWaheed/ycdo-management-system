@@ -1,33 +1,28 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copy API package files
 COPY apps/api/package*.json ./
-COPY apps/api/tsconfig*.json ./
 
-# Install dependencies
 RUN npm install
 
-# Copy prisma and source
 COPY apps/api/prisma ./prisma
 COPY apps/api/src ./src
 
-# Generate Prisma client
 RUN npx prisma generate
 
-# Build TypeScript
+# Debug: show what files exist before build
+RUN ls -la
+
 RUN npm run build
+
+# Debug: show what was built
+RUN ls -la dist/ || echo "DIST FOLDER MISSING - BUILD FAILED"
 
 FROM node:20-alpine AS runner
 WORKDIR /app
 
 RUN apk add --no-cache \
-  chromium \
-  nss \
-  freetype \
-  harfbuzz \
-  ca-certificates \
-  ttf-freefont
+  chromium nss freetype harfbuzz ca-certificates ttf-freefont
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
