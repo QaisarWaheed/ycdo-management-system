@@ -1,20 +1,27 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY package.json ./
+# Copy package files
+COPY package*.json ./
+COPY tsconfig*.json ./
+
+# Install dependencies
 RUN npm install
 
-COPY nest-cli.json tsconfig.json tsconfig.build.json ./
+# Copy source
 COPY prisma ./prisma
 COPY src ./src
 
+# Generate Prisma client
 RUN npx prisma generate
+
+# Build TypeScript
 RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Install puppeteer dependencies for PDF generation
+# Install chromium for puppeteer
 RUN apk add --no-cache \
   chromium \
   nss \
@@ -25,13 +32,13 @@ RUN apk add --no-cache \
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV NODE_ENV=production
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/package.json ./
+COPY package*.json ./
 
-# Create uploads directory
 RUN mkdir -p uploads/documents uploads/letters
 
 EXPOSE 3000
