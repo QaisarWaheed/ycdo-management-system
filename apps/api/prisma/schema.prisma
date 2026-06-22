@@ -1,0 +1,528 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── CORE STRUCTURE ───────────────────────────────────────
+
+model Project {
+  id        String      @id @default(uuid())
+  name      String
+  type      ProjectType
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+
+  branches Branch[]
+}
+
+enum ProjectType {
+  HOSPITAL
+  VTI
+  KITCHEN
+  SOFTWARE_HOUSE
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  projectId String?
+
+  project           Project?            @relation(fields: [projectId], references: [id])
+  departments       Department[]
+  employees         Employee[]
+  employmentHistory EmploymentHistory[]
+  attendanceLogs    AttendanceLog[]
+  shifts            Shift[]
+  relieverSessions  RelieverSession[]
+}
+
+model Shift {
+  id        String   @id @default(uuid())
+  branchId  String
+  name      String
+  startTime String
+  endTime   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  branch    Branch     @relation(fields: [branchId], references: [id])
+  employees Employee[]
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  employees         Employee[]
+  employmentHistory EmploymentHistory[]
+}
+
+// ─── EMPLOYEE ─────────────────────────────────────────────
+
+model Employee {
+  id                  String         @id @default(uuid())
+  employeeCode        String         @unique
+  firstName           String
+  lastName            String
+  fatherName          String?
+  cnic                String         @unique
+  phone               String?
+  email               String?        @unique
+  dateOfBirth         DateTime?
+  gender              Gender
+  address             String?
+  joiningDate         DateTime
+  status              EmployeeStatus @default(ACTIVE)
+  currentBranchId     String
+  currentDepartmentId String
+  currentDesignation  String
+  biometricId         String?        @unique
+  shiftId             String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  currentBranch     Branch     @relation(fields: [currentBranchId], references: [id])
+  currentDepartment Department @relation(fields: [currentDepartmentId], references: [id])
+  shift             Shift?     @relation(fields: [shiftId], references: [id])
+
+  employmentHistory   EmploymentHistory[]
+  documents           EmployeeDocument[]
+  salaryRecords       SalaryRecord[]
+  attendanceLogs      AttendanceLog[]
+  disciplinaryActions DisciplinaryAction[]
+  letters             Letter[]
+  leaveRecords        LeaveRecord[]
+  notifications       Notification[]
+  relieverSessions    RelieverSession[]
+  letterReplies       LetterReply[]
+  user                User?
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum EmployeeStatus {
+  TRAINEE
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+  RESIGNED
+  ON_LEAVE
+}
+
+model RelieverSession {
+  id           String    @id @default(uuid())
+  employeeId   String
+  branchId     String
+  date         DateTime  @db.Date
+  checkIn      DateTime
+  checkOut     DateTime?
+  totalMinutes Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+}
+
+// ─── EMPLOYMENT HISTORY ───────────────────────────────────
+
+model EmploymentHistory {
+  id            String     @id @default(uuid())
+  employeeId    String
+  branchId      String
+  departmentId  String
+  designation   String
+  changeType    ChangeType
+  changeReason  String?
+  effectiveDate DateTime
+  endDate       DateTime?
+  createdAt     DateTime   @default(now())
+
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+  branch     Branch     @relation(fields: [branchId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
+}
+
+enum ChangeType {
+  JOINED
+  TRANSFERRED
+  PROMOTED
+  DEMOTED
+  REINSTATED
+  REJOINED
+}
+
+// ─── DOCUMENTS ────────────────────────────────────────────
+
+model EmployeeDocument {
+  id           String       @id @default(uuid())
+  employeeId   String
+  documentType DocumentType
+  fileName     String
+  fileUrl      String
+  uploadedAt   DateTime     @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+enum DocumentType {
+  CNIC
+  EDUCATIONAL_CERTIFICATE
+  EXPERIENCE_LETTER
+  MEDICAL_CERTIFICATE
+  OTHER
+}
+
+// ─── ATTENDANCE ───────────────────────────────────────────
+
+model AttendanceLog {
+  id              String           @id @default(uuid())
+  employeeId      String
+  branchId        String
+  date            DateTime         @db.Date
+  checkIn         DateTime?
+  checkOut        DateTime?
+  status          AttendanceStatus
+  lateMinutes     Int              @default(0)
+  overtimeMinutes Int              @default(0)
+  source          AttendanceSource @default(BIOMETRIC)
+  note            String?
+  createdAt       DateTime         @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+
+  @@unique([employeeId, date])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+  HOLIDAY
+  UNINFORMED_ABSENT
+}
+
+enum AttendanceSource {
+  BIOMETRIC
+  MANUAL
+}
+
+// ─── SALARY ───────────────────────────────────────────────
+
+model SalaryRecord {
+  id            String    @id @default(uuid())
+  employeeId    String
+  basicSalary   Decimal   @db.Decimal(10, 2)
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+
+  employee       Employee       @relation(fields: [employeeId], references: [id])
+  payrollEntries PayrollEntry[]
+}
+
+model PayrollEntry {
+  id              String        @id @default(uuid())
+  salaryRecordId  String
+  month           Int
+  year            Int
+  basicSalary     Decimal       @db.Decimal(10, 2)
+  totalDeductions Decimal       @db.Decimal(10, 2) @default(0)
+  totalAllowances Decimal       @db.Decimal(10, 2) @default(0)
+  netSalary       Decimal       @db.Decimal(10, 2)
+  status          PayrollStatus @default(PENDING)
+  processedAt     DateTime?
+  createdAt       DateTime      @default(now())
+
+  salaryRecord SalaryRecord       @relation(fields: [salaryRecordId], references: [id])
+  deductions   PayrollDeduction[]
+  allowances   Allowance[]
+
+  @@unique([salaryRecordId, month, year])
+}
+
+model Allowance {
+  id             String        @id @default(uuid())
+  payrollEntryId String
+  type           AllowanceType
+  description    String?
+  amount         Decimal       @db.Decimal(10, 2)
+  hours          Decimal?      @db.Decimal(10, 2)
+  createdAt      DateTime      @default(now())
+
+  payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id])
+}
+
+enum AllowanceType {
+  OVERTIME
+  RELIEVER
+  CUSTOM
+}
+
+model PayrollDeduction {
+  id             String        @id @default(uuid())
+  payrollEntryId String
+  reason         DeductionType
+  amount         Decimal       @db.Decimal(10, 2)
+  description    String?
+
+  payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id])
+}
+
+enum DeductionType {
+  LATE_ARRIVAL
+  UNINFORMED_ABSENCE
+  DISCIPLINARY_FINE
+  OTHER
+}
+
+enum PayrollStatus {
+  PENDING
+  PROCESSED
+  PAID
+}
+
+// ─── DISCIPLINARY ─────────────────────────────────────────
+
+model DisciplinaryAction {
+  id         String             @id @default(uuid())
+  employeeId String
+  type       DisciplinaryType
+  reason     String
+  status     DisciplinaryStatus @default(OPEN)
+  issuedAt   DateTime           @default(now())
+  resolvedAt DateTime?
+  resolution String?
+  createdAt  DateTime           @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  inquiry  Inquiry?
+}
+
+enum DisciplinaryType {
+  WARNING
+  SHOW_CAUSE
+  FINE
+  SUSPENSION
+  TERMINATION
+}
+
+enum DisciplinaryStatus {
+  OPEN
+  UNDER_INQUIRY
+  RESOLVED
+  DISMISSED
+}
+
+model Inquiry {
+  id                   String         @id @default(uuid())
+  disciplinaryActionId String         @unique
+  startedAt            DateTime       @default(now())
+  deadlineAt           DateTime
+  outcome              InquiryOutcome?
+  notes                String?
+  closedAt             DateTime?
+
+  disciplinaryAction DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
+}
+
+enum InquiryOutcome {
+  REINSTATED
+  TERMINATED
+  REJOINED
+  DISMISSED
+}
+
+// ─── LETTERS ──────────────────────────────────────────────
+
+model Letter {
+  id            String     @id @default(uuid())
+  employeeId    String
+  letterType    LetterType
+  content       Json
+  generatedAt   DateTime   @default(now())
+  printedAt     DateTime?
+  fileUrl       String?
+  replyDeadline DateTime?
+  isReplied     Boolean    @default(false)
+  autoEscalated Boolean    @default(false)
+
+  employee Employee      @relation(fields: [employeeId], references: [id])
+  replies  LetterReply[]
+}
+
+model LetterReply {
+  id         String   @id @default(uuid())
+  letterId   String
+  employeeId String
+  replyText  String   @db.Text
+  repliedAt  DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  letter   Letter   @relation(fields: [letterId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+enum LetterType {
+  APPOINTMENT
+  WARNING
+  ADVICE
+  DISCIPLINARY
+  EXPLANATION
+  SHOW_CAUSE
+  FINE
+  INQUIRY
+  APPRECIATION
+  TRANSFER
+  SUSPENSION
+  TERMINATION
+  REINSTATEMENT
+  REJOINING
+  SALARY_INCREMENT
+  EXPERIENCE
+}
+
+// ─── LEAVE ────────────────────────────────────────────────
+
+model LeaveRecord {
+  id         String      @id @default(uuid())
+  employeeId String
+  startDate  DateTime
+  endDate    DateTime
+  totalDays  Int
+  status     LeaveStatus @default(PENDING)
+  reason     String?
+  approvedBy String?
+  createdAt  DateTime    @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─── AUTH & USERS ─────────────────────────────────────────
+
+model User {
+  id         String    @id @default(uuid())
+  employeeId String?   @unique
+  email      String    @unique
+  password   String
+  role       UserRole
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastLogin  DateTime?
+
+  employee   Employee?               @relation(fields: [employeeId], references: [id])
+  auditLogs  AuditLog[]
+  broadcasts NotificationBroadcast[]
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  HR_MANAGER
+  BRANCH_HR
+  DEPARTMENT_HEAD
+  PAYROLL_OFFICER
+  EMPLOYEE
+}
+
+// ─── NOTIFICATIONS ────────────────────────────────────────
+
+model Notification {
+  id         String   @id @default(uuid())
+  employeeId String
+  message    String
+  type       String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model NotificationBroadcast {
+  id          String          @id @default(uuid())
+  title       String
+  message     String          @db.Text
+  createdById String
+  targetRole  BroadcastTarget
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id])
+}
+
+enum BroadcastTarget {
+  ALL
+  SUPER_ADMIN
+  HR_MANAGER
+  BRANCH_HR
+  DEPARTMENT_HEAD
+  PAYROLL_OFFICER
+  EMPLOYEE
+}
+
+// ─── AUDIT LOG ────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String
+  changes   Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ─── RECRUITMENT ──────────────────────────────────────────
+
+model JobApplication {
+  id                  String            @id @default(uuid())
+  fullName            String
+  email               String
+  phone               String
+  cnic                String?
+  position            String
+  branchId            String?
+  resumeUrl           String?
+  status              ApplicationStatus @default(APPLIED)
+  appliedAt           DateTime          @default(now())
+  interviewDate       DateTime?
+  notes               String?
+  interviewNotes      String?
+  selectedSalary      Decimal?          @db.Decimal(10, 2)
+  selectedDeptId      String?
+  selectedBranchId    String?
+  selectedDesignation String?
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SHORTLISTED
+  INTERVIEW_SCHEDULED
+  SELECTED
+  REJECTED
+}

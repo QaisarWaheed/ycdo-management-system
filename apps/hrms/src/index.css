@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-text-primary antialiased;
+    margin: 0;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
+
+@media print {
+  aside,
+  header,
+  .no-print,
+  button {
+    display: none !important;
+  }
+
+  .ml-\[260px\] {
+    margin-left: 0 !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  .print-content {
+    display: block !important;
+  }
+
+  body {
+    background: white !important;
+  }
+}
