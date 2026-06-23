@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bell, LogOut } from 'lucide-react'
+import { Bell, FileText, LogOut } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
+import { acknowledgementsApi } from '@/api/endpoints/acknowledgements'
 import { notificationsApi } from '@/api/endpoints/notifications'
 import { employeesApi } from '@/api/endpoints/employees'
 import { useAuth } from '@/hooks/useAuth'
@@ -40,6 +41,14 @@ export function PortalHeader() {
     queryFn: () => notificationsApi.getUnreadCount(),
     enabled: !!user?.employeeId,
   })
+
+  const { data: pendingAcks = [] } = useQuery({
+    queryKey: ['acknowledgements', 'pending'],
+    queryFn: () => acknowledgementsApi.getPending(),
+    enabled: !!user?.employeeId,
+  })
+
+  const pendingAckCount = pendingAcks.length
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsApi.markRead(id),
@@ -89,6 +98,17 @@ export function PortalHeader() {
       </Link>
 
       <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" className="relative" asChild>
+          <Link to="/letters" aria-label="My Letters">
+            <FileText className="h-5 w-5 text-text-secondary" />
+            {pendingAckCount > 0 && (
+              <Badge className="absolute -right-1 -top-1 h-5 min-w-5 justify-center bg-red-600 px-1 text-[10px] text-white hover:bg-red-600">
+                {pendingAckCount}
+              </Badge>
+            )}
+          </Link>
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative">

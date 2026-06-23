@@ -6,6 +6,7 @@ import { MyAttendancePage } from '@/pages/attendance/MyAttendancePage'
 import { MyLeavePage } from '@/pages/leave/MyLeavePage'
 import { MyPayrollPage } from '@/pages/payroll/MyPayrollPage'
 import { MyLettersPage } from '@/pages/letters/MyLettersPage'
+import { MyOutstationPage } from '@/pages/outstation/MyOutstationPage'
 import { MyProfilePage } from '@/pages/profile/MyProfilePage'
 
 export default function App() {
@@ -50,6 +51,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <MyLettersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/outstation"
+        element={
+          <ProtectedRoute>
+            <MyOutstationPage />
           </ProtectedRoute>
         }
       />

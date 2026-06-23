@@ -2,12 +2,14 @@ import { useQuery } from '@tanstack/react-query'
 import { format, formatDistanceToNow } from 'date-fns'
 import { Link } from 'react-router-dom'
 import {
+  AlertTriangle,
   Calendar,
   Clock,
   FileText,
   Palmtree,
   Receipt,
 } from 'lucide-react'
+import { acknowledgementsApi } from '@/api/endpoints/acknowledgements'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
@@ -104,6 +106,14 @@ export function DashboardPage() {
       enabled: !!employeeId,
     })
 
+  const { data: pendingAcks = [] } = useQuery({
+    queryKey: ['acknowledgements', 'pending'],
+    queryFn: () => acknowledgementsApi.getPending(),
+    enabled: !!employeeId,
+  })
+
+  const pendingAckCount = pendingAcks.length
+
   const displayName = employee
     ? employee.firstName
     : user?.email?.split('@')[0] ?? 'there'
@@ -131,6 +141,26 @@ export function DashboardPage() {
           )}
         </p>
       </div>
+
+      {pendingAckCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+          <div className="flex items-start gap-2 text-sm text-red-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              You have {pendingAckCount} letter
+              {pendingAckCount !== 1 ? 's' : ''} requiring acknowledgement
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-red-300 bg-white text-red-800 hover:bg-red-100"
+            asChild
+          >
+            <Link to="/letters">View Letters</Link>
+          </Button>
+        </div>
+      )}
 
       {employeeId && (
         <LiveTimerWidget

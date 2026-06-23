@@ -149,6 +149,28 @@ export interface Letter {
   replyDeadline?: string | null
   isReplied?: boolean
   autoEscalated?: boolean
+  requiresAcknowledgement?: boolean
+}
+
+export interface OutstationRequest {
+  id: string
+  employeeId: string
+  district: string
+  purpose: string
+  startDate: string
+  endDate: string
+  duration: number
+  status: string
+  notes?: string | null
+  createdAt: string
+}
+
+export interface AllegationAcknowledgement {
+  id: string
+  letterId: string
+  employeeId: string
+  acknowledgedAt: string
+  ipAddress?: string | null
 }
 
 export interface LetterReply {
