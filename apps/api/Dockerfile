@@ -27,4 +27,4 @@ RUN mkdir -p uploads/documents uploads/letters
 
 ENV NODE_ENV=production
 EXPOSE 3000
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]
