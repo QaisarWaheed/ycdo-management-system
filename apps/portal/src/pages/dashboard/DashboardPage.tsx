@@ -107,7 +107,7 @@ export function DashboardPage() {
     })
 
   const { data: pendingAcks = [] } = useQuery({
-    queryKey: ['acknowledgements', 'pending'],
+    queryKey: ['pending-acknowledgements'],
     queryFn: () => acknowledgementsApi.getPending(),
     enabled: !!employeeId,
   })

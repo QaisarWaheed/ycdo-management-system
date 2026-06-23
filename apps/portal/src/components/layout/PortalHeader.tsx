@@ -43,7 +43,7 @@ export function PortalHeader() {
   })
 
   const { data: pendingAcks = [] } = useQuery({
-    queryKey: ['acknowledgements', 'pending'],
+    queryKey: ['pending-acknowledgements'],
     queryFn: () => acknowledgementsApi.getPending(),
     enabled: !!user?.employeeId,
   })

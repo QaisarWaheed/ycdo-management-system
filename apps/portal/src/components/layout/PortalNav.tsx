@@ -29,7 +29,7 @@ export function PortalNav() {
   const { user } = useAuth()
 
   const { data: pendingAcks = [] } = useQuery({
-    queryKey: ['acknowledgements', 'pending'],
+    queryKey: ['pending-acknowledgements'],
     queryFn: () => acknowledgementsApi.getPending(),
     enabled: !!user?.employeeId,
   })

@@ -155,8 +155,8 @@ function AcknowledgeDialog({
     mutationFn: () => acknowledgementsApi.acknowledge({ letterId: letter!.id }),
     onSuccess: () => {
       toast({ title: 'Letter acknowledged successfully' })
-      queryClient.invalidateQueries({ queryKey: ['letters'] })
-      queryClient.invalidateQueries({ queryKey: ['acknowledgements'] })
+      queryClient.invalidateQueries({ queryKey: ['my-letters'] })
+      queryClient.invalidateQueries({ queryKey: ['pending-acknowledgements'] })
       setConfirmed(false)
       onOpenChange(false)
     },
@@ -248,7 +248,7 @@ function ReplyDialog({
       letterRepliesApi.reply({ letterId: letter!.id, replyText }),
     onSuccess: () => {
       toast({ title: 'Reply submitted successfully' })
-      queryClient.invalidateQueries({ queryKey: ['letters'] })
+      queryClient.invalidateQueries({ queryKey: ['my-letters'] })
       setReplyText('')
       onOpenChange(false)
     },
@@ -326,14 +326,18 @@ export function MyLettersPage() {
   })
 
   const { data: letters = [], isLoading } = useQuery({
-    queryKey: ['letters'],
+    queryKey: ['my-letters'],
     queryFn: () => lettersApi.getMy(),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   })
 
   const { data: pendingAcks = [] } = useQuery({
-    queryKey: ['acknowledgements', 'pending'],
+    queryKey: ['pending-acknowledgements'],
     queryFn: () => acknowledgementsApi.getPending(),
     enabled: !!user?.employeeId,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   })
 
   const pendingIds = useMemo(
