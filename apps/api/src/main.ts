@@ -13,6 +13,9 @@ async function bootstrap() {
       'https://hrms.ycdo.org.pk',
       'https://portal.ycdo.org.pk',
       'https://hrms-portal.ycdo.org.pk',
+      'https://hrms.testingpurpose.cloud',
+      'https://portal.testingpurpose.cloud',
+      'https://hrms-portal.testingpurpose.cloud',
     ],
     credentials: true,
   });
