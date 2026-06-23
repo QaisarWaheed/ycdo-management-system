@@ -6,6 +6,8 @@ import {
   Award,
   Briefcase,
   Check,
+  CheckCircle,
+  Clock,
   FileText,
   Gavel,
   HelpCircle,
@@ -20,7 +22,6 @@ import {
   UserMinus,
   UserPlus,
 } from 'lucide-react'
-import { acknowledgementsApi } from '@/api/endpoints/acknowledgements'
 import { lettersApi } from '@/api/endpoints/letters'
 import { letterRepliesApi } from '@/api/endpoints/letterReplies'
 import { notificationsApi } from '@/api/endpoints/notifications'
@@ -69,7 +70,6 @@ import {
 import { cn } from '@/lib/utils'
 import {
   LETTER_TYPES,
-  type AllegationAcknowledgement,
   type Letter,
   type LetterReply,
   type LetterType,
@@ -78,23 +78,31 @@ import {
 const ALL = 'ALL'
 
 function AcknowledgementCell({ letter }: { letter: Letter }) {
-  if (!letter.requiresAcknowledgement) {
-    return <span className="text-text-secondary">—</span>
+  const isAcknowledgementRequired = letter.requiresAcknowledgement
+  const isAcknowledged = !!letter.acknowledgement
+
+  if (!isAcknowledgementRequired) {
+    return <span className="text-gray-400">—</span>
   }
 
-  if (letter.acknowledgement) {
+  if (isAcknowledged && letter.acknowledgement) {
     return (
-      <Badge variant="outline" className="border-green-200 bg-green-50 text-green-800">
-        Acknowledged
-        <span className="ml-1 text-xs font-normal">
-          {format(new Date(letter.acknowledgement.acknowledgedAt), 'dd/MM/yyyy')}
+      <div className="flex flex-col gap-1">
+        <Badge className="w-fit bg-green-100 text-green-700 hover:bg-green-100">
+          ✓ Acknowledged
+        </Badge>
+        <span className="text-xs text-gray-500">
+          {format(
+            new Date(letter.acknowledgement.acknowledgedAt),
+            'dd/MM/yyyy HH:mm',
+          )}
         </span>
-      </Badge>
+      </div>
     )
   }
 
   return (
-    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+    <Badge className="w-fit bg-amber-100 text-amber-700 hover:bg-amber-100">
       Pending
     </Badge>
   )
@@ -109,17 +117,6 @@ function AcknowledgementDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const {
-    data: acknowledgement,
-    isLoading,
-    isError,
-  } = useQuery({
-    queryKey: ['letter-acknowledgement', letter?.id],
-    queryFn: () => acknowledgementsApi.getByLetter(letter!.id),
-    enabled: !!letter && open,
-    retry: false,
-  })
-
   const reminderMutation = useMutation({
     mutationFn: () =>
       notificationsApi.sendReminder({
@@ -137,7 +134,7 @@ function AcknowledgementDialog({
   if (!letter) return null
 
   const ref = letterReference(letter)
-  const ack = isError ? null : (acknowledgement as AllegationAcknowledgement | undefined)
+  const acknowledgement = letter.acknowledgement
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,37 +143,35 @@ function AcknowledgementDialog({
           <DialogTitle>Acknowledgement — {ref}</DialogTitle>
         </DialogHeader>
 
-        {isLoading ? (
-          <Skeleton className="h-24 w-full" />
-        ) : ack ? (
-          <div className="space-y-3 rounded-lg border border-border p-4">
-            <div>
-              <p className="text-sm text-text-secondary">Employee</p>
-              <p className="font-medium">
-                {ack.employee
-                  ? `${ack.employee.firstName} ${ack.employee.lastName}`
-                  : '—'}
-                {ack.employee?.employeeCode && (
-                  <span className="ml-2 font-mono text-xs text-text-secondary">
-                    {ack.employee.employeeCode}
-                  </span>
-                )}
-              </p>
+        {acknowledgement ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-green-600">
+              <CheckCircle className="h-5 w-5" />
+              <span className="font-medium">Acknowledged</span>
             </div>
-            <div>
-              <p className="text-sm text-text-secondary">Acknowledged At</p>
-              <p className="font-medium">
-                {format(new Date(ack.acknowledgedAt), 'dd/MM/yyyy HH:mm')}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-text-secondary">IP Address</p>
-              <p className="font-mono text-sm">{ack.ipAddress ?? '—'}</p>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <label className="text-gray-500">Acknowledged At</label>
+                <p>
+                  {format(
+                    new Date(acknowledgement.acknowledgedAt),
+                    'dd/MM/yyyy HH:mm:ss',
+                  )}
+                </p>
+              </div>
+              <div>
+                <label className="text-gray-500">IP Address</label>
+                <p>{acknowledgement.ipAddress || 'Not recorded'}</p>
+              </div>
             </div>
           </div>
         ) : (
-          <div className="space-y-4 py-4 text-center">
-            <p className="text-text-secondary">Not yet acknowledged</p>
+          <div className="space-y-4 py-4 text-center text-gray-500">
+            <Clock className="mx-auto mb-2 h-8 w-8 text-amber-500" />
+            <p>Not yet acknowledged by employee</p>
+            <p className="mt-1 text-sm">
+              Employee has been notified to acknowledge this letter.
+            </p>
             {letter.employeeId && (
               <Button
                 className="bg-primary hover:bg-primary-dark"
@@ -551,6 +546,9 @@ export function LettersPage() {
   const { data: letters = [], isLoading } = useQuery({
     queryKey: ['letters', filters],
     queryFn: () => lettersApi.getAll(filters),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000,
   })
 
   const markPrintedMutation = useMutation({

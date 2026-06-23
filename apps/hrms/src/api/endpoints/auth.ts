@@ -7,4 +7,6 @@ export const authApi = {
   me: () => api.get<unknown, User>('/auth/me'),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.patch<unknown, { message: string }>('/auth/change-password', data),
+  resetPassword: (data: { userId: string; newPassword: string }) =>
+    api.patch<unknown, { message: string }>('/auth/reset-password', data),
 }

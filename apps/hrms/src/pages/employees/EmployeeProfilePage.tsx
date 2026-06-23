@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { useParams } from 'react-router-dom'
+import { authApi } from '@/api/endpoints/auth'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -56,6 +57,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import type {
   AcademicQualification,
   DocumentType,
@@ -493,8 +495,108 @@ function AddPreviousEmploymentDialog({
   )
 }
 
+function ResetPasswordDialog({
+  open,
+  onOpenChange,
+  employeeName,
+  userId,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  employeeName: string
+  userId: string
+}) {
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+
+  const resetMutation = useMutation({
+    mutationFn: () => authApi.resetPassword({ userId, newPassword }),
+    onSuccess: () => {
+      toast({ title: 'Password reset successfully' })
+      setNewPassword('')
+      setConfirmPassword('')
+      onOpenChange(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to reset password',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const handleSubmit = () => {
+    if (newPassword.length < 6) {
+      toast({
+        title: 'Password too short',
+        description: 'Password must be at least 6 characters',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: 'Passwords do not match',
+        variant: 'destructive',
+      })
+      return
+    }
+    resetMutation.mutate()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Reset Password for {employeeName}</DialogTitle>
+        </DialogHeader>
+
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          This will immediately change the employee&apos;s portal login password.
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>New Password</Label>
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Minimum 6 characters"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Confirm Password</Label>
+            <Input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            disabled={resetMutation.isPending}
+            onClick={handleSubmit}
+          >
+            {resetMutation.isPending ? 'Resetting...' : 'Reset Password'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function EmployeeProfilePage() {
   const { id = '' } = useParams()
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -506,6 +608,7 @@ export function EmployeeProfilePage() {
   const [letterOpen, setLetterOpen] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
   const [prevEmpOpen, setPrevEmpOpen] = useState(false)
   const [expandedPrevEmpId, setExpandedPrevEmpId] = useState<string | null>(
     null,
@@ -735,6 +838,15 @@ export function EmployeeProfilePage() {
             >
               Transfer
             </Button>
+            {user?.role === 'SUPER_ADMIN' && employee.user?.id && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setResetPasswordOpen(true)}
+              >
+                Reset Password
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1510,6 +1622,14 @@ export function EmployeeProfilePage() {
         employeeId={id}
         currentDesignation={employee.currentDesignation}
       />
+      {employee.user?.id && (
+        <ResetPasswordDialog
+          open={resetPasswordOpen}
+          onOpenChange={setResetPasswordOpen}
+          employeeName={`${employee.firstName} ${employee.lastName}`}
+          userId={employee.user.id}
+        />
+      )}
     </div>
   )
 }

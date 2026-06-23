@@ -210,6 +210,12 @@ export interface Employee {
   documents?: EmployeeDocument[]
   academicQualifications?: AcademicQualification[]
   previousEmployments?: PreviousEmployment[]
+  user?: {
+    id: string
+    email: string
+    role: string
+    isActive: boolean
+  } | null
 }
 
 export type QualType = 'ACADEMIC' | 'JOB_RELEVANT'

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { authApi } from '@/api/endpoints/auth'
 import { employeesApi } from '@/api/endpoints/employees'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 import { Badge } from '@/components/ui/badge'
@@ -8,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -18,9 +16,6 @@ export function ProfilePage() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
-  const [currentPassword, setCurrentPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
 
   const { data: employee } = useQuery({
     queryKey: ['employee-profile', user?.employeeId],
@@ -57,48 +52,9 @@ export function ProfilePage() {
     },
   })
 
-  const passwordMutation = useMutation({
-    mutationFn: () =>
-      authApi.changePassword({ currentPassword, newPassword }),
-    onSuccess: () => {
-      toast({ title: 'Password changed successfully' })
-      setCurrentPassword('')
-      setNewPassword('')
-      setConfirmPassword('')
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Failed to change password',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-  })
-
   const displayName = employee
     ? `${employee.firstName} ${employee.lastName}`
     : user?.email ?? 'User'
-
-  const handlePasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (newPassword.length < 6) {
-      toast({
-        title: 'Password too short',
-        description: 'New password must be at least 6 characters',
-        variant: 'destructive',
-      })
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      toast({
-        title: 'Passwords do not match',
-        variant: 'destructive',
-      })
-      return
-    }
-    passwordMutation.mutate()
-  }
 
   return (
     <div className="space-y-6">
@@ -192,43 +148,6 @@ export function ProfilePage() {
                 No employee profile linked to this account.
               </p>
             )}
-
-            <Separator className="my-6" />
-
-            <h2 className="text-lg font-semibold">Change Password</h2>
-            <form onSubmit={handlePasswordSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Current Password</Label>
-                <Input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>New Password (min 6 characters)</Label>
-                <Input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Confirm Password</Label>
-                <Input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
-              </div>
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={passwordMutation.isPending}
-              >
-                {passwordMutation.isPending ? 'Changing...' : 'Change Password'}
-              </Button>
-            </form>
           </CardContent>
         </Card>
       </div>
