@@ -78,6 +78,58 @@ export class CreateEmployeeDto {
   @IsUUID()
   shiftId?: string;
 
+  @IsOptional()
+  @IsString()
+  fatherContactNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  emergencyContactName?: string;
+
+  @IsOptional()
+  @IsString()
+  emergencyContactNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  spouseName?: string;
+
+  @IsOptional()
+  @IsString()
+  spouseContactNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  caste?: string;
+
+  @IsOptional()
+  @IsString()
+  domicile?: string;
+
+  @IsOptional()
+  @IsString()
+  currentAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  permanentAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @IsOptional()
+  @IsString()
+  tehsil?: string;
+
+  @IsOptional()
+  @IsString()
+  policeStation?: string;
+
+  @IsOptional()
+  @IsString()
+  bloodGroup?: string;
+
   @Type(() => Number)
   @IsNumber()
   @IsPositive()

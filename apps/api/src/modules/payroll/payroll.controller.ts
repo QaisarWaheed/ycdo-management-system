@@ -29,25 +29,25 @@ export class PayrollController {
   constructor(private payrollService: PayrollService) {}
 
   @Post('entries')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.PAYROLL_OFFICER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
   createOrGetEntry(@Body() dto: CreatePayrollEntryDto) {
     return this.payrollService.createOrGetEntry(dto);
   }
 
   @Post('deductions')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.PAYROLL_OFFICER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
   addDeduction(@Body() dto: AddDeductionDto) {
     return this.payrollService.addDeduction(dto);
   }
 
   @Post('allowances')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.PAYROLL_OFFICER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
   addAllowance(@Body() dto: AddAllowanceDto) {
     return this.payrollService.addAllowance(dto);
   }
 
   @Patch('entries/:id/status')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.PAYROLL_OFFICER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_OPERATIONS_MANAGER)
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollStatusDto,
@@ -57,7 +57,7 @@ export class PayrollController {
   }
 
   @Get('summary')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.PAYROLL_OFFICER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
   getMonthlyPayrollSummary(
     @Query('month') month: string,
     @Query('year') year: string,
@@ -74,7 +74,7 @@ export class PayrollController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.PAYROLL_OFFICER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.EMPLOYEE,
   )
   getEmployeePayrollHistory(@Param('employeeId') employeeId: string) {
@@ -82,19 +82,19 @@ export class PayrollController {
   }
 
   @Get('entries')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.PAYROLL_OFFICER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
   findAll(@Query() query: PayrollQueryDto) {
     return this.payrollService.findAll(query);
   }
 
   @Get('entries/:id/full')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.PAYROLL_OFFICER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
   getEntryWithAllowances(@Param('id') id: string) {
     return this.payrollService.getEntryWithAllowances(id);
   }
 
   @Get('entries/:id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.PAYROLL_OFFICER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
   findOne(@Param('id') id: string) {
     return this.payrollService.findOne(id);
   }

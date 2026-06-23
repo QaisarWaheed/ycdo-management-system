@@ -45,7 +45,7 @@ export class DisciplinaryController {
   }
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_HR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
   create(
     @Body() dto: CreateDisciplinaryDto,
     @CurrentUser() user: { id: string },
@@ -57,8 +57,8 @@ export class DisciplinaryController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
-    UserRole.DEPARTMENT_HEAD,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
   )
   findAll(@Query() query: DisciplinaryQueryDto) {
     return this.disciplinaryService.findAll(query);
@@ -68,8 +68,8 @@ export class DisciplinaryController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
-    UserRole.DEPARTMENT_HEAD,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
   )
   findOne(@Param('id') id: string) {
     return this.disciplinaryService.findOne(id);

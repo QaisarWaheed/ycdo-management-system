@@ -196,6 +196,12 @@ export class EmployeesService {
           },
         },
         documents: true,
+        academicQualifications: {
+          orderBy: [{ qualType: 'asc' }, { createdAt: 'asc' }],
+        },
+        previousEmployments: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -230,6 +236,35 @@ export class EmployeesService {
     if (dto.currentDesignation !== undefined) {
       data.currentDesignation = dto.currentDesignation;
     }
+    if (dto.fatherContactNumber !== undefined) {
+      data.fatherContactNumber = dto.fatherContactNumber;
+    }
+    if (dto.emergencyContactName !== undefined) {
+      data.emergencyContactName = dto.emergencyContactName;
+    }
+    if (dto.emergencyContactNumber !== undefined) {
+      data.emergencyContactNumber = dto.emergencyContactNumber;
+    }
+    if (dto.spouseName !== undefined) {
+      data.spouseName = dto.spouseName;
+    }
+    if (dto.spouseContactNumber !== undefined) {
+      data.spouseContactNumber = dto.spouseContactNumber;
+    }
+    if (dto.caste !== undefined) data.caste = dto.caste;
+    if (dto.domicile !== undefined) data.domicile = dto.domicile;
+    if (dto.currentAddress !== undefined) {
+      data.currentAddress = dto.currentAddress;
+    }
+    if (dto.permanentAddress !== undefined) {
+      data.permanentAddress = dto.permanentAddress;
+    }
+    if (dto.district !== undefined) data.district = dto.district;
+    if (dto.tehsil !== undefined) data.tehsil = dto.tehsil;
+    if (dto.policeStation !== undefined) {
+      data.policeStation = dto.policeStation;
+    }
+    if (dto.bloodGroup !== undefined) data.bloodGroup = dto.bloodGroup;
 
     if (dto.email) {
       const existingEmail = await this.prisma.employee.findFirst({

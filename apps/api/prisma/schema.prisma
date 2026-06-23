@@ -106,8 +106,27 @@ model Employee {
   leaveRecords        LeaveRecord[]
   notifications       Notification[]
   relieverSessions    RelieverSession[]
-  letterReplies       LetterReply[]
-  user                User?
+  letterReplies              LetterReply[]
+  user                       User?
+  academicQualifications     AcademicQualification[]
+  previousEmployments        PreviousEmployment[]
+  outstationRequests         OutstationRequest[]
+  allegationAcknowledgements AllegationAcknowledgement[]
+
+  // Additional personal info
+  fatherContactNumber    String?
+  emergencyContactName   String?
+  emergencyContactNumber String?
+  spouseName             String?
+  spouseContactNumber    String?
+  caste                  String?
+  domicile               String?
+  currentAddress         String?
+  permanentAddress       String?
+  district               String?
+  tehsil                 String?
+  policeStation          String?
+  bloodGroup             String?
 }
 
 enum Gender {
@@ -119,6 +138,7 @@ enum Gender {
 enum EmployeeStatus {
   TRAINEE
   ACTIVE
+  APPOINTED
   SUSPENDED
   TERMINATED
   RESIGNED
@@ -363,10 +383,12 @@ model Letter {
   fileUrl       String?
   replyDeadline DateTime?
   isReplied     Boolean    @default(false)
-  autoEscalated Boolean    @default(false)
+  autoEscalated           Boolean @default(false)
+  requiresAcknowledgement Boolean @default(false)
 
-  employee Employee      @relation(fields: [employeeId], references: [id])
-  replies  LetterReply[]
+  employee        Employee                   @relation(fields: [employeeId], references: [id])
+  replies         LetterReply[]
+  acknowledgement AllegationAcknowledgement?
 }
 
 model LetterReply {
@@ -405,6 +427,7 @@ enum LetterType {
 model LeaveRecord {
   id         String      @id @default(uuid())
   employeeId String
+  leaveType  LeaveType   @default(REGULAR)
   startDate  DateTime
   endDate    DateTime
   totalDays  Int
@@ -414,6 +437,11 @@ model LeaveRecord {
   createdAt  DateTime    @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+enum LeaveType {
+  REGULAR
+  SHORT_LEAVE
 }
 
 enum LeaveStatus {
@@ -441,10 +469,13 @@ model User {
 
 enum UserRole {
   SUPER_ADMIN
+  FOUNDER
+  CHAIRMAN
+  HR_OPERATIONS_MANAGER
+  HR_ADMIN_MANAGER
+  ADMIN_OFFICER
   HR_MANAGER
-  BRANCH_HR
-  DEPARTMENT_HEAD
-  PAYROLL_OFFICER
+  BRANCH_MANAGER
   EMPLOYEE
 }
 
@@ -476,10 +507,13 @@ model NotificationBroadcast {
 enum BroadcastTarget {
   ALL
   SUPER_ADMIN
+  FOUNDER
+  CHAIRMAN
+  HR_OPERATIONS_MANAGER
+  HR_ADMIN_MANAGER
+  ADMIN_OFFICER
   HR_MANAGER
-  BRANCH_HR
-  DEPARTMENT_HEAD
-  PAYROLL_OFFICER
+  BRANCH_MANAGER
   EMPLOYEE
 }
 
@@ -525,4 +559,75 @@ enum ApplicationStatus {
   INTERVIEW_SCHEDULED
   SELECTED
   REJECTED
+}
+
+// ─── PHASE 3 EXTENSIONS ───────────────────────────────────
+
+model AcademicQualification {
+  id              String   @id @default(uuid())
+  employeeId      String
+  qualType        QualType @default(ACADEMIC)
+  degree          String
+  boardUniversity String
+  obtainedMarks   String?
+  divisionGrade   String?
+  createdAt       DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+enum QualType {
+  ACADEMIC
+  JOB_RELEVANT
+}
+
+model PreviousEmployment {
+  id                  String   @id @default(uuid())
+  employeeId          String
+  organizationName    String
+  ownerAdminName      String?
+  contactNumber       String?
+  postalAddress       String?
+  totalExperience     String?
+  relevantExperience  String?
+  jobResponsibilities String?  @db.Text
+  createdAt           DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model OutstationRequest {
+  id         String           @id @default(uuid())
+  employeeId String
+  district   String
+  purpose    String           @db.Text
+  startDate  DateTime
+  endDate    DateTime
+  duration   Int
+  status     OutstationStatus @default(PENDING)
+  approvedBy String?
+  approvedAt DateTime?
+  notes      String?
+  createdAt  DateTime         @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+enum OutstationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+model AllegationAcknowledgement {
+  id             String   @id @default(uuid())
+  letterId       String   @unique
+  employeeId     String
+  acknowledgedAt DateTime @default(now())
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  letter   Letter   @relation(fields: [letterId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 }

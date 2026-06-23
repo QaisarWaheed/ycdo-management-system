@@ -26,7 +26,7 @@ export class LettersController {
   constructor(private lettersService: LettersService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_HR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
   generate(
     @Body() dto: GenerateLetterDto,
     @CurrentUser() user: { id: string },
@@ -38,7 +38,7 @@ export class LettersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
+    UserRole.BRANCH_MANAGER,
     UserRole.EMPLOYEE,
   )
   findAll(
@@ -61,7 +61,7 @@ export class LettersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
+    UserRole.BRANCH_MANAGER,
     UserRole.EMPLOYEE,
   )
   async getPdf(@Param('id') id: string, @Res() res: Response) {
@@ -77,7 +77,7 @@ export class LettersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
+    UserRole.BRANCH_MANAGER,
     UserRole.EMPLOYEE,
   )
   findOne(@Param('id') id: string) {
@@ -85,7 +85,7 @@ export class LettersController {
   }
 
   @Patch(':id/printed')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_HR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
   markPrinted(@Param('id') id: string) {
     return this.lettersService.markPrinted(id);
   }

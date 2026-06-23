@@ -1,4 +1,4 @@
-import { LeaveStatus } from '@prisma/client';
+import { LeaveStatus, LeaveType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
@@ -31,6 +31,10 @@ export class ApplyLeaveDto {
   @IsNotEmpty()
   @MaxLength(500)
   reason: string;
+
+  @IsOptional()
+  @IsEnum(LeaveType)
+  leaveType?: LeaveType;
 }
 
 export class UpdateLeaveStatusDto {

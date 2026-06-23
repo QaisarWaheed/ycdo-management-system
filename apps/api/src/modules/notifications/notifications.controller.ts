@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -11,14 +13,15 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { SendReminderDto } from './notifications.dto';
 import { NotificationsService } from './notifications.service';
 
 const ALL_ROLES = [
   UserRole.SUPER_ADMIN,
   UserRole.HR_MANAGER,
-  UserRole.BRANCH_HR,
-  UserRole.DEPARTMENT_HEAD,
-  UserRole.PAYROLL_OFFICER,
+  UserRole.BRANCH_MANAGER,
+  UserRole.ADMIN_OFFICER,
+  UserRole.HR_OPERATIONS_MANAGER,
   UserRole.EMPLOYEE,
 ];
 
@@ -55,5 +58,19 @@ export class NotificationsController {
     @CurrentUser() user: { employeeId?: string },
   ) {
     return this.notificationsService.markAsRead(id, user.employeeId!);
+  }
+
+  @Post('remind')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  sendReminder(@Body() dto: SendReminderDto) {
+    return this.notificationsService.sendReminder(
+      dto.employeeId,
+      dto.message,
+    );
   }
 }

@@ -28,7 +28,7 @@ export class EmployeesController {
   constructor(private employeesService: EmployeesService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_HR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
   create(@Body() dto: CreateEmployeeDto) {
     return this.employeesService.create(dto);
   }
@@ -37,8 +37,8 @@ export class EmployeesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
-    UserRole.DEPARTMENT_HEAD,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
   )
   findAll(
     @Query('branchId') branchId?: string,
@@ -58,8 +58,8 @@ export class EmployeesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
-    UserRole.DEPARTMENT_HEAD,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
   )
   findOne(
@@ -76,7 +76,7 @@ export class EmployeesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
+    UserRole.BRANCH_MANAGER,
     UserRole.EMPLOYEE,
   )
   update(

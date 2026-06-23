@@ -7,6 +7,7 @@ import {
   AttendanceSource,
   AttendanceStatus,
   EmployeeStatus,
+  LetterType,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -15,13 +16,20 @@ import {
   BiometricPushDto,
   ManualAttendanceDto,
 } from './attendance.dto';
-import { applyDisciplineRules } from './discipline.helper';
+import {
+  applyDisciplineRules,
+  DisciplineFollowUp,
+} from './discipline.helper';
+import { LettersService } from '../letters/letters.service';
 
 const OVERTIME_GRACE_MINUTES = 60;
 
 @Injectable()
 export class AttendanceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private lettersService: LettersService,
+  ) {}
 
   async biometricPush(dto: BiometricPushDto) {
     const employee = await this.prisma.employee.findUnique({
@@ -98,13 +106,23 @@ export class AttendanceService {
         });
 
         if (status === AttendanceStatus.LATE) {
-          await applyDisciplineRules(tx, employee.id, status, dateOnly);
+          const followUp = await applyDisciplineRules(
+            tx,
+            employee.id,
+            status,
+            dateOnly,
+          );
+          return { log: created, followUp };
         }
 
-        return created;
+        return { log: created, followUp: undefined };
       });
 
-      return log;
+      if (log.followUp) {
+        await this.handleLateDisciplineFollowUp(log.followUp);
+      }
+
+      return log.log;
     }
 
     if (!existing.checkOut) {
@@ -151,7 +169,7 @@ export class AttendanceService {
 
     const dateOnly = this.toDateOnly(new Date(dto.date));
 
-    const log = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const attendanceLog = await tx.attendanceLog.upsert({
         where: {
           employeeId_date: {
@@ -178,13 +196,21 @@ export class AttendanceService {
         },
       });
 
-      if (dto.status === AttendanceStatus.UNINFORMED_ABSENT) {
-        await applyDisciplineRules(
+      let followUp: DisciplineFollowUp | undefined;
+
+      if (
+        dto.status === AttendanceStatus.UNINFORMED_ABSENT ||
+        dto.status === AttendanceStatus.LATE
+      ) {
+        const disciplineResult = await applyDisciplineRules(
           tx,
           dto.employeeId,
           dto.status,
           dateOnly,
         );
+        if (disciplineResult) {
+          followUp = disciplineResult;
+        }
       }
 
       await tx.auditLog.create({
@@ -196,10 +222,14 @@ export class AttendanceService {
         },
       });
 
-      return attendanceLog;
+      return { attendanceLog, followUp };
     });
 
-    return log;
+    if (result.followUp) {
+      await this.handleLateDisciplineFollowUp(result.followUp);
+    }
+
+    return result.attendanceLog;
   }
 
   findAll(query: AttendanceQueryDto) {
@@ -435,5 +465,39 @@ export class AttendanceService {
     const result = new Date(date);
     result.setHours(0, 0, 0, 0);
     return result;
+  }
+
+  private async handleLateDisciplineFollowUp(followUp: DisciplineFollowUp) {
+    const { employeeId, lateCount } = followUp;
+
+    if (lateCount === 3 || lateCount === 6) {
+      await this.lettersService.generate(
+        {
+          employeeId,
+          letterType: LetterType.WARNING,
+          extraFields: {
+            reason: `Warning Letter ${lateCount === 3 ? 1 : 2} - ${lateCount} late arrivals this month`,
+            warningNumber: lateCount === 3 ? 1 : 2,
+          },
+        },
+        'SYSTEM',
+      );
+    } else if (lateCount === 9) {
+      await this.lettersService.generate(
+        {
+          employeeId,
+          letterType: LetterType.SUSPENSION,
+          extraFields: {
+            reason: '9 late arrivals this month',
+          },
+        },
+        'SYSTEM',
+      );
+
+      await this.prisma.employee.update({
+        where: { id: employeeId },
+        data: { status: EmployeeStatus.SUSPENDED },
+      });
+    }
   }
 }

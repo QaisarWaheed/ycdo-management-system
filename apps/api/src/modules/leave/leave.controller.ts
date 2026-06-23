@@ -31,7 +31,7 @@ export class LeaveController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
+    UserRole.BRANCH_MANAGER,
     UserRole.EMPLOYEE,
   )
   apply(@Body() dto: ApplyLeaveDto) {
@@ -42,8 +42,8 @@ export class LeaveController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
-    UserRole.DEPARTMENT_HEAD,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
   )
   getLeaveBalance(
@@ -60,8 +60,8 @@ export class LeaveController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
-    UserRole.DEPARTMENT_HEAD,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
   )
   findAll(
@@ -84,15 +84,15 @@ export class LeaveController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
-    UserRole.DEPARTMENT_HEAD,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
   )
   findOne(@Param('id') id: string) {
     return this.leaveService.findOne(id);
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_HR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateLeaveStatusDto,
@@ -105,7 +105,7 @@ export class LeaveController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_HR,
+    UserRole.BRANCH_MANAGER,
     UserRole.EMPLOYEE,
   )
   cancel(

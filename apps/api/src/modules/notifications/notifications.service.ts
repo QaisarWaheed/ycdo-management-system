@@ -58,4 +58,14 @@ export class NotificationsService {
 
     return { count };
   }
+
+  sendReminder(employeeId: string, message: string) {
+    return this.prisma.notification.create({
+      data: {
+        employeeId,
+        message,
+        type: 'REMINDER',
+      },
+    });
+  }
 }

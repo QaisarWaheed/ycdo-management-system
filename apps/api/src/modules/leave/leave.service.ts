@@ -10,6 +10,7 @@ import {
   AttendanceStatus,
   EmployeeStatus,
   LeaveStatus,
+  LeaveType,
   Prisma,
   UserRole,
 } from '@prisma/client';
@@ -50,6 +51,7 @@ export class LeaveService {
     const startDate = this.toDateOnly(new Date(dto.startDate));
     const endDate = this.toDateOnly(new Date(dto.endDate));
     const today = this.toDateOnly(new Date());
+    const leaveType = dto.leaveType ?? LeaveType.REGULAR;
 
     if (startDate < today) {
       throw new BadRequestException('Leave start date must be today or later');
@@ -59,15 +61,55 @@ export class LeaveService {
       throw new BadRequestException('Start date must be before or equal to end date');
     }
 
-    const totalDays = this.calculateTotalDays(startDate, endDate);
-    const year = startDate.getFullYear();
-    const approvedDays = await this.getApprovedDays(dto.employeeId, year);
-    const remaining = MAX_LEAVES_PER_YEAR - approvedDays;
+    let totalDays: number;
 
-    if (approvedDays + totalDays > MAX_LEAVES_PER_YEAR) {
-      throw new BadRequestException(
-        `Leave limit exceeded. Remaining: ${remaining} days`,
+    if (leaveType === LeaveType.SHORT_LEAVE) {
+      if (startDate.getTime() !== endDate.getTime()) {
+        throw new BadRequestException('Short leave must be for a single day');
+      }
+
+      const monthStart = new Date(
+        startDate.getFullYear(),
+        startDate.getMonth(),
+        1,
       );
+      const monthEnd = new Date(
+        startDate.getFullYear(),
+        startDate.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
+      );
+
+      const shortLeaveCount = await this.prisma.leaveRecord.count({
+        where: {
+          employeeId: dto.employeeId,
+          leaveType: LeaveType.SHORT_LEAVE,
+          status: { in: [LeaveStatus.PENDING, LeaveStatus.APPROVED] },
+          startDate: { gte: monthStart, lte: monthEnd },
+        },
+      });
+
+      if (shortLeaveCount >= 2) {
+        throw new BadRequestException(
+          'Maximum 2 short leaves allowed per month',
+        );
+      }
+
+      totalDays = 0;
+    } else {
+      totalDays = this.calculateTotalDays(startDate, endDate);
+      const year = startDate.getFullYear();
+      const approvedDays = await this.getApprovedDays(dto.employeeId, year);
+      const remaining = MAX_LEAVES_PER_YEAR - approvedDays;
+
+      if (approvedDays + totalDays > MAX_LEAVES_PER_YEAR) {
+        throw new BadRequestException(
+          `Leave limit exceeded. Remaining: ${remaining} days`,
+        );
+      }
     }
 
     const overlapping = await this.prisma.leaveRecord.findFirst({
@@ -89,6 +131,7 @@ export class LeaveService {
       const record = await tx.leaveRecord.create({
         data: {
           employeeId: dto.employeeId,
+          leaveType,
           startDate,
           endDate,
           totalDays,
@@ -144,28 +187,52 @@ export class LeaveService {
 
         const leaveDays = this.getDateRange(leave.startDate, leave.endDate);
 
-        for (const day of leaveDays) {
+        if (leave.leaveType === LeaveType.SHORT_LEAVE) {
           await tx.attendanceLog.upsert({
             where: {
               employeeId_date: {
                 employeeId: leave.employeeId,
-                date: day,
+                date: leave.startDate,
               },
             },
             create: {
               employeeId: leave.employeeId,
               branchId: leave.employee.currentBranchId,
-              date: day,
-              status: AttendanceStatus.ON_LEAVE,
+              date: leave.startDate,
+              status: AttendanceStatus.HALF_DAY,
               source: AttendanceSource.MANUAL,
-              note: 'Approved leave',
+              note: 'Approved short leave',
             },
             update: {
-              status: AttendanceStatus.ON_LEAVE,
+              status: AttendanceStatus.HALF_DAY,
               source: AttendanceSource.MANUAL,
-              note: 'Approved leave',
+              note: 'Approved short leave',
             },
           });
+        } else {
+          for (const day of leaveDays) {
+            await tx.attendanceLog.upsert({
+              where: {
+                employeeId_date: {
+                  employeeId: leave.employeeId,
+                  date: day,
+                },
+              },
+              create: {
+                employeeId: leave.employeeId,
+                branchId: leave.employee.currentBranchId,
+                date: day,
+                status: AttendanceStatus.ON_LEAVE,
+                source: AttendanceSource.MANUAL,
+                note: 'Approved leave',
+              },
+              update: {
+                status: AttendanceStatus.ON_LEAVE,
+                source: AttendanceSource.MANUAL,
+                note: 'Approved leave',
+              },
+            });
+          }
         }
 
         await tx.notification.create({
@@ -325,7 +392,7 @@ export class LeaveService {
     const hrRoles: UserRole[] = [
       UserRole.SUPER_ADMIN,
       UserRole.HR_MANAGER,
-      UserRole.BRANCH_HR,
+      UserRole.BRANCH_MANAGER,
     ];
 
     if (
@@ -357,6 +424,7 @@ export class LeaveService {
     const result = await this.prisma.leaveRecord.aggregate({
       where: {
         employeeId,
+        leaveType: { not: LeaveType.SHORT_LEAVE },
         status: LeaveStatus.APPROVED,
         startDate: {
           gte: new Date(year, 0, 1),

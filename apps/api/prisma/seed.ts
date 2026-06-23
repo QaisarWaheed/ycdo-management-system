@@ -2,29 +2,56 @@ import {
   ChangeType,
   Gender,
   PrismaClient,
+  ProjectType,
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-const branches = [
-  {
-    name: 'YCDO Central Hospital - Main Branch',
-    address: 'Main Branch Address, Multan',
-    phone: '061-1234567',
-  },
-  {
-    name: 'YCDO Central Hospital - North Branch',
-    address: 'North Branch Address, Multan',
-    phone: '061-7654321',
-  },
+const hospitalBranches = [
+  'Central Hospital (HQ)',
+  'Central Hospital Consultant Floor',
+  'Executive Hospital-I',
+  'Executive Hospital-II (Mother & Child Care)',
+  'Executive Hospital-III (Ghazi National)',
+  'AR Executive-IV Hospital',
+  'Police & YCDO Joint Venture Rehabilitation Center',
+  'Executive-V Rehabilitation Center',
+  'Hassan Abad Hospital',
+  'Idrees Memorial Hospital',
+  'Hassan Parwana Road Hospital',
+  'Suraj Kund Road Hospital',
+  'Budhla Santt Hospital',
+  'Sikandar Abad Hospital',
+  'Bilawal Pur Clinic',
+  'Pul Dhram Pura Clinic',
+  'Retra Clinic',
+  'YCDO Diagnostic Centre',
+  'Islamabad Allergy Vaccination Centre',
 ];
 
-const departmentNames = [
+const kitchenBranches = [
+  'Rashan Department',
+  'Main Kitchen',
+  'RO Water Filtration Plants',
+];
+
+const vtiBranches = [
+  'Vocational Training Institute Main',
+  'Jahez Program',
+  'Educational Financial Assistance Program',
+];
+
+const hospitalDepartments = [
+  'Administration',
   'Human Resources',
   'Medical Staff',
-  'Administration',
+  'Reception',
+  'Pharmacy',
+  'Laboratory',
+  'Housekeeping',
+  'Emergency',
 ];
 
 const seedEmployees = [
@@ -79,6 +106,39 @@ async function ensureEmployeePortalUser(
   });
 }
 
+async function ensureBranch(name: string, projectId: string) {
+  let branch = await prisma.branch.findFirst({
+    where: { name },
+  });
+
+  if (!branch) {
+    branch = await prisma.branch.create({
+      data: { name, projectId },
+    });
+  } else if (branch.projectId !== projectId) {
+    branch = await prisma.branch.update({
+      where: { id: branch.id },
+      data: { projectId },
+    });
+  }
+
+  return branch;
+}
+
+async function ensureDepartments(branchId: string, departmentNames: string[]) {
+  for (const deptName of departmentNames) {
+    const existing = await prisma.department.findFirst({
+      where: { name: deptName, branchId },
+    });
+
+    if (!existing) {
+      await prisma.department.create({
+        data: { name: deptName, branchId },
+      });
+    }
+  }
+}
+
 async function main() {
   const hashedPassword = await bcrypt.hash('Admin@123', 10);
 
@@ -93,35 +153,96 @@ async function main() {
     },
   });
 
-  const branchMap = new Map<string, string>();
+  const hospital = await prisma.project.upsert({
+    where: { id: 'project-hospital' },
+    update: {},
+    create: {
+      id: 'project-hospital',
+      name: 'YCDO Hospitals',
+      type: ProjectType.HOSPITAL,
+    },
+  });
 
-  for (const branchData of branches) {
-    let branch = await prisma.branch.findFirst({
-      where: { name: branchData.name },
-    });
+  const vti = await prisma.project.upsert({
+    where: { id: 'project-vti' },
+    update: {},
+    create: {
+      id: 'project-vti',
+      name: 'YCDO VTIs',
+      type: ProjectType.VTI,
+    },
+  });
 
-    if (!branch) {
-      branch = await prisma.branch.create({ data: branchData });
-    }
+  const kitchen = await prisma.project.upsert({
+    where: { id: 'project-kitchen' },
+    update: {},
+    create: {
+      id: 'project-kitchen',
+      name: 'YCDO Kitchens',
+      type: ProjectType.KITCHEN,
+    },
+  });
 
-    branchMap.set(branchData.name, branch.id);
+  const softwareHouse = await prisma.project.upsert({
+    where: { id: 'project-software' },
+    update: {},
+    create: {
+      id: 'project-software',
+      name: 'YCDO Software House',
+      type: ProjectType.SOFTWARE_HOUSE,
+    },
+  });
 
-    for (const deptName of departmentNames) {
-      const existing = await prisma.department.findFirst({
-        where: { name: deptName, branchId: branch.id },
-      });
-
-      if (!existing) {
-        await prisma.department.create({
-          data: { name: deptName, branchId: branch.id },
-        });
-      }
-    }
+  for (const name of hospitalBranches) {
+    const branch = await ensureBranch(name, hospital.id);
+    await ensureDepartments(branch.id, hospitalDepartments);
   }
 
-  const mainBranchId = branchMap.get('YCDO Central Hospital - Main Branch');
-  if (!mainBranchId) {
-    throw new Error('Main Branch not found after seeding');
+  for (const name of kitchenBranches) {
+    await ensureBranch(name, kitchen.id);
+  }
+
+  for (const name of vtiBranches) {
+    await ensureBranch(name, vti.id);
+  }
+
+  await prisma.branch.updateMany({
+    where: { projectId: null },
+    data: { projectId: hospital.id },
+  });
+
+  const swBranch = await prisma.branch.findFirst({
+    where: { name: 'Software House HQ' },
+  });
+
+  if (!swBranch) {
+    await prisma.branch.create({
+      data: {
+        id: 'branch-software',
+        name: 'Software House HQ',
+        projectId: softwareHouse.id,
+        address: 'YCDO Software House, Multan',
+      },
+    });
+  }
+
+  const softwareBranch =
+    swBranch ??
+    (await prisma.branch.findFirst({
+      where: { name: 'Software House HQ' },
+    }));
+
+  if (softwareBranch) {
+    const swDepts = ['Media House', 'Social Media', 'IT Team'];
+    await ensureDepartments(softwareBranch.id, swDepts);
+  }
+
+  const mainBranch = await prisma.branch.findFirst({
+    where: { name: 'Central Hospital (HQ)' },
+  });
+
+  if (!mainBranch) {
+    throw new Error('Central Hospital (HQ) not found after seeding');
   }
 
   for (const emp of seedEmployees) {
@@ -131,7 +252,7 @@ async function main() {
 
     if (!employee) {
       const department = await prisma.department.findFirst({
-        where: { name: emp.departmentName, branchId: mainBranchId },
+        where: { name: emp.departmentName, branchId: mainBranch.id },
       });
 
       if (!department) {
@@ -148,7 +269,7 @@ async function main() {
           gender: emp.gender,
           joiningDate: emp.joiningDate,
           currentDesignation: emp.currentDesignation,
-          currentBranchId: mainBranchId,
+          currentBranchId: mainBranch.id,
           currentDepartmentId: department.id,
         },
       });
@@ -156,7 +277,7 @@ async function main() {
       await prisma.employmentHistory.create({
         data: {
           employeeId: employee.id,
-          branchId: mainBranchId,
+          branchId: mainBranch.id,
           departmentId: department.id,
           designation: emp.currentDesignation,
           changeType: ChangeType.JOINED,
@@ -181,93 +302,19 @@ async function main() {
     await ensureEmployeePortalUser(employee.id, emp.email, emp.employeeCode);
   }
 
-  const hospital = await prisma.project.upsert({
-    where: { id: 'project-hospital' },
-    update: {},
-    create: {
-      id: 'project-hospital',
-      name: 'YCDO Hospitals',
-      type: 'HOSPITAL',
-    },
-  });
-
-  const vti = await prisma.project.upsert({
-    where: { id: 'project-vti' },
-    update: {},
-    create: {
-      id: 'project-vti',
-      name: 'YCDO VTIs',
-      type: 'VTI',
-    },
-  });
-
-  const kitchen = await prisma.project.upsert({
-    where: { id: 'project-kitchen' },
-    update: {},
-    create: {
-      id: 'project-kitchen',
-      name: 'YCDO Kitchens',
-      type: 'KITCHEN',
-    },
-  });
-
-  const softwareHouse = await prisma.project.upsert({
-    where: { id: 'project-software' },
-    update: {},
-    create: {
-      id: 'project-software',
-      name: 'YCDO Software House',
-      type: 'SOFTWARE_HOUSE',
-    },
-  });
-
-  await prisma.branch.updateMany({
-    where: { projectId: null },
-    data: { projectId: hospital.id },
-  });
-
-  const swBranch = await prisma.branch.upsert({
-    where: { id: 'branch-software' },
-    update: {},
-    create: {
-      id: 'branch-software',
-      name: 'Software House HQ',
-      projectId: softwareHouse.id,
-      address: 'YCDO Software House, Multan',
-    },
-  });
-
-  const swDepts = ['Media House', 'Social Media', 'IT Team'];
-  for (const deptName of swDepts) {
-    const exists = await prisma.department.findFirst({
-      where: { name: deptName, branchId: swBranch.id },
+  const shifts = [
+    { name: 'Morning Shift', startTime: '08:00', endTime: '14:00' },
+    { name: 'Evening Shift', startTime: '14:00', endTime: '20:00' },
+    { name: 'Night Shift', startTime: '20:00', endTime: '08:00' },
+  ];
+  for (const shift of shifts) {
+    const exists = await prisma.shift.findFirst({
+      where: { name: shift.name, branchId: mainBranch.id },
     });
     if (!exists) {
-      await prisma.department.create({
-        data: { name: deptName, branchId: swBranch.id },
+      await prisma.shift.create({
+        data: { ...shift, branchId: mainBranch.id },
       });
-    }
-  }
-
-  const mainBranch = await prisma.branch.findFirst({
-    where: { name: { contains: 'Main' } },
-  });
-
-  if (mainBranch) {
-    const shifts = [
-      { name: 'Morning Shift', startTime: '08:00', endTime: '14:00' },
-      { name: 'Evening Shift', startTime: '14:00', endTime: '20:00' },
-      { name: 'Night Shift', startTime: '20:00', endTime: '08:00' },
-    ];
-    for (const shift of shifts) {
-      const exists = await prisma.shift.findFirst({
-        where: { name: shift.name, branchId: mainBranch.id },
-      });
-      if (!exists) {
-        await prisma.shift.create({
-          data: { ...shift, branchId: mainBranch.id },
-        });
-      }
     }
   }
 

@@ -80,6 +80,19 @@ export class LettersService {
           ? new Date(Date.now() + 48 * 60 * 60 * 1000)
           : undefined;
 
+      const acknowledgementTypes: LetterType[] = [
+        LetterType.WARNING,
+        LetterType.SHOW_CAUSE,
+        LetterType.SUSPENSION,
+        LetterType.TERMINATION,
+        LetterType.FINE,
+        LetterType.DISCIPLINARY,
+        LetterType.EXPLANATION,
+      ];
+      const requiresAcknowledgement = acknowledgementTypes.includes(
+        dto.letterType,
+      );
+
       const record = await tx.letter.create({
         data: {
           employeeId: dto.employeeId,
@@ -87,6 +100,7 @@ export class LettersService {
           content: (dto.extraFields ?? {}) as Prisma.InputJsonValue,
           fileUrl,
           replyDeadline,
+          requiresAcknowledgement,
         },
       });
 

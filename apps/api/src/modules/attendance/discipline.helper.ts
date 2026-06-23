@@ -5,13 +5,21 @@ import {
   Prisma,
 } from '@prisma/client';
 
+export interface DisciplineFollowUp {
+  employeeId: string;
+  lateCount: number;
+}
+
 export async function applyDisciplineRules(
   tx: Prisma.TransactionClient,
   employeeId: string,
   status: AttendanceStatus,
   date: Date,
-): Promise<void> {
-  if (status !== AttendanceStatus.LATE && status !== AttendanceStatus.UNINFORMED_ABSENT) {
+): Promise<DisciplineFollowUp | void> {
+  if (
+    status !== AttendanceStatus.LATE &&
+    status !== AttendanceStatus.UNINFORMED_ABSENT
+  ) {
     return;
   }
 
@@ -70,30 +78,32 @@ export async function applyDisciplineRules(
       },
     });
 
-    if (lateCount === 1) {
+    const mod = lateCount % 3;
+
+    if (mod === 1) {
       await tx.notification.create({
         data: {
           employeeId,
           type: 'LATE_WARNING',
-          message: 'Late arrival warning - Day 1',
+          message: `Late arrival notice (${mod} of 3 in current cycle)`,
         },
       });
-    } else if (lateCount === 2) {
-      await tx.disciplinaryAction.create({
+    } else if (mod === 2) {
+      await tx.notification.create({
         data: {
           employeeId,
-          type: DisciplinaryType.WARNING,
-          reason: 'Second late arrival this month',
+          type: 'LATE_WARNING',
+          message: 'Late arrival warning - 2nd of 3 in current cycle',
         },
       });
-    } else if (lateCount >= 3) {
+    } else if (mod === 0) {
       const deductionAmount = basicSalary / 30;
 
       await tx.disciplinaryAction.create({
         data: {
           employeeId,
           type: DisciplinaryType.FINE,
-          reason: `Late arrival - day ${lateCount} this month`,
+          reason: `Late arrival - ${lateCount}th late this month (1 day deduction)`,
         },
       });
 
@@ -108,11 +118,14 @@ export async function applyDisciplineRules(
       await tx.payrollEntry.update({
         where: { id: payrollEntry.id },
         data: {
-          totalDeductions: Number(payrollEntry.totalDeductions) + deductionAmount,
+          totalDeductions:
+            Number(payrollEntry.totalDeductions) + deductionAmount,
           netSalary: Number(payrollEntry.netSalary) - deductionAmount,
         },
       });
     }
+
+    return { employeeId, lateCount };
   }
 
   if (status === AttendanceStatus.UNINFORMED_ABSENT) {

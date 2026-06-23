@@ -29,7 +29,7 @@ export class LetterRepliesController {
   }
 
   @Get('letter/:letterId')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_HR)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
   findRepliesByLetter(@Param('letterId') letterId: string) {
     return this.letterRepliesService.findRepliesByLetter(letterId);
   }
