@@ -9,8 +9,10 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'http://localhost:5174',
+      'https://hrms-web.ycdo.org.pk',
       'https://hrms.ycdo.org.pk',
       'https://portal.ycdo.org.pk',
+      'https://hrms-portal.ycdo.org.pk',
     ],
     credentials: true,
   });

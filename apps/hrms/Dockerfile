@@ -3,12 +3,14 @@ WORKDIR /app
 
 COPY package.json ./
 
-# Install without running turbo
-RUN npm install --ignore-scripts
+# Install ALL deps including devDependencies (PostCSS, Tailwind, etc.)
+RUN npm install
 
 COPY vite.config.ts ./
 COPY tsconfig*.json ./
 COPY index.html ./
+COPY postcss.config.js ./
+COPY tailwind.config.js ./
 COPY src ./src
 COPY public ./public
 
