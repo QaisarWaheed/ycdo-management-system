@@ -9,7 +9,9 @@ import {
 } from '@/pages/employees'
 import { AttendancePage } from '@/pages/attendance/AttendancePage'
 import { LeavePage } from '@/pages/leave/LeavePage'
+import { OutstationPage } from '@/pages/outstation/OutstationPage'
 import { PayrollPage } from '@/pages/payroll/PayrollPage'
+import { ReportsPage } from '@/pages/reports/ReportsPage'
 import { LettersPage } from '@/pages/letters/LettersPage'
 import { DisciplinaryPage } from '@/pages/disciplinary/DisciplinaryPage'
 import { RecruitmentPage } from '@/pages/recruitment/RecruitmentPage'
@@ -71,10 +73,26 @@ export default function App() {
         }
       />
       <Route
+        path="/outstation"
+        element={
+          <ProtectedRoute>
+            <OutstationPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/payroll"
         element={
           <ProtectedRoute>
             <PayrollPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute>
+            <ReportsPage />
           </ProtectedRoute>
         }
       />

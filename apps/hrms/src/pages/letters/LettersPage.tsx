@@ -20,8 +20,10 @@ import {
   UserMinus,
   UserPlus,
 } from 'lucide-react'
+import { acknowledgementsApi } from '@/api/endpoints/acknowledgements'
 import { lettersApi } from '@/api/endpoints/letters'
 import { letterRepliesApi } from '@/api/endpoints/letterReplies'
+import { notificationsApi } from '@/api/endpoints/notifications'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { Badge } from '@/components/ui/badge'
@@ -65,9 +67,131 @@ import {
   letterTypeBadgeClass,
 } from '@/lib/letterFieldConfig'
 import { cn } from '@/lib/utils'
-import { LETTER_TYPES, type Letter, type LetterReply, type LetterType } from '@/types'
+import {
+  LETTER_TYPES,
+  type AllegationAcknowledgement,
+  type Letter,
+  type LetterReply,
+  type LetterType,
+} from '@/types'
 
 const ALL = 'ALL'
+
+function AcknowledgementCell({ letter }: { letter: Letter }) {
+  if (!letter.requiresAcknowledgement) {
+    return <span className="text-text-secondary">—</span>
+  }
+
+  if (letter.acknowledgement) {
+    return (
+      <Badge variant="outline" className="border-green-200 bg-green-50 text-green-800">
+        Acknowledged
+        <span className="ml-1 text-xs font-normal">
+          {format(new Date(letter.acknowledgement.acknowledgedAt), 'dd/MM/yyyy')}
+        </span>
+      </Badge>
+    )
+  }
+
+  return (
+    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+      Pending
+    </Badge>
+  )
+}
+
+function AcknowledgementDialog({
+  letter,
+  open,
+  onOpenChange,
+}: {
+  letter: Letter | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const {
+    data: acknowledgement,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['letter-acknowledgement', letter?.id],
+    queryFn: () => acknowledgementsApi.getByLetter(letter!.id),
+    enabled: !!letter && open,
+    retry: false,
+  })
+
+  const reminderMutation = useMutation({
+    mutationFn: () =>
+      notificationsApi.sendReminder({
+        employeeId: letter!.employeeId!,
+        message: `Please acknowledge the letter requiring your acknowledgement.`,
+      }),
+    onSuccess: () => {
+      toast({ title: 'Reminder sent' })
+    },
+    onError: () => {
+      toast({ title: 'Failed to send reminder', variant: 'destructive' })
+    },
+  })
+
+  if (!letter) return null
+
+  const ref = letterReference(letter)
+  const ack = isError ? null : (acknowledgement as AllegationAcknowledgement | undefined)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Acknowledgement — {ref}</DialogTitle>
+        </DialogHeader>
+
+        {isLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : ack ? (
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <div>
+              <p className="text-sm text-text-secondary">Employee</p>
+              <p className="font-medium">
+                {ack.employee
+                  ? `${ack.employee.firstName} ${ack.employee.lastName}`
+                  : '—'}
+                {ack.employee?.employeeCode && (
+                  <span className="ml-2 font-mono text-xs text-text-secondary">
+                    {ack.employee.employeeCode}
+                  </span>
+                )}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-text-secondary">Acknowledged At</p>
+              <p className="font-medium">
+                {format(new Date(ack.acknowledgedAt), 'dd/MM/yyyy HH:mm')}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-text-secondary">IP Address</p>
+              <p className="font-mono text-sm">{ack.ipAddress ?? '—'}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 py-4 text-center">
+            <p className="text-text-secondary">Not yet acknowledged</p>
+            {letter.employeeId && (
+              <Button
+                className="bg-primary hover:bg-primary-dark"
+                disabled={reminderMutation.isPending}
+                onClick={() => reminderMutation.mutate()}
+              >
+                {reminderMutation.isPending ? 'Sending...' : 'Send Reminder'}
+              </Button>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function ReplyStatusCell({ letter }: { letter: Letter }) {
   if (letter.letterType !== 'SHOW_CAUSE') {
@@ -412,6 +536,7 @@ export function LettersPage() {
   const [generateOpen, setGenerateOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [repliesLetter, setRepliesLetter] = useState<Letter | null>(null)
+  const [ackLetter, setAckLetter] = useState<Letter | null>(null)
 
   const filters = useMemo(
     () => ({
@@ -544,6 +669,7 @@ export function LettersPage() {
               <TableHead>Generated</TableHead>
               <TableHead>Printed</TableHead>
               <TableHead>Replies</TableHead>
+              <TableHead>Acknowledgement</TableHead>
               <TableHead className="w-[50px]" />
             </TableRow>
           </TableHeader>
@@ -551,7 +677,7 @@ export function LettersPage() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(7)].map((__, j) => (
+                  {[...Array(8)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -560,7 +686,7 @@ export function LettersPage() {
               ))
             ) : letters.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
                   No letters found
                 </TableCell>
               </TableRow>
@@ -606,6 +732,9 @@ export function LettersPage() {
                     <ReplyStatusCell letter={letter} />
                   </TableCell>
                   <TableCell>
+                    <AcknowledgementCell letter={letter} />
+                  </TableCell>
+                  <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon">
@@ -623,6 +752,13 @@ export function LettersPage() {
                             onClick={() => setRepliesLetter(letter)}
                           >
                             View Replies
+                          </DropdownMenuItem>
+                        )}
+                        {letter.requiresAcknowledgement && (
+                          <DropdownMenuItem
+                            onClick={() => setAckLetter(letter)}
+                          >
+                            View Acknowledgement
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem
@@ -656,6 +792,12 @@ export function LettersPage() {
         letter={repliesLetter}
         open={!!repliesLetter}
         onOpenChange={(v) => !v && setRepliesLetter(null)}
+      />
+
+      <AcknowledgementDialog
+        letter={ackLetter}
+        open={!!ackLetter}
+        onOpenChange={(v) => !v && setAckLetter(null)}
       />
 
       <ConfirmDialog

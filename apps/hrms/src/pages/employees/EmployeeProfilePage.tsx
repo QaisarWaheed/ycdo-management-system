@@ -1,11 +1,16 @@
-import { useRef, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
+  ChevronDown,
+  ChevronRight,
   Download,
   FileText,
   Loader2,
+  Pencil,
+  Plus,
   Trash2,
+  X,
 } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
@@ -13,6 +18,8 @@ import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
 import { lettersApi } from '@/api/endpoints/letters'
+import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
+import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
@@ -21,8 +28,16 @@ import { TransferDialog } from '@/components/employees/TransferDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -42,10 +57,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import type {
+  AcademicQualification,
   DocumentType,
   EmployeeDocument,
   EmploymentHistory,
   Letter,
+  PreviousEmployment,
+  QualType,
   SalaryRecord,
 } from '@/types'
 
@@ -78,6 +96,403 @@ function leaveStatusBadge(status: string) {
   )
 }
 
+interface QualFormState {
+  degree: string
+  boardUniversity: string
+  obtainedMarks: string
+  divisionGrade: string
+}
+
+const emptyQualForm = (): QualFormState => ({
+  degree: '',
+  boardUniversity: '',
+  obtainedMarks: '',
+  divisionGrade: '',
+})
+
+function QualificationSection({
+  employeeId,
+  qualType,
+  title,
+  qualifications,
+  isLoading,
+}: {
+  employeeId: string
+  qualType: QualType
+  title: string
+  qualifications: AcademicQualification[]
+  isLoading: boolean
+}) {
+  const queryClient = useQueryClient()
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState<QualFormState>(emptyQualForm())
+  const [adding, setAdding] = useState(false)
+  const [newForm, setNewForm] = useState<QualFormState>(emptyQualForm())
+
+  const filtered = qualifications.filter((q) => q.qualType === qualType)
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ['qualifications', employeeId] })
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      qualificationsApi.create({
+        employeeId,
+        qualType,
+        degree: newForm.degree,
+        boardUniversity: newForm.boardUniversity,
+        obtainedMarks: newForm.obtainedMarks || undefined,
+        divisionGrade: newForm.divisionGrade || undefined,
+      }),
+    onSuccess: () => {
+      toast({ title: 'Qualification added' })
+      setAdding(false)
+      setNewForm(emptyQualForm())
+      invalidate()
+    },
+    onError: () => {
+      toast({ title: 'Failed to add qualification', variant: 'destructive' })
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (qualId: string) =>
+      qualificationsApi.update(qualId, {
+        degree: editForm.degree,
+        boardUniversity: editForm.boardUniversity,
+        obtainedMarks: editForm.obtainedMarks || undefined,
+        divisionGrade: editForm.divisionGrade || undefined,
+      }),
+    onSuccess: () => {
+      toast({ title: 'Qualification updated' })
+      setEditingId(null)
+      invalidate()
+    },
+    onError: () => {
+      toast({ title: 'Failed to update qualification', variant: 'destructive' })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (qualId: string) => qualificationsApi.delete(qualId),
+    onSuccess: () => {
+      toast({ title: 'Qualification deleted' })
+      invalidate()
+    },
+    onError: () => {
+      toast({ title: 'Failed to delete qualification', variant: 'destructive' })
+    },
+  })
+
+  const startEdit = (qual: AcademicQualification) => {
+    setEditingId(qual.id)
+    setEditForm({
+      degree: qual.degree,
+      boardUniversity: qual.boardUniversity,
+      obtainedMarks: qual.obtainedMarks ?? '',
+      divisionGrade: qual.divisionGrade ?? '',
+    })
+  }
+
+  const renderFormRow = (
+    form: QualFormState,
+    setForm: (f: QualFormState) => void,
+    onSave: () => void,
+    onCancel: () => void,
+    saving: boolean,
+  ) => (
+    <TableRow>
+      <TableCell>
+        <Input
+          value={form.degree}
+          onChange={(e) => setForm({ ...form, degree: e.target.value })}
+          placeholder="Degree"
+        />
+      </TableCell>
+      <TableCell>
+        <Input
+          value={form.boardUniversity}
+          onChange={(e) =>
+            setForm({ ...form, boardUniversity: e.target.value })
+          }
+          placeholder="Board / University"
+        />
+      </TableCell>
+      <TableCell>
+        <Input
+          value={form.obtainedMarks}
+          onChange={(e) =>
+            setForm({ ...form, obtainedMarks: e.target.value })
+          }
+          placeholder="Marks"
+        />
+      </TableCell>
+      <TableCell>
+        <Input
+          value={form.divisionGrade}
+          onChange={(e) =>
+            setForm({ ...form, divisionGrade: e.target.value })
+          }
+          placeholder="Division / Grade"
+        />
+      </TableCell>
+      <TableCell>
+        <div className="flex gap-1">
+          <Button
+            size="sm"
+            className="bg-primary hover:bg-primary-dark"
+            disabled={
+              saving || !form.degree.trim() || !form.boardUniversity.trim()
+            }
+            onClick={onSave}
+          >
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onCancel}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-lg">{title}</CardTitle>
+        {!adding && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setAdding(true)
+              setNewForm(emptyQualForm())
+            }}
+          >
+            <Plus className="mr-1 h-4 w-4" />
+            Add
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            {[...Array(2)].map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Degree</TableHead>
+                <TableHead>Board / University</TableHead>
+                <TableHead>Marks</TableHead>
+                <TableHead>Division / Grade</TableHead>
+                <TableHead className="w-28">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 && !adding && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-text-secondary">
+                    No qualifications recorded
+                  </TableCell>
+                </TableRow>
+              )}
+              {filtered.map((qual) =>
+                editingId === qual.id
+                  ? renderFormRow(
+                      editForm,
+                      setEditForm,
+                      () => updateMutation.mutate(qual.id),
+                      () => setEditingId(null),
+                      updateMutation.isPending,
+                    )
+                  : (
+                    <TableRow key={qual.id}>
+                      <TableCell>{qual.degree}</TableCell>
+                      <TableCell>{qual.boardUniversity}</TableCell>
+                      <TableCell>{qual.obtainedMarks ?? '—'}</TableCell>
+                      <TableCell>{qual.divisionGrade ?? '—'}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEdit(qual)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => deleteMutation.mutate(qual.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ),
+              )}
+              {adding &&
+                renderFormRow(
+                  newForm,
+                  setNewForm,
+                  () => createMutation.mutate(),
+                  () => setAdding(false),
+                  createMutation.isPending,
+                )}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function AddPreviousEmploymentDialog({
+  open,
+  onOpenChange,
+  employeeId,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  employeeId: string
+}) {
+  const queryClient = useQueryClient()
+  const [organizationName, setOrganizationName] = useState('')
+  const [ownerAdminName, setOwnerAdminName] = useState('')
+  const [contactNumber, setContactNumber] = useState('')
+  const [postalAddress, setPostalAddress] = useState('')
+  const [totalExperience, setTotalExperience] = useState('')
+  const [relevantExperience, setRelevantExperience] = useState('')
+  const [jobResponsibilities, setJobResponsibilities] = useState('')
+
+  const reset = () => {
+    setOrganizationName('')
+    setOwnerAdminName('')
+    setContactNumber('')
+    setPostalAddress('')
+    setTotalExperience('')
+    setRelevantExperience('')
+    setJobResponsibilities('')
+  }
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      previousEmploymentApi.create({
+        employeeId,
+        organizationName,
+        ownerAdminName: ownerAdminName || undefined,
+        contactNumber: contactNumber || undefined,
+        postalAddress: postalAddress || undefined,
+        totalExperience: totalExperience || undefined,
+        relevantExperience: relevantExperience || undefined,
+        jobResponsibilities: jobResponsibilities || undefined,
+      }),
+    onSuccess: () => {
+      toast({ title: 'Previous employment added' })
+      queryClient.invalidateQueries({
+        queryKey: ['previous-employment', employeeId],
+      })
+      reset()
+      onOpenChange(false)
+    },
+    onError: () => {
+      toast({
+        title: 'Failed to add previous employment',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) reset()
+        onOpenChange(v)
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Add Previous Employment</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Organization Name *</Label>
+            <Input
+              value={organizationName}
+              onChange={(e) => setOrganizationName(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Owner / Admin Name</Label>
+              <Input
+                value={ownerAdminName}
+                onChange={(e) => setOwnerAdminName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Contact Number</Label>
+              <Input
+                value={contactNumber}
+                onChange={(e) => setContactNumber(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Postal Address</Label>
+            <Input
+              value={postalAddress}
+              onChange={(e) => setPostalAddress(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Total Experience</Label>
+              <Input
+                value={totalExperience}
+                onChange={(e) => setTotalExperience(e.target.value)}
+                placeholder="e.g. 3 years"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Relevant Experience</Label>
+              <Input
+                value={relevantExperience}
+                onChange={(e) => setRelevantExperience(e.target.value)}
+                placeholder="e.g. 2 years"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Job Responsibilities</Label>
+            <Textarea
+              value={jobResponsibilities}
+              onChange={(e) => setJobResponsibilities(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            disabled={!organizationName.trim() || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? 'Adding...' : 'Add'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function EmployeeProfilePage() {
   const { id = '' } = useParams()
   const queryClient = useQueryClient()
@@ -91,6 +506,10 @@ export function EmployeeProfilePage() {
   const [letterOpen, setLetterOpen] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
+  const [prevEmpOpen, setPrevEmpOpen] = useState(false)
+  const [expandedPrevEmpId, setExpandedPrevEmpId] = useState<string | null>(
+    null,
+  )
 
   const { data: employee, isLoading } = useQuery({
     queryKey: ['employee', id],
@@ -132,6 +551,36 @@ export function EmployeeProfilePage() {
     queryKey: ['disciplinary', id],
     queryFn: () => disciplinaryApi.getAll({ employeeId: id }),
     enabled: !!id,
+  })
+
+  const { data: qualifications = [], isLoading: loadingQualifications } =
+    useQuery({
+      queryKey: ['qualifications', id],
+      queryFn: () => qualificationsApi.getByEmployee(id),
+      enabled: !!id,
+    })
+
+  const {
+    data: previousEmployments = [],
+    isLoading: loadingPreviousEmployment,
+  } = useQuery({
+    queryKey: ['previous-employment', id],
+    queryFn: () => previousEmploymentApi.getByEmployee(id),
+    enabled: !!id,
+  })
+
+  const deletePrevEmpMutation = useMutation({
+    mutationFn: (recordId: string) => previousEmploymentApi.delete(recordId),
+    onSuccess: () => {
+      toast({ title: 'Previous employment deleted' })
+      queryClient.invalidateQueries({ queryKey: ['previous-employment', id] })
+    },
+    onError: () => {
+      toast({
+        title: 'Failed to delete previous employment',
+        variant: 'destructive',
+      })
+    },
   })
 
   const uploadMutation = useMutation({
@@ -203,6 +652,21 @@ export function EmployeeProfilePage() {
   const salaries = (employee.salaryRecords ?? []) as SalaryRecord[]
   const documents = (employee.documents ?? []) as EmployeeDocument[]
   const overtimeHours = ((attendanceSummary?.overtimeMinutes ?? 0) / 60).toFixed(1)
+
+  const hasPersonalInfo =
+    employee.bloodGroup ||
+    employee.caste ||
+    employee.domicile ||
+    employee.district ||
+    employee.tehsil ||
+    employee.policeStation ||
+    employee.fatherContactNumber ||
+    employee.emergencyContactName ||
+    employee.emergencyContactNumber ||
+    employee.spouseName ||
+    employee.spouseContactNumber ||
+    employee.currentAddress ||
+    employee.permanentAddress
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[35%_1fr]">
@@ -283,9 +747,110 @@ export function EmployeeProfilePage() {
           <TabsTrigger value="leave">Leave</TabsTrigger>
           <TabsTrigger value="letters">Letters</TabsTrigger>
           <TabsTrigger value="disciplinary">Disciplinary</TabsTrigger>
+          <TabsTrigger value="qualifications">Qualifications</TabsTrigger>
+          <TabsTrigger value="previous-employment">Previous Employment</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {hasPersonalInfo && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Personal Info</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  {employee.bloodGroup && (
+                    <Badge variant="outline" className="bg-red-50 text-red-700">
+                      Blood Group: {employee.bloodGroup}
+                    </Badge>
+                  )}
+                  {employee.caste && (
+                    <span>
+                      <span className="text-text-secondary">Caste: </span>
+                      {employee.caste}
+                    </span>
+                  )}
+                </div>
+                {(employee.domicile ||
+                  employee.district ||
+                  employee.tehsil ||
+                  employee.policeStation) && (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {employee.domicile && (
+                      <p>
+                        <span className="text-text-secondary">Domicile: </span>
+                        {employee.domicile}
+                      </p>
+                    )}
+                    {employee.district && (
+                      <p>
+                        <span className="text-text-secondary">District: </span>
+                        {employee.district}
+                      </p>
+                    )}
+                    {employee.tehsil && (
+                      <p>
+                        <span className="text-text-secondary">Tehsil: </span>
+                        {employee.tehsil}
+                      </p>
+                    )}
+                    {employee.policeStation && (
+                      <p>
+                        <span className="text-text-secondary">
+                          Police Station:{' '}
+                        </span>
+                        {employee.policeStation}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {employee.fatherContactNumber && (
+                  <p>
+                    <span className="text-text-secondary">
+                      Father Contact:{' '}
+                    </span>
+                    {employee.fatherContactNumber}
+                  </p>
+                )}
+                {(employee.emergencyContactName ||
+                  employee.emergencyContactNumber) && (
+                  <p>
+                    <span className="text-text-secondary">
+                      Emergency Contact:{' '}
+                    </span>
+                    {employee.emergencyContactName ?? '—'}
+                    {employee.emergencyContactNumber &&
+                      ` (${employee.emergencyContactNumber})`}
+                  </p>
+                )}
+                {(employee.spouseName || employee.spouseContactNumber) && (
+                  <p>
+                    <span className="text-text-secondary">Spouse: </span>
+                    {employee.spouseName ?? '—'}
+                    {employee.spouseContactNumber &&
+                      ` (${employee.spouseContactNumber})`}
+                  </p>
+                )}
+                {employee.currentAddress && (
+                  <div>
+                    <p className="text-text-secondary">Current Address</p>
+                    <p className="whitespace-pre-wrap">
+                      {employee.currentAddress}
+                    </p>
+                  </div>
+                )}
+                {employee.permanentAddress && (
+                  <div>
+                    <p className="text-text-secondary">Permanent Address</p>
+                    <p className="whitespace-pre-wrap">
+                      {employee.permanentAddress}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Employment History</CardTitle>
@@ -769,7 +1334,164 @@ export function EmployeeProfilePage() {
             </div>
           )}
         </TabsContent>
+
+        <TabsContent value="qualifications" className="space-y-4">
+          <QualificationSection
+            employeeId={id}
+            qualType="ACADEMIC"
+            title="Academic Qualifications"
+            qualifications={qualifications as AcademicQualification[]}
+            isLoading={loadingQualifications}
+          />
+          <QualificationSection
+            employeeId={id}
+            qualType="JOB_RELEVANT"
+            title="Job-Relevant Qualifications"
+            qualifications={qualifications as AcademicQualification[]}
+            isLoading={loadingQualifications}
+          />
+        </TabsContent>
+
+        <TabsContent value="previous-employment" className="space-y-4">
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            onClick={() => setPrevEmpOpen(true)}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Previous Employment
+          </Button>
+
+          <Card>
+            <CardContent className="p-0">
+              {loadingPreviousEmployment ? (
+                <div className="space-y-2 p-4">
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8" />
+                      <TableHead>Organization</TableHead>
+                      <TableHead>Owner / Admin</TableHead>
+                      <TableHead>Contact</TableHead>
+                      <TableHead>Experience</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(previousEmployments as PreviousEmployment[]).length ===
+                    0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-text-secondary">
+                          No previous employment records
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      (previousEmployments as PreviousEmployment[]).map(
+                        (emp) => (
+                          <Fragment key={emp.id}>
+                            <TableRow key={emp.id}>
+                              <TableCell>
+                                {emp.jobResponsibilities && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={() =>
+                                      setExpandedPrevEmpId(
+                                        expandedPrevEmpId === emp.id
+                                          ? null
+                                          : emp.id,
+                                      )
+                                    }
+                                  >
+                                    {expandedPrevEmpId === emp.id ? (
+                                      <ChevronDown className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {emp.organizationName}
+                              </TableCell>
+                              <TableCell>
+                                {emp.ownerAdminName ?? '—'}
+                              </TableCell>
+                              <TableCell>
+                                {emp.contactNumber ?? '—'}
+                              </TableCell>
+                              <TableCell>
+                                {emp.totalExperience ?? '—'}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={deletePrevEmpMutation.isPending}
+                                  onClick={() =>
+                                    deletePrevEmpMutation.mutate(emp.id)
+                                  }
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-600" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                            {expandedPrevEmpId === emp.id && (
+                              <TableRow key={`${emp.id}-details`}>
+                                <TableCell colSpan={6} className="bg-muted/30">
+                                  <div className="space-y-2 p-2 text-sm">
+                                    {emp.postalAddress && (
+                                      <p>
+                                        <span className="text-text-secondary">
+                                          Address:{' '}
+                                        </span>
+                                        {emp.postalAddress}
+                                      </p>
+                                    )}
+                                    {emp.relevantExperience && (
+                                      <p>
+                                        <span className="text-text-secondary">
+                                          Relevant Experience:{' '}
+                                        </span>
+                                        {emp.relevantExperience}
+                                      </p>
+                                    )}
+                                    {emp.jobResponsibilities && (
+                                      <div>
+                                        <p className="text-text-secondary">
+                                          Job Responsibilities
+                                        </p>
+                                        <p className="whitespace-pre-wrap">
+                                          {emp.jobResponsibilities}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </Fragment>
+                        ),
+                      )
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <AddPreviousEmploymentDialog
+        open={prevEmpOpen}
+        onOpenChange={setPrevEmpOpen}
+        employeeId={id}
+      />
 
       <GenerateLetterDialog
         open={letterOpen}

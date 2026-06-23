@@ -10,4 +10,6 @@ export const notificationsApi = {
     api.get<unknown, { count: number }>('/notifications/unread-count'),
   markRead: (id: string) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.patch<unknown, { count: number }>('/notifications/read-all'),
+  sendReminder: (data: { employeeId: string; message: string }) =>
+    api.post('/notifications/remind', data),
 }

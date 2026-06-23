@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Upload } from 'lucide-react'
+import { Plus, Trash2, Upload } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
+import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
+import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,10 +28,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
-import type { DocumentType, EmployeePrefill, Gender } from '@/types'
+import type { DocumentType, EmployeePrefill, Gender, QualType } from '@/types'
 import { DOCUMENT_TYPES } from '@/types'
 
 const cnicRegex = /^\d{5}-\d{7}-\d{1}$/
@@ -38,15 +48,27 @@ const step1Schema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   fatherName: z.string().optional(),
+  fatherContactNumber: z.string().optional(),
   cnic: z
     .string()
     .min(1, 'CNIC is required')
     .regex(cnicRegex, 'Format: 12345-1234567-1'),
+  dateOfBirth: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email('Invalid email').optional().or(z.literal('')),
-  dateOfBirth: z.string().optional(),
+  emergencyContactName: z.string().optional(),
+  emergencyContactNumber: z.string().optional(),
+  spouseName: z.string().optional(),
+  spouseContactNumber: z.string().optional(),
+  bloodGroup: z.string().optional(),
+  caste: z.string().optional(),
+  domicile: z.string().optional(),
+  district: z.string().optional(),
+  tehsil: z.string().optional(),
+  policeStation: z.string().optional(),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
-  address: z.string().optional(),
+  currentAddress: z.string().optional(),
+  permanentAddress: z.string().optional(),
 })
 
 const step2Schema = z.object({
@@ -68,6 +90,24 @@ type Step1Values = z.infer<typeof step1Schema>
 type Step2Values = z.infer<typeof step2Schema>
 type Step3Values = z.infer<typeof step3Schema>
 
+interface QualRow {
+  key: string
+  degree: string
+  boardUniversity: string
+  obtainedMarks: string
+  divisionGrade: string
+  qualType: QualType
+}
+
+interface PrevEmpRow {
+  key: string
+  organizationName: string
+  ownerAdminName: string
+  contactNumber: string
+  postalAddress: string
+  totalExperience: string
+}
+
 const DOC_LABELS: Record<DocumentType, string> = {
   CNIC: 'CNIC',
   EDUCATIONAL_CERTIFICATE: 'Educational Certificate',
@@ -76,34 +116,54 @@ const DOC_LABELS: Record<DocumentType, string> = {
   OTHER: 'Other',
 }
 
+const STEPS = [
+  { num: 1, label: 'Personal Info' },
+  { num: 2, label: 'Job Info' },
+  { num: 3, label: 'Salary & Documents' },
+  { num: 4, label: 'Qualifications & Experience' },
+]
+
 function StepIndicator({ step }: { step: number }) {
-  const steps = [1, 2, 3]
   return (
-    <div className="mb-8 flex items-center justify-center">
-      {steps.map((s, i) => (
-        <div key={s} className="flex items-center">
-          <div
-            className={cn(
-              'flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold',
-              step === s
-                ? 'bg-primary text-white'
-                : step > s
-                  ? 'bg-primary/20 text-primary'
-                  : 'bg-muted text-text-secondary',
+    <div className="mb-8">
+      <div className="flex items-center justify-center">
+        {STEPS.map((s, i) => (
+          <div key={s.num} className="flex items-center">
+            <div className="flex flex-col items-center gap-1">
+              <div
+                className={cn(
+                  'flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold',
+                  step === s.num
+                    ? 'bg-primary text-white'
+                    : step > s.num
+                      ? 'bg-primary/20 text-primary'
+                      : 'bg-muted text-text-secondary',
+                )}
+              >
+                {s.num}
+              </div>
+              <span
+                className={cn(
+                  'hidden max-w-[5rem] text-center text-xs sm:block',
+                  step === s.num
+                    ? 'font-medium text-primary'
+                    : 'text-text-secondary',
+                )}
+              >
+                {s.label}
+              </span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div
+                className={cn(
+                  'mx-1 h-0.5 w-8 sm:mx-2 sm:w-16',
+                  step > s.num ? 'bg-primary' : 'bg-border',
+                )}
+              />
             )}
-          >
-            {s}
           </div>
-          {i < steps.length - 1 && (
-            <div
-              className={cn(
-                'mx-2 h-0.5 w-16 sm:w-24',
-                step > s ? 'bg-primary' : 'bg-border',
-              )}
-            />
-          )}
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }
@@ -136,6 +196,64 @@ function FileDropZone({
   )
 }
 
+function emptyQualRow(qualType: QualType): QualRow {
+  return {
+    key: crypto.randomUUID(),
+    degree: '',
+    boardUniversity: '',
+    obtainedMarks: '',
+    divisionGrade: '',
+    qualType,
+  }
+}
+
+function emptyPrevEmpRow(): PrevEmpRow {
+  return {
+    key: crypto.randomUUID(),
+    organizationName: '',
+    ownerAdminName: '',
+    contactNumber: '',
+    postalAddress: '',
+    totalExperience: '',
+  }
+}
+
+function buildStep1Payload(data: Step1Values) {
+  const optionalKeys = [
+    'fatherName',
+    'fatherContactNumber',
+    'phone',
+    'email',
+    'dateOfBirth',
+    'emergencyContactName',
+    'emergencyContactNumber',
+    'spouseName',
+    'spouseContactNumber',
+    'bloodGroup',
+    'caste',
+    'domicile',
+    'district',
+    'tehsil',
+    'policeStation',
+    'currentAddress',
+    'permanentAddress',
+  ] as const
+
+  const payload: Record<string, unknown> = {
+    firstName: data.firstName,
+    lastName: data.lastName,
+    cnic: data.cnic,
+    gender: data.gender,
+  }
+
+  for (const key of optionalKeys) {
+    const val = data[key]
+    if (val) payload[key] = val
+  }
+
+  return payload
+}
+
 export function EmployeeCreatePage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -145,9 +263,14 @@ export function EmployeeCreatePage() {
   const [step, setStep] = useState(1)
   const [step1Data, setStep1Data] = useState<Step1Values | null>(null)
   const [step2Data, setStep2Data] = useState<Step2Values | null>(null)
+  const [step3Data, setStep3Data] = useState<Step3Values | null>(null)
   const [documents, setDocuments] = useState<
     Partial<Record<DocumentType, File>>
   >({})
+  const [qualifications, setQualifications] = useState<QualRow[]>([])
+  const [previousEmployments, setPreviousEmployments] = useState<PrevEmpRow[]>(
+    [],
+  )
 
   const form1 = useForm<Step1Values>({
     resolver: zodResolver(step1Schema),
@@ -155,12 +278,24 @@ export function EmployeeCreatePage() {
       firstName: '',
       lastName: '',
       fatherName: '',
+      fatherContactNumber: '',
       cnic: '',
+      dateOfBirth: '',
       phone: '',
       email: '',
-      dateOfBirth: '',
+      emergencyContactName: '',
+      emergencyContactNumber: '',
+      spouseName: '',
+      spouseContactNumber: '',
+      bloodGroup: '',
+      caste: '',
+      domicile: '',
+      district: '',
+      tehsil: '',
+      policeStation: '',
       gender: 'MALE',
-      address: '',
+      currentAddress: '',
+      permanentAddress: '',
     },
   })
 
@@ -189,12 +324,24 @@ export function EmployeeCreatePage() {
         firstName: prefill.firstName ?? '',
         lastName: prefill.lastName ?? '',
         fatherName: '',
+        fatherContactNumber: '',
         cnic: prefill.cnic ?? '',
         phone: prefill.phone ?? '',
         email: prefill.email ?? '',
         dateOfBirth: '',
+        emergencyContactName: '',
+        emergencyContactNumber: '',
+        spouseName: '',
+        spouseContactNumber: '',
+        bloodGroup: '',
+        caste: '',
+        domicile: '',
+        district: '',
+        tehsil: '',
+        policeStation: '',
         gender: 'MALE',
-        address: '',
+        currentAddress: '',
+        permanentAddress: '',
       })
       form2.reset({
         currentBranchId: prefill.branchId ?? '',
@@ -224,8 +371,19 @@ export function EmployeeCreatePage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      const employee = await employeesApi.create(payload)
+    mutationFn: async () => {
+      if (!step1Data || !step2Data || !step3Data) {
+        throw new Error('Missing form data')
+      }
+
+      const employee = await employeesApi.create({
+        ...buildStep1Payload(step1Data),
+        ...step2Data,
+        ...step3Data,
+        biometricId: step2Data.biometricId || undefined,
+        shiftId: step2Data.shiftId || undefined,
+      })
+
       const uploads = Object.entries(documents).filter(
         (entry): entry is [DocumentType, File] => !!entry[1],
       )
@@ -235,6 +393,31 @@ export function EmployeeCreatePage() {
         formData.append('file', file)
         await employeesApi.uploadDocument(employee.id, formData)
       }
+
+      for (const qual of qualifications) {
+        if (!qual.degree.trim() || !qual.boardUniversity.trim()) continue
+        await qualificationsApi.create({
+          employeeId: employee.id,
+          qualType: qual.qualType,
+          degree: qual.degree,
+          boardUniversity: qual.boardUniversity,
+          obtainedMarks: qual.obtainedMarks || undefined,
+          divisionGrade: qual.divisionGrade || undefined,
+        })
+      }
+
+      for (const emp of previousEmployments) {
+        if (!emp.organizationName.trim()) continue
+        await previousEmploymentApi.create({
+          employeeId: employee.id,
+          organizationName: emp.organizationName,
+          ownerAdminName: emp.ownerAdminName || undefined,
+          contactNumber: emp.contactNumber || undefined,
+          postalAddress: emp.postalAddress || undefined,
+          totalExperience: emp.totalExperience || undefined,
+        })
+      }
+
       return employee
     },
     onSuccess: (employee) => {
@@ -261,21 +444,125 @@ export function EmployeeCreatePage() {
     setStep(3)
   })
 
-  const onSubmit = form3.handleSubmit((data) => {
-    if (!step1Data || !step2Data) return
-    createMutation.mutate({
-      ...step1Data,
-      ...step2Data,
-      ...data,
-      email: step1Data.email || undefined,
-      fatherName: step1Data.fatherName || undefined,
-      phone: step1Data.phone || undefined,
-      dateOfBirth: step1Data.dateOfBirth || undefined,
-      address: step1Data.address || undefined,
-      biometricId: step2Data.biometricId || undefined,
-      shiftId: step2Data.shiftId || undefined,
-    })
+  const onStep3Next = form3.handleSubmit((data) => {
+    setStep3Data(data)
+    setStep(4)
   })
+
+  const onSubmit = () => {
+    createMutation.mutate()
+  }
+
+  const updateQual = (key: string, field: keyof QualRow, value: string) => {
+    setQualifications((prev) =>
+      prev.map((q) => (q.key === key ? { ...q, [field]: value } : q)),
+    )
+  }
+
+  const updatePrevEmp = (
+    key: string,
+    field: keyof PrevEmpRow,
+    value: string,
+  ) => {
+    setPreviousEmployments((prev) =>
+      prev.map((e) => (e.key === key ? { ...e, [field]: value } : e)),
+    )
+  }
+
+  const renderQualTable = (qualType: QualType, title: string) => {
+    const rows = qualifications.filter((q) => q.qualType === qualType)
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setQualifications((prev) => [...prev, emptyQualRow(qualType)])
+            }
+          >
+            <Plus className="mr-1 h-4 w-4" />
+            Add Qualification
+          </Button>
+        </div>
+        {rows.length === 0 ? (
+          <p className="text-sm text-text-secondary">No qualifications added</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Degree</TableHead>
+                  <TableHead>Board / University</TableHead>
+                  <TableHead>Marks</TableHead>
+                  <TableHead>Division / Grade</TableHead>
+                  <TableHead className="w-12" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.key}>
+                    <TableCell>
+                      <Input
+                        value={row.degree}
+                        onChange={(e) =>
+                          updateQual(row.key, 'degree', e.target.value)
+                        }
+                        placeholder="e.g. BSc"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={row.boardUniversity}
+                        onChange={(e) =>
+                          updateQual(row.key, 'boardUniversity', e.target.value)
+                        }
+                        placeholder="Board / University"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={row.obtainedMarks}
+                        onChange={(e) =>
+                          updateQual(row.key, 'obtainedMarks', e.target.value)
+                        }
+                        placeholder="Marks"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={row.divisionGrade}
+                        onChange={(e) =>
+                          updateQual(row.key, 'divisionGrade', e.target.value)
+                        }
+                        placeholder="Division / Grade"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setQualifications((prev) =>
+                            prev.filter((q) => q.key !== row.key),
+                          )
+                        }
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -328,12 +615,38 @@ export function EmployeeCreatePage() {
               />
               <FormField
                 control={form1.control}
+                name="fatherContactNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Father Contact Number</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
                 name="cnic"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>CNIC *</FormLabel>
                     <FormControl>
                       <Input placeholder="12345-1234567-1" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="dateOfBirth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date of Birth</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -367,12 +680,129 @@ export function EmployeeCreatePage() {
               />
               <FormField
                 control={form1.control}
-                name="dateOfBirth"
+                name="emergencyContactName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Date of Birth</FormLabel>
+                    <FormLabel>Emergency Contact Name</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="emergencyContactNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Emergency Contact Number</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="spouseName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Spouse Name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="spouseContactNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Spouse Contact Number</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="bloodGroup"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Blood Group</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="e.g. B+" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="caste"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Caste</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="domicile"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Domicile</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="district"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>District</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="tehsil"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tehsil</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="policeStation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Police Station</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -382,7 +812,7 @@ export function EmployeeCreatePage() {
                 control={form1.control}
                 name="gender"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="sm:col-span-2">
                     <FormLabel>Gender *</FormLabel>
                     <Select
                       value={field.value}
@@ -408,10 +838,23 @@ export function EmployeeCreatePage() {
             </div>
             <FormField
               control={form1.control}
-              name="address"
+              name="currentAddress"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Address</FormLabel>
+                  <FormLabel>Current Address</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form1.control}
+              name="permanentAddress"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Permanent Address</FormLabel>
                   <FormControl>
                     <Textarea {...field} />
                   </FormControl>
@@ -574,7 +1017,7 @@ export function EmployeeCreatePage() {
 
       {step === 3 && (
         <Form {...form3}>
-          <form onSubmit={onSubmit} className="space-y-6">
+          <form onSubmit={onStep3Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Salary & Documents</h2>
             <FormField
               control={form3.control}
@@ -624,16 +1067,157 @@ export function EmployeeCreatePage() {
               <Button type="button" variant="outline" onClick={() => setStep(2)}>
                 Back
               </Button>
-              <Button
-                type="submit"
-                className="bg-primary hover:bg-primary-dark"
-                disabled={createMutation.isPending}
-              >
-                {createMutation.isPending ? 'Creating...' : 'Submit'}
+              <Button type="submit" className="bg-primary hover:bg-primary-dark">
+                Next
               </Button>
             </div>
           </form>
         </Form>
+      )}
+
+      {step === 4 && (
+        <div className="space-y-6">
+          <h2 className="text-lg font-semibold">Qualifications & Experience</h2>
+
+          {renderQualTable('ACADEMIC', 'Academic Qualifications')}
+          {renderQualTable('JOB_RELEVANT', 'Job-Relevant Qualifications')}
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Previous Employment</h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setPreviousEmployments((prev) => [...prev, emptyPrevEmpRow()])
+                }
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Add Previous Employment
+              </Button>
+            </div>
+            {previousEmployments.length === 0 ? (
+              <p className="text-sm text-text-secondary">
+                No previous employment added
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Organization</TableHead>
+                      <TableHead>Owner / Admin</TableHead>
+                      <TableHead>Contact</TableHead>
+                      <TableHead>Postal Address</TableHead>
+                      <TableHead>Experience</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {previousEmployments.map((row) => (
+                      <TableRow key={row.key}>
+                        <TableCell>
+                          <Input
+                            value={row.organizationName}
+                            onChange={(e) =>
+                              updatePrevEmp(
+                                row.key,
+                                'organizationName',
+                                e.target.value,
+                              )
+                            }
+                            placeholder="Organization"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={row.ownerAdminName}
+                            onChange={(e) =>
+                              updatePrevEmp(
+                                row.key,
+                                'ownerAdminName',
+                                e.target.value,
+                              )
+                            }
+                            placeholder="Owner / Admin"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={row.contactNumber}
+                            onChange={(e) =>
+                              updatePrevEmp(
+                                row.key,
+                                'contactNumber',
+                                e.target.value,
+                              )
+                            }
+                            placeholder="Contact"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={row.postalAddress}
+                            onChange={(e) =>
+                              updatePrevEmp(
+                                row.key,
+                                'postalAddress',
+                                e.target.value,
+                              )
+                            }
+                            placeholder="Address"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={row.totalExperience}
+                            onChange={(e) =>
+                              updatePrevEmp(
+                                row.key,
+                                'totalExperience',
+                                e.target.value,
+                              )
+                            }
+                            placeholder="e.g. 2 years"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setPreviousEmployments((prev) =>
+                                prev.filter((e) => e.key !== row.key),
+                              )
+                            }
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-between">
+            <Button type="button" variant="outline" onClick={() => setStep(3)}>
+              Back
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary hover:bg-primary-dark"
+              disabled={createMutation.isPending}
+              onClick={onSubmit}
+            >
+              {createMutation.isPending ? 'Creating...' : 'Submit'}
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )

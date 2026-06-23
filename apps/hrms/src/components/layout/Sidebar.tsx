@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
+  BarChart3,
   Bell,
   Building2,
   Calendar,
@@ -8,6 +9,7 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
+  MapPin,
   UserPlus,
   Users,
   Wallet,
@@ -21,8 +23,10 @@ const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/employees', label: 'Employees', icon: Users },
   { to: '/attendance', label: 'Attendance', icon: Clock },
+  { to: '/outstation', label: 'Outstation', icon: MapPin },
   { to: '/leave', label: 'Leave', icon: Calendar },
   { to: '/payroll', label: 'Payroll', icon: Wallet },
+  { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/letters', label: 'Letters', icon: FileText },
   { to: '/disciplinary', label: 'Disciplinary', icon: AlertTriangle },
   { to: '/recruitment', label: 'Recruitment', icon: UserPlus },

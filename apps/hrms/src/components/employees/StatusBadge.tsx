@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 const statusStyles: Record<EmployeeStatus, string> = {
   ACTIVE: 'bg-green-100 text-green-800 border-green-200',
   TRAINEE: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+  APPOINTED: 'bg-emerald-100 text-emerald-800 border-emerald-200',
   SUSPENDED: 'bg-amber-100 text-amber-800 border-amber-200',
   TERMINATED: 'bg-red-100 text-red-800 border-red-200',
   RESIGNED: 'bg-gray-100 text-gray-700 border-gray-200',

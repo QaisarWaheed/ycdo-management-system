@@ -13,6 +13,7 @@ export interface AuthLoginResponse {
 export type EmployeeStatus =
   | 'ACTIVE'
   | 'TRAINEE'
+  | 'APPOINTED'
   | 'SUSPENDED'
   | 'TERMINATED'
   | 'RESIGNED'
@@ -181,6 +182,19 @@ export interface Employee {
   dateOfBirth?: string | null
   gender: Gender
   address?: string | null
+  fatherContactNumber?: string | null
+  emergencyContactName?: string | null
+  emergencyContactNumber?: string | null
+  spouseName?: string | null
+  spouseContactNumber?: string | null
+  caste?: string | null
+  domicile?: string | null
+  currentAddress?: string | null
+  permanentAddress?: string | null
+  district?: string | null
+  tehsil?: string | null
+  policeStation?: string | null
+  bloodGroup?: string | null
   status: EmployeeStatus
   joiningDate: string
   currentDesignation: string
@@ -194,6 +208,87 @@ export interface Employee {
   employmentHistory?: EmploymentHistory[]
   salaryRecords?: SalaryRecord[]
   documents?: EmployeeDocument[]
+  academicQualifications?: AcademicQualification[]
+  previousEmployments?: PreviousEmployment[]
+}
+
+export type QualType = 'ACADEMIC' | 'JOB_RELEVANT'
+
+export interface AcademicQualification {
+  id: string
+  employeeId: string
+  qualType: QualType
+  degree: string
+  boardUniversity: string
+  obtainedMarks?: string | null
+  divisionGrade?: string | null
+  createdAt: string
+}
+
+export interface PreviousEmployment {
+  id: string
+  employeeId: string
+  organizationName: string
+  ownerAdminName?: string | null
+  contactNumber?: string | null
+  postalAddress?: string | null
+  totalExperience?: string | null
+  relevantExperience?: string | null
+  jobResponsibilities?: string | null
+  createdAt: string
+}
+
+export type OutstationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED'
+
+export interface OutstationRequest {
+  id: string
+  employeeId: string
+  district: string
+  purpose: string
+  startDate: string
+  endDate: string
+  duration: number
+  status: OutstationStatus
+  approvedBy?: string | null
+  approvedAt?: string | null
+  notes?: string | null
+  createdAt: string
+  employee?: {
+    firstName: string
+    lastName: string
+    employeeCode: string
+    currentBranch?: { name: string }
+  }
+}
+
+export interface DistrictSummary {
+  district: string
+  total: number
+  approved: number
+  pending: number
+  rejected: number
+}
+
+export interface AllegationAcknowledgement {
+  id: string
+  letterId: string
+  employeeId: string
+  acknowledgedAt: string
+  ipAddress?: string | null
+  createdAt: string
+  employee?: {
+    id: string
+    firstName: string
+    lastName: string
+    employeeCode: string
+  }
+  letter?: {
+    id: string
+    letterType: string
+    content?: Record<string, unknown>
+    generatedAt: string
+    requiresAcknowledgement?: boolean
+  }
 }
 
 export interface EmploymentHistory {
@@ -223,6 +318,7 @@ export interface EmployeeDocument {
 
 export interface Letter {
   id: string
+  employeeId?: string
   letterType: string
   fileUrl?: string | null
   generatedAt: string
@@ -231,6 +327,8 @@ export interface Letter {
   replyDeadline?: string | null
   isReplied?: boolean
   autoEscalated?: boolean
+  requiresAcknowledgement?: boolean
+  acknowledgement?: AllegationAcknowledgement | null
   employee?: {
     firstName: string
     lastName: string
@@ -538,6 +636,7 @@ export const LETTER_TYPES: { value: LetterType; label: string }[] = [
 export const EMPLOYEE_STATUSES: EmployeeStatus[] = [
   'ACTIVE',
   'TRAINEE',
+  'APPOINTED',
   'SUSPENDED',
   'TERMINATED',
   'RESIGNED',
