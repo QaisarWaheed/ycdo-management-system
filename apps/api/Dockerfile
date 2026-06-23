@@ -2,6 +2,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY apps/api/package*.json ./
+COPY apps/api/tsconfig*.json ./
 
 RUN npm install
 
@@ -9,14 +10,7 @@ COPY apps/api/prisma ./prisma
 COPY apps/api/src ./src
 
 RUN npx prisma generate
-
-# Debug: show what files exist before build
-RUN ls -la
-
 RUN npm run build
-
-# Debug: show what was built
-RUN ls -la dist/ || echo "DIST FOLDER MISSING - BUILD FAILED"
 
 FROM node:20-alpine AS runner
 WORKDIR /app
