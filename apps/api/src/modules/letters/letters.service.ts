@@ -149,6 +149,10 @@ export class LettersService {
         employee: {
           select: { firstName: true, lastName: true, employeeCode: true },
         },
+        acknowledgement: true,
+        replies: {
+          select: { id: true, repliedAt: true },
+        },
       },
       orderBy: { generatedAt: 'desc' },
     });
@@ -167,6 +171,8 @@ export class LettersService {
             currentDesignation: true,
           },
         },
+        acknowledgement: true,
+        replies: true,
       },
     });
 

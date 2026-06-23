@@ -202,6 +202,9 @@ export class EmployeesService {
         previousEmployments: {
           orderBy: { createdAt: 'desc' },
         },
+        user: {
+          select: { id: true, email: true, role: true, isActive: true },
+        },
       },
     });
 

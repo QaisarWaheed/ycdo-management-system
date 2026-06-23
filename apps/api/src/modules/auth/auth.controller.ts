@@ -1,8 +1,16 @@
 import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, LoginDto, RegisterDto } from './auth.dto';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import {
+  ChangePasswordDto,
+  LoginDto,
+  RegisterDto,
+  ResetPasswordDto,
+} from './auth.dto';
 import { CurrentUser } from './current-user.decorator';
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { Roles } from './roles.decorator';
+import { RolesGuard } from './roles.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -25,11 +33,22 @@ export class AuthController {
   }
 
   @Patch('change-password')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.EMPLOYEE)
   changePassword(
     @CurrentUser() user: { id: string },
     @Body() dto: ChangePasswordDto,
   ) {
     return this.authService.changePassword(user.id, dto);
+  }
+
+  @Patch('reset-password')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.authService.resetPassword(dto, user.id);
   }
 }

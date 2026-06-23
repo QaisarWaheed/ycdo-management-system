@@ -1,13 +1,19 @@
 import {
   ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ChangePasswordDto, LoginDto, RegisterDto } from './auth.dto';
+import {
+  ChangePasswordDto,
+  LoginDto,
+  RegisterDto,
+  ResetPasswordDto,
+} from './auth.dto';
 
 type UserWithoutPassword = Omit<User, 'password'>;
 
@@ -104,6 +110,36 @@ export class AuthService {
     });
 
     return { message: 'Password changed successfully' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto, actingUserId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with id ${dto.userId} not found`);
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: dto.userId },
+        data: { password: hashedPassword },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'PASSWORD_RESET',
+          entity: 'User',
+          entityId: dto.userId,
+        },
+      });
+    });
+
+    return { message: 'Password reset successfully' };
   }
 
   async validateUser(userId: string): Promise<UserWithoutPassword> {
