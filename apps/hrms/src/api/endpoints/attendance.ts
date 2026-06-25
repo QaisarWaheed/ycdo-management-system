@@ -1,5 +1,5 @@
 import api from '../axios'
-import type { AttendanceLog, AttendanceSummary } from '@/types'
+import type { AttendanceLog, AttendanceSummary, RelieverSession } from '@/types'
 
 export const attendanceApi = {
   getAll: (params?: Record<string, unknown>) =>
@@ -22,4 +22,20 @@ export const attendanceApi = {
       unknown,
       { sessions: unknown[]; totalMinutes: number; totalHours: number }
     >(`/attendance/reliever/${employeeId}`, { params }),
+  listRelieverSessions: (params?: {
+    startDate?: string
+    endDate?: string
+    branchId?: string
+    projectId?: string
+    departmentId?: string
+    shiftId?: string
+    employeeStatus?: string
+    gender?: string
+    designation?: string
+    district?: string
+  }) =>
+    api.get<unknown, RelieverSession[]>(
+      '/attendance/reliever-sessions',
+      { params },
+    ),
 }

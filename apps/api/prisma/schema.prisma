@@ -99,7 +99,7 @@ model Employee {
 
   employmentHistory   EmploymentHistory[]
   documents           EmployeeDocument[]
-  salaryRecords       SalaryRecord[]
+  stipendRecords      StipendRecord[]
   attendanceLogs      AttendanceLog[]
   disciplinaryActions DisciplinaryAction[]
   letters             Letter[]
@@ -110,8 +110,12 @@ model Employee {
   user                       User?
   academicQualifications     AcademicQualification[]
   previousEmployments        PreviousEmployment[]
-  outstationRequests         OutstationRequest[]
+  branchChangeRequests       BranchChangeRequest[]
   allegationAcknowledgements AllegationAcknowledgement[]
+  relieverRequestsMade       RelieverRequest[] @relation("RelieverRequester")
+  relieverRequestsReceived   RelieverRequest[] @relation("RelieverEmployee")
+  stipendReceipts            StipendReceipt[]
+  incentives                 Incentive[]
 
   // Additional personal info
   fatherContactNumber    String?
@@ -142,6 +146,7 @@ enum EmployeeStatus {
   SUSPENDED
   TERMINATED
   RESIGNED
+  DISMISSED
   ON_LEAVE
 }
 
@@ -245,12 +250,12 @@ enum AttendanceSource {
   MANUAL
 }
 
-// ─── SALARY ───────────────────────────────────────────────
+// ─── STIPEND ──────────────────────────────────────────────
 
-model SalaryRecord {
+model StipendRecord {
   id            String    @id @default(uuid())
   employeeId    String
-  basicSalary   Decimal   @db.Decimal(10, 2)
+  basicStipend  Decimal   @db.Decimal(10, 2)
   effectiveFrom DateTime
   effectiveTo   DateTime?
   createdAt     DateTime  @default(now())
@@ -261,22 +266,23 @@ model SalaryRecord {
 
 model PayrollEntry {
   id              String        @id @default(uuid())
-  salaryRecordId  String
+  stipendRecordId String
   month           Int
   year            Int
-  basicSalary     Decimal       @db.Decimal(10, 2)
+  basicStipend    Decimal       @db.Decimal(10, 2)
   totalDeductions Decimal       @db.Decimal(10, 2) @default(0)
   totalAllowances Decimal       @db.Decimal(10, 2) @default(0)
-  netSalary       Decimal       @db.Decimal(10, 2)
+  netStipend      Decimal       @db.Decimal(10, 2)
   status          PayrollStatus @default(PENDING)
   processedAt     DateTime?
   createdAt       DateTime      @default(now())
 
-  salaryRecord SalaryRecord       @relation(fields: [salaryRecordId], references: [id])
-  deductions   PayrollDeduction[]
-  allowances   Allowance[]
+  stipendRecord  StipendRecord      @relation(fields: [stipendRecordId], references: [id])
+  deductions     PayrollDeduction[]
+  allowances     Allowance[]
+  stipendReceipt StipendReceipt?
 
-  @@unique([salaryRecordId, month, year])
+  @@unique([stipendRecordId, month, year])
 }
 
 model Allowance {
@@ -437,6 +443,7 @@ model LeaveRecord {
   createdAt  DateTime    @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id])
+  relieverRequest RelieverRequest?
 }
 
 enum LeaveType {
@@ -446,8 +453,79 @@ enum LeaveType {
 
 enum LeaveStatus {
   PENDING
+  RELIEVER_PENDING
+  RELIEVER_CONFIRMED
+  RELIEVER_REJECTED
   APPROVED
   REJECTED
+}
+
+enum StipendStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  AUTO_ACCEPTED
+}
+
+enum RelieverRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  AUTO_REJECTED
+  HR_ASSIGNED
+}
+
+model RelieverRequest {
+  id             String                @id @default(uuid())
+  leaveRecordId  String                @unique
+  requestedById  String
+  relieverId     String
+  status         RelieverRequestStatus @default(PENDING)
+  requestedAt    DateTime              @default(now())
+  respondedAt    DateTime?
+  autoRejectedAt DateTime?
+  hrAssigned     Boolean               @default(false)
+  hrAssignedBy   String?
+  hrAssignedAt   DateTime?
+  notes          String?
+  createdAt      DateTime              @default(now())
+
+  leaveRecord LeaveRecord @relation(fields: [leaveRecordId], references: [id])
+  requestedBy Employee    @relation("RelieverRequester", fields: [requestedById], references: [id])
+  reliever    Employee    @relation("RelieverEmployee", fields: [relieverId], references: [id])
+}
+
+model StipendReceipt {
+  id              String        @id @default(uuid())
+  employeeId      String
+  payrollEntryId  String        @unique
+  month           Int
+  year            Int
+  amount          Decimal       @db.Decimal(10, 2)
+  status          StipendStatus @default(PENDING)
+  acceptedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  autoAcceptedAt  DateTime?
+  generatedAt     DateTime      @default(now())
+  deadlineAt      DateTime
+
+  employee     Employee     @relation(fields: [employeeId], references: [id])
+  payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id])
+}
+
+model Incentive {
+  id         String   @id @default(uuid())
+  employeeId String
+  amount     Decimal  @db.Decimal(10, 2)
+  reason     String   @db.Text
+  addedBy    String
+  month      Int
+  year       Int
+  createdAt  DateTime @default(now())
+
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  addedByUser User     @relation(fields: [addedBy], references: [id])
 }
 
 // ─── AUTH & USERS ─────────────────────────────────────────
@@ -465,6 +543,7 @@ model User {
   employee   Employee?               @relation(fields: [employeeId], references: [id])
   auditLogs  AuditLog[]
   broadcasts NotificationBroadcast[]
+  incentivesAdded Incentive[]
 }
 
 enum UserRole {
@@ -596,7 +675,7 @@ model PreviousEmployment {
   employee Employee @relation(fields: [employeeId], references: [id])
 }
 
-model OutstationRequest {
+model BranchChangeRequest {
   id         String           @id @default(uuid())
   employeeId String
   district   String

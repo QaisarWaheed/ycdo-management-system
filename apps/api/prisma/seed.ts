@@ -9,38 +9,59 @@ import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-const hospitalBranches = [
-  'Central Hospital (HQ)',
-  'Central Hospital Consultant Floor',
-  'Executive Hospital-I',
-  'Executive Hospital-II (Mother & Child Care)',
-  'Executive Hospital-III (Ghazi National)',
-  'AR Executive-IV Hospital',
-  'Police & YCDO Joint Venture Rehabilitation Center',
-  'Executive-V Rehabilitation Center',
-  'Hassan Abad Hospital',
-  'Idrees Memorial Hospital',
-  'Hassan Parwana Road Hospital',
-  'Suraj Kund Road Hospital',
-  'Budhla Santt Hospital',
-  'Sikandar Abad Hospital',
-  'Bilawal Pur Clinic',
-  'Pul Dhram Pura Clinic',
-  'Retra Clinic',
-  'YCDO Diagnostic Centre',
-  'Islamabad Allergy Vaccination Centre',
+type BranchSeed = { name: string; address: string; phone: string };
+
+const hospitalRunningBranches: BranchSeed[] = [
+  { name: 'YCDO Central Hospital', address: 'Masoom Shah Road Multan', phone: '0304-2827777' },
+  { name: 'YCDO Central Hospital Consultant Floor', address: 'Masoom Shah Road Multan', phone: '0309-7777510' },
+  { name: 'YCDO Hospital Hassan Abad', address: 'Hassan Abad Gate #2 Multan', phone: '0305-2827777' },
+  { name: 'Idrees Memorial YCDO Hospital', address: 'Inside Qasim Pur Colony Multan', phone: '0306-2827777' },
+  { name: 'YCDO Hospital Hassan Parwana', address: 'Hassan Parwana Old Sabzi Mandi Road Multan', phone: '0307-2827777' },
+  { name: 'YCDO Hospital Suraj Kund', address: 'Suraj Kund Road Rangeel Pur Multan', phone: '0308-2827777' },
+  { name: 'YCDO Executive Hospital-I', address: 'Chowk Ghanta Ghar Multan', phone: '0312-2827777' },
+  { name: 'YCDO Executive-I Consultant Floor', address: 'Chowk Ghanta Ghar Multan', phone: '0307-5891888' },
+  { name: 'YCDO Executive Hospital-II Mother & Child Care', address: 'LaSalle Road Near Chungi No 9 Multan', phone: '0315-2827777' },
+  { name: 'YCDO Hospital Jumma Wala', address: 'Jumma Wala Dunya Pur Road Multan', phone: '0327-2827777' },
+  { name: 'YCDO Hospital Bilawal Pur', address: 'Bilawal Pur Tehsil Kabirwala', phone: '0320-2827777' },
+  { name: 'YCDO Hospital Pul Dhram Pura', address: 'Pul Dhram Pura Multan Road Abdul Hakeem', phone: '0328-2827777' },
+  { name: 'Allah Dad Memorial YCDO Hospital', address: 'Retra Tehsil Tonsa Sharif', phone: '0309-7777517' },
+  { name: 'YCDO Diagnostic Centre', address: 'Chowk Ghanta Ghar Multan', phone: '0309-7777515' },
+  { name: 'Police & YCDO Drug Rehabilitation Hospital', address: 'Near Jalal Masjid Chowk Gulgasht Colony Multan', phone: '0329-2827777' },
+  { name: 'YCDO Hospital Budhla Santt', address: 'Budhla Chowk Budhla Santt Multan', phone: '0309-7777516' },
+  { name: 'YCDO Hospital Sikandar Abad', address: 'Sikandar Abad Tehsil Shuja Abad Multan', phone: '0309-7777518' },
+  { name: 'YCDO Ghazi National Hospital E-III', address: 'Dera Ghazi Khan', phone: '0324-2827777' },
+  { name: 'YCDO AR Executive-IV Hospital', address: 'Choti Zeeren District Dera Ghazi Khan', phone: '0314-2827777' },
+  { name: 'YCDO Executive-V Drug Rehabilitation Hospital', address: 'Chowk Rasheed Abad Multan', phone: '0310-2827777' },
+  { name: 'YCDO Islamabad Allergy Vaccination Centre', address: 'Chowk Ghanta Ghar Masoom Shah Road Multan', phone: '0303-3333207' },
+  { name: 'YCDO Head Office', address: 'Chowk Ghanta Ghar Multan', phone: '0303-3333207' },
 ];
 
-const kitchenBranches = [
-  'Rashan Department',
-  'Main Kitchen',
-  'RO Water Filtration Plants',
+const hospitalDevBranches: BranchSeed[] = [
+  { name: 'YCDO Medical Complex', address: 'Masoom Shah Road Multan', phone: '' },
+  { name: 'YCDO Executive Hospital-V', address: 'MPS Road Multan', phone: '' },
+  { name: 'YCDO Executive Hospital-VI', address: 'Dunya Pur City Tehsil Dunya Pur', phone: '' },
+  { name: 'YCDO Executive Hospital-VII', address: 'Fazil Pur Tehsil District Dera Ghazi Khan', phone: '' },
 ];
 
-const vtiBranches = [
-  'Vocational Training Institute Main',
-  'Jahez Program',
-  'Educational Financial Assistance Program',
+const kitchenBranches: BranchSeed[] = [
+  { name: 'YCDO Rashan Department', address: 'Inside Qasim Pur Colony Multan', phone: '0303-3333214' },
+  { name: 'YCDO Kitchen Masoom Shah', address: 'Masoom Shah Road Multan', phone: '0303-3333214' },
+  { name: 'YCDO Kitchen Ghanta Ghar', address: 'Chowk Ghanta Ghar Multan', phone: '0303-3333214' },
+  { name: 'YCDO Kitchen Qasim Pur', address: 'Inside Qasim Pur Colony Multan', phone: '0303-3333214' },
+  { name: 'YCDO Kitchen Ghazi Abad', address: 'Mohalla Ghazi Abad Multan', phone: '0303-3333214' },
+  { name: 'YCDO Ramzan Sehar o Aftaar', address: 'Masoom Shah Road Ghanta Ghar and Qasim Pur Colony Multan', phone: '0303-3333214' },
+  { name: 'YCDO Water Filtration RO Plant Sabzwari', address: 'Sabzwari Town Multan', phone: '0309-7777514' },
+  { name: 'YCDO Water Filtration RO Plant Basti Dogran', address: 'Basti Dogran Multan', phone: '0309-7777514' },
+  { name: 'YCDO Water Filtration RO Plant Lodhran', address: 'Chak 389/WB Lodhran', phone: '0309-7777514' },
+];
+
+const vtiBranches: BranchSeed[] = [
+  { name: 'YCDO VTI For Women Qasim Pur', address: 'Inside Qasim Pur Colony Multan', phone: '0309-2827777' },
+  { name: 'YCDO VTI For Women Basti Malook', address: 'Basti Malook Multan', phone: '0309-2827777' },
+  { name: 'YCDO VTI Under Development', address: 'Add Laarr Basti Malook Multan', phone: '' },
+  { name: 'YCDO Paramedical & Allied Sciences College', address: 'Chowk Ghanta Ghar Multan', phone: '' },
+  { name: 'YCDO Jahez Program', address: 'Multan', phone: '0303-3700007' },
+  { name: 'YCDO Financial Assistance for Education', address: 'Multan', phone: '0303-3700007' },
 ];
 
 const hospitalDepartments = [
@@ -64,7 +85,7 @@ const seedEmployees = [
     joiningDate: new Date('2024-01-01'),
     currentDesignation: 'HR Officer',
     departmentName: 'Human Resources',
-    basicSalary: 50000,
+    basicStipend: 50000,
     employeeCode: 'YCDO-2024-0001',
   },
   {
@@ -76,7 +97,7 @@ const seedEmployees = [
     joiningDate: new Date('2024-03-01'),
     currentDesignation: 'Medical Officer',
     departmentName: 'Medical Staff',
-    basicSalary: 80000,
+    basicStipend: 80000,
     employeeCode: 'YCDO-2024-0002',
   },
 ];
@@ -106,19 +127,37 @@ async function ensureEmployeePortalUser(
   });
 }
 
-async function ensureBranch(name: string, projectId: string) {
+async function ensureBranch(
+  name: string,
+  address: string,
+  phone: string,
+  projectId: string,
+) {
   let branch = await prisma.branch.findFirst({
-    where: { name },
+    where: { name, address },
   });
 
   if (!branch) {
+    branch = await prisma.branch.findFirst({ where: { name } });
+  }
+
+  if (!branch) {
     branch = await prisma.branch.create({
-      data: { name, projectId },
+      data: {
+        name,
+        address,
+        phone: phone || null,
+        projectId,
+      },
     });
-  } else if (branch.projectId !== projectId) {
+  } else {
     branch = await prisma.branch.update({
       where: { id: branch.id },
-      data: { projectId },
+      data: {
+        address,
+        phone: phone || branch.phone,
+        projectId,
+      },
     });
   }
 
@@ -135,6 +174,24 @@ async function ensureDepartments(branchId: string, departmentNames: string[]) {
       await prisma.department.create({
         data: { name: deptName, branchId },
       });
+    }
+  }
+}
+
+async function seedProjectBranches(
+  branches: BranchSeed[],
+  projectId: string,
+  withDepartments: boolean,
+) {
+  for (const branch of branches) {
+    const created = await ensureBranch(
+      branch.name,
+      branch.address,
+      branch.phone,
+      projectId,
+    );
+    if (withDepartments) {
+      await ensureDepartments(created.id, hospitalDepartments);
     }
   }
 }
@@ -193,23 +250,13 @@ async function main() {
     },
   });
 
-  for (const name of hospitalBranches) {
-    const branch = await ensureBranch(name, hospital.id);
-    await ensureDepartments(branch.id, hospitalDepartments);
-  }
-
-  for (const name of kitchenBranches) {
-    await ensureBranch(name, kitchen.id);
-  }
-
-  for (const name of vtiBranches) {
-    await ensureBranch(name, vti.id);
-  }
-
-  await prisma.branch.updateMany({
-    where: { projectId: null },
-    data: { projectId: hospital.id },
-  });
+  await seedProjectBranches(
+    [...hospitalRunningBranches, ...hospitalDevBranches],
+    hospital.id,
+    true,
+  );
+  await seedProjectBranches(kitchenBranches, kitchen.id, false);
+  await seedProjectBranches(vtiBranches, vti.id, false);
 
   const swBranch = await prisma.branch.findFirst({
     where: { name: 'Software House HQ' },
@@ -233,16 +280,19 @@ async function main() {
     }));
 
   if (softwareBranch) {
-    const swDepts = ['Media House', 'Social Media', 'IT Team'];
-    await ensureDepartments(softwareBranch.id, swDepts);
+    await ensureDepartments(softwareBranch.id, [
+      'Media House',
+      'Social Media',
+      'IT Team',
+    ]);
   }
 
   const mainBranch = await prisma.branch.findFirst({
-    where: { name: 'Central Hospital (HQ)' },
+    where: { name: 'YCDO Central Hospital' },
   });
 
   if (!mainBranch) {
-    throw new Error('Central Hospital (HQ) not found after seeding');
+    throw new Error('YCDO Central Hospital not found after seeding');
   }
 
   for (const emp of seedEmployees) {
@@ -285,10 +335,10 @@ async function main() {
         },
       });
 
-      await prisma.salaryRecord.create({
+      await prisma.stipendRecord.create({
         data: {
           employeeId: employee.id,
-          basicSalary: emp.basicSalary,
+          basicStipend: emp.basicStipend,
           effectiveFrom: emp.joiningDate,
         },
       });
@@ -318,7 +368,8 @@ async function main() {
     }
   }
 
-  console.log('Seed completed');
+  const branchCount = await prisma.branch.count();
+  console.log(`Seed completed — ${branchCount} branches total`);
   console.log('\nEmployee portal test accounts (password = employee code):');
   for (const emp of seedEmployees) {
     console.log(`  ${emp.email} / ${emp.employeeCode}`);

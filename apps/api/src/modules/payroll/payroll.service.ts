@@ -22,7 +22,7 @@ export class PayrollService {
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
-        salaryRecords: {
+        stipendRecords: {
           where: { effectiveTo: null },
           orderBy: { effectiveFrom: 'desc' },
           take: 1,
@@ -36,17 +36,17 @@ export class PayrollService {
       );
     }
 
-    const activeSalaryRecord = employee.salaryRecords[0];
-    if (!activeSalaryRecord) {
+    const activeStipendRecord = employee.stipendRecords[0];
+    if (!activeStipendRecord) {
       throw new NotFoundException(
-        `No active salary record found for employee ${dto.employeeId}`,
+        `No active stipend record found for employee ${dto.employeeId}`,
       );
     }
 
     const existing = await this.prisma.payrollEntry.findUnique({
       where: {
-        salaryRecordId_month_year: {
-          salaryRecordId: activeSalaryRecord.id,
+        stipendRecordId_month_year: {
+          stipendRecordId: activeStipendRecord.id,
           month: dto.month,
           year: dto.year,
         },
@@ -58,20 +58,20 @@ export class PayrollService {
       return existing;
     }
 
-    const basicSalary =
-      dto.basicSalary ?? Number(activeSalaryRecord.basicSalary);
+    const basicStipend =
+      dto.basicStipend ?? Number(activeStipendRecord.basicStipend);
     const totalAllowances = dto.totalAllowances ?? 0;
-    const netSalary = basicSalary + totalAllowances;
+    const netStipend = basicStipend + totalAllowances;
 
     return this.prisma.payrollEntry.create({
       data: {
-        salaryRecordId: activeSalaryRecord.id,
+        stipendRecordId: activeStipendRecord.id,
         month: dto.month,
         year: dto.year,
-        basicSalary,
+        basicStipend,
         totalAllowances,
         totalDeductions: 0,
-        netSalary,
+        netStipend,
         status: PayrollStatus.PENDING,
       },
       include: { deductions: true },
@@ -111,7 +111,7 @@ export class PayrollService {
       where: { id: dto.payrollEntryId },
       data: {
         totalDeductions: Number(entry.totalDeductions) + dto.amount,
-        netSalary: Number(entry.netSalary) - dto.amount,
+        netStipend: Number(entry.netStipend) - dto.amount,
       },
       include: { deductions: true },
     });
@@ -195,7 +195,7 @@ export class PayrollService {
       where: { id: dto.payrollEntryId },
       data: {
         totalAllowances: Number(entry.totalAllowances) + dto.amount,
-        netSalary: Number(entry.netSalary) + dto.amount,
+        netStipend: Number(entry.netStipend) + dto.amount,
       },
       include: { deductions: true, allowances: true },
     });
@@ -207,7 +207,7 @@ export class PayrollService {
       include: {
         deductions: true,
         allowances: true,
-        salaryRecord: {
+        stipendRecord: {
           include: {
             employee: {
               select: {
@@ -232,7 +232,7 @@ export class PayrollService {
 
     const relieverSummary = await this.prisma.relieverSession.aggregate({
       where: {
-        employeeId: entry.salaryRecord.employeeId,
+        employeeId: entry.stipendRecord.employeeId,
         date: {
           gte: new Date(entry.year, entry.month - 1, 1),
           lte: new Date(entry.year, entry.month, 0),
@@ -276,14 +276,14 @@ export class PayrollService {
     }
 
     if (Object.keys(employeeFilter).length > 0) {
-      where.salaryRecord = { employee: employeeFilter };
+      where.stipendRecord = { employee: employeeFilter };
     }
 
     return this.prisma.payrollEntry.findMany({
       where,
       include: {
         deductions: true,
-        salaryRecord: {
+        stipendRecord: {
           include: {
             employee: {
               select: {
@@ -307,7 +307,7 @@ export class PayrollService {
       where: { id: entryId },
       include: {
         deductions: true,
-        salaryRecord: {
+        stipendRecord: {
           include: {
             employee: {
               select: {
@@ -346,7 +346,7 @@ export class PayrollService {
 
     return this.prisma.payrollEntry.findMany({
       where: {
-        salaryRecord: { employeeId },
+        stipendRecord: { employeeId },
       },
       include: { deductions: true },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
@@ -361,7 +361,7 @@ export class PayrollService {
     const where: Prisma.PayrollEntryWhereInput = { month, year };
 
     if (branchId) {
-      where.salaryRecord = {
+      where.stipendRecord = {
         employee: { currentBranchId: branchId },
       };
     }
@@ -381,10 +381,10 @@ export class PayrollService {
 
     for (const entry of entries) {
       byStatus[entry.status]++;
-      totalBasicSalary += Number(entry.basicSalary);
+      totalBasicSalary += Number(entry.basicStipend);
       totalDeductions += Number(entry.totalDeductions);
       totalAllowances += Number(entry.totalAllowances);
-      totalNetSalary += Number(entry.netSalary);
+      totalNetSalary += Number(entry.netStipend);
     }
 
     return {
@@ -403,7 +403,7 @@ export class PayrollService {
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
-        salaryRecords: {
+        stipendRecords: {
           where: { effectiveTo: null },
           orderBy: { effectiveFrom: 'desc' },
           take: 1,
@@ -417,26 +417,26 @@ export class PayrollService {
       );
     }
 
-    const activeSalaryRecord = employee.salaryRecords[0];
-    if (!activeSalaryRecord) {
+    const activeStipendRecord = employee.stipendRecords[0];
+    if (!activeStipendRecord) {
       throw new NotFoundException(
-        `No active salary record found for employee ${dto.employeeId}`,
+        `No active stipend record found for employee ${dto.employeeId}`,
       );
     }
 
     const effectiveFrom = new Date(dto.effectiveFrom);
-    const previousSalary = Number(activeSalaryRecord.basicSalary);
+    const previousSalary = Number(activeStipendRecord.basicStipend);
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.salaryRecord.update({
-        where: { id: activeSalaryRecord.id },
+      await tx.stipendRecord.update({
+        where: { id: activeStipendRecord.id },
         data: { effectiveTo: effectiveFrom },
       });
 
-      const newRecord = await tx.salaryRecord.create({
+      const newRecord = await tx.stipendRecord.create({
         data: {
           employeeId: dto.employeeId,
-          basicSalary: dto.newBasicSalary,
+          basicStipend: dto.newBasicStipend,
           effectiveFrom,
         },
       });
@@ -445,7 +445,7 @@ export class PayrollService {
         data: {
           employeeId: dto.employeeId,
           type: 'SALARY_INCREMENT',
-          message: `Your salary has been updated to PKR ${dto.newBasicSalary} effective ${effectiveFrom.toISOString().split('T')[0]}`,
+          message: `Your stipend has been updated to PKR ${dto.newBasicStipend} effective ${effectiveFrom.toISOString().split('T')[0]}`,
         },
       });
 
@@ -453,11 +453,11 @@ export class PayrollService {
         data: {
           userId: actingUserId,
           action: 'SALARY_INCREMENT',
-          entity: 'SalaryRecord',
+          entity: 'StipendRecord',
           entityId: newRecord.id,
           changes: {
             previousSalary,
-            newSalary: dto.newBasicSalary,
+            newStipend: dto.newBasicStipend,
             reason: dto.reason,
           },
         },

@@ -39,7 +39,11 @@ export function ChangeStatusDialog({
   const [status, setStatus] = useState<EmployeeStatus>('ACTIVE')
   const [reason, setReason] = useState('')
 
-  const availableStatuses = EMPLOYEE_STATUSES.filter((s) => s !== currentStatus)
+  const availableStatuses = EMPLOYEE_STATUSES.filter(
+    (s) => s !== currentStatus && s !== 'DISMISSED',
+  )
+
+  const isDismissed = currentStatus === 'DISMISSED'
 
   const mutation = useMutation({
     mutationFn: () => employeesApi.changeStatus(employeeId, { status, reason }),
@@ -68,6 +72,13 @@ export function ChangeStatusDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {isDismissed && (
+            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              This employee has been dismissed and cannot change status. Dismissed
+              employees are permanently barred from rejoining.
+            </p>
+          )}
+
           <div>
             <Label className="text-text-secondary">Current Status</Label>
             <div className="mt-1">
@@ -77,7 +88,11 @@ export function ChangeStatusDialog({
 
           <div className="space-y-2">
             <Label>New Status</Label>
-            <Select value={status} onValueChange={(v) => setStatus(v as EmployeeStatus)}>
+            <Select
+              value={status}
+              onValueChange={(v) => setStatus(v as EmployeeStatus)}
+              disabled={isDismissed}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -97,6 +112,7 @@ export function ChangeStatusDialog({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Reason for status change"
+              disabled={isDismissed}
             />
           </div>
         </div>
@@ -107,7 +123,7 @@ export function ChangeStatusDialog({
           </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={!reason.trim() || mutation.isPending}
+            disabled={isDismissed || !reason.trim() || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Updating...' : 'Update Status'}

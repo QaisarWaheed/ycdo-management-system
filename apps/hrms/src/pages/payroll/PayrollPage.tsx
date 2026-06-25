@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, Fragment } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -9,6 +9,7 @@ import { branchesApi } from '@/api/endpoints/branches'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
 import { payrollApi } from '@/api/endpoints/payroll'
+import { stipendReceiptsApi } from '@/api/endpoints/stipendReceipts'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
@@ -64,6 +65,8 @@ import {
   type AllowanceType,
   type PayrollEntry,
   type PayrollStatus,
+  type StipendReceipt,
+  type StipendStatus,
 } from '@/types'
 
 const ALL = 'ALL'
@@ -300,7 +303,7 @@ function PayrollDetailDialog({
     enabled: !!entry && open,
   })
 
-  const employeeId = fullEntry?.salaryRecord?.employee?.id
+  const employeeId = fullEntry?.stipendRecord?.employee?.id
 
   const { data: relieverData } = useQuery({
     queryKey: ['reliever-sessions', employeeId, fullEntry?.month, fullEntry?.year],
@@ -582,10 +585,10 @@ function MonthlyPayrollTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
-              <TableHead>Basic Salary</TableHead>
+              <TableHead>Basic Stipend</TableHead>
               <TableHead>Deductions</TableHead>
               <TableHead>Allowances</TableHead>
-              <TableHead>Net Salary</TableHead>
+              <TableHead>Net Stipend</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-[50px]" />
             </TableRow>
@@ -609,7 +612,7 @@ function MonthlyPayrollTab() {
               </TableRow>
             ) : (
               entries.map((entry) => {
-                const emp = entry.salaryRecord?.employee
+                const emp = entry.stipendRecord?.employee
                 return (
                   <TableRow key={entry.id}>
                     <TableCell>
@@ -624,7 +627,7 @@ function MonthlyPayrollTab() {
                         </p>
                       </div>
                     </TableCell>
-                    <TableCell>{formatPKR(entry.basicSalary)}</TableCell>
+                    <TableCell>{formatPKR(entry.basicStipend)}</TableCell>
                     <TableCell
                       className={cn(
                         Number(entry.totalDeductions) > 0 && 'text-red-600',
@@ -634,7 +637,7 @@ function MonthlyPayrollTab() {
                     </TableCell>
                     <TableCell>{formatPKR(entry.totalAllowances)}</TableCell>
                     <TableCell className="font-medium">
-                      {formatPKR(entry.netSalary)}
+                      {formatPKR(entry.netStipend)}
                     </TableCell>
                     <TableCell>
                       <PayrollStatusBadge status={entry.status} />
@@ -752,46 +755,46 @@ function MonthlyPayrollTab() {
 
 const incrementSchema = z.object({
   employeeId: z.string().min(1, 'Employee is required'),
-  newBasicSalary: z.number().positive('Salary must be greater than 0'),
+  newBasicStipend: z.number().positive('Stipend must be greater than 0'),
   effectiveFrom: z.string().min(1, 'Effective date is required'),
   reason: z.string().min(1, 'Reason is required'),
 })
 
 type IncrementFormValues = z.infer<typeof incrementSchema>
 
-function SalaryIncrementTab() {
-  const [currentSalary, setCurrentSalary] = useState<number | null>(null)
+function StipendIncrementTab() {
+  const [currentStipend, setCurrentStipend] = useState<number | null>(null)
 
   const form = useForm<IncrementFormValues>({
     resolver: zodResolver(incrementSchema),
     defaultValues: {
       employeeId: '',
-      newBasicSalary: 0,
+      newBasicStipend: 0,
       effectiveFrom: '',
       reason: '',
     },
   })
 
-  const newSalary = form.watch('newBasicSalary')
+  const newStipend = form.watch('newBasicStipend')
 
   const incrementPreview = useMemo(() => {
-    if (!currentSalary || !newSalary || newSalary <= currentSalary) return null
-    const diff = newSalary - currentSalary
-    const pct = ((diff / currentSalary) * 100).toFixed(1)
+    if (!currentStipend || !newStipend || newStipend <= currentStipend) return null
+    const diff = newStipend - currentStipend
+    const pct = ((diff / currentStipend) * 100).toFixed(1)
     return { diff, pct }
-  }, [currentSalary, newSalary])
+  }, [currentStipend, newStipend])
 
   const mutation = useMutation({
     mutationFn: (values: IncrementFormValues) => payrollApi.increment(values),
     onSuccess: () => {
-      toast({ title: 'Salary updated successfully' })
+      toast({ title: 'Stipend updated successfully' })
       form.reset()
-      setCurrentSalary(null)
+      setCurrentStipend(null)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
       toast({
-        title: 'Failed to update salary',
+        title: 'Failed to update stipend',
         description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
         variant: 'destructive',
       })
@@ -802,10 +805,10 @@ function SalaryIncrementTab() {
     form.setValue('employeeId', id)
     if (id) {
       const employee = await employeesApi.getOne(id)
-      const salary = employee.salaryRecords?.[0]
-      setCurrentSalary(salary ? Number(salary.basicSalary) : null)
+      const stipend = employee.stipendRecords?.[0]
+      setCurrentStipend(stipend ? Number(stipend.basicStipend) : null)
     } else {
-      setCurrentSalary(null)
+      setCurrentStipend(null)
     }
   }
 
@@ -829,19 +832,19 @@ function SalaryIncrementTab() {
           )}
         />
 
-        {currentSalary !== null && (
+        {currentStipend !== null && (
           <div className="rounded-lg border border-border bg-surface p-3">
-            <Label className="text-text-secondary">Current Salary</Label>
-            <p className="text-lg font-semibold">{formatPKR(currentSalary)}</p>
+            <Label className="text-text-secondary">Current Stipend</Label>
+            <p className="text-lg font-semibold">{formatPKR(currentStipend)}</p>
           </div>
         )}
 
         <FormField
           control={form.control}
-          name="newBasicSalary"
+          name="newBasicStipend"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>New Basic Salary</FormLabel>
+              <FormLabel>New Basic Stipend</FormLabel>
               <FormControl>
                 <PKRInput value={field.value} onChange={field.onChange} />
               </FormControl>
@@ -978,16 +981,16 @@ function SummaryTab() {
                   value: summary.totalEmployees,
                 },
                 {
-                  label: 'Total Basic Salary',
-                  value: formatPKR(summary.totalBasicSalary),
+                  label: 'Total Basic Stipend',
+                  value: formatPKR(summary.totalBasicStipend),
                 },
                 {
                   label: 'Total Deductions',
                   value: formatPKR(summary.totalDeductions),
                 },
                 {
-                  label: 'Total Net Salary',
-                  value: formatPKR(summary.totalNetSalary),
+                  label: 'Total Net Stipend',
+                  value: formatPKR(summary.totalNetStipend),
                 },
               ].map((card) => (
                 <Card key={card.label}>
@@ -1052,6 +1055,210 @@ function SummaryTab() {
   )
 }
 
+function StipendReceiptStatusBadge({ status }: { status: StipendStatus }) {
+  const config: Record<StipendStatus, { label: string; className: string }> = {
+    PENDING: {
+      label: 'Awaiting Response',
+      className: 'bg-amber-100 text-amber-800 border-amber-200',
+    },
+    ACCEPTED: {
+      label: 'Accepted',
+      className: 'bg-green-100 text-green-800 border-green-200',
+    },
+    REJECTED: {
+      label: 'Rejected',
+      className: 'bg-red-100 text-red-800 border-red-200',
+    },
+    AUTO_ACCEPTED: {
+      label: 'Auto-Accepted',
+      className: 'bg-blue-100 text-blue-800 border-blue-200',
+    },
+  }
+  const item = config[status]
+  return (
+    <Badge variant="outline" className={item.className}>
+      {item.label}
+    </Badge>
+  )
+}
+
+function StipendReceiptsTab() {
+  const queryClient = useQueryClient()
+  const now = new Date()
+  const [monthYear, setMonthYear] = useState({
+    month: now.getMonth() + 1,
+    year: now.getFullYear(),
+  })
+  const [statusFilter, setStatusFilter] = useState(ALL)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const { data: receipts = [], isLoading } = useQuery({
+    queryKey: ['stipend-receipts', monthYear],
+    queryFn: () =>
+      stipendReceiptsApi.getAll({
+        month: monthYear.month,
+        year: monthYear.year,
+      }),
+  })
+
+  const generateMutation = useMutation({
+    mutationFn: () =>
+      stipendReceiptsApi.generate({
+        month: monthYear.month,
+        year: monthYear.year,
+      }),
+    onSuccess: (result) => {
+      toast({
+        title: `${result.generated} receipts generated`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['stipend-receipts'] })
+      setGenerateOpen(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Generation failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const filtered = useMemo(() => {
+    const list = receipts as StipendReceipt[]
+    if (statusFilter === ALL) return list
+    return list.filter((r) => r.status === statusFilter)
+  }, [receipts, statusFilter])
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <MonthYearPicker value={monthYear} onChange={setMonthYear} />
+          <div className="space-y-1">
+            <Label>Status</Label>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All Statuses</SelectItem>
+                <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="ACCEPTED">Accepted</SelectItem>
+                <SelectItem value="REJECTED">Rejected</SelectItem>
+                <SelectItem value="AUTO_ACCEPTED">Auto-Accepted</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <Button onClick={() => setGenerateOpen(true)}>Generate Receipts</Button>
+      </div>
+
+      <div className="rounded-lg border border-border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Employee</TableHead>
+              <TableHead>Month/Year</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Generated</TableHead>
+              <TableHead>Responded</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              [...Array(5)].map((_, i) => (
+                <TableRow key={i}>
+                  {[...Array(7)].map((__, j) => (
+                    <TableCell key={j}>
+                      <Skeleton className="h-5 w-full" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-32 text-center text-text-secondary">
+                  No stipend receipts found
+                </TableCell>
+              </TableRow>
+            ) : (
+              filtered.map((receipt) => (
+                <Fragment key={receipt.id}>
+                  <TableRow>
+                    <TableCell>
+                      {receipt.employee
+                        ? `${receipt.employee.firstName} ${receipt.employee.lastName}`
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {receipt.month}/{receipt.year}
+                    </TableCell>
+                    <TableCell>{formatPKR(receipt.amount)}</TableCell>
+                    <TableCell>
+                      <StipendReceiptStatusBadge status={receipt.status} />
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(receipt.generatedAt), 'dd/MM/yyyy HH:mm')}
+                    </TableCell>
+                    <TableCell>
+                      {receipt.acceptedAt
+                        ? format(new Date(receipt.acceptedAt), 'dd/MM/yyyy HH:mm')
+                        : receipt.rejectedAt
+                          ? format(new Date(receipt.rejectedAt), 'dd/MM/yyyy HH:mm')
+                          : receipt.autoAcceptedAt
+                            ? format(
+                                new Date(receipt.autoAcceptedAt),
+                                'dd/MM/yyyy HH:mm',
+                              )
+                            : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {receipt.status === 'REJECTED' && receipt.rejectionReason && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setExpandedId(
+                              expandedId === receipt.id ? null : receipt.id,
+                            )
+                          }
+                        >
+                          {expandedId === receipt.id ? 'Hide' : 'Reason'}
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                  {expandedId === receipt.id && receipt.rejectionReason && (
+                    <TableRow key={`${receipt.id}-reason`}>
+                      <TableCell colSpan={7} className="bg-red-50 text-sm text-red-800">
+                        Rejection reason: {receipt.rejectionReason}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <ConfirmDialog
+        open={generateOpen}
+        title="Generate Stipend Receipts"
+        description={`Generate stipend receipts for ${monthYear.month}/${monthYear.year} for all active employees?`}
+        confirmLabel="Generate"
+        loading={generateMutation.isPending}
+        onConfirm={() => generateMutation.mutate()}
+        onCancel={() => setGenerateOpen(false)}
+      />
+    </div>
+  )
+}
+
 export function PayrollPage() {
   return (
     <div className="space-y-6">
@@ -1060,8 +1267,9 @@ export function PayrollPage() {
       <Tabs defaultValue="monthly">
         <TabsList>
           <TabsTrigger value="monthly">Monthly Payroll</TabsTrigger>
-          <TabsTrigger value="increment">Salary Increment</TabsTrigger>
+          <TabsTrigger value="increment">Stipend Increment</TabsTrigger>
           <TabsTrigger value="summary">Summary</TabsTrigger>
+          <TabsTrigger value="receipts">Stipend Receipts</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monthly" className="mt-4">
@@ -1069,11 +1277,15 @@ export function PayrollPage() {
         </TabsContent>
 
         <TabsContent value="increment" className="mt-4">
-          <SalaryIncrementTab />
+          <StipendIncrementTab />
         </TabsContent>
 
         <TabsContent value="summary" className="mt-4">
           <SummaryTab />
+        </TabsContent>
+
+        <TabsContent value="receipts" className="mt-4">
+          <StipendReceiptsTab />
         </TabsContent>
       </Tabs>
     </div>

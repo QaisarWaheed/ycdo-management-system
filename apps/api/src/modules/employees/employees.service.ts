@@ -11,16 +11,12 @@ import { generateEmployeeCode } from './employee-code.helper';
 import {
   ChangeStatusDto,
   CreateEmployeeDto,
+  EmployeeQueryDto,
   TransferDto,
   UpdateEmployeeDto,
 } from './employees.dto';
 
-export interface EmployeeFilters {
-  branchId?: string;
-  departmentId?: string;
-  status?: EmployeeStatus;
-  search?: string;
-}
+export type EmployeeFilters = EmployeeQueryDto;
 
 @Injectable()
 export class EmployeesService {
@@ -69,7 +65,7 @@ export class EmployeesService {
 
     const employeeCode = await generateEmployeeCode(this.prisma);
     const joiningDate = new Date(dto.joiningDate);
-    const { basicSalary, ...employeeData } = dto;
+    const { basicStipend, ...employeeData } = dto;
 
     const employee = await this.prisma.$transaction(async (tx) => {
       const created = await tx.employee.create({
@@ -93,10 +89,10 @@ export class EmployeesService {
         },
       });
 
-      await tx.salaryRecord.create({
+      await tx.stipendRecord.create({
         data: {
           employeeId: created.id,
-          basicSalary,
+          basicStipend,
           effectiveFrom: joiningDate,
         },
       });
@@ -123,7 +119,7 @@ export class EmployeesService {
             designation: result.currentDesignation,
             department: result.currentDepartment.name,
             branch: result.currentBranch.name,
-            basicSalary: dto.basicSalary,
+            basicStipend: dto.basicStipend,
             workingHours: '9:00 AM - 5:00 PM',
             probationPeriod: '3 months',
           },
@@ -153,8 +149,34 @@ export class EmployeesService {
       where.currentDepartmentId = filters.departmentId;
     }
 
+    if (filters.projectId) {
+      where.currentBranch = { projectId: filters.projectId };
+    }
+
+    if (filters.shiftId) {
+      where.shiftId = filters.shiftId;
+    }
+
     if (filters.status) {
       where.status = filters.status;
+    }
+
+    if (filters.gender) {
+      where.gender = filters.gender;
+    }
+
+    if (filters.designation) {
+      where.currentDesignation = {
+        equals: filters.designation,
+        mode: 'insensitive',
+      };
+    }
+
+    if (filters.district) {
+      where.district = {
+        equals: filters.district,
+        mode: 'insensitive',
+      };
     }
 
     if (filters.search) {
@@ -171,9 +193,33 @@ export class EmployeesService {
       include: {
         currentBranch: { select: { name: true } },
         currentDepartment: { select: { name: true } },
+        shift: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async getFilterOptions() {
+    const [designationRows, districtRows] = await Promise.all([
+      this.prisma.employee.findMany({
+        select: { currentDesignation: true },
+        distinct: ['currentDesignation'],
+        orderBy: { currentDesignation: 'asc' },
+      }),
+      this.prisma.employee.findMany({
+        where: { district: { not: null } },
+        select: { district: true },
+        distinct: ['district'],
+        orderBy: { district: 'asc' },
+      }),
+    ]);
+
+    return {
+      designations: designationRows.map((row) => row.currentDesignation),
+      districts: districtRows
+        .map((row) => row.district)
+        .filter((value): value is string => !!value),
+    };
   }
 
   async findOne(id: string) {
@@ -184,7 +230,7 @@ export class EmployeesService {
         currentBranch: true,
         currentDepartment: true,
         shift: true,
-        salaryRecords: {
+        stipendRecords: {
           orderBy: { effectiveFrom: 'desc' },
           take: 1,
         },
@@ -359,6 +405,12 @@ export class EmployeesService {
 
   async changeStatus(id: string, dto: ChangeStatusDto) {
     const employee = await this.findOne(id);
+
+    if (employee.status === EmployeeStatus.DISMISSED) {
+      throw new BadRequestException(
+        'This employee has been dismissed and cannot change status. Dismissed employees are permanently barred from rejoining.',
+      );
+    }
 
     if (
       employee.status === EmployeeStatus.TRAINEE &&

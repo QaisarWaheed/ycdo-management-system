@@ -20,7 +20,7 @@ import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
-import { outstationApi } from '@/api/endpoints/outstation'
+import { branchChangeRequestApi } from '@/api/endpoints/branchChangeRequest'
 import {
   ReportModal,
   type ReportColumnConfig,
@@ -136,7 +136,7 @@ function useReportOptions() {
     { value: 'REJECTED', label: 'Rejected' },
   ]
 
-  const outstationStatusOptions = [
+  const branchChangeStatusOptions = [
     { value: ALL, label: 'All Statuses' },
     { value: 'PENDING', label: 'Pending' },
     { value: 'APPROVED', label: 'Approved' },
@@ -144,7 +144,7 @@ function useReportOptions() {
     { value: 'COMPLETED', label: 'Completed' },
   ]
 
-  return { branchOptions, deptOptions, statusOptions, leaveStatusOptions, outstationStatusOptions }
+  return { branchOptions, deptOptions, statusOptions, leaveStatusOptions, branchChangeStatusOptions }
 }
 
 function useReports(): ReportDef[] {
@@ -153,7 +153,7 @@ function useReports(): ReportDef[] {
     deptOptions,
     statusOptions,
     leaveStatusOptions,
-    outstationStatusOptions,
+    branchChangeStatusOptions,
   } = useReportOptions()
 
   const defaultMonth = String(now.getMonth() + 1)
@@ -494,14 +494,14 @@ function useReports(): ReportDef[] {
         },
       },
       {
-        id: 'outstation-report',
-        title: 'Outstation Report',
-        description: 'Outstation requests by district, status, and date range.',
+        id: 'branch-change-report',
+        title: 'Branch Change Request Report',
+        description: 'Branch change requests by district, status, and date range.',
         icon: MapPin,
-        filename: 'outstation_report',
+        filename: 'branch_change_report',
         filters: [
           { key: 'district', label: 'District', type: 'text', defaultValue: '' },
-          { key: 'status', label: 'Status', type: 'select', options: outstationStatusOptions, defaultValue: ALL },
+          { key: 'status', label: 'Status', type: 'select', options: branchChangeStatusOptions, defaultValue: ALL },
           { key: 'startDate', label: 'Start Date', type: 'date', defaultValue: '' },
           { key: 'endDate', label: 'End Date', type: 'date', defaultValue: '' },
         ],
@@ -516,7 +516,7 @@ function useReports(): ReportDef[] {
           { key: 'status', label: 'Status' },
         ],
         fetchFn: async (f) => {
-          const requests = await outstationApi.getAll({
+          const requests = await branchChangeRequestApi.getAll({
             district: f.district || undefined,
             status: f.status !== ALL ? f.status : undefined,
             startDate: f.startDate || undefined,
@@ -539,7 +539,7 @@ function useReports(): ReportDef[] {
       {
         id: 'district-summary',
         title: 'District Summary',
-        description: 'Outstation requests grouped by district with visual breakdown.',
+        description: 'Branch change requests grouped by district with visual breakdown.',
         icon: PieChart,
         filename: 'district_summary',
         filters: [],
@@ -551,7 +551,7 @@ function useReports(): ReportDef[] {
           { key: 'rejected', label: 'Rejected' },
         ],
         fetchFn: async () => {
-          const data = await outstationApi.getDistrictSummary()
+          const data = await branchChangeRequestApi.getDistrictSummary()
           return [...data]
             .sort((a, b) => b.total - a.total)
             .map((d) => ({
@@ -636,7 +636,7 @@ function useReports(): ReportDef[] {
       deptOptions,
       statusOptions,
       leaveStatusOptions,
-      outstationStatusOptions,
+      branchChangeStatusOptions,
       defaultDate,
       defaultMonth,
       defaultYear,
@@ -652,7 +652,7 @@ export function ReportsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-text-primary">Reports</h1>
       <p className="text-text-secondary">
-        Generate and export HR reports across employees, attendance, leave, and outstation.
+        Generate and export HR reports across employees, attendance, leave, and branch change requests.
       </p>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

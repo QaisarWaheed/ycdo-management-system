@@ -4,11 +4,23 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { differenceInCalendarDays, format } from 'date-fns'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { leaveApi } from '@/api/endpoints/leave'
+import { employeesApi } from '@/api/endpoints/employees'
+import { leaveApi, type IncomingRelieverRequest } from '@/api/endpoints/leave'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import {
+  EmployeeSearchSelect,
+  type RelieverCandidate,
+} from '@/components/common/EmployeeSearchSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Form,
   FormControl,
@@ -32,39 +44,128 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
+import { hasShiftConflict } from '@/lib/shiftUtils'
 import type { LeaveRecord } from '@/types'
 
 function LeaveStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
+    RELIEVER_PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
+    RELIEVER_CONFIRMED: 'bg-blue-100 text-blue-800 border-blue-200',
+    RELIEVER_REJECTED: 'bg-red-100 text-red-800 border-red-200',
     APPROVED: 'bg-green-100 text-green-800 border-green-200',
     REJECTED: 'bg-red-100 text-red-800 border-red-200',
   }
   return (
     <Badge variant="outline" className={styles[status] ?? ''}>
-      {status}
+      {status.replace(/_/g, ' ')}
     </Badge>
   )
 }
 
-const applySchema = z
-  .object({
-    startDate: z.string().min(1, 'Start date is required'),
-    endDate: z.string().min(1, 'End date is required'),
-    reason: z
-      .string()
-      .min(1, 'Reason is required')
-      .max(500, 'Reason must be 500 characters or less'),
-  })
-  .refine(
-    (data) => {
-      if (!data.startDate || !data.endDate) return true
-      return new Date(data.endDate) >= new Date(data.startDate)
-    },
-    { message: 'End date must be on or after start date', path: ['endDate'] },
-  )
+function RelieverStatusBadge({ status }: { status: string }) {
+  if (status === 'RELIEVER_PENDING') {
+    return (
+      <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">
+        Reliever Notified
+      </Badge>
+    )
+  }
+  if (status === 'RELIEVER_CONFIRMED') {
+    return (
+      <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+        Reliever Confirmed
+      </Badge>
+    )
+  }
+  if (status === 'RELIEVER_REJECTED') {
+    return (
+      <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
+        HR Assigning Reliever
+      </Badge>
+    )
+  }
+  return <span className="text-text-secondary">—</span>
+}
 
-type ApplyFormValues = z.infer<typeof applySchema>
+function RespondDialog({
+  request,
+  mode,
+  open,
+  onOpenChange,
+}: {
+  request: IncomingRelieverRequest | null
+  mode: 'accept' | 'decline'
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const queryClient = useQueryClient()
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      leaveApi.respondToReliever(request!.id, { accept: mode === 'accept' }),
+    onSuccess: () => {
+      toast({
+        title:
+          mode === 'accept'
+            ? 'Reliever request accepted'
+            : 'Reliever request declined',
+      })
+      queryClient.invalidateQueries({ queryKey: ['incoming-reliever'] })
+      queryClient.invalidateQueries({ queryKey: ['leave'] })
+      onOpenChange(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Action failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  if (!request) return null
+
+  const name = `${request.requestedBy.firstName} ${request.requestedBy.lastName}`
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {mode === 'accept' ? 'Accept Reliever Request' : 'Decline Reliever Request'}
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-text-secondary">
+          {mode === 'accept'
+            ? `You are confirming to cover ${name}'s duties from ${format(new Date(request.leaveRecord.startDate), 'dd/MM/yyyy')} to ${format(new Date(request.leaveRecord.endDate), 'dd/MM/yyyy')}.`
+            : 'Are you sure you want to decline this reliever request?'}
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            className={
+              mode === 'accept'
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-red-600 hover:bg-red-700'
+            }
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending
+              ? 'Submitting...'
+              : mode === 'accept'
+                ? 'Accept'
+                : 'Decline'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function MyRequestsTab() {
   const { user } = useAuth()
@@ -115,6 +216,7 @@ function MyRequestsTab() {
               <TableHead>Days</TableHead>
               <TableHead>Reason</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Reliever Status</TableHead>
               <TableHead className="w-[100px]" />
             </TableRow>
           </TableHeader>
@@ -122,7 +224,7 @@ function MyRequestsTab() {
             {isLoading ? (
               [...Array(4)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(6)].map((__, j) => (
+                  {[...Array(7)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -132,7 +234,7 @@ function MyRequestsTab() {
             ) : sorted.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="py-8 text-center text-text-secondary"
                 >
                   No leave requests yet
@@ -153,6 +255,9 @@ function MyRequestsTab() {
                   </TableCell>
                   <TableCell>
                     <LeaveStatusBadge status={leave.status} />
+                  </TableCell>
+                  <TableCell>
+                    <RelieverStatusBadge status={leave.status} />
                   </TableCell>
                   <TableCell>
                     {leave.status === 'PENDING' && (
@@ -187,10 +292,40 @@ function MyRequestsTab() {
   )
 }
 
+const applySchema = z
+  .object({
+    startDate: z.string().min(1, 'Start date is required'),
+    endDate: z.string().min(1, 'End date is required'),
+    reason: z
+      .string()
+      .min(1, 'Reason is required')
+      .max(500, 'Reason must be 500 characters or less'),
+  })
+  .refine(
+    (data) => {
+      if (!data.startDate || !data.endDate) return true
+      return new Date(data.endDate) >= new Date(data.startDate)
+    },
+    { message: 'End date must be on or after start date', path: ['endDate'] },
+  )
+
+type ApplyFormValues = z.infer<typeof applySchema>
+
 function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const employeeId = user?.employeeId ?? ''
+
+  const [relieverId, setRelieverId] = useState('')
+  const [selectedReliever, setSelectedReliever] = useState<
+    RelieverCandidate | undefined
+  >()
+
+  const { data: employee } = useQuery({
+    queryKey: ['employee-self', employeeId],
+    queryFn: () => employeesApi.getOne(employeeId),
+    enabled: !!employeeId,
+  })
 
   const form = useForm<ApplyFormValues>({
     resolver: zodResolver(applySchema),
@@ -217,14 +352,30 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
     return differenceInCalendarDays(end, start) + 1
   }, [startDate, endDate])
 
+  const shiftConflict = hasShiftConflict(employee?.shift, selectedReliever?.shift)
+
   const mutation = useMutation({
-    mutationFn: (values: ApplyFormValues) =>
-      leaveApi.apply({ employeeId, ...values }),
-    onSuccess: () => {
-      toast({ title: 'Leave application submitted' })
+    mutationFn: async (values: ApplyFormValues) => {
+      const leave = await leaveApi.apply({ employeeId, ...values })
+      if (relieverId) {
+        await leaveApi.requestReliever(leave.id, {
+          leaveRecordId: leave.id,
+          relieverId,
+        })
+      }
+      return { hadReliever: !!relieverId }
+    },
+    onSuccess: ({ hadReliever }) => {
+      toast({
+        title: hadReliever
+          ? 'Leave request submitted. Reliever notification sent.'
+          : 'Leave request submitted. HR will assign a reliever if needed.',
+      })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
       queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
       form.reset()
+      setRelieverId('')
+      setSelectedReliever(undefined)
       onSuccess()
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -257,11 +408,6 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
                 of {balance.totalAllowed} days remaining
               </span>
             </p>
-            {balance.pending > 0 && (
-              <p className="mt-1 text-xs text-amber-600">
-                {balance.pending} day(s) pending approval
-              </p>
-            )}
           </div>
         )}
 
@@ -297,12 +443,37 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
         {daysPreview !== null && (
           <p className="text-sm text-text-secondary">
             {daysPreview} day{daysPreview !== 1 ? 's' : ''} requested
-            {balance && daysPreview > balance.remaining && (
-              <span className="ml-2 text-destructive">
-                (exceeds remaining balance)
-              </span>
-            )}
           </p>
+        )}
+
+        {startDate && endDate && (
+          <div className="space-y-2 rounded-lg border border-border p-4">
+            <EmployeeSearchSelect
+              label="Select Reliever (Optional)"
+              value={relieverId}
+              onChange={(id, emp) => {
+                setRelieverId(id)
+                setSelectedReliever(emp)
+              }}
+              excludeId={employeeId}
+            />
+            <p className="text-xs text-text-secondary">
+              Select an employee to cover your duties during leave. They will have
+              8 hours to accept or reject.
+            </p>
+            {selectedReliever?.shift && (
+              <p className="text-sm">
+                {selectedReliever.firstName} {selectedReliever.lastName} — Shift:{' '}
+                {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
+              </p>
+            )}
+            {shiftConflict && (
+              <p className="text-sm text-red-600">
+                This employee&apos;s shift conflicts with yours. Please select a
+                different reliever.
+              </p>
+            )}
+          </div>
         )}
 
         <FormField
@@ -328,13 +499,110 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
           className="w-full bg-primary hover:bg-primary-dark"
           disabled={
             mutation.isPending ||
-            (balance !== undefined && daysPreview !== null && daysPreview > balance.remaining)
+            (balance !== undefined &&
+              daysPreview !== null &&
+              daysPreview > balance.remaining) ||
+            (relieverId !== '' && shiftConflict)
           }
         >
           {mutation.isPending ? 'Submitting...' : 'Submit Application'}
         </Button>
       </form>
     </Form>
+  )
+}
+
+function RelieverRequestsTab() {
+  const [respondTarget, setRespondTarget] = useState<{
+    request: IncomingRelieverRequest
+    mode: 'accept' | 'decline'
+  } | null>(null)
+
+  const { data: requests = [], isLoading } = useQuery({
+    queryKey: ['incoming-reliever'],
+    queryFn: () => leaveApi.getIncomingRelieverRequests(),
+  })
+
+  return (
+    <>
+      <div className="rounded-lg border border-border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Requestor</TableHead>
+              <TableHead>Leave Dates</TableHead>
+              <TableHead>Duration</TableHead>
+              <TableHead>Requested At</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              [...Array(3)].map((_, i) => (
+                <TableRow key={i}>
+                  {[...Array(5)].map((__, j) => (
+                    <TableCell key={j}>
+                      <Skeleton className="h-5 w-full" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : requests.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="py-8 text-center text-text-secondary">
+                  No pending reliever requests
+                </TableCell>
+              </TableRow>
+            ) : (
+              (requests as IncomingRelieverRequest[]).map((req) => (
+                <TableRow key={req.id}>
+                  <TableCell>
+                    {req.requestedBy.firstName} {req.requestedBy.lastName}
+                  </TableCell>
+                  <TableCell>
+                    {format(new Date(req.leaveRecord.startDate), 'dd/MM/yyyy')} —{' '}
+                    {format(new Date(req.leaveRecord.endDate), 'dd/MM/yyyy')}
+                  </TableCell>
+                  <TableCell>{req.leaveRecord.totalDays} days</TableCell>
+                  <TableCell>
+                    {format(new Date(req.requestedAt), 'dd/MM/yyyy HH:mm')}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={() =>
+                          setRespondTarget({ request: req, mode: 'accept' })
+                        }
+                      >
+                        Accept
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() =>
+                          setRespondTarget({ request: req, mode: 'decline' })
+                        }
+                      >
+                        Decline
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <RespondDialog
+        request={respondTarget?.request ?? null}
+        mode={respondTarget?.mode ?? 'accept'}
+        open={!!respondTarget}
+        onOpenChange={(v) => !v && setRespondTarget(null)}
+      />
+    </>
   )
 }
 
@@ -349,6 +617,14 @@ export function MyLeavePage() {
     queryFn: () => leaveApi.getMyBalance(employeeId, year),
     enabled: !!employeeId,
   })
+
+  const { data: incomingReliever = [] } = useQuery({
+    queryKey: ['incoming-reliever'],
+    queryFn: () => leaveApi.getIncomingRelieverRequests(),
+    enabled: !!employeeId,
+  })
+
+  const pendingRelieverCount = incomingReliever.length
 
   return (
     <div className="space-y-6">
@@ -366,9 +642,7 @@ export function MyLeavePage() {
           ) : (
             <>
               <div>
-                <p className="text-sm text-text-secondary">
-                  Leave Balance · {year}
-                </p>
+                <p className="text-sm text-text-secondary">Leave Balance · {year}</p>
                 <p className="text-4xl font-bold text-primary">
                   {balance?.remaining ?? 0}
                   <span className="ml-2 text-lg font-normal text-text-secondary">
@@ -379,9 +653,7 @@ export function MyLeavePage() {
               <div className="flex gap-6 text-sm">
                 <div>
                   <p className="text-text-secondary">Allowed</p>
-                  <p className="text-xl font-semibold">
-                    {balance?.totalAllowed ?? 0}
-                  </p>
+                  <p className="text-xl font-semibold">{balance?.totalAllowed ?? 0}</p>
                 </div>
                 <div>
                   <p className="text-text-secondary">Taken</p>
@@ -403,6 +675,14 @@ export function MyLeavePage() {
         <TabsList>
           <TabsTrigger value="requests">My Requests</TabsTrigger>
           <TabsTrigger value="apply">Apply Leave</TabsTrigger>
+          <TabsTrigger value="reliever" className="relative">
+            Reliever Requests
+            {pendingRelieverCount > 0 && (
+              <Badge className="ml-2 h-5 min-w-5 justify-center bg-red-600 px-1 text-[10px] text-white hover:bg-red-600">
+                {pendingRelieverCount}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="requests" className="mt-4">
@@ -411,6 +691,10 @@ export function MyLeavePage() {
 
         <TabsContent value="apply" className="mt-4">
           <ApplyLeaveTab onSuccess={() => setTab('requests')} />
+        </TabsContent>
+
+        <TabsContent value="reliever" className="mt-4">
+          <RelieverRequestsTab />
         </TabsContent>
       </Tabs>
     </div>

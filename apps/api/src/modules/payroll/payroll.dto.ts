@@ -36,7 +36,7 @@ export class CreatePayrollEntryDto {
   @Type(() => Number)
   @IsNumber()
   @IsPositive()
-  basicSalary?: number;
+  basicStipend?: number;
 
   @IsOptional()
   @Type(() => Number)
@@ -105,7 +105,7 @@ export class SalaryIncrementDto {
   @IsNumber()
   @IsPositive()
   @IsNotEmpty()
-  newBasicSalary: number;
+  newBasicStipend: number;
 
   @IsDateString()
   @IsNotEmpty()

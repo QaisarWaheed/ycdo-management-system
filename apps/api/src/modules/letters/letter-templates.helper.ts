@@ -74,7 +74,7 @@ export function generateAppointmentLetter(data: LetterData): string {
       <li>Designation: ${field(data, 'designation')}</li>
       <li>Department: ${field(data, 'department')}</li>
       <li>Branch: ${field(data, 'branch')}</li>
-      <li>Basic Salary: PKR ${field(data, 'basicSalary')}</li>
+      <li>Basic Stipend: PKR ${field(data, 'basicStipend')}</li>
       <li>Working Hours: ${field(data, 'workingHours', '9:00 AM - 5:00 PM')}</li>
       <li>Probation Period: ${field(data, 'probationPeriod', '3 months')}</li>
     </ul>

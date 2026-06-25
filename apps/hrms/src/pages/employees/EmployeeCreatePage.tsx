@@ -81,9 +81,9 @@ const step2Schema = z.object({
 })
 
 const step3Schema = z.object({
-  basicSalary: z
-    .number({ error: 'Basic salary is required' })
-    .positive('Salary must be greater than 0'),
+  basicStipend: z
+    .number({ error: 'Basic stipend is required' })
+    .positive('Stipend must be greater than 0'),
 })
 
 type Step1Values = z.infer<typeof step1Schema>
@@ -119,7 +119,7 @@ const DOC_LABELS: Record<DocumentType, string> = {
 const STEPS = [
   { num: 1, label: 'Personal Info' },
   { num: 2, label: 'Job Info' },
-  { num: 3, label: 'Salary & Documents' },
+  { num: 3, label: 'Stipend & Documents' },
   { num: 4, label: 'Qualifications & Experience' },
 ]
 
@@ -313,7 +313,7 @@ export function EmployeeCreatePage() {
 
   const form3 = useForm<Step3Values>({
     resolver: zodResolver(step3Schema),
-    defaultValues: { basicSalary: 0 },
+    defaultValues: { basicStipend: 0 },
   })
 
   const branchId = form2.watch('currentBranchId')
@@ -1018,13 +1018,13 @@ export function EmployeeCreatePage() {
       {step === 3 && (
         <Form {...form3}>
           <form onSubmit={onStep3Next} className="space-y-6">
-            <h2 className="text-lg font-semibold">Salary & Documents</h2>
+            <h2 className="text-lg font-semibold">Stipend & Documents</h2>
             <FormField
               control={form3.control}
-              name="basicSalary"
+              name="basicStipend"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Basic Salary *</FormLabel>
+                  <FormLabel>Basic Stipend *</FormLabel>
                   <FormControl>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-secondary">

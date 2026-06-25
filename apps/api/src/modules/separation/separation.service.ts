@@ -28,6 +28,10 @@ export class SeparationService {
       );
     }
 
+    if (employee.status === EmployeeStatus.DISMISSED) {
+      throw new BadRequestException('Cannot process dismissed employee');
+    }
+
     if (employee.status !== EmployeeStatus.ACTIVE) {
       throw new BadRequestException('Only active employees can resign');
     }
@@ -171,7 +175,7 @@ export class SeparationService {
             newDesignation: dto.newDesignation,
             newDepartmentId: dto.newDepartmentId,
             effectiveDate: dto.effectiveDate,
-            newBasicSalary: dto.newBasicSalary,
+            newBasicStipend: dto.newBasicStipend,
           },
         },
       });
@@ -179,39 +183,39 @@ export class SeparationService {
       return result;
     });
 
-    if (dto.newBasicSalary) {
+    if (dto.newBasicStipend) {
       await this.payrollService.salaryIncrement(
         {
           employeeId: dto.employeeId,
-          newBasicSalary: dto.newBasicSalary,
+          newBasicStipend: dto.newBasicStipend,
           effectiveFrom: dto.effectiveDate,
           reason: dto.reason || 'Promotion',
         },
         actingUserId,
       );
 
-      const activeSalary = await this.prisma.salaryRecord.findFirst({
+      const activeStipend = await this.prisma.stipendRecord.findFirst({
         where: { employeeId: dto.employeeId, effectiveTo: null },
         orderBy: { effectiveFrom: 'desc' },
       });
 
-      const previousRecord = await this.prisma.salaryRecord.findFirst({
+      const previousRecord = await this.prisma.stipendRecord.findFirst({
         where: {
           employeeId: dto.employeeId,
           effectiveTo: effectiveDate,
         },
       });
 
-      if (activeSalary && previousRecord) {
+      if (activeStipend && previousRecord) {
         await this.lettersService.generate(
           {
             employeeId: dto.employeeId,
             letterType: LetterType.SALARY_INCREMENT,
             extraFields: {
-              previousSalary: Number(previousRecord.basicSalary),
-              newSalary: dto.newBasicSalary,
+              previousStipend: Number(previousRecord.basicStipend),
+              newStipend: dto.newBasicStipend,
               incrementAmount:
-                dto.newBasicSalary - Number(previousRecord.basicSalary),
+                dto.newBasicStipend - Number(previousRecord.basicStipend),
               effectiveDate: this.formatDate(effectiveDate),
               incrementReason: dto.reason || 'Promotion',
             },

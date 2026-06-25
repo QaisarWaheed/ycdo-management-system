@@ -4,10 +4,12 @@ import {
   AlertTriangle,
   Calendar,
   Clock,
+  Timer,
   UserPlus,
   Users,
   UserX,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -17,6 +19,7 @@ import type { AttendanceLog, Employee, LeaveRecord } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import {
   Table,
   TableBody,
@@ -38,6 +41,7 @@ function StatCard({
   subtitle,
   loading,
   iconBg,
+  to,
 }: {
   label: string
   value: number | string
@@ -45,9 +49,30 @@ function StatCard({
   subtitle?: string
   loading?: boolean
   iconBg: string
+  to?: string
 }) {
+  const navigate = useNavigate()
+
   return (
-    <Card className="border-border shadow-sm">
+    <Card
+      className={cn(
+        'border-border shadow-sm',
+        to && 'cursor-pointer transition-shadow hover:shadow-md',
+      )}
+      role={to ? 'button' : undefined}
+      tabIndex={to ? 0 : undefined}
+      onClick={to ? () => navigate(to) : undefined}
+      onKeyDown={
+        to
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                navigate(to)
+              }
+            }
+          : undefined
+      }
+    >
       <CardContent className="flex items-center gap-4 p-6">
         <div className={`flex h-12 w-12 items-center justify-center rounded-full ${iconBg}`}>
           <Icon className="h-6 w-6" />
@@ -112,9 +137,19 @@ export function DashboardPage() {
     queryFn: () => recruitmentApi.getAll({ status: 'APPLIED' }),
   })
 
+  const { data: relieverSessions = [], isLoading: loadingRelievers } = useQuery({
+    queryKey: ['reliever-sessions', 'today', today],
+    queryFn: () =>
+      attendanceApi.listRelieverSessions({
+        startDate: today.startDate,
+        endDate: today.endDate,
+      }),
+  })
+
   const attendanceLogs = (attendance ?? []) as AttendanceLog[]
   const presentToday = attendanceLogs.filter((l) => l.status === 'PRESENT').length
   const absentToday = attendanceLogs.filter((l) => l.status === 'ABSENT').length
+  const lateToday = attendanceLogs.filter((l) => l.status === 'LATE').length
 
   const recentEmployees = ((employees ?? []) as Employee[]).slice(0, 5)
   const recentLeaves = ((leaves ?? []) as LeaveRecord[]).slice(0, 5)
@@ -145,6 +180,24 @@ export function DashboardPage() {
           loading={loadingAttendance}
           iconBg="bg-red-100 text-red-600"
           subtitle="Marked absent"
+        />
+        <StatCard
+          label="Late Staff Today"
+          value={lateToday}
+          icon={Timer}
+          loading={loadingAttendance}
+          iconBg="bg-amber-100 text-amber-700"
+          subtitle="Marked late"
+          to="/attendance?status=LATE"
+        />
+        <StatCard
+          label="Reliever"
+          value={relieverSessions.length}
+          icon={Clock}
+          loading={loadingRelievers}
+          iconBg="bg-indigo-100 text-indigo-700"
+          subtitle="Sessions today"
+          to="/attendance?tab=reliever"
         />
         <StatCard
           label="Pending Leaves"

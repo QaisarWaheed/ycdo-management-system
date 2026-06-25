@@ -1,6 +1,7 @@
 import { LeaveStatus, LeaveType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsIn,
@@ -66,4 +67,26 @@ export class LeaveQueryDto {
   @Min(1)
   @Max(12)
   month?: number;
+}
+
+export class RequestRelieverDto {
+  @IsUUID()
+  @IsNotEmpty()
+  leaveRecordId: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  relieverId: string;
+}
+
+export class RespondRelieverDto {
+  @IsBoolean()
+  @IsNotEmpty()
+  accept: boolean;
+}
+
+export class HRAssignRelieverDto {
+  @IsUUID()
+  @IsNotEmpty()
+  relieverId: string;
 }

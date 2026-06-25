@@ -353,6 +353,7 @@ function ResolveInquiryDialog({
   const [outcome, setOutcome] = useState<InquiryOutcome>('REINSTATED')
   const [notes, setNotes] = useState('')
   const [extraFields, setExtraFields] = useState<Record<string, string>>({})
+  const [confirmDismissed, setConfirmDismissed] = useState(false)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -372,6 +373,7 @@ function ResolveInquiryDialog({
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
       setNotes('')
       setExtraFields({})
+      setConfirmDismissed(false)
       onOpenChange(false)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -400,6 +402,7 @@ function ResolveInquiryDialog({
               onValueChange={(v) => {
                 setOutcome(v as InquiryOutcome)
                 setExtraFields({})
+                setConfirmDismissed(false)
               }}
             >
               <SelectTrigger>
@@ -424,6 +427,26 @@ function ResolveInquiryDialog({
             <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
               Employee will be reinstated to ACTIVE status.
             </p>
+          )}
+          {outcome === 'DISMISSED' && (
+            <>
+              <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                This will permanently dismiss the employee. Dismissed employees
+                cannot change status and are barred from rejoining.
+              </p>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={confirmDismissed}
+                  onChange={(e) => setConfirmDismissed(e.target.checked)}
+                />
+                <span>
+                  I understand this action is permanent and will dismiss the
+                  employee from the organization.
+                </span>
+              </label>
+            </>
           )}
 
           <div className="space-y-2">
@@ -455,7 +478,9 @@ function ResolveInquiryDialog({
         <DialogFooter>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={mutation.isPending}
+            disabled={
+              mutation.isPending || (outcome === 'DISMISSED' && !confirmDismissed)
+            }
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Resolving...' : 'Resolve Inquiry'}

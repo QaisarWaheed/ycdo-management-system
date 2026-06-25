@@ -1,11 +1,17 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import {
+  EMPTY_EMPLOYEE_FILTERS,
+  EmployeeFiltersBar,
+  employeeFiltersToAttendanceParams,
+} from '@/components/employees/EmployeeFiltersBar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,6 +40,7 @@ import {
   ATTENDANCE_STATUSES,
   type AttendanceLog,
   type AttendanceStatus,
+  type RelieverSession,
 } from '@/types'
 
 const ALL = 'ALL'
@@ -63,44 +70,29 @@ function formatTime(value?: string | null) {
   return format(new Date(value), 'HH:mm')
 }
 
-function DailyLogTab() {
+function formatDuration(minutes: number) {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h > 0) return `${h}h ${m}m`
+  return `${m} min`
+}
+
+function DailyLogTab({ initialStatus = ALL }: { initialStatus?: string }) {
   const queryClient = useQueryClient()
   const today = format(new Date(), 'yyyy-MM-dd')
   const [date, setDate] = useState(today)
-  const [branchId, setBranchId] = useState('')
-  const [departmentId, setDepartmentId] = useState('')
-  const [statusFilter, setStatusFilter] = useState(ALL)
+  const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
+  const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [confirmAbsentees, setConfirmAbsentees] = useState(false)
-
-  const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn: () => branchesApi.getAll(),
-  })
-
-  const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId],
-    queryFn: () => departmentsApi.getAll({ branchId }),
-    enabled: !!branchId,
-  })
-
-  const { data: deptEmployees = [] } = useQuery({
-    queryKey: ['employees', branchId, departmentId],
-    queryFn: () =>
-      employeesApi.getAll({
-        branchId: branchId || undefined,
-        departmentId: departmentId || undefined,
-      }),
-    enabled: !!departmentId,
-  })
 
   const queryParams = useMemo(
     () => ({
       startDate: date,
       endDate: date,
-      branchId: branchId || undefined,
       status: statusFilter !== ALL ? statusFilter : undefined,
+      ...employeeFiltersToAttendanceParams(employeeFilters),
     }),
-    [date, branchId, statusFilter],
+    [date, statusFilter, employeeFilters],
   )
 
   const { data: logs = [], isLoading } = useQuery({
@@ -108,22 +100,15 @@ function DailyLogTab() {
     queryFn: () => attendanceApi.getAll(queryParams),
   })
 
-  const filteredLogs = useMemo(() => {
-    let result = logs as AttendanceLog[]
-    if (departmentId) {
-      const ids = new Set(deptEmployees.map((e) => e.id))
-      result = result.filter((l) => l.employeeId && ids.has(l.employeeId))
-    }
-    return result
-  }, [logs, departmentId, deptEmployees])
+  const attendanceLogs = logs as AttendanceLog[]
 
   const summary = useMemo(() => {
-    const total = filteredLogs.length
-    const present = filteredLogs.filter((l) => l.status === 'PRESENT').length
-    const absent = filteredLogs.filter((l) => l.status === 'ABSENT').length
-    const late = filteredLogs.filter((l) => l.status === 'LATE').length
+    const total = attendanceLogs.length
+    const present = attendanceLogs.filter((l) => l.status === 'PRESENT').length
+    const absent = attendanceLogs.filter((l) => l.status === 'ABSENT').length
+    const late = attendanceLogs.filter((l) => l.status === 'LATE').length
     return { total, present, absent, late }
-  }, [filteredLogs])
+  }, [attendanceLogs])
 
   const markAbsenteesMutation = useMutation({
     mutationFn: () => attendanceApi.markAbsentees(date),
@@ -157,51 +142,7 @@ function DailyLogTab() {
           </div>
 
           <div className="space-y-1">
-            <Label>Branch</Label>
-            <Select
-              value={branchId || 'all'}
-              onValueChange={(v) => {
-                setBranchId(v === 'all' ? '' : v)
-                setDepartmentId('')
-              }}
-            >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="All Branches" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Branches</SelectItem>
-                {branches.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Department</Label>
-            <Select
-              value={departmentId || 'all'}
-              onValueChange={(v) => setDepartmentId(v === 'all' ? '' : v)}
-              disabled={!branchId}
-            >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="All Departments" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Departments</SelectItem>
-                {departments.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Status</Label>
+            <Label>Attendance Status</Label>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue />
@@ -224,6 +165,13 @@ function DailyLogTab() {
         >
           Mark Absentees
         </Button>
+      </div>
+
+      <div className="rounded-lg border border-border bg-white p-4">
+        <EmployeeFiltersBar
+          filters={employeeFilters}
+          onChange={setEmployeeFilters}
+        />
       </div>
 
       <div className="rounded-lg border border-border bg-white">
@@ -252,14 +200,14 @@ function DailyLogTab() {
                   ))}
                 </TableRow>
               ))
-            ) : filteredLogs.length === 0 ? (
+            ) : attendanceLogs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} className="h-32 text-center text-text-secondary">
                   No attendance records for this date
                 </TableCell>
               </TableRow>
             ) : (
-              filteredLogs.map((log) => (
+              attendanceLogs.map((log) => (
                 <TableRow key={log.id}>
                   <TableCell className="font-mono text-sm">
                     {log.employee?.employeeCode ?? '—'}
@@ -313,7 +261,7 @@ function DailyLogTab() {
           </TableBody>
         </Table>
 
-        {!isLoading && filteredLogs.length > 0 && (
+        {!isLoading && attendanceLogs.length > 0 && (
           <div className="border-t border-border px-4 py-3 text-sm text-text-secondary">
             Total: {summary.total} | Present: {summary.present} | Absent:{' '}
             {summary.absent} | Late: {summary.late}
@@ -683,25 +631,174 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
   )
 }
 
+function RelieverSessionsTab() {
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const [date, setDate] = useState(today)
+  const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
+
+  const queryParams = useMemo(
+    () => ({
+      startDate: date,
+      endDate: date,
+      ...employeeFiltersToAttendanceParams(employeeFilters),
+    }),
+    [date, employeeFilters],
+  )
+
+  const { data: sessions = [], isLoading } = useQuery({
+    queryKey: ['reliever-sessions', queryParams],
+    queryFn: () => attendanceApi.listRelieverSessions(queryParams),
+  })
+
+  const activeCount = (sessions as RelieverSession[]).filter(
+    (s) => !s.checkOut,
+  ).length
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <Label>Date</Label>
+        <Input
+          type="date"
+          className="w-[160px]"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </div>
+
+      <div className="rounded-lg border border-border bg-white p-4">
+        <EmployeeFiltersBar
+          filters={employeeFilters}
+          onChange={setEmployeeFilters}
+        />
+      </div>
+
+      <p className="text-sm text-text-secondary">
+        {sessions.length} session{sessions.length === 1 ? '' : 's'}
+        {activeCount > 0 ? ` · ${activeCount} active` : ''}
+      </p>
+
+      <div className="rounded-lg border border-border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Code</TableHead>
+              <TableHead>Employee</TableHead>
+              <TableHead>Branch</TableHead>
+              <TableHead>Check In</TableHead>
+              <TableHead>Check Out</TableHead>
+              <TableHead>Duration</TableHead>
+              <TableHead>Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              [...Array(5)].map((_, i) => (
+                <TableRow key={i}>
+                  {[...Array(7)].map((__, j) => (
+                    <TableCell key={j}>
+                      <Skeleton className="h-5 w-full" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : sessions.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={7}
+                  className="py-8 text-center text-text-secondary"
+                >
+                  No reliever sessions for this date
+                </TableCell>
+              </TableRow>
+            ) : (
+              (sessions as RelieverSession[]).map((session) => (
+                <TableRow key={session.id}>
+                  <TableCell className="font-medium">
+                    {session.employee?.employeeCode ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    {session.employee
+                      ? `${session.employee.firstName} ${session.employee.lastName}`
+                      : '—'}
+                  </TableCell>
+                  <TableCell>{session.branch?.name ?? '—'}</TableCell>
+                  <TableCell>{formatTime(session.checkIn)}</TableCell>
+                  <TableCell>{formatTime(session.checkOut)}</TableCell>
+                  <TableCell>
+                    {session.checkOut
+                      ? formatDuration(session.totalMinutes)
+                      : '—'}
+                  </TableCell>
+                  <TableCell>
+                    {!session.checkOut ? (
+                      <Badge
+                        variant="outline"
+                        className="border-indigo-200 bg-indigo-100 text-indigo-800"
+                      >
+                        Active
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="border-green-200 bg-green-100 text-green-800"
+                      >
+                        Completed
+                      </Badge>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  )
+}
+
 export function AttendancePage() {
-  const [tab, setTab] = useState('daily')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('tab') || 'daily'
+  const statusParam = searchParams.get('status') || ALL
+
+  const handleTabChange = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === 'daily') {
+      next.delete('tab')
+    } else {
+      next.set('tab', value)
+    }
+    setSearchParams(next, { replace: true })
+  }
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-text-primary">Attendance</h1>
 
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="daily">Daily Log</TabsTrigger>
+          <TabsTrigger value="reliever">Reliever</TabsTrigger>
           <TabsTrigger value="manual">Mark Manual</TabsTrigger>
         </TabsList>
 
         <TabsContent value="daily" className="mt-4">
-          <DailyLogTab />
+          <DailyLogTab initialStatus={statusParam} />
+        </TabsContent>
+
+        <TabsContent value="reliever" className="mt-4">
+          <RelieverSessionsTab />
         </TabsContent>
 
         <TabsContent value="manual" className="mt-4">
-          <BulkManualTab onSuccess={() => setTab('daily')} />
+          <BulkManualTab
+            onSuccess={() => {
+              const next = new URLSearchParams(searchParams)
+              next.delete('tab')
+              setSearchParams(next, { replace: true })
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>

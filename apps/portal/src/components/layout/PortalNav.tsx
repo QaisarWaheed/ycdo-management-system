@@ -19,7 +19,7 @@ const navItems = [
   { to: '/attendance', label: 'Attendance', icon: Calendar },
   { to: '/leave', label: 'Leave', icon: Wallet },
   { to: '/payroll', label: 'Payroll', icon: Receipt },
-  { to: '/outstation', label: 'Outstation', icon: MapPin },
+  { to: '/branch-change-request', label: 'Branch Change', icon: MapPin },
   { to: '/letters', label: 'Letters', icon: FileText, showAckBadge: true },
   { to: '/profile', label: 'Profile', icon: User },
 ]

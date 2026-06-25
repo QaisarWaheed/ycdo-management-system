@@ -18,8 +18,11 @@ export type EmployeeStatus =
   | 'TERMINATED'
   | 'RESIGNED'
   | 'ON_LEAVE'
+  | 'DISMISSED'
 
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER'
+
+export const GENDERS: Gender[] = ['MALE', 'FEMALE', 'OTHER']
 
 export interface Branch {
   id: string
@@ -108,6 +111,12 @@ export interface RelieverSession {
   checkOut?: string | null
   totalMinutes: number
   date: string
+  employee?: {
+    firstName: string
+    lastName: string
+    employeeCode: string
+  }
+  branch?: { name: string }
 }
 
 export type BroadcastTarget =
@@ -206,7 +215,7 @@ export interface Employee {
   shift?: Shift | null
   shiftId?: string | null
   employmentHistory?: EmploymentHistory[]
-  salaryRecords?: SalaryRecord[]
+  stipendRecords?: StipendRecord[]
   documents?: EmployeeDocument[]
   academicQualifications?: AcademicQualification[]
   previousEmployments?: PreviousEmployment[]
@@ -244,9 +253,13 @@ export interface PreviousEmployment {
   createdAt: string
 }
 
-export type OutstationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED'
+export type BranchChangeRequestStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'COMPLETED'
 
-export interface OutstationRequest {
+export interface BranchChangeRequest {
   id: string
   employeeId: string
   district: string
@@ -254,7 +267,7 @@ export interface OutstationRequest {
   startDate: string
   endDate: string
   duration: number
-  status: OutstationStatus
+  status: BranchChangeRequestStatus
   approvedBy?: string | null
   approvedAt?: string | null
   notes?: string | null
@@ -307,9 +320,9 @@ export interface EmploymentHistory {
   department?: { name: string }
 }
 
-export interface SalaryRecord {
+export interface StipendRecord {
   id: string
-  basicSalary: number | string
+  basicStipend: number | string
   effectiveFrom: string
   effectiveTo?: string | null
 }
@@ -342,15 +355,58 @@ export interface Letter {
   }
 }
 
+export type LeaveStatus =
+  | 'PENDING'
+  | 'RELIEVER_PENDING'
+  | 'RELIEVER_CONFIRMED'
+  | 'RELIEVER_REJECTED'
+  | 'APPROVED'
+  | 'REJECTED'
+
+export type RelieverRequestStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'AUTO_REJECTED'
+  | 'HR_ASSIGNED'
+
+export interface RelieverRequest {
+  id: string
+  leaveRecordId: string
+  requestedById: string
+  relieverId: string
+  status: RelieverRequestStatus
+  requestedAt: string
+  respondedAt?: string | null
+  autoRejectedAt?: string | null
+  hrAssigned: boolean
+  hrAssignedBy?: string | null
+  hrAssignedAt?: string | null
+  notes?: string | null
+  createdAt: string
+  reliever?: {
+    firstName: string
+    lastName: string
+    employeeCode: string
+  }
+  requestedBy?: {
+    firstName: string
+    lastName: string
+    employeeCode: string
+  }
+}
+
 export interface LeaveRecord {
   id: string
+  employeeId?: string
   startDate: string
   endDate: string
   totalDays: number
-  status: string
+  status: LeaveStatus
   reason?: string | null
   approvedBy?: string | null
   createdAt?: string
+  relieverRequest?: RelieverRequest | null
   employee?: {
     firstName: string
     lastName: string
@@ -413,15 +469,15 @@ export interface PayrollEntry {
   id: string
   month: number
   year: number
-  basicSalary: number | string
+  basicStipend: number | string
   totalAllowances: number | string
   totalDeductions: number | string
-  netSalary: number | string
+  netStipend: number | string
   status: PayrollStatus
   deductions?: PayrollDeduction[]
   allowances?: PayrollAllowance[]
   totalRelieverHours?: number
-  salaryRecord?: {
+  stipendRecord?: {
     employee?: {
       id: string
       firstName: string
@@ -437,14 +493,55 @@ export interface PayrollSummary {
   month: number
   year: number
   totalEmployees: number
-  totalBasicSalary: number
+  totalBasicStipend: number
   totalDeductions: number
   totalAllowances: number
-  totalNetSalary: number
+  totalNetStipend: number
   byStatus: {
     PENDING: number
     PROCESSED: number
     PAID: number
+  }
+}
+
+export type StipendStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'AUTO_ACCEPTED'
+
+export interface StipendReceipt {
+  id: string
+  employeeId: string
+  payrollEntryId: string
+  month: number
+  year: number
+  amount: number | string
+  status: StipendStatus
+  acceptedAt?: string | null
+  rejectedAt?: string | null
+  rejectionReason?: string | null
+  autoAcceptedAt?: string | null
+  generatedAt: string
+  deadlineAt: string
+  employee?: {
+    firstName: string
+    lastName: string
+    employeeCode: string
+    currentBranch?: { name: string }
+  }
+}
+
+export interface Incentive {
+  id: string
+  employeeId: string
+  amount: number | string
+  reason: string
+  addedBy: string
+  month: number
+  year: number
+  createdAt: string
+  employee?: {
+    firstName: string
+    lastName: string
+    employeeCode: string
+    currentBranch?: { name: string }
   }
 }
 
@@ -647,6 +744,16 @@ export const EMPLOYEE_STATUSES: EmployeeStatus[] = [
   'TERMINATED',
   'RESIGNED',
   'ON_LEAVE',
+  'DISMISSED',
+]
+
+export const LEAVE_STATUSES: LeaveStatus[] = [
+  'PENDING',
+  'RELIEVER_PENDING',
+  'RELIEVER_CONFIRMED',
+  'RELIEVER_REJECTED',
+  'APPROVED',
+  'REJECTED',
 ]
 
 export const DOCUMENT_TYPES: DocumentType[] = [

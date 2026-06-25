@@ -1,11 +1,19 @@
 import api from '../axios'
 import type { Employee } from '@/types'
 
+export interface CreateEmployeePayload extends Record<string, unknown> {
+  basicStipend: number
+}
+
 export const employeesApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, Employee[]>('/employees', { params }),
+  getFilterOptions: () =>
+    api.get<unknown, { designations: string[]; districts: string[] }>(
+      '/employees/filter-options',
+    ),
   getOne: (id: string) => api.get<unknown, Employee>(`/employees/${id}`),
-  create: (data: Record<string, unknown>) =>
+  create: (data: CreateEmployeePayload) =>
     api.post<unknown, Employee>('/employees', data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch(`/employees/${id}`, data),

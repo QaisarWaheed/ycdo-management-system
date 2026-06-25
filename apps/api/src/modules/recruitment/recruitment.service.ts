@@ -212,10 +212,10 @@ export class RecruitmentService {
         },
       });
 
-      await tx.salaryRecord.create({
+      await tx.stipendRecord.create({
         data: {
           employeeId: employee.id,
-          basicSalary: dto.selectedSalary,
+          basicStipend: dto.selectedSalary,
           effectiveFrom: joiningDate,
         },
       });

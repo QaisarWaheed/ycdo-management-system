@@ -1,4 +1,4 @@
-import { AttendanceStatus } from '@prisma/client';
+import { AttendanceStatus, EmployeeStatus, Gender } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
@@ -84,10 +84,80 @@ export class AttendanceQueryDto {
   @Type(() => Number)
   @IsNumber()
   year?: number;
+
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  shiftId?: string;
+
+  @IsOptional()
+  @IsEnum(EmployeeStatus)
+  employeeStatus?: EmployeeStatus;
+
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  @IsOptional()
+  @IsString()
+  designation?: string;
+
+  @IsOptional()
+  @IsString()
+  district?: string;
 }
 
 export class MarkAbsenteesDto {
   @IsDateString()
   @IsNotEmpty()
   date: string;
+}
+
+export class RelieverSessionsQueryDto {
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  shiftId?: string;
+
+  @IsOptional()
+  @IsEnum(EmployeeStatus)
+  employeeStatus?: EmployeeStatus;
+
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  @IsOptional()
+  @IsString()
+  designation?: string;
+
+  @IsOptional()
+  @IsString()
+  district?: string;
 }

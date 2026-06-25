@@ -262,7 +262,7 @@ function AcceptCandidateDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Basic Salary *</Label>
+            <Label>Basic Stipend *</Label>
             <PKRInput value={salary} onChange={setSalary} />
           </div>
           <div className="space-y-2">
@@ -522,7 +522,7 @@ function AcceptedTab({
           <TableHead>Employee Code</TableHead>
           <TableHead>Branch</TableHead>
           <TableHead>Designation</TableHead>
-          <TableHead>Salary</TableHead>
+          <TableHead>Stipend</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Actions</TableHead>
         </TableRow>

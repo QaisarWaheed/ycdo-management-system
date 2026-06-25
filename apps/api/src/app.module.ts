@@ -24,6 +24,8 @@ import { QualificationsModule } from './modules/qualifications/qualifications.mo
 import { RecruitmentModule } from './modules/recruitment/recruitment.module';
 import { SeparationModule } from './modules/separation/separation.module';
 import { ShiftsModule } from './modules/shifts/shifts.module';
+import { StipendReceiptsModule } from './modules/stipend-receipts/stipend-receipts.module';
+import { IncentivesModule } from './modules/incentives/incentives.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -56,6 +58,8 @@ import { PrismaModule } from './prisma/prisma.module';
     PreviousEmploymentModule,
     OutstationModule,
     AcknowledgementsModule,
+    StipendReceiptsModule,
+    IncentivesModule,
   ],
 })
 export class AppModule {}

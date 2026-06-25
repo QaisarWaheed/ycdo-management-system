@@ -40,7 +40,7 @@ export class PromotionDto {
   @Type(() => Number)
   @IsNumber()
   @IsPositive()
-  newBasicSalary?: number;
+  newBasicStipend?: number;
 
   @IsOptional()
   @IsString()

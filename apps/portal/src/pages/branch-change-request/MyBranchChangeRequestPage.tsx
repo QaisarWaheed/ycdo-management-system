@@ -5,7 +5,7 @@ import { differenceInCalendarDays, format } from 'date-fns'
 import { Plus } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { outstationApi } from '@/api/endpoints/outstation'
+import { branchChangeRequestApi } from '@/api/endpoints/branchChangeRequest'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -36,9 +36,9 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
-import type { OutstationRequest } from '@/types'
+import type { BranchChangeRequest } from '@/types'
 
-function OutstationStatusBadge({ status }: { status: string }) {
+function BranchChangeStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
     APPROVED: 'bg-green-100 text-green-800 border-green-200',
@@ -108,7 +108,7 @@ function NewRequestDialog({
 
   const mutation = useMutation({
     mutationFn: (values: RequestFormValues) =>
-      outstationApi.create({
+      branchChangeRequestApi.create({
         employeeId,
         district: values.district,
         purpose: values.purpose,
@@ -117,8 +117,8 @@ function NewRequestDialog({
         notes: values.notes || undefined,
       }),
     onSuccess: () => {
-      toast({ title: 'Outstation request submitted' })
-      queryClient.invalidateQueries({ queryKey: ['outstation'] })
+      toast({ title: 'Branch change request submitted' })
+      queryClient.invalidateQueries({ queryKey: ['branch-change-request'] })
       form.reset()
       onOpenChange(false)
     },
@@ -136,7 +136,7 @@ function NewRequestDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New Outstation Request</DialogTitle>
+          <DialogTitle>New Branch Change Request</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -166,7 +166,7 @@ function NewRequestDialog({
                   <FormLabel>Purpose</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Describe the purpose of your outstation visit..."
+                      placeholder="Describe the purpose of your branch change request..."
                       rows={3}
                       {...field}
                     />
@@ -253,20 +253,20 @@ function NewRequestDialog({
   )
 }
 
-export function MyOutstationPage() {
+export function MyBranchChangeRequestPage() {
   const { user } = useAuth()
   const employeeId = user?.employeeId ?? ''
   const [dialogOpen, setDialogOpen] = useState(false)
 
   const { data: requests = [], isLoading } = useQuery({
-    queryKey: ['outstation', employeeId],
-    queryFn: () => outstationApi.getAll({ employeeId }),
+    queryKey: ['branch-change-request', employeeId],
+    queryFn: () => branchChangeRequestApi.getMy({ employeeId }),
     enabled: !!employeeId,
   })
 
   const sorted = useMemo(
     () =>
-      [...(requests as OutstationRequest[])].sort(
+      [...(requests as BranchChangeRequest[])].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       ),
@@ -278,10 +278,10 @@ export function MyOutstationPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">
-            My Outstation Requests
+            My Branch Change Requests
           </h1>
           <p className="text-sm text-text-secondary">
-            View and submit outstation travel requests
+            View and submit branch change requests
           </p>
         </div>
         <Button
@@ -323,7 +323,7 @@ export function MyOutstationPage() {
                   colSpan={7}
                   className="py-8 text-center text-text-secondary"
                 >
-                  No outstation requests yet
+                  No branch change requests yet
                 </TableCell>
               </TableRow>
             ) : (
@@ -343,7 +343,7 @@ export function MyOutstationPage() {
                     {req.duration} day{req.duration !== 1 ? 's' : ''}
                   </TableCell>
                   <TableCell>
-                    <OutstationStatusBadge status={req.status} />
+                    <BranchChangeStatusBadge status={req.status} />
                   </TableCell>
                   <TableCell>
                     {format(new Date(req.createdAt), 'dd/MM/yyyy')}

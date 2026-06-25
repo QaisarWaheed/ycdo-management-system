@@ -134,7 +134,7 @@ export class CreateEmployeeDto {
   @IsNumber()
   @IsPositive()
   @IsNotEmpty()
-  basicSalary: number;
+  basicStipend: number;
 }
 
 export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {}
@@ -172,4 +172,42 @@ export class TransferDto {
   @IsDateString()
   @IsNotEmpty()
   effectiveDate: string;
+}
+
+export class EmployeeQueryDto {
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  shiftId?: string;
+
+  @IsOptional()
+  @IsEnum(EmployeeStatus)
+  status?: EmployeeStatus;
+
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  @IsOptional()
+  @IsString()
+  designation?: string;
+
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
 }

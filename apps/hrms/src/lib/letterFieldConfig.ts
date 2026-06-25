@@ -48,8 +48,8 @@ export const LETTER_FIELD_CONFIG: Partial<
     { key: 'jobDescription', label: 'Job Description', type: 'textarea' },
   ],
   SALARY_INCREMENT: [
-    { key: 'previousSalary', label: 'Previous Salary', type: 'number' },
-    { key: 'newSalary', label: 'New Salary', type: 'number' },
+    { key: 'previousSalary', label: 'Previous Stipend', type: 'number' },
+    { key: 'newSalary', label: 'New Stipend', type: 'number' },
     { key: 'effectiveDate', label: 'Effective Date', type: 'date' },
     { key: 'incrementReason', label: 'Increment Reason', type: 'textarea' },
   ],

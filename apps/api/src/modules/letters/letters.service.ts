@@ -22,7 +22,7 @@ export class LettersService {
       include: {
         currentBranch: { select: { name: true } },
         currentDepartment: { select: { name: true } },
-        salaryRecords: {
+        stipendRecords: {
           orderBy: { effectiveFrom: 'desc' },
           take: 1,
         },

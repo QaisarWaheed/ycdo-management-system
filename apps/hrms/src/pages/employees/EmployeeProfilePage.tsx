@@ -21,6 +21,8 @@ import { leaveApi } from '@/api/endpoints/leave'
 import { lettersApi } from '@/api/endpoints/letters'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
+import { incentivesApi } from '@/api/endpoints/incentives'
+import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
@@ -63,10 +65,11 @@ import type {
   DocumentType,
   EmployeeDocument,
   EmploymentHistory,
+  Incentive,
   Letter,
   PreviousEmployment,
   QualType,
-  SalaryRecord,
+  StipendRecord,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://187.127.115.103:3000'
@@ -610,6 +613,7 @@ export function EmployeeProfilePage() {
   const [transferOpen, setTransferOpen] = useState(false)
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
   const [prevEmpOpen, setPrevEmpOpen] = useState(false)
+  const [incentiveOpen, setIncentiveOpen] = useState(false)
   const [expandedPrevEmpId, setExpandedPrevEmpId] = useState<string | null>(
     null,
   )
@@ -671,6 +675,23 @@ export function EmployeeProfilePage() {
     queryFn: () => previousEmploymentApi.getByEmployee(id),
     enabled: !!id,
   })
+
+  const { data: incentives = [], isLoading: loadingIncentives } = useQuery({
+    queryKey: ['incentives', id],
+    queryFn: () => incentivesApi.getByEmployee(id),
+    enabled: !!id,
+  })
+
+  const canAddIncentive =
+    user?.role === 'SUPER_ADMIN' ||
+    user?.role === 'HR_MANAGER' ||
+    user?.role === 'HR_ADMIN_MANAGER' ||
+    user?.role === 'ADMIN_OFFICER'
+
+  const incentiveTotal = (incentives as Incentive[]).reduce(
+    (sum, i) => sum + Number(i.amount),
+    0,
+  )
 
   const deletePrevEmpMutation = useMutation({
     mutationFn: (recordId: string) => previousEmploymentApi.delete(recordId),
@@ -752,7 +773,7 @@ export function EmployeeProfilePage() {
   }
 
   const history = (employee.employmentHistory ?? []) as EmploymentHistory[]
-  const salaries = (employee.salaryRecords ?? []) as SalaryRecord[]
+  const stipends = (employee.stipendRecords ?? []) as StipendRecord[]
   const documents = (employee.documents ?? []) as EmployeeDocument[]
   const overtimeHours = ((attendanceSummary?.overtimeMinutes ?? 0) / 60).toFixed(1)
 
@@ -861,6 +882,7 @@ export function EmployeeProfilePage() {
           <TabsTrigger value="disciplinary">Disciplinary</TabsTrigger>
           <TabsTrigger value="qualifications">Qualifications</TabsTrigger>
           <TabsTrigger value="previous-employment">Previous Employment</TabsTrigger>
+          <TabsTrigger value="incentives">Incentives</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -1005,29 +1027,29 @@ export function EmployeeProfilePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Salary History</CardTitle>
+              <CardTitle className="text-lg">Stipend History</CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Basic Salary</TableHead>
+                    <TableHead>Basic Stipend</TableHead>
                     <TableHead>Effective From</TableHead>
                     <TableHead>Effective To</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {salaries.length === 0 ? (
+                  {stipends.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={3} className="text-text-secondary">
-                        No salary records
+                        No stipend records
                       </TableCell>
                     </TableRow>
                   ) : (
-                    salaries.map((rec, i) => (
+                    stipends.map((rec, i) => (
                       <TableRow key={rec.id}>
                         <TableCell>
-                          PKR {Number(rec.basicSalary).toLocaleString()}
+                          PKR {Number(rec.basicStipend).toLocaleString()}
                           {i === 0 && !rec.effectiveTo && (
                             <Badge className="ml-2 bg-accent/20 text-accent-dark">
                               Current
@@ -1597,7 +1619,89 @@ export function EmployeeProfilePage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="incentives" className="space-y-4">
+          {canAddIncentive && (
+            <Button
+              className="bg-primary hover:bg-primary-dark"
+              onClick={() => setIncentiveOpen(true)}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Incentive
+            </Button>
+          )}
+          <Card>
+            <CardContent className="p-0">
+              {loadingIncentives ? (
+                <div className="space-y-2 p-4">
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Month/Year</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Added By</TableHead>
+                      <TableHead>Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(incentives as Incentive[]).length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-text-secondary">
+                          No incentives recorded
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      <>
+                        {(incentives as Incentive[]).map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell>
+                              {item.month}/{item.year}
+                            </TableCell>
+                            <TableCell className="font-medium text-green-600">
+                              PKR {Number(item.amount).toLocaleString('en-PK')}
+                            </TableCell>
+                            <TableCell className="max-w-[240px] truncate" title={item.reason}>
+                              {item.reason}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {item.addedBy.slice(0, 8)}…
+                            </TableCell>
+                            <TableCell>
+                              {format(new Date(item.createdAt), 'dd/MM/yyyy')}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow className="bg-surface font-semibold">
+                          <TableCell>Total</TableCell>
+                          <TableCell className="text-green-600">
+                            PKR {incentiveTotal.toLocaleString('en-PK')}
+                          </TableCell>
+                          <TableCell colSpan={3} />
+                        </TableRow>
+                      </>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <AddIncentiveDialog
+        open={incentiveOpen}
+        onOpenChange={setIncentiveOpen}
+        defaultEmployeeId={id}
+        onSuccess={() =>
+          queryClient.invalidateQueries({ queryKey: ['incentives', id] })
+        }
+      />
 
       <AddPreviousEmploymentDialog
         open={prevEmpOpen}

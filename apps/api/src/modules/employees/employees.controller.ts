@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { EmployeeStatus, UserRole } from '@prisma/client';
+import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
@@ -17,6 +17,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import {
   ChangeStatusDto,
   CreateEmployeeDto,
+  EmployeeQueryDto,
   TransferDto,
   UpdateEmployeeDto,
 } from './employees.dto';
@@ -40,18 +41,19 @@ export class EmployeesController {
     UserRole.BRANCH_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  findAll(
-    @Query('branchId') branchId?: string,
-    @Query('departmentId') departmentId?: string,
-    @Query('status') status?: EmployeeStatus,
-    @Query('search') search?: string,
-  ) {
-    return this.employeesService.findAll({
-      branchId,
-      departmentId,
-      status,
-      search,
-    });
+  findAll(@Query() query: EmployeeQueryDto) {
+    return this.employeesService.findAll(query);
+  }
+
+  @Get('filter-options')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  getFilterOptions() {
+    return this.employeesService.getFilterOptions();
   }
 
   @Get(':id')

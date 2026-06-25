@@ -9,7 +9,8 @@ import {
 } from '@/pages/employees'
 import { AttendancePage } from '@/pages/attendance/AttendancePage'
 import { LeavePage } from '@/pages/leave/LeavePage'
-import { OutstationPage } from '@/pages/outstation/OutstationPage'
+import { BranchChangeRequestPage } from '@/pages/branch-change-request/BranchChangeRequestPage'
+import { IncentivesPage } from '@/pages/incentives/IncentivesPage'
 import { PayrollPage } from '@/pages/payroll/PayrollPage'
 import { ReportsPage } from '@/pages/reports/ReportsPage'
 import { LettersPage } from '@/pages/letters/LettersPage'
@@ -73,10 +74,19 @@ export default function App() {
         }
       />
       <Route
-        path="/outstation"
+        path="/branch-change-request"
         element={
           <ProtectedRoute>
-            <OutstationPage />
+            <BranchChangeRequestPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/outstation" element={<Navigate to="/branch-change-request" replace />} />
+      <Route
+        path="/incentives"
+        element={
+          <ProtectedRoute>
+            <IncentivesPage />
           </ProtectedRoute>
         }
       />

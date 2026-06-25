@@ -21,6 +21,7 @@ import {
   BiometricPushDto,
   ManualAttendanceDto,
   MarkAbsenteesDto,
+  RelieverSessionsQueryDto,
 } from './attendance.dto';
 import { AttendanceService } from './attendance.service';
 
@@ -65,6 +66,18 @@ export class AttendanceController {
       throw new ForbiddenException('Access denied');
     }
     return this.attendanceService.getActiveTimer(employeeId);
+  }
+
+  @Get('reliever-sessions')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  findAllRelieverSessions(@Query() query: RelieverSessionsQueryDto) {
+    return this.attendanceService.findAllRelieverSessions(query);
   }
 
   @Get('reliever/:employeeId')

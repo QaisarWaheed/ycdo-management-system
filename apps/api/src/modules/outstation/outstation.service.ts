@@ -24,7 +24,7 @@ const employeeInclude = {
       currentBranch: { select: { name: true } },
     },
   },
-} satisfies Prisma.OutstationRequestInclude;
+} satisfies Prisma.BranchChangeRequestInclude;
 
 @Injectable()
 export class OutstationService {
@@ -57,7 +57,7 @@ export class OutstationService {
     const duration = this.calculateDuration(startDate, endDate);
 
     const request = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.outstationRequest.create({
+      const created = await tx.branchChangeRequest.create({
         data: {
           employeeId: dto.employeeId,
           district: dto.district,
@@ -85,7 +85,7 @@ export class OutstationService {
   }
 
   findAll(query: OutstationQueryDto) {
-    const where: Prisma.OutstationRequestWhereInput = {};
+    const where: Prisma.BranchChangeRequestWhereInput = {};
 
     if (query.employeeId) {
       where.employeeId = query.employeeId;
@@ -111,7 +111,7 @@ export class OutstationService {
       };
     }
 
-    return this.prisma.outstationRequest.findMany({
+    return this.prisma.branchChangeRequest.findMany({
       where,
       include: employeeInclude,
       orderBy: { createdAt: 'desc' },
@@ -119,7 +119,7 @@ export class OutstationService {
   }
 
   async findOne(id: string) {
-    const request = await this.prisma.outstationRequest.findUnique({
+    const request = await this.prisma.branchChangeRequest.findUnique({
       where: { id },
       include: employeeInclude,
     });
@@ -147,7 +147,7 @@ export class OutstationService {
       );
     }
 
-    const data: Prisma.OutstationRequestUpdateInput = {
+    const data: Prisma.BranchChangeRequestUpdateInput = {
       status: dto.status,
     };
 
@@ -163,7 +163,7 @@ export class OutstationService {
     };
 
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.outstationRequest.update({
+      const updated = await tx.branchChangeRequest.update({
         where: { id },
         data,
         include: employeeInclude,
@@ -184,7 +184,7 @@ export class OutstationService {
         data: {
           userId: actingUserId,
           action: 'OUTSTATION_STATUS_UPDATED',
-          entity: 'OutstationRequest',
+          entity: 'BranchChangeRequest',
           entityId: id,
           changes: {
             status: dto.status,
@@ -198,7 +198,7 @@ export class OutstationService {
   }
 
   async getDistrictSummary() {
-    const requests = await this.prisma.outstationRequest.findMany({
+    const requests = await this.prisma.branchChangeRequest.findMany({
       select: { district: true, status: true },
     });
 

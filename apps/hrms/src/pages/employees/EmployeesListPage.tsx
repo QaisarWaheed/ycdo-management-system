@@ -3,10 +3,13 @@ import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { MoreHorizontal, Plus, Search, Users } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import { branchesApi } from '@/api/endpoints/branches'
-import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
+import {
+  EMPTY_EMPLOYEE_FILTERS,
+  EmployeeFiltersBar,
+  employeeFiltersToParams,
+} from '@/components/employees/EmployeeFiltersBar'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
@@ -19,13 +22,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -36,17 +32,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useDebounce } from '@/hooks/useDebounce'
-import type { EmployeeStatus } from '@/types'
 
 const PAGE_SIZE = 20
-const ALL_STATUS = 'ALL'
 
 export function EmployeesListPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
-  const [branchId, setBranchId] = useState('')
-  const [departmentId, setDepartmentId] = useState('')
-  const [status, setStatus] = useState<string>(ALL_STATUS)
+  const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
   const [page, setPage] = useState(0)
 
   const [letterDialog, setLetterDialog] = useState<string | null>(null)
@@ -59,12 +51,10 @@ export function EmployeesListPage() {
 
   const filters = useMemo(
     () => ({
+      ...employeeFiltersToParams(employeeFilters),
       search: debouncedSearch || undefined,
-      branchId: branchId || undefined,
-      departmentId: departmentId || undefined,
-      status: status !== ALL_STATUS ? status : undefined,
     }),
-    [debouncedSearch, branchId, departmentId, status],
+    [debouncedSearch, employeeFilters],
   )
 
   const { data: employees = [], isLoading } = useQuery({
@@ -72,31 +62,17 @@ export function EmployeesListPage() {
     queryFn: () => employeesApi.getAll(filters),
   })
 
-  const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn: () => branchesApi.getAll(),
-  })
-
-  const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId],
-    queryFn: () => departmentsApi.getAll({ branchId }),
-    enabled: !!branchId,
-  })
-
   const totalPages = Math.max(1, Math.ceil(employees.length / PAGE_SIZE))
   const paginated = employees.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   const clearFilters = () => {
     setSearch('')
-    setBranchId('')
-    setDepartmentId('')
-    setStatus(ALL_STATUS)
+    setEmployeeFilters(EMPTY_EMPLOYEE_FILTERS)
     setPage(0)
   }
 
-  const handleBranchChange = (value: string) => {
-    setBranchId(value === 'all' ? '' : value)
-    setDepartmentId('')
+  const handleFiltersChange = (next: typeof employeeFilters) => {
+    setEmployeeFilters(next)
     setPage(0)
   }
 
@@ -113,8 +89,8 @@ export function EmployeesListPage() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-white p-4">
-        <div className="relative min-w-[200px] flex-1">
+      <div className="space-y-4 rounded-lg border border-border bg-white p-4">
+        <div className="relative min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
           <Input
             placeholder="Search by name, code, CNIC..."
@@ -127,72 +103,16 @@ export function EmployeesListPage() {
           />
         </div>
 
-        <Select value={branchId || 'all'} onValueChange={handleBranchChange}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Branch" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Branches</SelectItem>
-            {branches.map((b) => (
-              <SelectItem key={b.id} value={b.id}>
-                {b.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <EmployeeFiltersBar
+          filters={employeeFilters}
+          onChange={handleFiltersChange}
+        />
 
-        <Select
-          value={departmentId || 'all'}
-          onValueChange={(v) => {
-            setDepartmentId(v === 'all' ? '' : v)
-            setPage(0)
-          }}
-          disabled={!branchId}
-        >
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Department" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Departments</SelectItem>
-            {departments.map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                {d.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={status}
-          onValueChange={(v) => {
-            setStatus(v)
-            setPage(0)
-          }}
-        >
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_STATUS}>All Statuses</SelectItem>
-            {(
-              [
-                'ACTIVE',
-                'SUSPENDED',
-                'TERMINATED',
-                'RESIGNED',
-                'ON_LEAVE',
-              ] as EmployeeStatus[]
-            ).map((s) => (
-              <SelectItem key={s} value={s}>
-                {s.replace(/_/g, ' ')}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Button variant="outline" onClick={clearFilters}>
-          Clear Filters
-        </Button>
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={clearFilters}>
+            Clear Filters
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-lg border border-border bg-white">

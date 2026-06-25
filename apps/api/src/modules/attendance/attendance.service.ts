@@ -7,7 +7,7 @@ import {
   AttendanceSource,
   AttendanceStatus,
   EmployeeStatus,
-  LetterType,
+  Gender,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -15,21 +15,16 @@ import {
   AttendanceQueryDto,
   BiometricPushDto,
   ManualAttendanceDto,
+  MarkAbsenteesDto,
+  RelieverSessionsQueryDto,
 } from './attendance.dto';
-import {
-  applyDisciplineRules,
-  DisciplineFollowUp,
-} from './discipline.helper';
-import { LettersService } from '../letters/letters.service';
+import { applyDisciplineRules } from './discipline.helper';
 
 const OVERTIME_GRACE_MINUTES = 60;
 
 @Injectable()
 export class AttendanceService {
-  constructor(
-    private prisma: PrismaService,
-    private lettersService: LettersService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   async biometricPush(dto: BiometricPushDto) {
     const employee = await this.prisma.employee.findUnique({
@@ -106,21 +101,16 @@ export class AttendanceService {
         });
 
         if (status === AttendanceStatus.LATE) {
-          const followUp = await applyDisciplineRules(
+          await applyDisciplineRules(
             tx,
             employee.id,
             status,
             dateOnly,
           );
-          return { log: created, followUp };
         }
 
-        return { log: created, followUp: undefined };
+        return { log: created };
       });
-
-      if (log.followUp) {
-        await this.handleLateDisciplineFollowUp(log.followUp);
-      }
 
       return log.log;
     }
@@ -196,21 +186,16 @@ export class AttendanceService {
         },
       });
 
-      let followUp: DisciplineFollowUp | undefined;
-
       if (
         dto.status === AttendanceStatus.UNINFORMED_ABSENT ||
         dto.status === AttendanceStatus.LATE
       ) {
-        const disciplineResult = await applyDisciplineRules(
+        await applyDisciplineRules(
           tx,
           dto.employeeId,
           dto.status,
           dateOnly,
         );
-        if (disciplineResult) {
-          followUp = disciplineResult;
-        }
       }
 
       await tx.auditLog.create({
@@ -222,14 +207,58 @@ export class AttendanceService {
         },
       });
 
-      return { attendanceLog, followUp };
+      return attendanceLog;
     });
 
-    if (result.followUp) {
-      await this.handleLateDisciplineFollowUp(result.followUp);
+    return result;
+  }
+
+  private buildEmployeeFilterWhere(query: {
+    projectId?: string;
+    departmentId?: string;
+    shiftId?: string;
+    employeeStatus?: EmployeeStatus;
+    gender?: Gender;
+    designation?: string;
+    district?: string;
+  }): Prisma.EmployeeWhereInput | undefined {
+    const employeeWhere: Prisma.EmployeeWhereInput = {};
+
+    if (query.departmentId) {
+      employeeWhere.currentDepartmentId = query.departmentId;
     }
 
-    return result.attendanceLog;
+    if (query.projectId) {
+      employeeWhere.currentBranch = { projectId: query.projectId };
+    }
+
+    if (query.shiftId) {
+      employeeWhere.shiftId = query.shiftId;
+    }
+
+    if (query.employeeStatus) {
+      employeeWhere.status = query.employeeStatus;
+    }
+
+    if (query.gender) {
+      employeeWhere.gender = query.gender;
+    }
+
+    if (query.designation) {
+      employeeWhere.currentDesignation = {
+        equals: query.designation,
+        mode: 'insensitive',
+      };
+    }
+
+    if (query.district) {
+      employeeWhere.district = {
+        equals: query.district,
+        mode: 'insensitive',
+      };
+    }
+
+    return Object.keys(employeeWhere).length > 0 ? employeeWhere : undefined;
   }
 
   findAll(query: AttendanceQueryDto) {
@@ -258,6 +287,11 @@ export class AttendanceService {
       };
     }
 
+    const employeeWhere = this.buildEmployeeFilterWhere(query);
+    if (employeeWhere) {
+      where.employee = employeeWhere;
+    }
+
     return this.prisma.attendanceLog.findMany({
       where,
       include: {
@@ -267,6 +301,39 @@ export class AttendanceService {
         branch: { select: { name: true } },
       },
       orderBy: { date: 'desc' },
+    });
+  }
+
+  findAllRelieverSessions(query: RelieverSessionsQueryDto) {
+    const where: Prisma.RelieverSessionWhereInput = {};
+
+    if (query.branchId) {
+      where.branchId = query.branchId;
+    }
+
+    if (query.startDate && query.endDate) {
+      where.date = {
+        gte: this.toDateOnly(new Date(query.startDate)),
+        lte: this.toDateOnly(new Date(query.endDate)),
+      };
+    } else if (query.startDate) {
+      where.date = this.toDateOnly(new Date(query.startDate));
+    }
+
+    const employeeWhere = this.buildEmployeeFilterWhere(query);
+    if (employeeWhere) {
+      where.employee = employeeWhere;
+    }
+
+    return this.prisma.relieverSession.findMany({
+      where,
+      include: {
+        employee: {
+          select: { firstName: true, lastName: true, employeeCode: true },
+        },
+        branch: { select: { name: true } },
+      },
+      orderBy: { checkIn: 'desc' },
     });
   }
 
@@ -465,39 +532,5 @@ export class AttendanceService {
     const result = new Date(date);
     result.setHours(0, 0, 0, 0);
     return result;
-  }
-
-  private async handleLateDisciplineFollowUp(followUp: DisciplineFollowUp) {
-    const { employeeId, lateCount } = followUp;
-
-    if (lateCount === 3 || lateCount === 6) {
-      await this.lettersService.generate(
-        {
-          employeeId,
-          letterType: LetterType.WARNING,
-          extraFields: {
-            reason: `Warning Letter ${lateCount === 3 ? 1 : 2} - ${lateCount} late arrivals this month`,
-            warningNumber: lateCount === 3 ? 1 : 2,
-          },
-        },
-        'SYSTEM',
-      );
-    } else if (lateCount === 9) {
-      await this.lettersService.generate(
-        {
-          employeeId,
-          letterType: LetterType.SUSPENSION,
-          extraFields: {
-            reason: '9 late arrivals this month',
-          },
-        },
-        'SYSTEM',
-      );
-
-      await this.prisma.employee.update({
-        where: { id: employeeId },
-        data: { status: EmployeeStatus.SUSPENDED },
-      });
-    }
   }
 }

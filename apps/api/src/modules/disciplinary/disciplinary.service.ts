@@ -253,7 +253,7 @@ export class DisciplinaryService {
             employee: {
               include: {
                 currentDepartment: { select: { name: true } },
-                salaryRecords: {
+                stipendRecords: {
                   orderBy: { effectiveFrom: 'desc' },
                   take: 1,
                 },
@@ -314,6 +314,15 @@ export class DisciplinaryService {
         await tx.employee.update({
           where: { id: employee.id },
           data: { status: EmployeeStatus.ACTIVE },
+        });
+      } else if (dto.outcome === InquiryOutcome.DISMISSED) {
+        await tx.employee.update({
+          where: { id: employee.id },
+          data: { status: EmployeeStatus.DISMISSED },
+        });
+        await tx.user.updateMany({
+          where: { employeeId: employee.id },
+          data: { isActive: false },
         });
       }
 
@@ -380,6 +389,43 @@ export class DisciplinaryService {
         },
         actingUserId,
       );
+    } else if (dto.outcome === InquiryOutcome.DISMISSED) {
+      await this.lettersService.generate(
+        {
+          employeeId: employee.id,
+          letterType: LetterType.TERMINATION,
+          extraFields: {
+            terminationReason: 'Dismissed due to corruption inquiry',
+            terminationDate: today,
+            settlementDetails: dto.notes || inquiry.notes || action.reason,
+            ...letterExtra,
+          },
+        },
+        actingUserId,
+      );
+
+      await this.prisma.notification.create({
+        data: {
+          employeeId: employee.id,
+          type: 'DISMISSED',
+          message:
+            'You have been dismissed from YCDO following the inquiry. You are no longer eligible to rejoin.',
+        },
+      });
+
+      await this.prisma.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'EMPLOYEE_DISMISSED',
+          entity: 'Employee',
+          entityId: employee.id,
+          changes: {
+            inquiryId: dto.inquiryId,
+            outcome: dto.outcome,
+            notes: dto.notes,
+          },
+        },
+      });
     }
 
     return this.prisma.inquiry.findUnique({

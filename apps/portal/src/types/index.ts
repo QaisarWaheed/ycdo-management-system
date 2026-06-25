@@ -27,7 +27,7 @@ export interface Employee {
   currentBranch?: { name: string }
   currentDepartment?: { name: string }
   shift?: { name: string; startTime: string; endTime: string } | null
-  salaryRecords?: { basicSalary: number | string; effectiveFrom: string }[]
+  stipendRecords?: { basicStipend: number | string; effectiveFrom: string }[]
   documents?: EmployeeDocument[]
 }
 
@@ -97,6 +97,11 @@ export interface LeaveRecord {
   status: string
   reason?: string | null
   createdAt?: string
+  relieverRequest?: {
+    id: string
+    status: string
+    reliever?: { firstName: string; lastName: string }
+  } | null
 }
 
 export interface LeaveBalance {
@@ -112,15 +117,15 @@ export interface PayrollEntry {
   id: string
   month: number
   year: number
-  basicSalary: number | string
+  basicStipend: number | string
   totalDeductions: number | string
   totalAllowances: number | string
-  netSalary: number | string
+  netStipend: number | string
   status: string
   deductions?: PayrollDeduction[]
   allowances?: PayrollAllowance[]
   totalRelieverHours?: number
-  salaryRecord?: {
+  stipendRecord?: {
     employee?: Employee
   }
 }
@@ -152,7 +157,7 @@ export interface Letter {
   requiresAcknowledgement?: boolean
 }
 
-export interface OutstationRequest {
+export interface BranchChangeRequest {
   id: string
   employeeId: string
   district: string
@@ -164,6 +169,36 @@ export interface OutstationRequest {
   notes?: string | null
   createdAt: string
 }
+
+export type StipendStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'AUTO_ACCEPTED'
+
+export interface StipendReceipt {
+  id: string
+  employeeId: string
+  month: number
+  year: number
+  amount: number | string
+  status: StipendStatus
+  acceptedAt?: string | null
+  rejectedAt?: string | null
+  rejectionReason?: string | null
+  autoAcceptedAt?: string | null
+  generatedAt: string
+  deadlineAt: string
+}
+
+export interface Incentive {
+  id: string
+  employeeId: string
+  amount: number | string
+  reason: string
+  month: number
+  year: number
+  createdAt: string
+}
+
+/** @deprecated Use BranchChangeRequest */
+export type OutstationRequest = BranchChangeRequest
 
 export interface AllegationAcknowledgement {
   id: string

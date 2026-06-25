@@ -5,7 +5,7 @@ import { differenceInCalendarDays, format } from 'date-fns'
 import { CheckCircle, Clock, MapPin, Plus, XCircle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { outstationApi } from '@/api/endpoints/outstation'
+import { branchChangeRequestApi } from '@/api/endpoints/branchChangeRequest'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { Badge } from '@/components/ui/badge'
@@ -48,12 +48,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/store/auth.store'
-import type { DistrictSummary, OutstationRequest, OutstationStatus } from '@/types'
+import type {
+  BranchChangeRequest,
+  BranchChangeRequestStatus,
+  DistrictSummary,
+} from '@/types'
 
 const ALL = 'ALL'
 
-function OutstationStatusBadge({ status }: { status: OutstationStatus }) {
-  const styles: Record<OutstationStatus, string> = {
+function BranchChangeRequestStatusBadge({
+  status,
+}: {
+  status: BranchChangeRequestStatus
+}) {
+  const styles: Record<BranchChangeRequestStatus, string> = {
     PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
     APPROVED: 'bg-green-100 text-green-800 border-green-200',
     REJECTED: 'bg-red-100 text-red-800 border-red-200',
@@ -66,7 +74,13 @@ function OutstationStatusBadge({ status }: { status: OutstationStatus }) {
   )
 }
 
-function SummaryCards({ requests, loading }: { requests: OutstationRequest[]; loading: boolean }) {
+function SummaryCards({
+  requests,
+  loading,
+}: {
+  requests: BranchChangeRequest[]
+  loading: boolean
+}) {
   const stats = useMemo(() => {
     const pending = requests.filter((r) => r.status === 'PENDING').length
     const approved = requests.filter((r) => r.status === 'APPROVED').length
@@ -149,7 +163,7 @@ function NewRequestDialog({
 
   const mutation = useMutation({
     mutationFn: (values: CreateFormValues) =>
-      outstationApi.create({
+      branchChangeRequestApi.create({
         employeeId: values.employeeId,
         district: values.district,
         purpose: values.purpose,
@@ -158,9 +172,9 @@ function NewRequestDialog({
         notes: values.notes || undefined,
       }),
     onSuccess: () => {
-      toast({ title: 'Outstation request submitted' })
-      queryClient.invalidateQueries({ queryKey: ['outstation'] })
-      queryClient.invalidateQueries({ queryKey: ['outstation-district-summary'] })
+      toast({ title: 'Branch change request submitted' })
+      queryClient.invalidateQueries({ queryKey: ['branch-change-request'] })
+      queryClient.invalidateQueries({ queryKey: ['branch-change-district-summary'] })
       form.reset()
       onOpenChange(false)
     },
@@ -178,7 +192,7 @@ function NewRequestDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New Outstation Request</DialogTitle>
+          <DialogTitle>New Branch Change Request</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -221,7 +235,7 @@ function NewRequestDialog({
                 <FormItem>
                   <FormLabel>Purpose</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Purpose of visit..." {...field} />
+                    <Textarea placeholder="Purpose of branch change..." {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -322,8 +336,8 @@ function RequestsTab() {
   )
 
   const { data: requests = [], isLoading } = useQuery({
-    queryKey: ['outstation', filters],
-    queryFn: () => outstationApi.getAll(filters),
+    queryKey: ['branch-change-request', filters],
+    queryFn: () => branchChangeRequestApi.getAll(filters),
   })
 
   const updateMutation = useMutation({
@@ -332,9 +346,9 @@ function RequestsTab() {
       status,
     }: {
       id: string
-      status: OutstationStatus
+      status: BranchChangeRequestStatus
     }) =>
-      outstationApi.updateStatus(id, {
+      branchChangeRequestApi.updateStatus(id, {
         status,
         approvedBy: user?.email ?? 'HR Admin',
       }),
@@ -345,8 +359,8 @@ function RequestsTab() {
         COMPLETED: 'Request marked completed',
       }
       toast({ title: titles[vars.status] ?? 'Status updated' })
-      queryClient.invalidateQueries({ queryKey: ['outstation'] })
-      queryClient.invalidateQueries({ queryKey: ['outstation-district-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['branch-change-request'] })
+      queryClient.invalidateQueries({ queryKey: ['branch-change-district-summary'] })
       setConfirmAction(null)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -361,7 +375,7 @@ function RequestsTab() {
 
   return (
     <div className="space-y-4">
-      <SummaryCards requests={requests as OutstationRequest[]} loading={isLoading} />
+      <SummaryCards requests={requests as BranchChangeRequest[]} loading={isLoading} />
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[240px] flex-1">
@@ -448,11 +462,11 @@ function RequestsTab() {
             ) : requests.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
-                  No outstation requests found
+                  No branch change requests found
                 </TableCell>
               </TableRow>
             ) : (
-              (requests as OutstationRequest[]).map((req) => (
+              (requests as BranchChangeRequest[]).map((req) => (
                 <TableRow key={req.id}>
                   <TableCell>
                     <div>
@@ -474,7 +488,7 @@ function RequestsTab() {
                     <Badge variant="outline">{req.duration}d</Badge>
                   </TableCell>
                   <TableCell>
-                    <OutstationStatusBadge status={req.status} />
+                    <BranchChangeRequestStatusBadge status={req.status} />
                   </TableCell>
                   <TableCell>
                     {req.status === 'PENDING' && (
@@ -523,13 +537,13 @@ function RequestsTab() {
         open={!!confirmAction}
         title={
           confirmAction?.action === 'APPROVED'
-            ? 'Approve Outstation Request'
-            : 'Reject Outstation Request'
+            ? 'Approve Branch Change Request'
+            : 'Reject Branch Change Request'
         }
         description={
           confirmAction?.action === 'APPROVED'
-            ? 'Are you sure you want to approve this outstation request?'
-            : 'Are you sure you want to reject this outstation request?'
+            ? 'Are you sure you want to approve this branch change request?'
+            : 'Are you sure you want to reject this branch change request?'
         }
         confirmLabel={confirmAction?.action === 'APPROVED' ? 'Approve' : 'Reject'}
         confirmVariant={
@@ -551,8 +565,8 @@ function RequestsTab() {
 
 function DistrictSummaryTab() {
   const { data: summary = [], isLoading } = useQuery({
-    queryKey: ['outstation-district-summary'],
-    queryFn: () => outstationApi.getDistrictSummary(),
+    queryKey: ['branch-change-district-summary'],
+    queryFn: () => branchChangeRequestApi.getDistrictSummary(),
   })
 
   const sorted = useMemo(
@@ -606,13 +620,15 @@ function DistrictSummaryTab() {
   )
 }
 
-export function OutstationPage() {
+export function BranchChangeRequestPage() {
   const [newRequestOpen, setNewRequestOpen] = useState(false)
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-text-primary">Outstation Management</h1>
+        <h1 className="text-2xl font-bold text-text-primary">
+          Branch Change Request Management
+        </h1>
         <Button
           className="bg-primary hover:bg-primary-dark"
           onClick={() => setNewRequestOpen(true)}

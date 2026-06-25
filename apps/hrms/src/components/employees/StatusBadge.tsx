@@ -10,6 +10,7 @@ const statusStyles: Record<EmployeeStatus, string> = {
   TERMINATED: 'bg-red-100 text-red-800 border-red-200',
   RESIGNED: 'bg-gray-100 text-gray-700 border-gray-200',
   ON_LEAVE: 'bg-blue-100 text-blue-800 border-blue-200',
+  DISMISSED: 'bg-gray-900 text-white border-gray-900',
 }
 
 export function StatusBadge({
@@ -25,7 +26,7 @@ export function StatusBadge({
 
   return (
     <Badge variant="outline" className={cn(style, className)}>
-      {status.replace(/_/g, ' ')}
+      {status === 'DISMISSED' ? 'Dismissed' : status.replace(/_/g, ' ')}
     </Badge>
   )
 }
