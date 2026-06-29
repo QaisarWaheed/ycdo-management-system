@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { BroadcastsModule } from './modules/broadcasts/broadcasts.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
+import { DesignationsModule } from './modules/designations/designations.module';
 import { DisciplinaryModule } from './modules/disciplinary/disciplinary.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { EmployeesModule } from './modules/employees/employees.module';
@@ -40,6 +41,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AuthModule,
     BranchesModule,
     DepartmentsModule,
+    DesignationsModule,
     EmployeesModule,
     DocumentsModule,
     AttendanceModule,

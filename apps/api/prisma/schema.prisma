@@ -131,12 +131,19 @@ model Employee {
   tehsil                 String?
   policeStation          String?
   bloodGroup             String?
+  staffType              StaffType      @default(NEW)
 }
 
 enum Gender {
   MALE
   FEMALE
   OTHER
+}
+
+enum StaffType {
+  NEW
+  EXISTING
+  INTERNEE
 }
 
 enum EmployeeStatus {
@@ -162,6 +169,16 @@ model RelieverSession {
 
   employee Employee @relation(fields: [employeeId], references: [id])
   branch   Branch   @relation(fields: [branchId], references: [id])
+}
+
+// ─── DESIGNATIONS ───────────────────────────────────────────
+
+model Designation {
+  id        String   @id @default(uuid())
+  title     String   @unique
+  category  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
 
 // ─── EMPLOYMENT HISTORY ───────────────────────────────────
@@ -225,6 +242,9 @@ model AttendanceLog {
   status          AttendanceStatus
   lateMinutes     Int              @default(0)
   overtimeMinutes Int              @default(0)
+  overtimePending Boolean          @default(false)
+  overtimeApprovedBy String?
+  overtimeApprovedAt DateTime?
   source          AttendanceSource @default(BIOMETRIC)
   note            String?
   createdAt       DateTime         @default(now())
@@ -431,33 +451,67 @@ enum LetterType {
 // ─── LEAVE ────────────────────────────────────────────────
 
 model LeaveRecord {
-  id         String      @id @default(uuid())
-  employeeId String
-  leaveType  LeaveType   @default(REGULAR)
-  startDate  DateTime
-  endDate    DateTime
-  totalDays  Int
-  status     LeaveStatus @default(PENDING)
-  reason     String?
-  approvedBy String?
-  createdAt  DateTime    @default(now())
+  id               String               @id @default(uuid())
+  employeeId       String
+  leaveType        LeaveType            @default(REGULAR)
+  startDate        DateTime
+  endDate          DateTime
+  totalDays        Int
+  status           LeaveStatus          @default(PENDING)
+  reason           String?
+  approvedBy       String?
+  currentStage     LeaveApprovalStage?  @default(BRANCH_MANAGER)
+  branchManagerId  String?
+  deptInchargeId   String?
+  createdAt        DateTime             @default(now())
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  employee        Employee        @relation(fields: [employeeId], references: [id])
   relieverRequest RelieverRequest?
+  approvals       LeaveApproval[]
+}
+
+model LeaveApproval {
+  id       String              @id @default(uuid())
+  leaveId  String
+  stage    LeaveApprovalStage
+  action   LeaveApprovalAction
+  actionBy String
+  actionAt DateTime            @default(now())
+  notes    String?
+  createdAt DateTime           @default(now())
+
+  leave        LeaveRecord @relation(fields: [leaveId], references: [id])
+  actionByUser User        @relation("LeaveApprovals", fields: [actionBy], references: [id])
+}
+
+enum LeaveApprovalStage {
+  BRANCH_MANAGER
+  DEPARTMENT_INCHARGE
+  HR_OPERATIONS
+}
+
+enum LeaveApprovalAction {
+  APPROVED
+  REJECTED
 }
 
 enum LeaveType {
   REGULAR
   SHORT_LEAVE
+  EMERGENCY
 }
 
 enum LeaveStatus {
   PENDING
+  BRANCH_APPROVED
+  DEPT_APPROVED
   RELIEVER_PENDING
   RELIEVER_CONFIRMED
   RELIEVER_REJECTED
+  HR_PENDING
   APPROVED
   REJECTED
+  CANCELLED
 }
 
 enum StipendStatus {
@@ -544,6 +598,7 @@ model User {
   auditLogs  AuditLog[]
   broadcasts NotificationBroadcast[]
   incentivesAdded Incentive[]
+  leaveApprovals LeaveApproval[] @relation("LeaveApprovals")
 }
 
 enum UserRole {

@@ -28,7 +28,13 @@ export class DocumentsController {
 
   @Post()
   @UseInterceptors(FileInterceptor('file', multerConfig))
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.BRANCH_MANAGER,
+  )
   upload(
     @Param('id') id: string,
     @Body() dto: UploadDocumentDto,

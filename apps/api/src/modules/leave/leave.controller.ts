@@ -18,6 +18,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
   ApplyLeaveDto,
+  ApproveLeaveDto,
   HRAssignRelieverDto,
   LeaveQueryDto,
   RequestRelieverDto,
@@ -25,6 +26,18 @@ import {
   UpdateLeaveStatusDto,
 } from './leave.dto';
 import { LeaveService } from './leave.service';
+
+const LEAVE_READ_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.HR_MANAGER,
+  UserRole.HR_ADMIN_MANAGER,
+  UserRole.HR_OPERATIONS_MANAGER,
+  UserRole.BRANCH_MANAGER,
+  UserRole.ADMIN_OFFICER,
+  UserRole.CHAIRMAN,
+  UserRole.FOUNDER,
+  UserRole.EMPLOYEE,
+];
 
 @Controller('leave')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -43,13 +56,7 @@ export class LeaveController {
   }
 
   @Get('balance/:employeeId')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
-    UserRole.ADMIN_OFFICER,
-    UserRole.EMPLOYEE,
-  )
+  @Roles(...LEAVE_READ_ROLES)
   getLeaveBalance(
     @Param('employeeId') employeeId: string,
     @Query('year') year?: string,
@@ -64,8 +71,10 @@ export class LeaveController {
   @Roles(
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.SUPER_ADMIN,
     UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
   )
   getTodayRelievers() {
     return this.leaveService.getTodayRelievers();
@@ -88,6 +97,7 @@ export class LeaveController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.BRANCH_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
@@ -96,13 +106,7 @@ export class LeaveController {
   }
 
   @Get()
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
-    UserRole.ADMIN_OFFICER,
-    UserRole.EMPLOYEE,
-  )
+  @Roles(...LEAVE_READ_ROLES)
   findAll(
     @Query() query: LeaveQueryDto,
     @CurrentUser() user: { role: UserRole; employeeId?: string | null },
@@ -136,19 +140,56 @@ export class LeaveController {
     );
   }
 
+  @Get(':id/approvals')
+  @Roles(...LEAVE_READ_ROLES)
+  getApprovals(@Param('id') id: string) {
+    return this.leaveService.getLeaveWithApprovals(id);
+  }
+
+  @Patch(':id/branch-approve')
+  @Roles(UserRole.BRANCH_MANAGER, UserRole.SUPER_ADMIN)
+  branchApprove(
+    @Param('id') id: string,
+    @Body() dto: ApproveLeaveDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.leaveService.branchManagerApprove(id, dto, user);
+  }
+
+  @Patch(':id/dept-approve')
+  @Roles(UserRole.ADMIN_OFFICER, UserRole.SUPER_ADMIN)
+  deptApprove(
+    @Param('id') id: string,
+    @Body() dto: ApproveLeaveDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.leaveService.deptInchargeApprove(id, dto, user);
+  }
+
+  @Patch(':id/hr-approve')
+  @Roles(UserRole.HR_OPERATIONS_MANAGER, UserRole.SUPER_ADMIN)
+  hrApprove(
+    @Param('id') id: string,
+    @Body() dto: ApproveLeaveDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.leaveService.hrOperationsApprove(id, dto, user);
+  }
+
   @Get(':id')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
-    UserRole.ADMIN_OFFICER,
-  )
+  @Roles(...LEAVE_READ_ROLES)
   findOne(@Param('id') id: string) {
     return this.leaveService.findOne(id);
   }
 
+  /** @deprecated Use branch/dept/hr-approve endpoints */
   @Patch(':id/status')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.BRANCH_MANAGER,
+  )
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateLeaveStatusDto,
@@ -163,6 +204,7 @@ export class LeaveController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.BRANCH_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
@@ -192,7 +234,9 @@ export class LeaveController {
   @Roles(
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
+    UserRole.SUPER_ADMIN,
   )
   hrAssignReliever(
     @Param('id') id: string,

@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 
-const navItems = [
+const allNavItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/employees', label: 'Employees', icon: Users },
   { to: '/attendance', label: 'Attendance', icon: Clock },
@@ -36,9 +36,48 @@ const navItems = [
   { to: '/branches', label: 'Branches & Projects', icon: Building2 },
 ]
 
+function navItemsForRole(role?: string) {
+  if (!role) return allNavItems
+
+  const fullAccess = [
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+  ]
+  if (fullAccess.includes(role)) return allNavItems
+
+  if (role === 'BRANCH_MANAGER' || role === 'ADMIN_OFFICER') {
+    return allNavItems.filter((item) =>
+      ['/dashboard', '/employees', '/attendance', '/leave'].includes(item.to),
+    )
+  }
+
+  if (role === 'HR_OPERATIONS_MANAGER') {
+    return allNavItems.filter((item) =>
+      [
+        '/dashboard',
+        '/employees',
+        '/attendance',
+        '/leave',
+        '/letters',
+        '/disciplinary',
+      ].includes(item.to),
+    )
+  }
+
+  if (role === 'CHAIRMAN' || role === 'FOUNDER') {
+    return allNavItems.filter((item) =>
+      ['/dashboard', '/reports', '/leave'].includes(item.to),
+    )
+  }
+
+  return allNavItems
+}
+
 export function Sidebar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const navItems = navItemsForRole(user?.role)
 
   const handleLogout = () => {
     logout()

@@ -90,15 +90,17 @@ export function EmployeeFiltersBar({
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', filters.branchId],
-    queryFn: () => departmentsApi.getAll({ branchId: filters.branchId }),
-    enabled: !!filters.branchId,
+    queryKey: ['departments', filters.branchId || 'all'],
+    queryFn: () =>
+      departmentsApi.getAll(
+        filters.branchId ? { branchId: filters.branchId } : undefined,
+      ),
   })
 
   const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', filters.branchId],
-    queryFn: () => shiftsApi.getAll(filters.branchId),
-    enabled: !!filters.branchId,
+    queryKey: ['shifts', filters.branchId || 'all'],
+    queryFn: () =>
+      shiftsApi.getAll(filters.branchId ? filters.branchId : undefined),
   })
 
   const { data: filterOptions } = useQuery({
@@ -182,7 +184,6 @@ export function EmployeeFiltersBar({
             onValueChange={(v) =>
               update({ departmentId: v === 'all' ? '' : v })
             }
-            disabled={!filters.branchId}
           >
             <SelectTrigger>
               <SelectValue placeholder="All Departments" />
@@ -192,6 +193,26 @@ export function EmployeeFiltersBar({
               {departments.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label>Shift</Label>
+          <Select
+            value={filters.shiftId || 'all'}
+            onValueChange={(v) => update({ shiftId: v === 'all' ? '' : v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="All Shifts" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Shifts</SelectItem>
+              {shifts.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name} ({s.startTime} - {s.endTime})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -272,27 +293,6 @@ export function EmployeeFiltersBar({
               {GENDERS.map((g) => (
                 <SelectItem key={g} value={g}>
                   {g.charAt(0) + g.slice(1).toLowerCase()}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1">
-          <Label>Shift</Label>
-          <Select
-            value={filters.shiftId || 'all'}
-            onValueChange={(v) => update({ shiftId: v === 'all' ? '' : v })}
-            disabled={!filters.branchId}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="All Shifts" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Shifts</SelectItem>
-              {shifts.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
                 </SelectItem>
               ))}
             </SelectContent>

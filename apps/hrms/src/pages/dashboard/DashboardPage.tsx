@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import {
   AlertTriangle,
   Calendar,
+  ChevronRight,
   Clock,
   Timer,
   UserPlus,
@@ -28,6 +29,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useAuth } from '@/hooks/useAuth'
+import { BranchManagerDashboard } from '@/pages/dashboard/BranchManagerDashboard'
+import { DeptInchargeDashboard } from '@/pages/dashboard/DeptInchargeDashboard'
+import { ExecutiveDashboard } from '@/pages/dashboard/ExecutiveDashboard'
+import { HrOperationsDashboard } from '@/pages/dashboard/HrOperationsDashboard'
 
 function todayRange() {
   const today = format(new Date(), 'yyyy-MM-dd')
@@ -40,54 +46,65 @@ function StatCard({
   icon: Icon,
   subtitle,
   loading,
+  error,
   iconBg,
   to,
 }: {
   label: string
-  value: number | string
+  value: number
   icon: React.ElementType
   subtitle?: string
   loading?: boolean
+  error?: boolean
   iconBg: string
-  to?: string
+  to: string
 }) {
   const navigate = useNavigate()
 
+  const displayValue = error ? '—' : value
+
   return (
     <Card
-      className={cn(
-        'border-border shadow-sm',
-        to && 'cursor-pointer transition-shadow hover:shadow-md',
-      )}
-      role={to ? 'button' : undefined}
-      tabIndex={to ? 0 : undefined}
-      onClick={to ? () => navigate(to) : undefined}
-      onKeyDown={
-        to
-          ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                navigate(to)
-              }
-            }
-          : undefined
-      }
+      className="relative cursor-pointer border-border shadow-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md"
+      role="button"
+      tabIndex={0}
+      onClick={() => navigate(to)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          navigate(to)
+        }
+      }}
     >
       <CardContent className="flex items-center gap-4 p-6">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-full ${iconBg}`}>
+        <div
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${iconBg}`}
+        >
           <Icon className="h-6 w-6" />
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           {loading ? (
             <Skeleton className="mb-2 h-8 w-16" />
           ) : (
-            <p className="text-3xl font-bold text-text-primary">{value}</p>
+            <p
+              className={cn(
+                'text-3xl font-bold',
+                error
+                  ? 'text-text-secondary'
+                  : value === 0
+                    ? 'text-text-secondary'
+                    : 'text-text-primary',
+              )}
+            >
+              {displayValue}
+            </p>
           )}
           <p className="text-sm text-text-secondary">{label}</p>
           {subtitle && (
             <p className="text-xs text-text-secondary/80">{subtitle}</p>
           )}
         </div>
+        <ChevronRight className="absolute bottom-4 right-4 h-5 w-5 text-text-secondary/40" />
       </CardContent>
     </Card>
   )
@@ -109,35 +126,118 @@ function statusBadge(status: string) {
   )
 }
 
+function ViewAllLink({ to, label = 'View All →' }: { to: string; label?: string }) {
+  const navigate = useNavigate()
+  return (
+    <button
+      type="button"
+      className="text-sm font-medium text-primary hover:underline"
+      onClick={() => navigate(to)}
+    >
+      {label}
+    </button>
+  )
+}
+
 export function DashboardPage() {
+  const { user } = useAuth()
+  const role = user?.role
+
+  if (role === 'BRANCH_MANAGER') {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
+        <BranchManagerDashboard />
+      </div>
+    )
+  }
+
+  if (role === 'ADMIN_OFFICER') {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
+        <DeptInchargeDashboard />
+      </div>
+    )
+  }
+
+  if (role === 'HR_OPERATIONS_MANAGER') {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
+        <HrOperationsDashboard />
+      </div>
+    )
+  }
+
+  if (role === 'CHAIRMAN' || role === 'FOUNDER') {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-text-primary">
+          Organization Overview
+        </h1>
+        <ExecutiveDashboard />
+      </div>
+    )
+  }
+
+  return <AdminDashboard />
+}
+
+function AdminDashboard() {
+  const navigate = useNavigate()
   const today = todayRange()
 
-  const { data: employees, isLoading: loadingEmployees } = useQuery({
+  const {
+    data: employees,
+    isLoading: loadingEmployees,
+    isError: errorEmployees,
+  } = useQuery({
     queryKey: ['employees'],
     queryFn: () => employeesApi.getAll(),
   })
 
-  const { data: attendance, isLoading: loadingAttendance } = useQuery({
+  const {
+    data: attendance,
+    isLoading: loadingAttendance,
+    isError: errorAttendance,
+  } = useQuery({
     queryKey: ['attendance', 'today', today],
     queryFn: () => attendanceApi.getAll(today),
   })
 
-  const { data: leaves, isLoading: loadingLeaves } = useQuery({
+  const {
+    data: leaves,
+    isLoading: loadingLeaves,
+    isError: errorLeaves,
+  } = useQuery({
     queryKey: ['leave', 'pending'],
     queryFn: () => leaveApi.getAll({ status: 'PENDING' }),
   })
 
-  const { data: disciplinary, isLoading: loadingDisciplinary } = useQuery({
+  const {
+    data: disciplinary,
+    isLoading: loadingDisciplinary,
+    isError: errorDisciplinary,
+  } = useQuery({
     queryKey: ['disciplinary', 'open'],
     queryFn: () => disciplinaryApi.getAll({ status: 'OPEN' }),
   })
 
-  const { data: applications, isLoading: loadingApplications } = useQuery({
+  const {
+    data: applications,
+    isLoading: loadingApplications,
+    isError: errorApplications,
+  } = useQuery({
     queryKey: ['recruitment', 'applied'],
     queryFn: () => recruitmentApi.getAll({ status: 'APPLIED' }),
   })
 
-  const { data: relieverSessions = [], isLoading: loadingRelievers } = useQuery({
+  const {
+    data: relieverSessions = [],
+    isLoading: loadingRelievers,
+    isError: errorRelievers,
+  } = useQuery({
     queryKey: ['reliever-sessions', 'today', today],
     queryFn: () =>
       attendanceApi.listRelieverSessions({
@@ -150,51 +250,60 @@ export function DashboardPage() {
   const presentToday = attendanceLogs.filter((l) => l.status === 'PRESENT').length
   const absentToday = attendanceLogs.filter((l) => l.status === 'ABSENT').length
   const lateToday = attendanceLogs.filter((l) => l.status === 'LATE').length
+  const onLeaveToday = attendanceLogs.filter((l) => l.status === 'ON_LEAVE').length
 
   const recentEmployees = ((employees ?? []) as Employee[]).slice(0, 5)
   const recentLeaves = ((leaves ?? []) as LeaveRecord[]).slice(0, 5)
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         <StatCard
           label="Total Employees"
           value={(employees ?? []).length}
           icon={Users}
           loading={loadingEmployees}
+          error={errorEmployees}
           iconBg="bg-primary/10 text-primary"
           subtitle="Active workforce"
+          to="/employees"
         />
         <StatCard
           label="Present Today"
           value={presentToday}
           icon={Clock}
           loading={loadingAttendance}
+          error={errorAttendance}
           iconBg="bg-accent/10 text-accent-dark"
           subtitle={format(new Date(), 'dd MMM yyyy')}
+          to="/attendance?date=today&status=PRESENT"
         />
         <StatCard
           label="Absent Today"
           value={absentToday}
           icon={UserX}
           loading={loadingAttendance}
+          error={errorAttendance}
           iconBg="bg-red-100 text-red-600"
           subtitle="Marked absent"
+          to="/attendance?date=today&status=ABSENT"
         />
         <StatCard
           label="Late Staff Today"
           value={lateToday}
           icon={Timer}
           loading={loadingAttendance}
+          error={errorAttendance}
           iconBg="bg-amber-100 text-amber-700"
           subtitle="Marked late"
-          to="/attendance?status=LATE"
+          to="/attendance?date=today&status=LATE"
         />
         <StatCard
           label="Reliever"
           value={relieverSessions.length}
           icon={Clock}
           loading={loadingRelievers}
+          error={errorRelievers}
           iconBg="bg-indigo-100 text-indigo-700"
           subtitle="Sessions today"
           to="/attendance?tab=reliever"
@@ -204,31 +313,48 @@ export function DashboardPage() {
           value={(leaves ?? []).length}
           icon={Calendar}
           loading={loadingLeaves}
+          error={errorLeaves}
           iconBg="bg-yellow-100 text-yellow-700"
           subtitle="Awaiting approval"
+          to="/leave?status=PENDING"
+        />
+        <StatCard
+          label="On Leave Today"
+          value={onLeaveToday}
+          icon={Calendar}
+          loading={loadingAttendance}
+          error={errorAttendance}
+          iconBg="bg-purple-100 text-purple-700"
+          subtitle="On approved leave"
+          to="/attendance?date=today&status=ON_LEAVE"
         />
         <StatCard
           label="Open Disciplinary Cases"
           value={(disciplinary ?? []).length}
           icon={AlertTriangle}
           loading={loadingDisciplinary}
+          error={errorDisciplinary}
           iconBg="bg-orange-100 text-orange-600"
           subtitle="Requires action"
+          to="/disciplinary?status=OPEN"
         />
         <StatCard
           label="Pending Job Applications"
           value={(applications ?? []).length}
           icon={UserPlus}
           loading={loadingApplications}
+          error={errorApplications}
           iconBg="bg-primary/10 text-primary"
           subtitle="New applicants"
+          to="/recruitment?status=APPLIED"
         />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-lg">Recent Employees</CardTitle>
+            <ViewAllLink to="/employees" />
           </CardHeader>
           <CardContent>
             {loadingEmployees ? (
@@ -237,6 +363,8 @@ export function DashboardPage() {
                   <Skeleton key={i} className="h-10 w-full" />
                 ))}
               </div>
+            ) : recentEmployees.length === 0 ? (
+              <p className="text-sm text-text-secondary">No employees found</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -251,7 +379,11 @@ export function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {recentEmployees.map((emp) => (
-                    <TableRow key={emp.id}>
+                    <TableRow
+                      key={emp.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => navigate(`/employees/${emp.id}`)}
+                    >
                       <TableCell className="font-medium">{emp.employeeCode}</TableCell>
                       <TableCell>{`${emp.firstName} ${emp.lastName}`}</TableCell>
                       <TableCell>{emp.currentDepartment?.name ?? '—'}</TableCell>
@@ -269,8 +401,9 @@ export function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-lg">Recent Leave Requests</CardTitle>
+            <ViewAllLink to="/leave" />
           </CardHeader>
           <CardContent>
             {loadingLeaves ? (
@@ -294,7 +427,11 @@ export function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {recentLeaves.map((leave) => (
-                    <TableRow key={leave.id}>
+                    <TableRow
+                      key={leave.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => navigate('/leave')}
+                    >
                       <TableCell>
                         {leave.employee
                           ? `${leave.employee.firstName} ${leave.employee.lastName}`

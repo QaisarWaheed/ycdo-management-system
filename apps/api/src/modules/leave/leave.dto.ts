@@ -1,4 +1,4 @@
-import { LeaveStatus, LeaveType } from '@prisma/client';
+import { LeaveApprovalAction, LeaveStatus, LeaveType, UserRole } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
@@ -38,6 +38,17 @@ export class ApplyLeaveDto {
   leaveType?: LeaveType;
 }
 
+export class ApproveLeaveDto {
+  @IsEnum(LeaveApprovalAction)
+  @IsNotEmpty()
+  action: LeaveApprovalAction;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
+}
+
 export class UpdateLeaveStatusDto {
   @IsIn([LeaveStatus.APPROVED, LeaveStatus.REJECTED])
   status: LeaveStatus;
@@ -67,6 +78,18 @@ export class LeaveQueryDto {
   @Min(1)
   @Max(12)
   month?: number;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
+  @IsString()
+  currentStage?: string;
+
+  @IsOptional()
+  @IsEnum(UserRole)
+  pendingForRole?: UserRole;
 }
 
 export class RequestRelieverDto {

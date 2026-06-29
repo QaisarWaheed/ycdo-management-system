@@ -1,5 +1,5 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { ChangeType, EmployeeStatus, Gender } from '@prisma/client';
+import { ChangeType, EmployeeStatus, Gender, StaffType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
@@ -135,6 +135,10 @@ export class CreateEmployeeDto {
   @IsPositive()
   @IsNotEmpty()
   basicStipend: number;
+
+  @IsOptional()
+  @IsEnum(StaffType)
+  staffType?: StaffType;
 }
 
 export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {}

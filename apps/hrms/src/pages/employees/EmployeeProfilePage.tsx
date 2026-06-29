@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Download,
   FileText,
+  Fingerprint,
   Loader2,
   Pencil,
   Plus,
@@ -808,6 +809,10 @@ export function EmployeeProfilePage() {
             <Badge variant="outline" className="mt-2 font-mono">
               {employee.employeeCode}
             </Badge>
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-text-secondary">
+              <Fingerprint className="h-3.5 w-3.5" />
+              <span>Biometric ID: {employee.biometricId ?? 'Not assigned'}</span>
+            </p>
           </div>
           <p className="text-text-secondary">{employee.currentDesignation}</p>
           <p className="text-sm">

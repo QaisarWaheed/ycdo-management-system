@@ -9,9 +9,11 @@ import {
   EmployeeStatus,
   Gender,
   Prisma,
+  UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  ApproveOvertimeDto,
   AttendanceQueryDto,
   BiometricPushDto,
   ManualAttendanceDto,
@@ -82,12 +84,25 @@ export class AttendanceService {
     });
 
     if (!existing) {
-      const { status, lateMinutes } = this.determineCheckInStatus(
+      let { status, lateMinutes } = this.determineCheckInStatus(
         checkTime,
         employee.shift,
       );
 
       const log = await this.prisma.$transaction(async (tx) => {
+        const effectiveStatus = await applyDisciplineRules(
+          tx,
+          employee.id,
+          status,
+          dateOnly,
+          { lateMinutes },
+        );
+
+        if (effectiveStatus === AttendanceStatus.HALF_DAY) {
+          status = AttendanceStatus.HALF_DAY;
+          lateMinutes = 0;
+        }
+
         const created = await tx.attendanceLog.create({
           data: {
             employeeId: employee.id,
@@ -99,15 +114,6 @@ export class AttendanceService {
             source: AttendanceSource.BIOMETRIC,
           },
         });
-
-        if (status === AttendanceStatus.LATE) {
-          await applyDisciplineRules(
-            tx,
-            employee.id,
-            status,
-            dateOnly,
-          );
-        }
 
         return { log: created };
       });
@@ -142,9 +148,13 @@ export class AttendanceService {
     return { type: 'RELIEVER_CHECKIN', relieverSession };
   }
 
-  async markManual(dto: ManualAttendanceDto, actingUserId: string) {
+  async markManual(
+    dto: ManualAttendanceDto,
+    actingUser: { id: string; role: UserRole },
+  ) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
+      include: { shift: true },
     });
 
     if (!employee) {
@@ -153,13 +163,70 @@ export class AttendanceService {
       );
     }
 
-    if (employee.status !== EmployeeStatus.ACTIVE) {
+    if (
+      employee.status !== EmployeeStatus.ACTIVE &&
+      employee.status !== EmployeeStatus.APPOINTED
+    ) {
       throw new BadRequestException('Employee is not active');
     }
 
     const dateOnly = this.toDateOnly(new Date(dto.date));
+    const checkIn = dto.checkIn ? new Date(dto.checkIn) : undefined;
+    const checkOut = dto.checkOut ? new Date(dto.checkOut) : undefined;
+
+    let status = dto.status;
+    let lateMinutes = dto.lateMinutes ?? 0;
+
+    if (
+      checkIn &&
+      (status === AttendanceStatus.PRESENT ||
+        status === AttendanceStatus.LATE ||
+        status === AttendanceStatus.HALF_DAY)
+    ) {
+      const derived = this.determineCheckInStatus(checkIn, employee.shift);
+      lateMinutes = dto.lateMinutes ?? derived.lateMinutes;
+      if (status === AttendanceStatus.PRESENT && derived.status === AttendanceStatus.LATE) {
+        status = AttendanceStatus.LATE;
+      }
+    }
+
+    let calculatedOvertime = dto.overtimeMinutes ?? 0;
+    if (checkOut) {
+      calculatedOvertime = this.calculateOvertimeMinutes(
+        checkOut,
+        employee.shift,
+      );
+    }
+
+    const isSuperAdmin = actingUser.role === UserRole.SUPER_ADMIN;
+    const overtimeMinutes = isSuperAdmin
+      ? (dto.overtimeMinutes ?? calculatedOvertime)
+      : 0;
+    const overtimePending =
+      !isSuperAdmin && calculatedOvertime > 0;
 
     const result = await this.prisma.$transaction(async (tx) => {
+      let effectiveStatus = status;
+
+      if (
+        status === AttendanceStatus.LATE ||
+        status === AttendanceStatus.ABSENT ||
+        status === AttendanceStatus.UNINFORMED_ABSENT
+      ) {
+        effectiveStatus = await applyDisciplineRules(
+          tx,
+          dto.employeeId,
+          status,
+          dateOnly,
+          { lateMinutes },
+        );
+      }
+
+      if (effectiveStatus === AttendanceStatus.HALF_DAY) {
+        status = AttendanceStatus.HALF_DAY;
+        lateMinutes = 0;
+      }
+
       const attendanceLog = await tx.attendanceLog.upsert({
         where: {
           employeeId_date: {
@@ -171,36 +238,30 @@ export class AttendanceService {
           employeeId: dto.employeeId,
           branchId: employee.currentBranchId,
           date: dateOnly,
-          checkIn: dto.checkIn ? new Date(dto.checkIn) : undefined,
-          checkOut: dto.checkOut ? new Date(dto.checkOut) : undefined,
-          status: dto.status,
+          checkIn,
+          checkOut,
+          status,
+          lateMinutes,
+          overtimeMinutes,
+          overtimePending,
           source: AttendanceSource.MANUAL,
           note: dto.note,
         },
         update: {
-          checkIn: dto.checkIn ? new Date(dto.checkIn) : undefined,
-          checkOut: dto.checkOut ? new Date(dto.checkOut) : undefined,
-          status: dto.status,
+          checkIn,
+          checkOut,
+          status,
+          lateMinutes,
+          overtimeMinutes,
+          overtimePending,
           source: AttendanceSource.MANUAL,
           note: dto.note,
         },
       });
 
-      if (
-        dto.status === AttendanceStatus.UNINFORMED_ABSENT ||
-        dto.status === AttendanceStatus.LATE
-      ) {
-        await applyDisciplineRules(
-          tx,
-          dto.employeeId,
-          dto.status,
-          dateOnly,
-        );
-      }
-
       await tx.auditLog.create({
         data: {
-          userId: actingUserId,
+          userId: actingUser.id,
           action: 'MANUAL_ATTENDANCE',
           entity: 'AttendanceLog',
           entityId: attendanceLog.id,
@@ -211,6 +272,28 @@ export class AttendanceService {
     });
 
     return result;
+  }
+
+  async approveOvertime(
+    id: string,
+    dto: ApproveOvertimeDto,
+    actingUserId: string,
+  ) {
+    const log = await this.prisma.attendanceLog.findUnique({ where: { id } });
+
+    if (!log) {
+      throw new NotFoundException(`Attendance log with id ${id} not found`);
+    }
+
+    return this.prisma.attendanceLog.update({
+      where: { id },
+      data: {
+        overtimeMinutes: dto.overtimeMinutes,
+        overtimePending: false,
+        overtimeApprovedBy: actingUserId,
+        overtimeApprovedAt: new Date(),
+      },
+    });
   }
 
   private buildEmployeeFilterWhere(query: {

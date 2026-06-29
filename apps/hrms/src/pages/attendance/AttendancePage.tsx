@@ -6,7 +6,9 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
+import { shiftsApi } from '@/api/endpoints/shifts'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import {
   EMPTY_EMPLOYEE_FILTERS,
   EmployeeFiltersBar,
@@ -35,11 +37,19 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
+import {
+  calcLateMinutes,
+  calcOvertimeMinutes,
+  combineDateAndTime,
+  showsTimeFields,
+} from '@/lib/attendanceUtils'
 import { cn } from '@/lib/utils'
 import {
   ATTENDANCE_STATUSES,
   type AttendanceLog,
   type AttendanceStatus,
+  type Employee,
   type RelieverSession,
 } from '@/types'
 
@@ -77,10 +87,16 @@ function formatDuration(minutes: number) {
   return `${m} min`
 }
 
-function DailyLogTab({ initialStatus = ALL }: { initialStatus?: string }) {
+function DailyLogTab({
+  initialStatus = ALL,
+  initialDate,
+}: {
+  initialStatus?: string
+  initialDate?: string
+}) {
   const queryClient = useQueryClient()
   const today = format(new Date(), 'yyyy-MM-dd')
-  const [date, setDate] = useState(today)
+  const [date, setDate] = useState(initialDate ?? today)
   const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
   const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [confirmAbsentees, setConfirmAbsentees] = useState(false)
@@ -239,12 +255,20 @@ function DailyLogTab({ initialStatus = ALL }: { initialStatus?: string }) {
                   <TableCell
                     className={cn(
                       (log.overtimeMinutes ?? 0) > 0 &&
+                        !log.overtimePending &&
                         'font-medium text-green-600',
                     )}
                   >
-                    {(log.overtimeMinutes ?? 0) > 0
-                      ? log.overtimeMinutes
-                      : '—'}
+                    {log.overtimePending ? (
+                      <Badge className="border-amber-200 bg-amber-100 text-amber-800">
+                        Pending Approval
+                      </Badge>
+                    ) : (log.overtimeMinutes ?? 0) > 0 ||
+                      log.overtimeApprovedBy ? (
+                      `${log.overtimeMinutes ?? 0} min`
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>
                     {log.source === 'BIOMETRIC' ? (
@@ -282,31 +306,248 @@ function DailyLogTab({ initialStatus = ALL }: { initialStatus?: string }) {
   )
 }
 
+function SingleManualTab() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN'
+  const today = format(new Date(), 'yyyy-MM-dd')
+
+  const [employeeId, setEmployeeId] = useState('')
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
+    null,
+  )
+  const [date, setDate] = useState(today)
+  const [status, setStatus] = useState<AttendanceStatus>('PRESENT')
+  const [checkIn, setCheckIn] = useState('')
+  const [checkOut, setCheckOut] = useState('')
+  const [overtimeMinutes, setOvertimeMinutes] = useState<number | ''>('')
+  const [note, setNote] = useState('')
+
+  const { data: employeeDetail } = useQuery({
+    queryKey: ['employee', employeeId],
+    queryFn: () => employeesApi.getOne(employeeId),
+    enabled: !!employeeId,
+  })
+
+  const shift = employeeDetail?.shift ?? selectedEmployee?.shift
+
+  const calculatedLate = useMemo(() => {
+    if (!checkIn || !shift?.startTime) return 0
+    return calcLateMinutes(checkIn, shift.startTime)
+  }, [checkIn, shift?.startTime])
+
+  const calculatedOvertime = useMemo(() => {
+    if (!checkOut || !shift?.endTime) return 0
+    return calcOvertimeMinutes(checkOut, shift.endTime)
+  }, [checkOut, shift?.endTime])
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      if (!employeeId) throw new Error('Employee required')
+      return attendanceApi.markManual({
+        employeeId,
+        date,
+        status,
+        checkIn:
+          checkIn && showsTimeFields(status)
+            ? combineDateAndTime(date, checkIn)
+            : undefined,
+        checkOut:
+          checkOut && showsTimeFields(status)
+            ? combineDateAndTime(date, checkOut)
+            : undefined,
+        lateMinutes: calculatedLate,
+        overtimeMinutes:
+          isSuperAdmin && overtimeMinutes !== ''
+            ? Number(overtimeMinutes)
+            : calculatedOvertime,
+        note: note || undefined,
+      })
+    },
+    onSuccess: () => {
+      toast({ title: 'Attendance saved successfully' })
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
+      setEmployeeId('')
+      setSelectedEmployee(null)
+      setStatus('PRESENT')
+      setCheckIn('')
+      setCheckOut('')
+      setOvertimeMinutes('')
+      setNote('')
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to save attendance',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <div className="mx-auto max-w-xl space-y-6 rounded-lg border border-border bg-white p-6">
+      <h2 className="text-lg font-semibold">Mark Manual Attendance</h2>
+
+      <EmployeeSearchSelect
+        label="Employee *"
+        value={employeeId}
+        onChange={(id, emp) => {
+          setEmployeeId(id)
+          setSelectedEmployee(emp ?? null)
+        }}
+      />
+
+      {selectedEmployee && (
+        <p className="text-sm text-text-secondary">
+          Shift:{' '}
+          {shift
+            ? `${shift.name} (${shift.startTime} - ${shift.endTime})`
+            : 'Not assigned'}
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label>Date *</Label>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>Status *</Label>
+          <Select
+            value={status}
+            onValueChange={(v) => setStatus(v as AttendanceStatus)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ATTENDANCE_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s.replace(/_/g, ' ')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {showsTimeFields(status) && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label>Check In Time</Label>
+            <Input
+              type="time"
+              value={checkIn}
+              onChange={(e) => setCheckIn(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Check Out Time</Label>
+            <Input
+              type="time"
+              value={checkOut}
+              onChange={(e) => setCheckOut(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
+      {showsTimeFields(status) && (
+        <div className="space-y-1">
+          <Label>Late Minutes</Label>
+          <Input
+            type="number"
+            readOnly
+            value={calculatedLate}
+            className="bg-muted"
+          />
+          {calculatedLate > 0 && (
+            <p className="text-xs text-text-secondary">
+              Calculated from check-in vs shift start (+15 min grace)
+            </p>
+          )}
+        </div>
+      )}
+
+      {showsTimeFields(status) && (
+        <div className="space-y-1">
+          <Label>Overtime (minutes)</Label>
+          <Input
+            type="number"
+            min={0}
+            value={isSuperAdmin ? overtimeMinutes : calculatedOvertime}
+            disabled={!isSuperAdmin}
+            title={
+              !isSuperAdmin ? 'Overtime must be approved by Admin' : undefined
+            }
+            onChange={(e) =>
+              setOvertimeMinutes(
+                e.target.value === '' ? '' : Number(e.target.value),
+              )
+            }
+            className={cn(!isSuperAdmin && 'bg-muted')}
+          />
+          {!isSuperAdmin && calculatedOvertime > 0 && (
+            <p className="text-xs text-text-secondary">
+              Calculated: {calculatedOvertime} min — Overtime must be approved
+              by Admin
+            </p>
+          )}
+          {isSuperAdmin && calculatedOvertime > 0 && (
+            <p className="text-xs text-text-secondary">
+              Auto-calculated: {calculatedOvertime} min
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-1">
+        <Label>Note</Label>
+        <Textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Optional note..."
+        />
+      </div>
+
+      <Button
+        className="bg-primary hover:bg-primary-dark"
+        disabled={!employeeId || saveMutation.isPending}
+        onClick={() => saveMutation.mutate()}
+      >
+        {saveMutation.isPending ? 'Saving...' : 'Save Attendance'}
+      </Button>
+    </div>
+  )
+}
+
+type BulkRowState = {
+  status: AttendanceStatus | null
+  checkIn: string
+  checkOut: string
+  note: string
+}
+
 function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
   const queryClient = useQueryClient()
   const today = format(new Date(), 'yyyy-MM-dd')
 
   const [branchId, setBranchId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
+  const [shiftId, setShiftId] = useState('')
   const [date, setDate] = useState(today)
-  const [roleFilter, setRoleFilter] = useState('ALL')
   const [loaded, setLoaded] = useState(false)
-  const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [progress, setProgress] = useState('')
+  const [rows, setRows] = useState<Record<string, BulkRowState>>({})
 
-  type MarkChoice = 'PRESENT' | 'ABSENT' | 'ON_LEAVE' | null
-  const [selections, setSelections] = useState<
-    Record<string, { status: MarkChoice; isLate: boolean }>
-  >({})
-
-  const ROLE_FILTERS = [
-    'ALL',
-    'DOCTOR',
-    'NURSE',
-    'ADMIN STAFF',
-    'PHARMACIST',
-    'TECHNICIAN',
+  const BULK_STATUSES: { value: AttendanceStatus; label: string }[] = [
+    { value: 'PRESENT', label: 'Present' },
+    { value: 'ABSENT', label: 'Absent' },
+    { value: 'LATE', label: 'Late' },
+    { value: 'ON_LEAVE', label: 'Leave' },
+    { value: 'HALF_DAY', label: 'Short Leave' },
   ]
 
   const { data: branches = [] } = useQuery({
@@ -315,17 +556,23 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId],
-    queryFn: () => departmentsApi.getAll({ branchId }),
-    enabled: !!branchId,
+    queryKey: ['departments', branchId || 'all'],
+    queryFn: () =>
+      departmentsApi.getAll(branchId ? { branchId } : undefined),
+  })
+
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts', branchId || 'all'],
+    queryFn: () => shiftsApi.getAll(branchId || undefined),
   })
 
   const { data: employees = [], refetch: refetchEmployees } = useQuery({
-    queryKey: ['bulk-attendance-employees', branchId, departmentId],
+    queryKey: ['bulk-attendance-employees', branchId, departmentId, shiftId],
     queryFn: () =>
       employeesApi.getAll({
         branchId,
         departmentId: departmentId || undefined,
+        shiftId: shiftId || undefined,
         status: 'ACTIVE',
       }),
     enabled: false,
@@ -341,13 +588,6 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
       }),
     enabled: loaded && !!branchId,
   })
-
-  const filteredEmployees = useMemo(() => {
-    if (roleFilter === 'ALL') return employees
-    return employees.filter((e) =>
-      e.currentDesignation.toUpperCase().includes(roleFilter),
-    )
-  }, [employees, roleFilter])
 
   const logByEmployee = useMemo(() => {
     const map = new Map<string, AttendanceLog>()
@@ -367,34 +607,28 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
       return
     }
     await refetchEmployees()
-    setSelections({})
+    setRows({})
     setLoaded(true)
   }
 
-  const setMark = (employeeId: string, status: MarkChoice) => {
-    setSelections((prev) => ({
+  const updateRow = (
+    employeeId: string,
+    patch: Partial<BulkRowState>,
+  ) => {
+    setRows((prev) => ({
       ...prev,
       [employeeId]: {
-        status,
-        isLate: status === 'PRESENT' ? (prev[employeeId]?.isLate ?? false) : false,
-      },
-    }))
-  }
-
-  const toggleLate = (employeeId: string) => {
-    setSelections((prev) => ({
-      ...prev,
-      [employeeId]: {
-        status: prev[employeeId]?.status ?? 'PRESENT',
-        isLate: !prev[employeeId]?.isLate,
+        status: prev[employeeId]?.status ?? null,
+        checkIn: prev[employeeId]?.checkIn ?? '',
+        checkOut: prev[employeeId]?.checkOut ?? '',
+        note: prev[employeeId]?.note ?? '',
+        ...patch,
       },
     }))
   }
 
   const handleSaveAll = async () => {
-    const toSave = Object.entries(selections).filter(
-      ([, v]) => v.status !== null,
-    )
+    const toSave = Object.entries(rows).filter(([, v]) => v.status !== null)
     if (toSave.length === 0) {
       toast({
         title: 'Nothing to save',
@@ -407,16 +641,35 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
     setSaving(true)
     let saved = 0
 
-    for (const [employeeId, { status, isLate }] of toSave) {
+    for (const [employeeId, row] of toSave) {
       setProgress(`Saving ${saved + 1}/${toSave.length}...`)
-      let finalStatus: AttendanceStatus = status!
-      if (status === 'PRESENT' && isLate) finalStatus = 'LATE'
+      const emp = employees.find((e) => e.id === employeeId)
+      const shift = emp?.shift
+      const status = row.status!
+      const lateMinutes =
+        row.checkIn && shift?.startTime
+          ? calcLateMinutes(row.checkIn, shift.startTime)
+          : 0
+      const overtimeMinutes =
+        row.checkOut && shift?.endTime
+          ? calcOvertimeMinutes(row.checkOut, shift.endTime)
+          : 0
 
       await attendanceApi.markManual({
         employeeId,
         date,
-        status: finalStatus,
-        note: note || undefined,
+        status,
+        checkIn:
+          row.checkIn && showsTimeFields(status)
+            ? combineDateAndTime(date, row.checkIn)
+            : undefined,
+        checkOut:
+          row.checkOut && showsTimeFields(status)
+            ? combineDateAndTime(date, row.checkOut)
+            : undefined,
+        lateMinutes,
+        overtimeMinutes,
+        note: row.note || undefined,
       })
       saved++
     }
@@ -425,7 +678,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
     setProgress('')
     toast({ title: `Attendance saved for ${saved} employees` })
     queryClient.invalidateQueries({ queryKey: ['attendance'] })
-    setSelections({})
+    setRows({})
     onSuccess()
   }
 
@@ -439,6 +692,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
             onValueChange={(v) => {
               setBranchId(v)
               setDepartmentId('')
+              setShiftId('')
               setLoaded(false)
             }}
           >
@@ -463,7 +717,6 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
               setDepartmentId(v === 'all' ? '' : v)
               setLoaded(false)
             }}
-            disabled={!branchId}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="All" />
@@ -473,6 +726,29 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
               {departments.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label>Shift</Label>
+          <Select
+            value={shiftId || 'all'}
+            onValueChange={(v) => {
+              setShiftId(v === 'all' ? '' : v)
+              setLoaded(false)
+            }}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Shifts" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Shifts</SelectItem>
+              {shifts.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name} ({s.startTime} - {s.endTime})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -492,22 +768,6 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
           />
         </div>
 
-        <div className="space-y-1">
-          <Label>Role Filter</Label>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ROLE_FILTERS.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {r === 'ALL' ? 'All Roles' : r}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
         <Button
           className="bg-primary hover:bg-primary-dark"
           onClick={handleLoad}
@@ -519,28 +779,32 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
 
       {loaded && (
         <>
-          <div className="rounded-lg border border-border bg-white">
+          <div className="overflow-x-auto rounded-lg border border-border bg-white">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>
                   <TableHead>Shift</TableHead>
-                  <TableHead>Current Status</TableHead>
+                  <TableHead>Current</TableHead>
                   <TableHead>Mark As</TableHead>
-                  <TableHead>LATE</TableHead>
+                  <TableHead>Check In</TableHead>
+                  <TableHead>Check Out</TableHead>
+                  <TableHead>Note</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredEmployees.length === 0 ? (
+                {employees.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-text-secondary">
+                    <TableCell colSpan={7} className="text-text-secondary">
                       No employees found
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredEmployees.map((emp) => {
+                  employees.map((emp) => {
                     const log = logByEmployee.get(emp.id)
-                    const sel = selections[emp.id]
+                    const row = rows[emp.id]
+                    const showTimes =
+                      row?.status && showsTimeFields(row.status)
                     return (
                       <TableRow key={emp.id}>
                         <TableCell>
@@ -551,11 +815,14 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
                             <p className="font-mono text-xs text-text-secondary">
                               {emp.employeeCode}
                             </p>
+                            <p className="text-xs text-text-secondary">
+                              {emp.currentDesignation}
+                            </p>
                           </div>
                         </TableCell>
-                        <TableCell className="text-text-secondary">
+                        <TableCell className="text-sm text-text-secondary">
                           {emp.shift
-                            ? `${emp.shift.name} (${emp.shift.startTime}-${emp.shift.endTime})`
+                            ? `${emp.shift.name} (${emp.shift.startTime} - ${emp.shift.endTime})`
                             : '—'}
                         </TableCell>
                         <TableCell>
@@ -566,34 +833,59 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-1">
-                            {(['PRESENT', 'ABSENT', 'ON_LEAVE'] as const).map(
-                              (s) => (
-                                <Button
-                                  key={s}
-                                  size="sm"
-                                  variant={
-                                    sel?.status === s ? 'default' : 'outline'
-                                  }
-                                  className={cn(
-                                    sel?.status === s &&
-                                      'bg-primary hover:bg-primary-dark',
-                                  )}
-                                  onClick={() => setMark(emp.id, s)}
-                                >
-                                  {s === 'ON_LEAVE' ? 'Leave' : s.charAt(0) + s.slice(1).toLowerCase()}
-                                </Button>
-                              ),
-                            )}
+                          <div className="flex flex-wrap gap-1">
+                            {BULK_STATUSES.map((s) => (
+                              <Button
+                                key={s.value}
+                                size="sm"
+                                variant={
+                                  row?.status === s.value
+                                    ? 'default'
+                                    : 'outline'
+                                }
+                                className={cn(
+                                  row?.status === s.value &&
+                                    'bg-primary hover:bg-primary-dark',
+                                )}
+                                onClick={() =>
+                                  updateRow(emp.id, { status: s.value })
+                                }
+                              >
+                                {s.label}
+                              </Button>
+                            ))}
                           </div>
                         </TableCell>
                         <TableCell>
-                          <input
-                            type="checkbox"
-                            checked={sel?.isLate ?? false}
-                            disabled={sel?.status !== 'PRESENT'}
-                            onChange={() => toggleLate(emp.id)}
-                            className="h-4 w-4"
+                          <Input
+                            type="time"
+                            className="w-[120px]"
+                            disabled={!showTimes}
+                            value={row?.checkIn ?? ''}
+                            onChange={(e) =>
+                              updateRow(emp.id, { checkIn: e.target.value })
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="time"
+                            className="w-[120px]"
+                            disabled={!showTimes}
+                            value={row?.checkOut ?? ''}
+                            onChange={(e) =>
+                              updateRow(emp.id, { checkOut: e.target.value })
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            className="min-w-[140px]"
+                            placeholder="Note"
+                            value={row?.note ?? ''}
+                            onChange={(e) =>
+                              updateRow(emp.id, { note: e.target.value })
+                            }
                           />
                         </TableCell>
                       </TableRow>
@@ -602,15 +894,6 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
                 )}
               </TableBody>
             </Table>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Shared Note (applied to all records)</Label>
-            <Textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Optional note for all marked attendance..."
-            />
           </div>
 
           <div className="flex items-center gap-4">
@@ -761,6 +1044,13 @@ export function AttendancePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get('tab') || 'daily'
   const statusParam = searchParams.get('status') || ALL
+  const dateParam = searchParams.get('date')
+  const initialDate =
+    dateParam === 'today'
+      ? format(new Date(), 'yyyy-MM-dd')
+      : dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
+        ? dateParam
+        : undefined
 
   const handleTabChange = (value: string) => {
     const next = new URLSearchParams(searchParams)
@@ -784,21 +1074,32 @@ export function AttendancePage() {
         </TabsList>
 
         <TabsContent value="daily" className="mt-4">
-          <DailyLogTab initialStatus={statusParam} />
+          <DailyLogTab initialStatus={statusParam} initialDate={initialDate} />
         </TabsContent>
 
         <TabsContent value="reliever" className="mt-4">
           <RelieverSessionsTab />
         </TabsContent>
 
-        <TabsContent value="manual" className="mt-4">
-          <BulkManualTab
-            onSuccess={() => {
-              const next = new URLSearchParams(searchParams)
-              next.delete('tab')
-              setSearchParams(next, { replace: true })
-            }}
-          />
+        <TabsContent value="manual" className="mt-4 space-y-4">
+          <Tabs defaultValue="single">
+            <TabsList>
+              <TabsTrigger value="single">Single Entry</TabsTrigger>
+              <TabsTrigger value="bulk">Bulk Mark</TabsTrigger>
+            </TabsList>
+            <TabsContent value="single" className="mt-4">
+              <SingleManualTab />
+            </TabsContent>
+            <TabsContent value="bulk" className="mt-4">
+              <BulkManualTab
+                onSuccess={() => {
+                  const next = new URLSearchParams(searchParams)
+                  next.delete('tab')
+                  setSearchParams(next, { replace: true })
+                }}
+              />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>

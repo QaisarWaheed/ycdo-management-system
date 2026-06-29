@@ -1,8 +1,10 @@
 import {
   ChangeType,
+  EmployeeStatus,
   Gender,
   PrismaClient,
   ProjectType,
+  StaffType,
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -101,6 +103,272 @@ const seedEmployees = [
     employeeCode: 'YCDO-2024-0002',
   },
 ];
+
+type MockEmployeeSeed = {
+  firstName: string;
+  lastName: string;
+  cnic: string;
+  gender: Gender;
+  phone: string;
+  email: string;
+  designation: string;
+  deptName: string;
+  branchName: string;
+  shiftPreference?: string;
+  basicStipend: number;
+  status: EmployeeStatus;
+  staffType: StaffType;
+  joiningDate: string;
+  qualification: {
+    degree: string;
+    university: string;
+    year: number;
+    grade: string;
+  };
+};
+
+const mockEmployees: MockEmployeeSeed[] = [
+  {
+    firstName: 'Muhammad',
+    lastName: 'Usman',
+    cnic: '36302-1111111-1',
+    gender: Gender.MALE,
+    phone: '03001111111',
+    email: 'muhammad.usman@ycdo.org',
+    designation: 'Medical Officer',
+    deptName: 'Medical Staff',
+    branchName: 'YCDO Central Hospital',
+    shiftPreference: 'Morning Shift',
+    basicStipend: 85000,
+    status: EmployeeStatus.ACTIVE,
+    staffType: StaffType.NEW,
+    joiningDate: '2023-01-15',
+    qualification: {
+      degree: 'MBBS',
+      university: 'University of Health Sciences',
+      year: 2020,
+      grade: 'A Grade',
+    },
+  },
+  {
+    firstName: 'Ayesha',
+    lastName: 'Malik',
+    cnic: '36302-2222222-2',
+    gender: Gender.FEMALE,
+    phone: '03002222222',
+    email: 'ayesha.malik@ycdo.org',
+    designation: 'Head Nurse',
+    deptName: 'Medical Staff',
+    branchName: 'YCDO Central Hospital',
+    shiftPreference: 'Evening Shift',
+    basicStipend: 55000,
+    status: EmployeeStatus.ACTIVE,
+    staffType: StaffType.NEW,
+    joiningDate: '2023-03-01',
+    qualification: {
+      degree: 'BSc Nursing',
+      university: 'Fatima Jinnah Medical University',
+      year: 2019,
+      grade: 'B Grade',
+    },
+  },
+  {
+    firstName: 'Hassan',
+    lastName: 'Raza',
+    cnic: '36302-3333333-3',
+    gender: Gender.MALE,
+    phone: '03003333333',
+    email: 'hassan.raza@ycdo.org',
+    designation: 'Receptionist',
+    deptName: 'Reception',
+    branchName: 'YCDO Executive Hospital-I',
+    shiftPreference: 'Morning Shift',
+    basicStipend: 35000,
+    status: EmployeeStatus.ACTIVE,
+    staffType: StaffType.EXISTING,
+    joiningDate: '2022-06-01',
+    qualification: {
+      degree: 'BA',
+      university: 'BZU Multan',
+      year: 2018,
+      grade: 'B Grade',
+    },
+  },
+  {
+    firstName: 'Fatima',
+    lastName: 'Zahra',
+    cnic: '36302-4444444-4',
+    gender: Gender.FEMALE,
+    phone: '03004444444',
+    email: 'fatima.zahra@ycdo.org',
+    designation: 'Pharmacist',
+    deptName: 'Pharmacy',
+    branchName: 'YCDO Central Hospital',
+    shiftPreference: 'Night Shift',
+    basicStipend: 60000,
+    status: EmployeeStatus.APPOINTED,
+    staffType: StaffType.NEW,
+    joiningDate: '2024-01-01',
+    qualification: {
+      degree: 'PharmD',
+      university: 'University of Pharmacy',
+      year: 2022,
+      grade: 'A Grade',
+    },
+  },
+  {
+    firstName: 'Bilal',
+    lastName: 'Ahmed',
+    cnic: '36302-5555555-5',
+    gender: Gender.MALE,
+    phone: '03005555555',
+    email: 'bilal.ahmed@ycdo.org',
+    designation: 'Software Engineer',
+    deptName: 'IT Team',
+    branchName: 'Software House HQ',
+    basicStipend: 75000,
+    status: EmployeeStatus.ACTIVE,
+    staffType: StaffType.NEW,
+    joiningDate: '2023-07-01',
+    qualification: {
+      degree: 'BSCS',
+      university: 'COMSATS University',
+      year: 2021,
+      grade: 'A Grade',
+    },
+  },
+  {
+    firstName: 'Zainab',
+    lastName: 'Hussain',
+    cnic: '36302-6666666-6',
+    gender: Gender.FEMALE,
+    phone: '03006666666',
+    email: 'zainab.hussain@ycdo.org',
+    designation: 'Lab Technician',
+    deptName: 'Laboratory',
+    branchName: 'Idrees Memorial YCDO Hospital',
+    shiftPreference: 'Morning Shift',
+    basicStipend: 45000,
+    status: EmployeeStatus.ACTIVE,
+    staffType: StaffType.NEW,
+    joiningDate: '2023-09-15',
+    qualification: {
+      degree: 'BS Lab Sciences',
+      university: 'University of Multan',
+      year: 2020,
+      grade: 'B Grade',
+    },
+  },
+  {
+    firstName: 'Omar',
+    lastName: 'Farooq',
+    cnic: '36302-7777777-7',
+    gender: Gender.MALE,
+    phone: '03007777777',
+    email: 'omar.farooq@ycdo.org',
+    designation: 'Admin Officer',
+    deptName: 'Administration',
+    branchName: 'YCDO Executive Hospital-II Mother & Child Care',
+    basicStipend: 50000,
+    status: EmployeeStatus.TRAINEE,
+    staffType: StaffType.NEW,
+    joiningDate: '2026-01-01',
+    qualification: {
+      degree: 'BBA',
+      university: 'IBA Sukkur',
+      year: 2023,
+      grade: 'B Grade',
+    },
+  },
+  {
+    firstName: 'Sana',
+    lastName: 'Tariq',
+    cnic: '36302-8888888-8',
+    gender: Gender.FEMALE,
+    phone: '03008888888',
+    email: 'sana.tariq@ycdo.org',
+    designation: 'Graphic Designer',
+    deptName: 'Social Media',
+    branchName: 'Software House HQ',
+    basicStipend: 40000,
+    status: EmployeeStatus.ACTIVE,
+    staffType: StaffType.INTERNEE,
+    joiningDate: '2025-06-01',
+    qualification: {
+      degree: 'BFA',
+      university: 'NCA Lahore',
+      year: 2024,
+      grade: 'A Grade',
+    },
+  },
+  {
+    firstName: 'Tariq',
+    lastName: 'Mehmood',
+    cnic: '36302-9999999-9',
+    gender: Gender.MALE,
+    phone: '03009999999',
+    email: 'tariq.mehmood@ycdo.org',
+    designation: 'Housekeeper',
+    deptName: 'Housekeeping',
+    branchName: 'YCDO Hospital Hassan Abad',
+    shiftPreference: 'Morning Shift',
+    basicStipend: 25000,
+    status: EmployeeStatus.ACTIVE,
+    staffType: StaffType.EXISTING,
+    joiningDate: '2021-03-01',
+    qualification: {
+      degree: 'Matric',
+      university: 'BISE Multan',
+      year: 2015,
+      grade: 'C Grade',
+    },
+  },
+  {
+    firstName: 'Nadia',
+    lastName: 'Iqbal',
+    cnic: '36302-0000001-0',
+    gender: Gender.FEMALE,
+    phone: '03010000001',
+    email: 'nadia.iqbal@ycdo.org',
+    designation: 'Vocational Trainer',
+    deptName: 'Human Resources',
+    branchName: 'YCDO VTI For Women Qasim Pur',
+    basicStipend: 38000,
+    status: EmployeeStatus.APPOINTED,
+    staffType: StaffType.NEW,
+    joiningDate: '2024-09-01',
+    qualification: {
+      degree: 'MA Education',
+      university: 'BZU Multan',
+      year: 2019,
+      grade: 'B Grade',
+    },
+  },
+];
+
+async function generateEmployeeCode(prisma: PrismaClient): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `YCDO-${year}-`;
+
+  const lastEmployee = await prisma.employee.findFirst({
+    where: {
+      employeeCode: { startsWith: prefix },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+  });
+
+  let sequence = 1;
+  if (lastEmployee) {
+    const lastSequence = parseInt(
+      lastEmployee.employeeCode.split('-').pop() ?? '0',
+      10,
+    );
+    sequence = lastSequence + 1;
+  }
+
+  return `${prefix}${sequence.toString().padStart(4, '0')}`;
+}
 
 async function ensureEmployeePortalUser(
   employeeId: string,
@@ -368,11 +636,316 @@ async function main() {
     }
   }
 
+  const vtiQasimPur = await prisma.branch.findFirst({
+    where: { name: { contains: 'YCDO VTI For Women Qasim Pur' } },
+  });
+  if (vtiQasimPur) {
+    await ensureDepartments(vtiQasimPur.id, ['Human Resources', 'Administration']);
+  }
+
+  for (const employee of mockEmployees) {
+    const existingEmp = await prisma.employee.findFirst({
+      where: { cnic: employee.cnic },
+    });
+
+    const branch = await prisma.branch.findFirst({
+      where: { name: { contains: employee.branchName } },
+    });
+    if (!branch) {
+      console.log(`Branch not found: ${employee.branchName}`);
+      continue;
+    }
+
+    const dept = await prisma.department.findFirst({
+      where: { name: employee.deptName, branchId: branch.id },
+    });
+    const department =
+      dept ??
+      (await prisma.department.findFirst({
+        where: { name: employee.deptName },
+      }));
+    if (!department) {
+      console.log(`Dept not found: ${employee.deptName}`);
+      continue;
+    }
+
+    const shift =
+      (employee.shiftPreference
+        ? await prisma.shift.findFirst({
+            where: {
+              branchId: branch.id,
+              name: { contains: employee.shiftPreference },
+            },
+          })
+        : null) ??
+      (await prisma.shift.findFirst({
+        where: { branchId: branch.id },
+      }));
+
+    const joiningDate = new Date(employee.joiningDate);
+
+    if (!existingEmp) {
+      const code = await generateEmployeeCode(prisma);
+
+      const newEmployee = await prisma.employee.create({
+        data: {
+          employeeCode: code,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          cnic: employee.cnic,
+          gender: employee.gender,
+          phone: employee.phone,
+          email: employee.email,
+          joiningDate,
+          status: employee.status,
+          staffType: employee.staffType,
+          currentBranchId: branch.id,
+          currentDepartmentId: department.id,
+          currentDesignation: employee.designation,
+          shiftId: shift?.id ?? null,
+        },
+      });
+
+      await prisma.stipendRecord.create({
+        data: {
+          employeeId: newEmployee.id,
+          basicStipend: employee.basicStipend,
+          effectiveFrom: joiningDate,
+        },
+      });
+
+      await prisma.employmentHistory.create({
+        data: {
+          employeeId: newEmployee.id,
+          branchId: branch.id,
+          departmentId: department.id,
+          designation: employee.designation,
+          changeType: ChangeType.JOINED,
+          effectiveDate: joiningDate,
+        },
+      });
+
+      await prisma.academicQualification.create({
+        data: {
+          employeeId: newEmployee.id,
+          degree: employee.qualification.degree,
+          boardUniversity: employee.qualification.university,
+          obtainedMarks: employee.qualification.year.toString(),
+          divisionGrade: employee.qualification.grade,
+        },
+      });
+
+      await ensureEmployeePortalUser(newEmployee.id, employee.email, code);
+
+      console.log(
+        `Created employee: ${employee.firstName} ${employee.lastName} (${code})`,
+      );
+    } else {
+      const updated = await prisma.employee.update({
+        where: { id: existingEmp.id },
+        data: {
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          gender: employee.gender,
+          phone: employee.phone,
+          email: employee.email,
+          joiningDate,
+          status: employee.status,
+          staffType: employee.staffType,
+          currentBranchId: branch.id,
+          currentDepartmentId: department.id,
+          currentDesignation: employee.designation,
+          shiftId: shift?.id ?? null,
+        },
+      });
+
+      const stipend = await prisma.stipendRecord.findFirst({
+        where: { employeeId: updated.id },
+      });
+      if (!stipend) {
+        await prisma.stipendRecord.create({
+          data: {
+            employeeId: updated.id,
+            basicStipend: employee.basicStipend,
+            effectiveFrom: joiningDate,
+          },
+        });
+      }
+
+      const joinedHistory = await prisma.employmentHistory.findFirst({
+        where: { employeeId: updated.id, changeType: ChangeType.JOINED },
+      });
+      if (!joinedHistory) {
+        await prisma.employmentHistory.create({
+          data: {
+            employeeId: updated.id,
+            branchId: branch.id,
+            departmentId: department.id,
+            designation: employee.designation,
+            changeType: ChangeType.JOINED,
+            effectiveDate: joiningDate,
+          },
+        });
+      }
+
+      const qualification = await prisma.academicQualification.findFirst({
+        where: { employeeId: updated.id },
+      });
+      if (!qualification) {
+        await prisma.academicQualification.create({
+          data: {
+            employeeId: updated.id,
+            degree: employee.qualification.degree,
+            boardUniversity: employee.qualification.university,
+            obtainedMarks: employee.qualification.year.toString(),
+            divisionGrade: employee.qualification.grade,
+          },
+        });
+      }
+
+      await ensureEmployeePortalUser(
+        updated.id,
+        employee.email,
+        updated.employeeCode,
+      );
+
+      if (
+        existingEmp.firstName !== employee.firstName ||
+        existingEmp.lastName !== employee.lastName
+      ) {
+        console.log(
+          `Updated employee: ${employee.firstName} ${employee.lastName} (${updated.employeeCode})`,
+        );
+      }
+    }
+  }
+
+  const designations = [
+    { title: 'Medical Officer', category: 'Medical' },
+    { title: 'Women Medical Officer', category: 'Medical' },
+    { title: 'Senior Medical Officer', category: 'Medical' },
+    { title: 'House Officer', category: 'Medical' },
+    { title: 'Intern Doctor', category: 'Medical' },
+    { title: 'Consultant', category: 'Medical' },
+    { title: 'Surgeon', category: 'Medical' },
+    { title: 'Head Nurse', category: 'Nursing' },
+    { title: 'Senior Nurse', category: 'Nursing' },
+    { title: 'Nurse', category: 'Nursing' },
+    { title: 'Nursing Assistant', category: 'Nursing' },
+    { title: 'Midwife', category: 'Nursing' },
+    { title: 'Pharmacist', category: 'Allied Health' },
+    { title: 'Senior Pharmacist', category: 'Allied Health' },
+    { title: 'Lab Technician', category: 'Allied Health' },
+    { title: 'Senior Lab Technician', category: 'Allied Health' },
+    { title: 'Radiologist', category: 'Allied Health' },
+    { title: 'Physiotherapist', category: 'Allied Health' },
+    { title: 'Dispenser', category: 'Allied Health' },
+    { title: 'X-Ray Technician', category: 'Allied Health' },
+    { title: 'Receptionist', category: 'Admin' },
+    { title: 'Senior Receptionist', category: 'Admin' },
+    { title: 'Admin Officer', category: 'Admin' },
+    { title: 'Senior Admin Officer', category: 'Admin' },
+    { title: 'Office Assistant', category: 'Admin' },
+    { title: 'Data Entry Operator', category: 'Admin' },
+    { title: 'Store Keeper', category: 'Admin' },
+    { title: 'Cashier', category: 'Admin' },
+    { title: 'Branch Manager', category: 'Management' },
+    { title: 'Admin Manager', category: 'Management' },
+    { title: 'Operations Manager', category: 'Management' },
+    { title: 'Department Head', category: 'Management' },
+    { title: 'HR Manager', category: 'Management' },
+    { title: 'HR Officer', category: 'Management' },
+    { title: 'Incharge', category: 'Management' },
+    { title: 'Housekeeper', category: 'Support' },
+    { title: 'Security Guard', category: 'Support' },
+    { title: 'Driver', category: 'Support' },
+    { title: 'Cook', category: 'Support' },
+    { title: 'Helper', category: 'Support' },
+    { title: 'Sanitation Worker', category: 'Support' },
+    { title: 'Sweeper', category: 'Support' },
+    { title: 'Software Engineer', category: 'IT' },
+    { title: 'IT Officer', category: 'IT' },
+    { title: 'Social Media Officer', category: 'IT' },
+    { title: 'Graphic Designer', category: 'IT' },
+    { title: 'Media Officer', category: 'IT' },
+    { title: 'Content Creator', category: 'IT' },
+    { title: 'Vocational Trainer', category: 'VTI' },
+    { title: 'Training Coordinator', category: 'VTI' },
+    { title: 'VTI Manager', category: 'VTI' },
+    { title: 'Accounts Officer', category: 'Finance' },
+    { title: 'Finance Manager', category: 'Finance' },
+    { title: 'Audit Officer', category: 'Finance' },
+  ];
+
+  for (const d of designations) {
+    await prisma.designation.upsert({
+      where: { title: d.title },
+      update: {},
+      create: d,
+    });
+  }
+
+  const roleAccounts = [
+    {
+      email: 'branch.manager@ycdo.org',
+      password: 'BranchM@123',
+      role: 'BRANCH_MANAGER' as UserRole,
+    },
+    {
+      email: 'dept.incharge@ycdo.org',
+      password: 'DeptIn@123',
+      role: 'ADMIN_OFFICER' as UserRole,
+    },
+    {
+      email: 'hr.operations@ycdo.org',
+      password: 'HROps@123',
+      role: 'HR_OPERATIONS_MANAGER' as UserRole,
+    },
+    {
+      email: 'hr.admin@ycdo.org',
+      password: 'HRAdmin@123',
+      role: 'HR_ADMIN_MANAGER' as UserRole,
+    },
+    {
+      email: 'chairman@ycdo.org',
+      password: 'Chairman@123',
+      role: 'CHAIRMAN' as UserRole,
+    },
+    {
+      email: 'founder@ycdo.org',
+      password: 'Founder@123',
+      role: 'FOUNDER' as UserRole,
+    },
+  ];
+
+  for (const account of roleAccounts) {
+    const hashedPassword = await bcrypt.hash(account.password, 10);
+    await prisma.user.upsert({
+      where: { email: account.email },
+      update: {},
+      create: {
+        email: account.email,
+        password: hashedPassword,
+        role: account.role,
+        isActive: true,
+      },
+    });
+  }
+
   const branchCount = await prisma.branch.count();
   console.log(`Seed completed — ${branchCount} branches total`);
   console.log('\nEmployee portal test accounts (password = employee code):');
   for (const emp of seedEmployees) {
     console.log(`  ${emp.email} / ${emp.employeeCode}`);
+  }
+  const mockEmpAccounts = await prisma.employee.findMany({
+    where: { cnic: { in: mockEmployees.map((e) => e.cnic) } },
+    select: { email: true, employeeCode: true },
+  });
+  for (const emp of mockEmpAccounts) {
+    if (emp.email) {
+      console.log(`  ${emp.email} / ${emp.employeeCode}`);
+    }
   }
 }
 

@@ -29,7 +29,13 @@ export class EmployeesController {
   constructor(private employeesService: EmployeesService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.BRANCH_MANAGER,
+  )
   create(@Body() dto: CreateEmployeeDto) {
     return this.employeesService.create(dto);
   }

@@ -21,6 +21,7 @@ export type EmployeeStatus =
   | 'DISMISSED'
 
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER'
+export type StaffType = 'NEW' | 'EXISTING' | 'INTERNEE'
 
 export const GENDERS: Gender[] = ['MALE', 'FEMALE', 'OTHER']
 
@@ -357,11 +358,33 @@ export interface Letter {
 
 export type LeaveStatus =
   | 'PENDING'
+  | 'BRANCH_APPROVED'
+  | 'DEPT_APPROVED'
   | 'RELIEVER_PENDING'
   | 'RELIEVER_CONFIRMED'
   | 'RELIEVER_REJECTED'
+  | 'HR_PENDING'
   | 'APPROVED'
   | 'REJECTED'
+  | 'CANCELLED'
+
+export type LeaveApprovalStage =
+  | 'BRANCH_MANAGER'
+  | 'DEPARTMENT_INCHARGE'
+  | 'HR_OPERATIONS'
+
+export type LeaveApprovalAction = 'APPROVED' | 'REJECTED'
+
+export interface LeaveApproval {
+  id: string
+  leaveId: string
+  stage: LeaveApprovalStage
+  action: LeaveApprovalAction
+  actionBy: string
+  actionAt: string
+  notes?: string | null
+  actionByUser?: { id: string; email: string; role: string }
+}
 
 export type RelieverRequestStatus =
   | 'PENDING'
@@ -403,14 +426,23 @@ export interface LeaveRecord {
   endDate: string
   totalDays: number
   status: LeaveStatus
+  leaveType?: string
   reason?: string | null
   approvedBy?: string | null
+  currentStage?: LeaveApprovalStage | null
+  branchManagerId?: string | null
+  deptInchargeId?: string | null
   createdAt?: string
   relieverRequest?: RelieverRequest | null
+  approvals?: LeaveApproval[]
   employee?: {
     firstName: string
     lastName: string
     employeeCode: string
+    currentBranchId?: string
+    currentDepartmentId?: string
+    currentBranch?: { id: string; name: string }
+    currentDepartment?: { name: string }
   }
 }
 
@@ -432,6 +464,9 @@ export interface AttendanceLog {
   checkOut?: string | null
   lateMinutes?: number
   overtimeMinutes?: number
+  overtimePending?: boolean
+  overtimeApprovedBy?: string | null
+  overtimeApprovedAt?: string | null
   source?: string
   employee?: {
     firstName: string
@@ -749,11 +784,15 @@ export const EMPLOYEE_STATUSES: EmployeeStatus[] = [
 
 export const LEAVE_STATUSES: LeaveStatus[] = [
   'PENDING',
+  'BRANCH_APPROVED',
+  'DEPT_APPROVED',
   'RELIEVER_PENDING',
   'RELIEVER_CONFIRMED',
   'RELIEVER_REJECTED',
+  'HR_PENDING',
   'APPROVED',
   'REJECTED',
+  'CANCELLED',
 ]
 
 export const DOCUMENT_TYPES: DocumentType[] = [

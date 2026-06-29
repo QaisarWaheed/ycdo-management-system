@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Plus, Trash2, Upload } from 'lucide-react'
+import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
@@ -11,6 +11,10 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { shiftsApi } from '@/api/endpoints/shifts'
+import { CnicInput } from '@/components/common/CnicInput'
+import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
+import { PhoneInput } from '@/components/common/PhoneInput'
+import { TextOnlyInput } from '@/components/common/TextOnlyInput'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -39,27 +43,58 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
-import type { DocumentType, EmployeePrefill, Gender, QualType } from '@/types'
-import { DOCUMENT_TYPES } from '@/types'
+import type { DocumentType, EmployeePrefill, Gender, QualType, StaffType } from '@/types'
 
 const cnicRegex = /^\d{5}-\d{7}-\d{1}$/
+const phoneOptional = z
+  .string()
+  .optional()
+  .refine((v) => !v || /^0\d{10}$/.test(v), 'Must be 11 digits starting with 0')
+
+const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const
+
+const STAFF_TYPE_OPTIONS: {
+  value: StaffType
+  label: string
+  description: string
+  icon: typeof UserPlus
+}[] = [
+  {
+    value: 'NEW',
+    label: 'New Staff',
+    description: 'Adding a new employee to YCDO',
+    icon: UserPlus,
+  },
+  {
+    value: 'EXISTING',
+    label: 'Existing Staff',
+    description: 'Staff member already worked at YCDO before',
+    icon: Users,
+  },
+  {
+    value: 'INTERNEE',
+    label: 'Internee',
+    description: 'Adding an intern or trainee',
+    icon: GraduationCap,
+  },
+]
 
 const step1Schema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   fatherName: z.string().optional(),
-  fatherContactNumber: z.string().optional(),
+  fatherContactNumber: phoneOptional,
   cnic: z
     .string()
     .min(1, 'CNIC is required')
     .regex(cnicRegex, 'Format: 12345-1234567-1'),
   dateOfBirth: z.string().optional(),
-  phone: z.string().optional(),
+  phone: phoneOptional,
   email: z.string().email('Invalid email').optional().or(z.literal('')),
   emergencyContactName: z.string().optional(),
-  emergencyContactNumber: z.string().optional(),
+  emergencyContactNumber: phoneOptional,
   spouseName: z.string().optional(),
-  spouseContactNumber: z.string().optional(),
+  spouseContactNumber: phoneOptional,
   bloodGroup: z.string().optional(),
   caste: z.string().optional(),
   domicile: z.string().optional(),
@@ -108,12 +143,87 @@ interface PrevEmpRow {
   totalExperience: string
 }
 
-const DOC_LABELS: Record<DocumentType, string> = {
-  CNIC: 'CNIC',
-  EDUCATIONAL_CERTIFICATE: 'Educational Certificate',
-  EXPERIENCE_LETTER: 'Experience Letter',
-  MEDICAL_CERTIFICATE: 'Medical Certificate',
-  OTHER: 'Other',
+function MultiFileUpload({
+  label,
+  subLabel,
+  files,
+  onAdd,
+  onRemove,
+  addButtonLabel = 'Add Another Certificate',
+}: {
+  label: string
+  subLabel: string
+  files: File[]
+  onAdd: (file: File) => void
+  onRemove: (index: number) => void
+  addButtonLabel?: string
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-xs text-text-secondary">{subLabel}</p>
+      </div>
+      <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-surface p-4 transition-colors hover:bg-muted">
+        <Upload className="h-6 w-6 text-text-secondary" />
+        <span className="text-sm text-text-secondary">Click or drag file to upload</span>
+        <input
+          type="file"
+          className="hidden"
+          accept=".jpg,.jpeg,.png,.pdf"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) onAdd(file)
+            e.target.value = ''
+          }}
+        />
+      </label>
+      {files.length > 0 && (
+        <ul className="space-y-2">
+          {files.map((file, index) => (
+            <li
+              key={`${file.name}-${index}`}
+              className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+            >
+              <span className="truncate">{file.name}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onRemove(index)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() =>
+          document
+            .getElementById(`multi-upload-${label.replace(/\s/g, '-')}`)
+            ?.click()
+        }
+      >
+        <Plus className="mr-1 h-4 w-4" />
+        {addButtonLabel}
+      </Button>
+      <input
+        id={`multi-upload-${label.replace(/\s/g, '-')}`}
+        type="file"
+        className="hidden"
+        accept=".jpg,.jpeg,.png,.pdf"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) onAdd(file)
+          e.target.value = ''
+        }}
+      />
+    </div>
+  )
 }
 
 const STEPS = [
@@ -260,13 +370,16 @@ export function EmployeeCreatePage() {
   const prefill = (location.state as { prefill?: EmployeePrefill } | null)
     ?.prefill
 
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(0)
+  const [staffType, setStaffType] = useState<StaffType | null>(null)
   const [step1Data, setStep1Data] = useState<Step1Values | null>(null)
   const [step2Data, setStep2Data] = useState<Step2Values | null>(null)
   const [step3Data, setStep3Data] = useState<Step3Values | null>(null)
-  const [documents, setDocuments] = useState<
-    Partial<Record<DocumentType, File>>
-  >({})
+  const [cnicFront, setCnicFront] = useState<File | null>(null)
+  const [cnicBack, setCnicBack] = useState<File | null>(null)
+  const [educationalCerts, setEducationalCerts] = useState<File[]>([])
+  const [medicalCerts, setMedicalCerts] = useState<File[]>([])
+  const [docErrors, setDocErrors] = useState<string | null>(null)
   const [qualifications, setQualifications] = useState<QualRow[]>([])
   const [previousEmployments, setPreviousEmployments] = useState<PrevEmpRow[]>(
     [],
@@ -372,7 +485,7 @@ export function EmployeeCreatePage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!step1Data || !step2Data || !step3Data) {
+      if (!step1Data || !step2Data || !step3Data || !staffType) {
         throw new Error('Missing form data')
       }
 
@@ -380,18 +493,30 @@ export function EmployeeCreatePage() {
         ...buildStep1Payload(step1Data),
         ...step2Data,
         ...step3Data,
+        staffType,
         biometricId: step2Data.biometricId || undefined,
         shiftId: step2Data.shiftId || undefined,
       })
 
-      const uploads = Object.entries(documents).filter(
-        (entry): entry is [DocumentType, File] => !!entry[1],
-      )
-      for (const [docType, file] of uploads) {
+      const uploadFile = async (
+        file: File,
+        documentType: DocumentType,
+        namePrefix?: string,
+      ) => {
         const formData = new FormData()
-        formData.append('documentType', docType)
-        formData.append('file', file)
+        formData.append('documentType', documentType)
+        const uploadName = namePrefix ? `${namePrefix}-${file.name}` : file.name
+        formData.append('file', file, uploadName)
         await employeesApi.uploadDocument(employee.id, formData)
+      }
+
+      if (cnicFront) await uploadFile(cnicFront, 'CNIC', 'cnic-front')
+      if (cnicBack) await uploadFile(cnicBack, 'CNIC', 'cnic-back')
+      for (const file of educationalCerts) {
+        await uploadFile(file, 'EDUCATIONAL_CERTIFICATE')
+      }
+      for (const file of medicalCerts) {
+        await uploadFile(file, 'MEDICAL_CERTIFICATE')
       }
 
       for (const qual of qualifications) {
@@ -445,6 +570,11 @@ export function EmployeeCreatePage() {
   })
 
   const onStep3Next = form3.handleSubmit((data) => {
+    if (!cnicFront || !cnicBack) {
+      setDocErrors('CNIC front and back are both required')
+      return
+    }
+    setDocErrors(null)
     setStep3Data(data)
     setStep(4)
   })
@@ -567,7 +697,59 @@ export function EmployeeCreatePage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <h1 className="text-2xl font-bold text-text-primary">Add Employee</h1>
-      <StepIndicator step={step} />
+
+      {step === 0 && (
+        <div className="space-y-6">
+          <h2 className="text-lg font-semibold">
+            What type of staff are you adding?
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {STAFF_TYPE_OPTIONS.map((option) => {
+              const Icon = option.icon
+              const selected = staffType === option.value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setStaffType(option.value)}
+                  className={cn(
+                    'flex flex-col items-center gap-3 rounded-lg border-2 p-6 text-center transition-colors',
+                    selected
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50',
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      'h-10 w-10',
+                      selected ? 'text-primary' : 'text-text-secondary',
+                    )}
+                  />
+                  <div>
+                    <p className="font-semibold">{option.label}</p>
+                    <p className="mt-1 text-xs text-text-secondary">
+                      {option.description}
+                    </p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          {staffType && (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                className="bg-primary hover:bg-primary-dark"
+                onClick={() => setStep(1)}
+              >
+                Continue
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step >= 1 && <StepIndicator step={step} />}
 
       {step === 1 && (
         <Form {...form1}>
@@ -581,7 +763,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>First Name *</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -594,7 +776,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Last Name *</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -607,7 +789,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Father Name</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -620,7 +802,10 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Father Contact Number</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <PhoneInput
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -633,7 +818,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>CNIC *</FormLabel>
                     <FormControl>
-                      <Input placeholder="12345-1234567-1" {...field} />
+                      <CnicInput value={field.value} onChange={field.onChange} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -659,7 +844,10 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Phone</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <PhoneInput
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -685,7 +873,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Emergency Contact Name</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -698,7 +886,10 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Emergency Contact Number</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <PhoneInput
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -711,7 +902,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Spouse Name</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -724,7 +915,10 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Spouse Contact Number</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <PhoneInput
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -736,9 +930,20 @@ export function EmployeeCreatePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Blood Group</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="e.g. B+" />
-                    </FormControl>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select blood group" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {BLOOD_GROUPS.map((bg) => (
+                          <SelectItem key={bg} value={bg}>
+                            {bg}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -750,7 +955,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Caste</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -763,7 +968,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Domicile</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -776,7 +981,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>District</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -789,7 +994,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Tehsil</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -802,7 +1007,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Police Station</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <TextOnlyInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -862,7 +1067,10 @@ export function EmployeeCreatePage() {
                 </FormItem>
               )}
             />
-            <div className="flex justify-end">
+            <div className="flex justify-between">
+              <Button type="button" variant="outline" onClick={() => setStep(0)}>
+                Back
+              </Button>
               <Button type="submit" className="bg-primary hover:bg-primary-dark">
                 Next
               </Button>
@@ -939,10 +1147,13 @@ export function EmployeeCreatePage() {
                 control={form2.control}
                 name="currentDesignation"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Designation *</FormLabel>
+                  <FormItem className="sm:col-span-2">
                     <FormControl>
-                      <Input {...field} />
+                      <DesignationSearchSelect
+                        value={field.value}
+                        onChange={field.onChange}
+                        error={!!form2.formState.errors.currentDesignation}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1047,20 +1258,54 @@ export function EmployeeCreatePage() {
               )}
             />
 
-            <div className="space-y-4">
-              <p className="text-sm font-medium">Documents (optional)</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {DOCUMENT_TYPES.map((docType) => (
-                  <FileDropZone
-                    key={docType}
-                    label={DOC_LABELS[docType]}
-                    file={documents[docType] ?? null}
-                    onChange={(file) =>
-                      setDocuments((prev) => ({ ...prev, [docType]: file ?? undefined }))
-                    }
-                  />
-                ))}
+            <div className="space-y-6">
+              <div>
+                <p className="text-sm font-medium">
+                  CNIC Documents <span className="text-destructive">*</span>
+                </p>
+                <p className="text-xs text-text-secondary">
+                  Upload front and back separately
+                </p>
               </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FileDropZone
+                  label="CNIC Front *"
+                  file={cnicFront}
+                  onChange={setCnicFront}
+                />
+                <FileDropZone
+                  label="CNIC Back *"
+                  file={cnicBack}
+                  onChange={setCnicBack}
+                />
+              </div>
+              {docErrors && (
+                <p className="text-sm text-destructive">{docErrors}</p>
+              )}
+
+              <MultiFileUpload
+                label="Educational Certificates"
+                subLabel="Upload all certificates (can add multiple)"
+                files={educationalCerts}
+                onAdd={(file) =>
+                  setEducationalCerts((prev) => [...prev, file])
+                }
+                onRemove={(index) =>
+                  setEducationalCerts((prev) =>
+                    prev.filter((_, i) => i !== index),
+                  )
+                }
+              />
+
+              <MultiFileUpload
+                label="Medical Certificates"
+                subLabel="Upload all medical documents (can add multiple)"
+                files={medicalCerts}
+                onAdd={(file) => setMedicalCerts((prev) => [...prev, file])}
+                onRemove={(index) =>
+                  setMedicalCerts((prev) => prev.filter((_, i) => i !== index))
+                }
+              />
             </div>
 
             <div className="flex justify-between">

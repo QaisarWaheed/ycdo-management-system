@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   Param,
+  Patch,
   Post,
   Query,
   UnauthorizedException,
@@ -17,6 +18,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
+  ApproveOvertimeDto,
   AttendanceQueryDto,
   BiometricPushDto,
   ManualAttendanceDto,
@@ -50,9 +52,20 @@ export class AttendanceController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
   markManual(
     @Body() dto: ManualAttendanceDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.attendanceService.markManual(dto, user);
+  }
+
+  @Patch(':id/approve-overtime')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  approveOvertime(
+    @Param('id') id: string,
+    @Body() dto: ApproveOvertimeDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.attendanceService.markManual(dto, user.id);
+    return this.attendanceService.approveOvertime(id, dto, user.id);
   }
 
   @Get('timer/:employeeId')

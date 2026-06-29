@@ -50,6 +50,25 @@ export class ManualAttendanceDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  lateMinutes?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  overtimeMinutes?: number;
+}
+
+export class ApproveOvertimeDto {
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  overtimeMinutes: number;
 }
 
 export class AttendanceQueryDto {

@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ChangeType, EmployeeStatus, LetterType, Prisma } from '@prisma/client';
+import { ChangeType, EmployeeStatus, LetterType, Prisma, StaffType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LettersService } from '../letters/letters.service';
 import { generateEmployeeCode } from './employee-code.helper';
@@ -17,6 +17,18 @@ import {
 } from './employees.dto';
 
 export type EmployeeFilters = EmployeeQueryDto;
+
+const HIERARCHY_ORDER: Record<string, number> = {
+  Management: 1,
+  Admin: 2,
+  Medical: 3,
+  Nursing: 4,
+  'Allied Health': 5,
+  IT: 6,
+  Finance: 7,
+  VTI: 8,
+  Support: 9,
+};
 
 @Injectable()
 export class EmployeesService {
@@ -71,6 +83,7 @@ export class EmployeesService {
       const created = await tx.employee.create({
         data: {
           ...employeeData,
+          staffType: dto.staffType ?? StaffType.NEW,
           shiftId: dto.shiftId,
           employeeCode,
           joiningDate,
@@ -110,22 +123,30 @@ export class EmployeesService {
     });
 
     if (result) {
-      await this.lettersService.generate(
-        {
-          employeeId: result.id,
-          letterType: LetterType.APPOINTMENT,
-          extraFields: {
-            joiningDate: this.formatDate(result.joiningDate),
-            designation: result.currentDesignation,
-            department: result.currentDepartment.name,
-            branch: result.currentBranch.name,
-            basicStipend: dto.basicStipend,
-            workingHours: '9:00 AM - 5:00 PM',
-            probationPeriod: '3 months',
+      try {
+        await this.lettersService.generate(
+          {
+            employeeId: result.id,
+            letterType: LetterType.ADVICE,
+            extraFields: {
+              adviceReason: 'Training / Joining Notification',
+              adviceDetails: `Welcome to YCDO. This letter serves as your training and joining notification. Joining Date: ${this.formatDate(result.joiningDate)}. Designation: ${result.currentDesignation}. Department: ${result.currentDepartment.name}. Branch: ${result.currentBranch.name}. Basic Stipend: PKR ${dto.basicStipend}. Working Hours: 9:00 AM - 5:00 PM. Probation Period: 3 months.`,
+              joiningDate: this.formatDate(result.joiningDate),
+              designation: result.currentDesignation,
+              department: result.currentDepartment.name,
+              branch: result.currentBranch.name,
+              basicStipend: dto.basicStipend,
+              workingHours: '9:00 AM - 5:00 PM',
+              probationPeriod: '3 months',
+            },
           },
-        },
-        'SYSTEM',
-      );
+          'SYSTEM',
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
+        console.error('Auto-letter generation failed:', message);
+      }
     }
 
     return result;
@@ -138,7 +159,7 @@ export class EmployeesService {
     return `${day}/${month}/${year}`;
   }
 
-  findAll(filters: EmployeeFilters) {
+  async findAll(filters: EmployeeFilters) {
     const where: Prisma.EmployeeWhereInput = {};
 
     if (filters.branchId) {
@@ -188,14 +209,33 @@ export class EmployeesService {
       ];
     }
 
-    return this.prisma.employee.findMany({
-      where,
-      include: {
-        currentBranch: { select: { name: true } },
-        currentDepartment: { select: { name: true } },
-        shift: { select: { id: true, name: true } },
-      },
-      orderBy: { createdAt: 'desc' },
+    const [employees, designations] = await Promise.all([
+      this.prisma.employee.findMany({
+        where,
+        include: {
+          currentBranch: { select: { name: true } },
+          currentDepartment: { select: { name: true } },
+          shift: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.designation.findMany({
+        where: { isActive: true },
+        select: { title: true, category: true },
+      }),
+    ]);
+
+    const categoryByTitle = new Map(
+      designations.map((d) => [d.title.toLowerCase(), d.category]),
+    );
+
+    const getCategory = (title: string) =>
+      categoryByTitle.get(title.toLowerCase()) ?? 'Other';
+
+    return employees.sort((a, b) => {
+      const aPriority = HIERARCHY_ORDER[getCategory(a.currentDesignation)] ?? 99;
+      const bPriority = HIERARCHY_ORDER[getCategory(b.currentDesignation)] ?? 99;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return a.firstName.localeCompare(b.firstName);
     });
   }
 

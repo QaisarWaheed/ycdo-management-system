@@ -32,12 +32,25 @@ export interface HRAssignRelieverPayload {
   relieverId: string
 }
 
+export interface ApproveLeavePayload {
+  action: 'APPROVED' | 'REJECTED'
+  notes?: string
+}
+
 export const leaveApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, LeaveRecord[]>('/leave', { params }),
   getOne: (id: string) => api.get(`/leave/${id}`),
+  getApprovals: (id: string) =>
+    api.get<unknown, LeaveRecord>(`/leave/${id}/approvals`),
   apply: (data: Record<string, unknown>) =>
     api.post<unknown, LeaveRecord>('/leave', data),
+  branchApprove: (id: string, data: ApproveLeavePayload) =>
+    api.patch(`/leave/${id}/branch-approve`, data),
+  deptApprove: (id: string, data: ApproveLeavePayload) =>
+    api.patch(`/leave/${id}/dept-approve`, data),
+  hrApprove: (id: string, data: ApproveLeavePayload) =>
+    api.patch(`/leave/${id}/hr-approve`, data),
   updateStatus: (id: string, data: Record<string, unknown>) =>
     api.patch(`/leave/${id}/status`, data),
   getBalance: (employeeId: string, year?: number) =>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { differenceInCalendarDays, format } from 'date-fns'
@@ -7,7 +7,14 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
-import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { ApprovalTrail } from '@/components/leave/ApprovalTrail'
+import {
+  ApproveRejectDialog,
+  canApproveLeave,
+  canAssignReliever,
+  type ApprovalRole,
+} from '@/components/leave/ApproveRejectDialog'
+import { StageBadge } from '@/components/leave/StageBadge'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { Badge } from '@/components/ui/badge'
@@ -55,65 +62,24 @@ import type { Employee, LeaveRecord } from '@/types'
 
 const ALL = 'ALL'
 
-const HR_ROLES = [
-  'SUPER_ADMIN',
-  'HR_MANAGER',
-  'HR_ADMIN_MANAGER',
-  'ADMIN_OFFICER',
-  'BRANCH_MANAGER',
-]
-
-function isHrRole(role?: string) {
-  return !!role && HR_ROLES.includes(role)
-}
-
 function LeaveStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
+    BRANCH_APPROVED: 'bg-blue-100 text-blue-800 border-blue-200',
+    DEPT_APPROVED: 'bg-purple-100 text-purple-800 border-purple-200',
+    HR_PENDING: 'bg-orange-100 text-orange-800 border-orange-200',
     RELIEVER_PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
     RELIEVER_CONFIRMED: 'bg-blue-100 text-blue-800 border-blue-200',
     RELIEVER_REJECTED: 'bg-red-100 text-red-800 border-red-200',
     APPROVED: 'bg-green-100 text-green-800 border-green-200',
     REJECTED: 'bg-red-100 text-red-800 border-red-200',
+    CANCELLED: 'bg-gray-100 text-gray-700 border-gray-200',
   }
   return (
     <Badge variant="outline" className={styles[status] ?? ''}>
       {status.replace(/_/g, ' ')}
     </Badge>
   )
-}
-
-function RelieverStatusBadge({ leave }: { leave: LeaveRecord }) {
-  const { status, relieverRequest } = leave
-
-  if (status === 'APPROVED' || status === 'REJECTED') {
-    return <span className="text-text-secondary">—</span>
-  }
-  if (status === 'RELIEVER_PENDING') {
-    return (
-      <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">
-        Awaiting Response
-      </Badge>
-    )
-  }
-  if (status === 'RELIEVER_CONFIRMED') {
-    return (
-      <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
-        Confirmed
-      </Badge>
-    )
-  }
-  if (status === 'RELIEVER_REJECTED') {
-    return (
-      <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
-        Rejected — Assign Required
-      </Badge>
-    )
-  }
-  if (status === 'PENDING' && !relieverRequest) {
-    return <span className="text-text-secondary">—</span>
-  }
-  return <span className="text-text-secondary">—</span>
 }
 
 function AssignmentTypeBadge({ status }: { status: string | null }) {
@@ -254,7 +220,7 @@ function HRAssignRelieverDialog({
     mutationFn: () =>
       leaveApi.hrAssignReliever(leave!.id, { relieverId }),
     onSuccess: () => {
-      toast({ title: 'Reliever assigned. Leave auto-approved.' })
+      toast({ title: 'Reliever assigned. Awaiting HR Operations approval.' })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
       setRelieverId('')
       setSelectedReliever(undefined)
@@ -334,7 +300,6 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
   const queryClient = useQueryClient()
   const user = useAuthStore((s) => s.user)
   const now = new Date()
-  const hrRole = isHrRole(user?.role)
 
   const [employeeId, setEmployeeId] = useState('')
   const [statusFilter, setStatusFilter] = useState(ALL)
@@ -342,10 +307,8 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
     month: now.getMonth() + 1,
     year: now.getFullYear(),
   })
-  const [confirmAction, setConfirmAction] = useState<{
-    id: string
-    action: 'APPROVED' | 'REJECTED'
-  } | null>(null)
+  const [approveLeave, setApproveLeave] = useState<LeaveRecord | null>(null)
+  const [expandedLeaveId, setExpandedLeaveId] = useState<string | null>(null)
   const [assignLeave, setAssignLeave] = useState<LeaveRecord | null>(null)
 
   const filters = useMemo(
@@ -363,43 +326,12 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
     queryFn: () => leaveApi.getAll(filters),
   })
 
-  const updateMutation = useMutation({
-    mutationFn: ({
-      id,
-      status,
-    }: {
-      id: string
-      status: 'APPROVED' | 'REJECTED'
-    }) =>
-      leaveApi.updateStatus(id, {
-        status,
-        approvedBy: user?.email ?? 'HR Admin',
-      }),
-    onSuccess: (_, vars) => {
-      toast({
-        title:
-          vars.status === 'APPROVED' ? 'Leave approved' : 'Leave rejected',
-      })
-      queryClient.invalidateQueries({ queryKey: ['leave'] })
-      setConfirmAction(null)
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Action failed',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-  })
+  const approvalRole: ApprovalRole | null = approveLeave
+    ? canApproveLeave(user?.role, approveLeave)
+    : null
 
   const showAssignButton = (leave: LeaveRecord) =>
-    hrRole &&
-    (leave.status === 'RELIEVER_REJECTED' ||
-      (leave.status === 'PENDING' && !leave.relieverRequest))
-
-  const showApproveReject = (leave: LeaveRecord) =>
-    leave.status === 'PENDING' || leave.status === 'RELIEVER_CONFIRMED'
+    canAssignReliever(user?.role, leave)
 
   return (
     <div className="space-y-4">
@@ -422,9 +354,11 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
               <SelectContent>
                 <SelectItem value={ALL}>All Statuses</SelectItem>
                 <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="BRANCH_APPROVED">Branch Approved</SelectItem>
+                <SelectItem value="DEPT_APPROVED">Dept Approved</SelectItem>
                 <SelectItem value="RELIEVER_PENDING">Reliever Pending</SelectItem>
                 <SelectItem value="RELIEVER_CONFIRMED">Reliever Confirmed</SelectItem>
-                <SelectItem value="RELIEVER_REJECTED">Reliever Rejected</SelectItem>
+                <SelectItem value="HR_PENDING">HR Pending</SelectItem>
                 <SelectItem value="APPROVED">Approved</SelectItem>
                 <SelectItem value="REJECTED">Rejected</SelectItem>
               </SelectContent>
@@ -449,7 +383,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
               <TableHead>Days</TableHead>
               <TableHead>Reason</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Reliever Status</TableHead>
+              <TableHead>Current Stage</TableHead>
               <TableHead>Reliever</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
@@ -473,112 +407,105 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
               </TableRow>
             ) : (
               (leaves as LeaveRecord[]).map((leave) => (
-                <TableRow key={leave.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">
-                        {leave.employee
-                          ? `${leave.employee.firstName} ${leave.employee.lastName}`
-                          : '—'}
-                      </p>
-                      <p className="font-mono text-xs text-text-secondary">
-                        {leave.employee?.employeeCode ?? '—'}
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {leave.createdAt
-                      ? format(new Date(leave.createdAt), 'dd/MM/yyyy')
-                      : '—'}
-                  </TableCell>
-                  <TableCell>
-                    {format(new Date(leave.startDate), 'dd/MM/yyyy')}
-                  </TableCell>
-                  <TableCell>
-                    {format(new Date(leave.endDate), 'dd/MM/yyyy')}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{leave.totalDays}</Badge>
-                  </TableCell>
-                  <TableCell className="max-w-[160px] truncate">
-                    {leave.reason ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    <LeaveStatusBadge status={leave.status} />
-                  </TableCell>
-                  <TableCell>
-                    <RelieverStatusBadge leave={leave} />
-                  </TableCell>
-                  <TableCell>
-                    {leave.relieverRequest?.reliever
-                      ? `${leave.relieverRequest.reliever.firstName} ${leave.relieverRequest.reliever.lastName}`
-                      : '—'}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-2">
-                      {showAssignButton(leave) && (
+                <Fragment key={leave.id}>
+                  <TableRow>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">
+                          {leave.employee
+                            ? `${leave.employee.firstName} ${leave.employee.lastName}`
+                            : '—'}
+                        </p>
+                        <p className="font-mono text-xs text-text-secondary">
+                          {leave.employee?.employeeCode ?? '—'}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {leave.createdAt
+                        ? format(new Date(leave.createdAt), 'dd/MM/yyyy')
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(leave.startDate), 'dd/MM/yyyy')}
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(leave.endDate), 'dd/MM/yyyy')}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{leave.totalDays}</Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[160px] truncate">
+                      {leave.reason ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      <LeaveStatusBadge status={leave.status} />
+                    </TableCell>
+                    <TableCell>
+                      <StageBadge
+                        status={leave.status}
+                        currentStage={leave.currentStage}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {leave.relieverRequest?.reliever
+                        ? `${leave.relieverRequest.reliever.firstName} ${leave.relieverRequest.reliever.lastName}`
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => setAssignLeave(leave)}
+                          variant="ghost"
+                          onClick={() =>
+                            setExpandedLeaveId(
+                              expandedLeaveId === leave.id ? null : leave.id,
+                            )
+                          }
                         >
-                          Assign Reliever
+                          Trail
                         </Button>
-                      )}
-                      {showApproveReject(leave) && (
-                        <>
+                        {showAssignButton(leave) && (
                           <Button
                             size="sm"
-                            className="bg-green-600 hover:bg-green-700"
-                            onClick={() =>
-                              setConfirmAction({ id: leave.id, action: 'APPROVED' })
-                            }
+                            variant="outline"
+                            onClick={() => setAssignLeave(leave)}
                           >
-                            Approve
+                            Assign Reliever
                           </Button>
+                        )}
+                        {canApproveLeave(user?.role, leave) && (
                           <Button
                             size="sm"
-                            variant="destructive"
-                            onClick={() =>
-                              setConfirmAction({ id: leave.id, action: 'REJECTED' })
-                            }
+                            className="bg-primary hover:bg-primary-dark"
+                            onClick={() => setApproveLeave(leave)}
                           >
-                            Reject
+                            Review
                           </Button>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {expandedLeaveId === leave.id && (
+                    <TableRow>
+                      <TableCell colSpan={10}>
+                        <ApprovalTrail leave={leave} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
               ))
             )}
           </TableBody>
         </Table>
       </div>
 
-      <ConfirmDialog
-        open={!!confirmAction}
-        title={
-          confirmAction?.action === 'APPROVED' ? 'Approve Leave' : 'Reject Leave'
-        }
-        description={
-          confirmAction?.action === 'APPROVED'
-            ? 'Are you sure you want to approve this leave request?'
-            : 'Are you sure you want to reject this leave request?'
-        }
-        confirmLabel={confirmAction?.action === 'APPROVED' ? 'Approve' : 'Reject'}
-        confirmVariant={
-          confirmAction?.action === 'REJECTED' ? 'destructive' : 'default'
-        }
-        loading={updateMutation.isPending}
-        onConfirm={() =>
-          confirmAction &&
-          updateMutation.mutate({
-            id: confirmAction.id,
-            status: confirmAction.action,
-          })
-        }
-        onCancel={() => setConfirmAction(null)}
+      <ApproveRejectDialog
+        leave={approveLeave}
+        role={approvalRole ?? 'SUPER_ADMIN'}
+        open={!!approveLeave && !!approvalRole}
+        onOpenChange={(open) => !open && setApproveLeave(null)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['leave'] })}
       />
 
       <HRAssignRelieverDialog
