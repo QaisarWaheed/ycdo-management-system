@@ -45,7 +45,9 @@ function navItemsForRole(role?: string) {
     'HR_MANAGER',
     'HR_ADMIN_MANAGER',
   ]
-  if (fullAccess.includes(role)) return allNavItems
+  if (fullAccess.includes(role)) {
+    return allNavItems.filter((item) => item.to !== '/broadcasts')
+  }
 
   if (role === 'BRANCH_MANAGER' || role === 'ADMIN_OFFICER') {
     return allNavItems.filter((item) =>
@@ -73,7 +75,9 @@ function navItemsForRole(role?: string) {
   }
 
   if (role === 'IT_ADMIN') {
-    return allNavItems.filter((item) => item.to === '/dashboard')
+    return allNavItems.filter((item) =>
+      ['/dashboard', '/broadcasts'].includes(item.to),
+    )
   }
 
   return allNavItems

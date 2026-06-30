@@ -153,6 +153,36 @@ export class PortalCheckDto {
   longitude: number;
 }
 
+export class UpdateAttendanceDto {
+  @IsOptional()
+  @IsEnum(AttendanceStatus)
+  status?: AttendanceStatus;
+
+  @IsOptional()
+  @IsDateString()
+  checkIn?: string;
+
+  @IsOptional()
+  @IsDateString()
+  checkOut?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  lateMinutes?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  overtimeMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
 export class RelieverSessionsQueryDto {
   @IsOptional()
   @IsUUID()

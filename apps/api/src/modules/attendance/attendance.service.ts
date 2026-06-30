@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -20,6 +21,7 @@ import {
   MarkAbsenteesDto,
   PortalCheckDto,
   RelieverSessionsQueryDto,
+  UpdateAttendanceDto,
 } from './attendance.dto';
 import { applyDisciplineRules } from './discipline.helper';
 import { haversineMeters } from './geo.helper';
@@ -296,6 +298,106 @@ export class AttendanceService {
         overtimeApprovedAt: new Date(),
       },
     });
+  }
+
+  async updateAttendance(
+    id: string,
+    dto: UpdateAttendanceDto,
+    actingUser: { id: string; role: UserRole },
+  ) {
+    const log = await this.prisma.attendanceLog.findUnique({
+      where: { id },
+      include: {
+        employee: {
+          select: { firstName: true, lastName: true, employeeCode: true },
+        },
+        branch: { select: { name: true, address: true } },
+      },
+    });
+
+    if (!log) {
+      throw new NotFoundException(`Attendance log with id ${id} not found`);
+    }
+
+    if (
+      dto.overtimeMinutes !== undefined &&
+      actingUser.role !== UserRole.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Only Super Admin can update overtime minutes',
+      );
+    }
+
+    const previous = {
+      status: log.status,
+      checkIn: log.checkIn,
+      checkOut: log.checkOut,
+      lateMinutes: log.lateMinutes,
+      overtimeMinutes: log.overtimeMinutes,
+      note: log.note,
+    };
+
+    const data: Prisma.AttendanceLogUpdateInput = {};
+
+    if (dto.status !== undefined) {
+      data.status = dto.status;
+    }
+    if (dto.checkIn !== undefined) {
+      data.checkIn = dto.checkIn ? new Date(dto.checkIn) : null;
+    }
+    if (dto.checkOut !== undefined) {
+      data.checkOut = dto.checkOut ? new Date(dto.checkOut) : null;
+    }
+    if (dto.lateMinutes !== undefined) {
+      data.lateMinutes = dto.lateMinutes;
+    }
+    if (dto.note !== undefined) {
+      data.note = dto.note;
+    }
+    if (
+      dto.overtimeMinutes !== undefined &&
+      actingUser.role === UserRole.SUPER_ADMIN
+    ) {
+      data.overtimeMinutes = dto.overtimeMinutes;
+      data.overtimePending = false;
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.attendanceLog.update({
+        where: { id },
+        data,
+        include: {
+          employee: {
+            select: { firstName: true, lastName: true, employeeCode: true },
+          },
+          branch: { select: { name: true, address: true } },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'ATTENDANCE_UPDATED',
+          entity: 'AttendanceLog',
+          entityId: id,
+          changes: {
+            previous,
+            updated: {
+              status: result.status,
+              checkIn: result.checkIn,
+              checkOut: result.checkOut,
+              lateMinutes: result.lateMinutes,
+              overtimeMinutes: result.overtimeMinutes,
+              note: result.note,
+            },
+          },
+        },
+      });
+
+      return result;
+    });
+
+    return updated;
   }
 
   private buildEmployeeFilterWhere(query: {

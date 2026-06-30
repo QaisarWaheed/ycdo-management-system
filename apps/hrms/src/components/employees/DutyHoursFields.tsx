@@ -1,13 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   calculateDutyEndTime,
   dutyTimeOptions,
@@ -22,6 +16,19 @@ type DutyHoursFieldsProps = {
   onEndTimeChange: (value: string) => void
 }
 
+function timeValueToLabel(value: string): string {
+  if (value === '23:59') return '11:59 PM'
+  return dutyTimeOptions.find((opt) => opt.value === value)?.label ?? value
+}
+
+function timeLabelToValue(label: string): string {
+  if (label === '11:59 PM') return '23:59'
+  return dutyTimeOptions.find((opt) => opt.label === label)?.value ?? label
+}
+
+const DUTY_24H_START = '00:00'
+const DUTY_24H_END = '23:59'
+
 export function DutyHoursFields({
   totalHours,
   startTime,
@@ -30,12 +37,33 @@ export function DutyHoursFields({
   onStartTimeChange,
   onEndTimeChange,
 }: DutyHoursFieldsProps) {
+  const is24Hours = totalHours === 24
+
   useEffect(() => {
+    if (is24Hours) {
+      onStartTimeChange(DUTY_24H_START)
+      onEndTimeChange(DUTY_24H_END)
+      return
+    }
     if (startTime && totalHours !== '' && totalHours > 0) {
       onEndTimeChange(calculateDutyEndTime(startTime, totalHours))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startTime, totalHours])
+  }, [is24Hours, startTime, totalHours])
+
+  const timeLabels = useMemo(
+    () => dutyTimeOptions.map((opt) => opt.label),
+    [],
+  )
+
+  const endTimeLabels = useMemo(() => {
+    if (totalHours !== '' && totalHours > 0 && startTime) {
+      const calculated = calculateDutyEndTime(startTime, totalHours)
+      const label = timeValueToLabel(calculated)
+      return label ? [label, ...timeLabels.filter((l) => l !== label)] : timeLabels
+    }
+    return timeLabels
+  }, [startTime, totalHours, timeLabels])
 
   return (
     <div className="space-y-4 sm:col-span-2">
@@ -63,40 +91,28 @@ export function DutyHoursFields({
       <div className="space-y-2">
         <Label className="text-text-secondary">Working Hours</Label>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label className="text-xs text-text-secondary">From</Label>
-            <Select
-              value={startTime || undefined}
-              onValueChange={onStartTimeChange}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select start time" />
-              </SelectTrigger>
-              <SelectContent>
-                {dutyTimeOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs text-text-secondary">To</Label>
-            <Select value={endTime || undefined} onValueChange={onEndTimeChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select end time" />
-              </SelectTrigger>
-              <SelectContent>
-                {dutyTimeOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="From"
+            options={timeLabels}
+            value={timeValueToLabel(startTime)}
+            onChange={(label) => onStartTimeChange(timeLabelToValue(label))}
+            placeholder="Select start time"
+            disabled={is24Hours}
+          />
+          <SearchableSelect
+            label="To"
+            options={endTimeLabels}
+            value={timeValueToLabel(endTime)}
+            onChange={(label) => onEndTimeChange(timeLabelToValue(label))}
+            placeholder="Select end time"
+            disabled={is24Hours}
+          />
         </div>
+        {is24Hours && (
+          <p className="mt-1 text-sm text-blue-600">
+            24-hour duty — working hours cover the full day
+          </p>
+        )}
       </div>
     </div>
   )

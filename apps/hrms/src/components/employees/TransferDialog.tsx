@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
+import { designationsApi } from '@/api/endpoints/designations'
 import { employeesApi } from '@/api/endpoints/employees'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { DateInput } from '@/components/common/DateInput'
-import { Input } from '@/components/ui/input'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -23,7 +24,13 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import {
+  CHANGE_TYPE_OPTIONS,
+  changeTypeToLabel,
+  labelToChangeType,
+} from '@/lib/searchableSelectOptions'
 
 interface TransferDialogProps {
   open: boolean
@@ -61,6 +68,35 @@ export function TransferDialog({
     queryFn: () => departmentsApi.getAll({ branchId }),
     enabled: open && !!branchId,
   })
+
+  const selectedDepartment = departments.find((d) => d.id === departmentId)
+
+  const designationCategories = useMemo(() => {
+    if (!selectedDepartment) return undefined
+    return getDesignationCategoriesForDepartment(selectedDepartment.name)
+  }, [selectedDepartment])
+
+  const designationParams = useMemo(() => {
+    if (!designationCategories?.length) return undefined
+    return { categories: designationCategories.join(',') }
+  }, [designationCategories])
+
+  const { data: designations = [] } = useQuery({
+    queryKey: ['designations', designationParams],
+    queryFn: () => designationsApi.getAll(designationParams),
+    enabled: open && !!departmentId && !!designationCategories?.length,
+  })
+
+  const departmentOptions = useMemo(
+    () => departments.map((d) => d.name),
+    [departments],
+  )
+
+  const designationOptions = useMemo(
+    () =>
+      [...new Set(designations.map((d: { title: string }) => d.title))].sort(),
+    [designations],
+  )
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -118,44 +154,35 @@ export function TransferDialog({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label>New Department *</Label>
-            <Select
-              value={departmentId}
-              onValueChange={setDepartmentId}
-              disabled={!branchId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="New Department *"
+            options={departmentOptions}
+            value={selectedDepartment?.name ?? ''}
+            onChange={(name) => {
+              const dept = departments.find((d) => d.name === name)
+              setDepartmentId(dept?.id ?? '')
+              setDesignation('')
+            }}
+            placeholder="Select department"
+            disabled={!branchId}
+          />
 
-          <div className="space-y-2">
-            <Label>New Designation *</Label>
-            <Input value={designation} onChange={(e) => setDesignation(e.target.value)} />
-          </div>
+          <SearchableSelect
+            label="New Designation *"
+            options={designationOptions}
+            value={designation}
+            onChange={setDesignation}
+            placeholder="Select designation"
+            disabled={!departmentId}
+          />
 
-          <div className="space-y-2">
-            <Label>Change Type *</Label>
-            <Select value={changeType} onValueChange={setChangeType}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="TRANSFERRED">Transferred</SelectItem>
-                <SelectItem value="PROMOTED">Promoted</SelectItem>
-                <SelectItem value="DEMOTED">Demoted</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="Change Type *"
+            options={CHANGE_TYPE_OPTIONS}
+            value={changeTypeToLabel(changeType)}
+            onChange={(label) => setChangeType(labelToChangeType(label))}
+            placeholder="Select change type"
+          />
 
           <div className="space-y-2">
             <Label>Change Reason *</Label>

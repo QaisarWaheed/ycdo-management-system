@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { employeesApi } from '@/api/endpoints/employees'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -10,16 +11,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { toast } from '@/hooks/use-toast'
+import {
+  enumValueToLabel,
+  labelToEnumValue,
+} from '@/lib/searchableSelectOptions'
 import { EMPLOYEE_STATUSES, type EmployeeStatus } from '@/types'
 
 interface ChangeStatusDialogProps {
@@ -43,7 +41,18 @@ export function ChangeStatusDialog({
     (s) => s !== currentStatus && s !== 'DISMISSED',
   )
 
+  const statusOptions = availableStatuses.map(enumValueToLabel)
+
   const isDismissed = currentStatus === 'DISMISSED'
+
+  useEffect(() => {
+    if (open) {
+      const next = EMPLOYEE_STATUSES.filter(
+        (s) => s !== currentStatus && s !== 'DISMISSED',
+      )
+      if (next.length > 0) setStatus(next[0])
+    }
+  }, [open, currentStatus])
 
   const mutation = useMutation({
     mutationFn: () => employeesApi.changeStatus(employeeId, { status, reason }),
@@ -86,25 +95,18 @@ export function ChangeStatusDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>New Status</Label>
-            <Select
-              value={status}
-              onValueChange={(v) => setStatus(v as EmployeeStatus)}
-              disabled={isDismissed}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {availableStatuses.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s.replace(/_/g, ' ')}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="New Status"
+            options={statusOptions}
+            value={enumValueToLabel(status)}
+            onChange={(label) =>
+              setStatus(
+                labelToEnumValue(label, availableStatuses) as EmployeeStatus,
+              )
+            }
+            placeholder="Select status"
+            disabled={isDismissed}
+          />
 
           <div className="space-y-2">
             <Label>Reason *</Label>

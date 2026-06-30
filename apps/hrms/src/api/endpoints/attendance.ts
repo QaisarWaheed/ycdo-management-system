@@ -10,6 +10,8 @@ export const attendanceApi = {
     }),
   markManual: (data: Record<string, unknown>) =>
     api.post('/attendance/manual', data),
+  update: (id: string, data: Record<string, unknown>) =>
+    api.patch<unknown, AttendanceLog>(`/attendance/${id}`, data),
   approveOvertime: (id: string, overtimeMinutes: number) =>
     api.patch(`/attendance/${id}/approve-overtime`, { overtimeMinutes }),
   markAbsentees: (date: string) =>

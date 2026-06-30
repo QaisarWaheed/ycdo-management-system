@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
 import { Button } from '@/components/ui/button'
 import {
@@ -143,25 +144,17 @@ export function UpdateBranchDutyDialog({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label>Department</Label>
-            <Select
-              value={departmentId}
-              onValueChange={setDepartmentId}
-              disabled={!branchId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="Department"
+            options={departments.map((d) => d.name)}
+            value={departments.find((d) => d.id === departmentId)?.name ?? ''}
+            onChange={(name) => {
+              const dept = departments.find((d) => d.name === name)
+              setDepartmentId(dept?.id ?? '')
+            }}
+            placeholder="Select department"
+            disabled={!branchId}
+          />
 
           <DutyHoursFields
             totalHours={dutyTotalHours}

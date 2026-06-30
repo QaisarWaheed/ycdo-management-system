@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { differenceInCalendarDays, format } from 'date-fns'
@@ -16,6 +16,7 @@ import {
 } from '@/components/leave/ApproveRejectDialog'
 import { StageBadge } from '@/components/leave/StageBadge'
 import { DateInput } from '@/components/common/DateInput'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { Badge } from '@/components/ui/badge'
@@ -57,6 +58,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/store/auth.store'
 import { cn } from '@/lib/utils'
+import {
+  LEAVE_TYPE_OPTIONS,
+  labelToLeaveType,
+  leaveTypeToLabel,
+} from '@/lib/searchableSelectOptions'
 import { hasShiftConflict } from '@/lib/shiftUtils'
 import type { Employee, LeaveRecord } from '@/types'
 
@@ -700,6 +706,7 @@ function EmergencyLeaveDialog({
 
 const applySchema = z.object({
   employeeId: z.string().min(1, 'Employee is required'),
+  leaveType: z.enum(['REGULAR', 'SHORT_LEAVE', 'EMERGENCY']),
   startDate: z.string().min(1, 'Start date is required'),
   endDate: z.string().min(1, 'End date is required'),
   reason: z.string().min(1, 'Reason is required'),
@@ -718,12 +725,14 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
     resolver: zodResolver(applySchema),
     defaultValues: {
       employeeId: '',
+      leaveType: 'REGULAR',
       startDate: '',
       endDate: '',
       reason: '',
     },
   })
 
+  const leaveType = form.watch('leaveType')
   const startDate = form.watch('startDate')
   const endDate = form.watch('endDate')
   const year = startDate
@@ -737,12 +746,20 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
   })
 
   const daysPreview = useMemo(() => {
-    if (!startDate || !endDate) return null
+    if (!startDate) return null
+    if (leaveType === 'SHORT_LEAVE') return 'same-day'
+    if (!endDate) return null
     const start = new Date(startDate)
     const end = new Date(endDate)
     if (end < start) return null
     return differenceInCalendarDays(end, start) + 1
-  }, [startDate, endDate])
+  }, [startDate, endDate, leaveType])
+
+  useEffect(() => {
+    if (leaveType === 'SHORT_LEAVE' && startDate) {
+      form.setValue('endDate', startDate)
+    }
+  }, [leaveType, startDate, form])
 
   const shiftConflict = hasShiftConflict(
     selectedEmployee?.shift,
@@ -751,7 +768,13 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
 
   const mutation = useMutation({
     mutationFn: async (values: ApplyFormValues) => {
-      const leave = await leaveApi.apply(values)
+      const leave = await leaveApi.apply({
+        ...values,
+        endDate:
+          values.leaveType === 'SHORT_LEAVE'
+            ? values.startDate
+            : values.endDate,
+      })
       if (relieverId) {
         await leaveApi.requestReliever(leave.id, {
           leaveRecordId: leave.id,
@@ -821,7 +844,52 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <FormField
+          control={form.control}
+          name="leaveType"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Leave Type</FormLabel>
+              <FormControl>
+                <SearchableSelect
+                  options={LEAVE_TYPE_OPTIONS}
+                  value={leaveTypeToLabel(field.value)}
+                  onChange={(label) =>
+                    field.onChange(labelToLeaveType(label))
+                  }
+                  placeholder="Select leave type"
+                  error={form.formState.errors.leaveType?.message}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {leaveType === 'REGULAR' && (
+          <p className="text-sm text-text-secondary">
+            Regular leave must be requested at least 48 hours in advance.
+          </p>
+        )}
+        {leaveType === 'SHORT_LEAVE' && (
+          <p className="text-sm text-text-secondary">
+            Short leave is for a partial day absence. Maximum 2 short leaves per
+            month.
+          </p>
+        )}
+        {leaveType === 'EMERGENCY' && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            Emergency leave does not require 48 hours notice and will be
+            immediately processed.
+          </p>
+        )}
+
+        <div
+          className={cn(
+            'grid gap-4',
+            leaveType === 'SHORT_LEAVE' ? 'grid-cols-1' : 'grid-cols-2',
+          )}
+        >
           <FormField
             control={form.control}
             name="startDate"
@@ -841,34 +909,39 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name="endDate"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>End Date</FormLabel>
-                <FormControl>
-                  <DateInput
-                    value={field.value ?? ''}
-                    onChange={field.onChange}
-                    onBlur={field.onBlur}
-                    name={field.name}
-                    ref={field.ref}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {leaveType !== 'SHORT_LEAVE' && (
+            <FormField
+              control={form.control}
+              name="endDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>End Date</FormLabel>
+                  <FormControl>
+                    <DateInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
         </div>
 
-        {daysPreview !== null && (
+        {daysPreview === 'same-day' && (
+          <p className="text-sm text-text-secondary">Same day (short leave)</p>
+        )}
+        {typeof daysPreview === 'number' && (
           <p className="text-sm text-text-secondary">
-            {daysPreview} day{daysPreview !== 1 ? 's' : ''}
+            {daysPreview} day{daysPreview !== 1 ? 's' : ''} requested
           </p>
         )}
 
-        {startDate && endDate && (
+        {startDate && (leaveType === 'SHORT_LEAVE' || endDate) && (
           <div className="space-y-2 rounded-lg border border-border p-4">
             <EmployeeSearchSelect
               label="Select Reliever (Optional)"

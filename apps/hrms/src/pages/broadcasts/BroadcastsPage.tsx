@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Bell, Plus } from 'lucide-react'
+import { Navigate } from 'react-router-dom'
 import { broadcastsApi } from '@/api/endpoints/broadcasts'
 import { employeesApi } from '@/api/endpoints/employees'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
@@ -35,6 +36,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import {
   BROADCAST_TARGETS,
   type BroadcastTarget,
@@ -145,6 +147,16 @@ function SendBroadcastDialog({
 }
 
 export function BroadcastsPage() {
+  const { user } = useAuth()
+
+  if (user?.role !== 'IT_ADMIN') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return <BroadcastsPageContent />
+}
+
+function BroadcastsPageContent() {
   const queryClient = useQueryClient()
   const [sendOpen, setSendOpen] = useState(false)
   const [deactivateId, setDeactivateId] = useState<string | null>(null)

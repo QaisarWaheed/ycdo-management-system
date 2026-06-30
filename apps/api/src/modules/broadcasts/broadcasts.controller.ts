@@ -21,7 +21,7 @@ export class BroadcastsController {
   constructor(private broadcastsService: BroadcastsService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.IT_ADMIN)
   create(
     @Body() dto: CreateBroadcastDto,
     @CurrentUser() user: { id: string },
@@ -30,13 +30,13 @@ export class BroadcastsController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.IT_ADMIN)
   findAll() {
     return this.broadcastsService.findAll();
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.IT_ADMIN)
   deactivate(@Param('id') id: string) {
     return this.broadcastsService.deactivate(id);
   }

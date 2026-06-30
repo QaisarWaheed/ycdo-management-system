@@ -25,6 +25,7 @@ import {
   MarkAbsenteesDto,
   PortalCheckDto,
   RelieverSessionsQueryDto,
+  UpdateAttendanceDto,
 } from './attendance.dto';
 import { AttendanceService } from './attendance.service';
 
@@ -67,6 +68,23 @@ export class AttendanceController {
     @CurrentUser() user: { id: string },
   ) {
     return this.attendanceService.approveOvertime(id, dto, user.id);
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.BRANCH_MANAGER,
+  )
+  updateAttendance(
+    @Param('id') id: string,
+    @Body() dto: UpdateAttendanceDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.attendanceService.updateAttendance(id, dto, user);
   }
 
   @Get('timer/:employeeId')

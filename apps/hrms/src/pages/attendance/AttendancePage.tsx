@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
@@ -8,8 +9,10 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { DateInput } from '@/components/common/DateInput'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
+import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
 import {
   EMPTY_EMPLOYEE_FILTERS,
   EmployeeFiltersBar,
@@ -53,6 +56,10 @@ import {
   ALL_SHIFTS_AT_START,
   resolveShiftIds,
 } from '@/lib/shiftFilterUtils'
+import {
+  enumValueToLabel,
+  labelToEnumValue,
+} from '@/lib/searchableSelectOptions'
 import { cn } from '@/lib/utils'
 import {
   ATTENDANCE_STATUSES,
@@ -109,6 +116,7 @@ function DailyLogTab({
   const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
   const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [confirmAbsentees, setConfirmAbsentees] = useState(false)
+  const [updateLog, setUpdateLog] = useState<AttendanceLog | null>(null)
 
   const { data: shifts = [] } = useQuery({
     queryKey: ['shifts', employeeFilters.branchId || 'all'],
@@ -217,13 +225,14 @@ function DailyLogTab({
               <TableHead>Late Minutes</TableHead>
               <TableHead>Overtime</TableHead>
               <TableHead>Source</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(9)].map((__, j) => (
+                  {[...Array(10)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -232,7 +241,7 @@ function DailyLogTab({
               ))
             ) : attendanceLogs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={10} className="h-32 text-center text-text-secondary">
                   No attendance records for this date
                 </TableCell>
               </TableRow>
@@ -293,6 +302,15 @@ function DailyLogTab({
                       </Badge>
                     )}
                   </TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setUpdateLog(log)}
+                    >
+                      Update
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -316,6 +334,17 @@ function DailyLogTab({
         onCancel={() => setConfirmAbsentees(false)}
         loading={markAbsenteesMutation.isPending}
       />
+
+      <UpdateAttendanceDialog
+        log={updateLog}
+        open={!!updateLog}
+        onOpenChange={(open) => {
+          if (!open) setUpdateLog(null)
+        }}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['attendance'] })
+        }}
+      />
     </div>
   )
 }
@@ -336,6 +365,32 @@ function SingleManualTab() {
   const [checkOut, setCheckOut] = useState('')
   const [overtimeMinutes, setOvertimeMinutes] = useState<number | ''>('')
   const [note, setNote] = useState('')
+
+  const { data: existingAttendance = [] } = useQuery({
+    queryKey: ['attendance', date, 'manual-exclude'],
+    queryFn: () =>
+      attendanceApi.getAll({
+        startDate: date,
+        endDate: date,
+        limit: 1000,
+      }),
+    enabled: !!date,
+  })
+
+  const attendedEmployeeIds = useMemo(
+    () =>
+      (existingAttendance as AttendanceLog[])
+        .map((a) => a.employeeId)
+        .filter(Boolean) as string[],
+    [existingAttendance],
+  )
+
+  useEffect(() => {
+    if (employeeId && attendedEmployeeIds.includes(employeeId)) {
+      setEmployeeId('')
+      setSelectedEmployee(null)
+    }
+  }, [date, attendedEmployeeIds, employeeId])
 
   const { data: employeeDetail } = useQuery({
     queryKey: ['employee', employeeId],
@@ -418,11 +473,19 @@ function SingleManualTab() {
       <EmployeeSearchSelect
         label="Employee *"
         value={employeeId}
+        excludeIds={attendedEmployeeIds}
         onChange={(id, emp) => {
           setEmployeeId(id)
           setSelectedEmployee(emp ?? null)
         }}
       />
+
+      {attendedEmployeeIds.length > 0 && (
+        <p className="text-sm text-gray-500">
+          {attendedEmployeeIds.length} employees already have attendance marked
+          for this date
+        </p>
+      )}
 
       {selectedEmployee && (
         <p className="text-sm text-text-secondary">
@@ -440,21 +503,16 @@ function SingleManualTab() {
         </div>
         <div className="space-y-1">
           <Label>Status *</Label>
-          <Select
-            value={status}
-            onValueChange={(v) => setStatus(v as AttendanceStatus)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ATTENDANCE_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s.replace(/_/g, ' ')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            options={ATTENDANCE_STATUSES.map(enumValueToLabel)}
+            value={enumValueToLabel(status)}
+            onChange={(label) =>
+              setStatus(
+                labelToEnumValue(label, ATTENDANCE_STATUSES) as AttendanceStatus,
+              )
+            }
+            placeholder="Select status"
+          />
         </div>
       </div>
 
@@ -573,6 +631,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
   const [saving, setSaving] = useState(false)
   const [progress, setProgress] = useState('')
   const [rows, setRows] = useState<Record<string, BulkRowState>>({})
+  const [showAlreadyMarked, setShowAlreadyMarked] = useState(false)
 
   const BULK_STATUSES: { value: AttendanceStatus; label: string }[] = [
     { value: 'PRESENT', label: 'Present' },
@@ -636,6 +695,151 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
     }
     return map
   }, [existingLogs])
+
+  const { notAttendedEmployees, attendedEmployees } = useMemo(() => {
+    const notAttended: Employee[] = []
+    const attended: Employee[] = []
+    for (const emp of employees) {
+      if (logByEmployee.has(emp.id)) {
+        attended.push(emp)
+      } else {
+        notAttended.push(emp)
+      }
+    }
+    return {
+      notAttendedEmployees: notAttended,
+      attendedEmployees: attended,
+    }
+  }, [employees, logByEmployee])
+
+  const renderBulkEmployeeRow = (emp: Employee, editable: boolean) => {
+    const log = logByEmployee.get(emp.id)
+    const row = rows[emp.id]
+    const showTimes = row?.status && showsTimeFields(row.status)
+    const dutyStart = getEmployeeDutyStartTime(emp)
+    const rowLate =
+      row?.checkIn && dutyStart ? calcLateMinutes(row.checkIn, dutyStart) : 0
+
+    if (!editable) {
+      return (
+        <TableRow key={emp.id}>
+          <TableCell>
+            <div>
+              <p className="font-medium">
+                {emp.firstName} {emp.lastName}
+              </p>
+              <p className="font-mono text-xs text-text-secondary">
+                {emp.employeeCode}
+              </p>
+            </div>
+          </TableCell>
+          <TableCell className="text-sm text-text-secondary">
+            {emp.shift
+              ? `${emp.shift.name} (${emp.shift.startTime} - ${emp.shift.endTime})`
+              : '—'}
+          </TableCell>
+          <TableCell>
+            {log ? (
+              <AttendanceStatusBadge status={log.status} />
+            ) : (
+              <span className="text-text-secondary">—</span>
+            )}
+          </TableCell>
+        </TableRow>
+      )
+    }
+
+    return (
+      <TableRow key={emp.id}>
+        <TableCell>
+          <div>
+            <p className="font-medium">
+              {emp.firstName} {emp.lastName}
+            </p>
+            <p className="font-mono text-xs text-text-secondary">
+              {emp.employeeCode}
+            </p>
+            <p className="text-xs text-text-secondary">
+              {emp.currentDesignation}
+            </p>
+          </div>
+        </TableCell>
+        <TableCell className="text-sm text-text-secondary">
+          {emp.shift
+            ? `${emp.shift.name} (${emp.shift.startTime} - ${emp.shift.endTime})`
+            : '—'}
+        </TableCell>
+        <TableCell>
+          {log ? (
+            <AttendanceStatusBadge status={log.status} />
+          ) : (
+            <span className="text-text-secondary">—</span>
+          )}
+        </TableCell>
+        <TableCell>
+          <div className="flex flex-wrap gap-1">
+            {BULK_STATUSES.map((s) => (
+              <Button
+                key={s.value}
+                size="sm"
+                variant={row?.status === s.value ? 'default' : 'outline'}
+                className={cn(
+                  row?.status === s.value && 'bg-primary hover:bg-primary-dark',
+                )}
+                onClick={() => updateRow(emp.id, { status: s.value })}
+              >
+                {s.label}
+              </Button>
+            ))}
+          </div>
+        </TableCell>
+        <TableCell>
+          <Input
+            type="time"
+            className="w-[120px]"
+            disabled={!showTimes}
+            value={row?.checkIn ?? ''}
+            onChange={(e) => {
+              const checkIn = e.target.value
+              const late =
+                checkIn && dutyStart ? calcLateMinutes(checkIn, dutyStart) : 0
+              updateRow(emp.id, {
+                checkIn,
+                status: checkIn
+                  ? statusFromLateMinutes(late)
+                  : (row?.status ?? null),
+              })
+            }}
+          />
+          {showTimes && rowLate > 0 && (
+            <p className="mt-1 text-xs text-amber-600">
+              {rowLate > 60 ? 'More than 1 hour late' : `${rowLate} min late`}
+            </p>
+          )}
+          {showTimes && rowLate === 0 && row?.checkIn && dutyStart && (
+            <p className="mt-1 text-xs text-green-600">On time</p>
+          )}
+        </TableCell>
+        <TableCell>
+          <Input
+            type="time"
+            className="w-[120px]"
+            disabled={!showTimes}
+            value={row?.checkOut ?? ''}
+            onChange={(e) => updateRow(emp.id, { checkOut: e.target.value })}
+          />
+        </TableCell>
+        <TableCell>
+          <Input
+            className="min-w-[140px]"
+            placeholder="Note"
+            value={row?.note ?? ''}
+            onChange={(e) => updateRow(emp.id, { note: e.target.value })}
+          />
+        </TableCell>
+      </TableRow>
+    )
+  }
 
   const handleLoad = async () => {
     if (!branchId) {
@@ -832,131 +1036,55 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
                       No employees found
                     </TableCell>
                   </TableRow>
+                ) : notAttendedEmployees.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-text-secondary">
+                      All employees already have attendance marked for this date
+                    </TableCell>
+                  </TableRow>
                 ) : (
-                  employees.map((emp) => {
-                    const log = logByEmployee.get(emp.id)
-                    const row = rows[emp.id]
-                    const showTimes =
-                      row?.status && showsTimeFields(row.status)
-                    const dutyStart = getEmployeeDutyStartTime(emp)
-                    const rowLate =
-                      row?.checkIn && dutyStart
-                        ? calcLateMinutes(row.checkIn, dutyStart)
-                        : 0
-                    return (
-                      <TableRow key={emp.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">
-                              {emp.firstName} {emp.lastName}
-                            </p>
-                            <p className="font-mono text-xs text-text-secondary">
-                              {emp.employeeCode}
-                            </p>
-                            <p className="text-xs text-text-secondary">
-                              {emp.currentDesignation}
-                            </p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-text-secondary">
-                          {emp.shift
-                            ? `${emp.shift.name} (${emp.shift.startTime} - ${emp.shift.endTime})`
-                            : '—'}
-                        </TableCell>
-                        <TableCell>
-                          {log ? (
-                            <AttendanceStatusBadge status={log.status} />
-                          ) : (
-                            <span className="text-text-secondary">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {BULK_STATUSES.map((s) => (
-                              <Button
-                                key={s.value}
-                                size="sm"
-                                variant={
-                                  row?.status === s.value
-                                    ? 'default'
-                                    : 'outline'
-                                }
-                                className={cn(
-                                  row?.status === s.value &&
-                                    'bg-primary hover:bg-primary-dark',
-                                )}
-                                onClick={() =>
-                                  updateRow(emp.id, { status: s.value })
-                                }
-                              >
-                                {s.label}
-                              </Button>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="time"
-                            className="w-[120px]"
-                            disabled={!showTimes}
-                            value={row?.checkIn ?? ''}
-                            onChange={(e) => {
-                              const checkIn = e.target.value
-                              const late = checkIn && dutyStart
-                                ? calcLateMinutes(checkIn, dutyStart)
-                                : 0
-                              updateRow(emp.id, {
-                                checkIn,
-                                status: checkIn
-                                  ? statusFromLateMinutes(late)
-                                  : row?.status ?? null,
-                              })
-                            }}
-                          />
-                          {showTimes && rowLate > 0 && (
-                            <p className="mt-1 text-xs text-amber-600">
-                              {rowLate > 60
-                                ? 'More than 1 hour late'
-                                : `${rowLate} min late`}
-                            </p>
-                          )}
-                          {showTimes &&
-                            rowLate === 0 &&
-                            row?.checkIn &&
-                            dutyStart && (
-                              <p className="mt-1 text-xs text-green-600">
-                                On time
-                              </p>
-                            )}
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="time"
-                            className="w-[120px]"
-                            disabled={!showTimes}
-                            value={row?.checkOut ?? ''}
-                            onChange={(e) =>
-                              updateRow(emp.id, { checkOut: e.target.value })
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            className="min-w-[140px]"
-                            placeholder="Note"
-                            value={row?.note ?? ''}
-                            onChange={(e) =>
-                              updateRow(emp.id, { note: e.target.value })
-                            }
-                          />
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
+                  notAttendedEmployees.map((emp) =>
+                    renderBulkEmployeeRow(emp, true),
+                  )
                 )}
               </TableBody>
             </Table>
           </div>
+
+          {attendedEmployees.length > 0 && (
+            <div className="rounded-lg border border-border bg-white">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium hover:bg-muted/50"
+                onClick={() => setShowAlreadyMarked((v) => !v)}
+              >
+                {showAlreadyMarked ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                Already marked ({attendedEmployees.length})
+              </button>
+              {showAlreadyMarked && (
+                <div className="overflow-x-auto border-t border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Shift</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {attendedEmployees.map((emp) =>
+                        renderBulkEmployeeRow(emp, false),
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-4">
             <Button

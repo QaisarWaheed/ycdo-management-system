@@ -1,12 +1,13 @@
 import { useEffect, useMemo } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { z } from 'zod'
+import { designationsApi } from '@/api/endpoints/designations'
 import { employeesApi } from '@/api/endpoints/employees'
 import { DateInput } from '@/components/common/DateInput'
-import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
 import { Button } from '@/components/ui/button'
@@ -27,19 +28,18 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { toast } from '@/hooks/use-toast'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
-import type { Employee, Gender } from '@/types'
+import {
+  BLOOD_GROUP_OPTIONS,
+  GENDER_OPTIONS,
+  genderToLabel,
+  labelToGender,
+} from '@/lib/searchableSelectOptions'
+import type { Employee } from '@/types'
 
-const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const
+const BLOOD_GROUPS = BLOOD_GROUP_OPTIONS
 
 const phoneOptional = z
   .string()
@@ -185,6 +185,23 @@ export function EditEmployeeDialog({
     [employee.currentDepartment?.name],
   )
 
+  const designationParams = useMemo(() => {
+    if (!designationCategories?.length) return undefined
+    return { categories: designationCategories.join(',') }
+  }, [designationCategories])
+
+  const { data: designations = [] } = useQuery({
+    queryKey: ['designations', designationParams],
+    queryFn: () => designationsApi.getAll(designationParams),
+    enabled: open && !!designationCategories?.length,
+  })
+
+  const designationOptions = useMemo(
+    () =>
+      [...new Set(designations.map((d: { title: string }) => d.title))].sort(),
+    [designations],
+  )
+
   useEffect(() => {
     if (open) {
       form.reset(employeeToFormValues(employee))
@@ -275,20 +292,17 @@ export function EditEmployeeDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Gender *</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {(['MALE', 'FEMALE', 'OTHER'] as Gender[]).map((g) => (
-                            <SelectItem key={g} value={g}>
-                              {g.charAt(0) + g.slice(1).toLowerCase()}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <SearchableSelect
+                          options={GENDER_OPTIONS}
+                          value={genderToLabel(field.value)}
+                          onChange={(label) =>
+                            field.onChange(labelToGender(label))
+                          }
+                          placeholder="Select gender"
+                          error={form.formState.errors.gender?.message}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -318,23 +332,15 @@ export function EditEmployeeDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Blood Group</FormLabel>
-                      <Select
-                        value={field.value === '' ? undefined : field.value}
-                        onValueChange={field.onChange}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select blood group" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {BLOOD_GROUPS.map((bg) => (
-                            <SelectItem key={bg} value={bg}>
-                              {bg}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <SearchableSelect
+                          options={[...BLOOD_GROUPS]}
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                          placeholder="Select blood group"
+                          error={form.formState.errors.bloodGroup?.message}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -478,11 +484,13 @@ export function EditEmployeeDialog({
                   render={({ field }) => (
                     <FormItem className="sm:col-span-2">
                       <FormControl>
-                        <DesignationSearchSelect
-                          value={field.value}
+                        <SearchableSelect
+                          label="Designation"
+                          options={designationOptions}
+                          value={field.value ?? ''}
                           onChange={field.onChange}
-                          categories={designationCategories}
-                          error={!!form.formState.errors.currentDesignation}
+                          placeholder="Select designation"
+                          error={form.formState.errors.currentDesignation?.message}
                         />
                       </FormControl>
                       <FormMessage />

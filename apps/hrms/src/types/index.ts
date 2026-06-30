@@ -476,6 +476,7 @@ export interface AttendanceLog {
   overtimeApprovedBy?: string | null
   overtimeApprovedAt?: string | null
   source?: string
+  note?: string | null
   employee?: {
     firstName: string
     lastName: string

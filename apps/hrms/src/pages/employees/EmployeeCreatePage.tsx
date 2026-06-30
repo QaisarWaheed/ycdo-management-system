@@ -11,13 +11,21 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
+import { designationsApi } from '@/api/endpoints/designations'
 import { DateInput } from '@/components/common/DateInput'
 import { CnicInput } from '@/components/common/CnicInput'
-import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import {
+  BLOOD_GROUP_OPTIONS,
+  GENDER_OPTIONS,
+  genderToLabel,
+  labelToGender,
+  SHIFT_NAME_OPTIONS,
+} from '@/lib/searchableSelectOptions'
 import { timeToMinutes } from '@/lib/dutyTimes'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
@@ -48,7 +56,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { toast } from '@/hooks/use-toast'
-import type { DocumentType, EmployeePrefill, Gender, QualType, StaffType } from '@/types'
+import type { DocumentType, EmployeePrefill, QualType, StaffType } from '@/types'
 
 const cnicRegex = /^\d{5}-\d{7}-\d{1}$/
 const phoneOptional = z
@@ -61,9 +69,9 @@ const phoneRequired = z
   .min(1, 'Phone number is required')
   .refine((v) => /^0\d{10}$/.test(v), 'Must be 11 digits starting with 0')
 
-const SHIFT_OPTIONS = ['Day', 'Night', '24 Hours'] as const
+const SHIFT_OPTIONS = SHIFT_NAME_OPTIONS
 
-const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const
+const BLOOD_GROUPS = BLOOD_GROUP_OPTIONS
 
 const STAFF_TYPE_OPTIONS: {
   value: StaffType
@@ -574,6 +582,28 @@ export function EmployeeCreatePage() {
     return getDesignationCategoriesForDepartment(dept.name)
   }, [departmentId, departments])
 
+  const designationParams = useMemo(() => {
+    if (!designationCategories?.length) return undefined
+    return { categories: designationCategories.join(',') }
+  }, [designationCategories])
+
+  const { data: designations = [] } = useQuery({
+    queryKey: ['designations', designationParams],
+    queryFn: () => designationsApi.getAll(designationParams),
+    enabled: !!departmentId && !!designationCategories?.length,
+  })
+
+  const designationOptions = useMemo(
+    () =>
+      [...new Set(designations.map((d: { title: string }) => d.title))].sort(),
+    [designations],
+  )
+
+  const departmentOptions = useMemo(
+    () => departments.map((d) => d.name),
+    [departments],
+  )
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!step1Data || !step2Data || !step3Data || !staffType) {
@@ -1079,23 +1109,15 @@ export function EmployeeCreatePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Blood Group *</FormLabel>
-                    <Select
-                      value={selectFieldValue(field.value)}
-                      onValueChange={field.onChange}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select blood group" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {BLOOD_GROUPS.map((bg) => (
-                          <SelectItem key={bg} value={bg}>
-                            {bg}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <SearchableSelect
+                        options={[...BLOOD_GROUPS]}
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        placeholder="Select blood group"
+                        error={form1.formState.errors.bloodGroup?.message}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1119,23 +1141,15 @@ export function EmployeeCreatePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Gender *</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select gender" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {(['MALE', 'FEMALE', 'OTHER'] as Gender[]).map((g) => (
-                          <SelectItem key={g} value={g}>
-                            {g.charAt(0) + g.slice(1).toLowerCase()}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <SearchableSelect
+                        options={GENDER_OPTIONS}
+                        value={genderToLabel(field.value)}
+                        onChange={(label) => field.onChange(labelToGender(label))}
+                        placeholder="Select gender"
+                        error={form1.formState.errors.gender?.message}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1204,27 +1218,23 @@ export function EmployeeCreatePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Department *</FormLabel>
-                    <Select
-                      value={selectFieldValue(field.value)}
-                      onValueChange={(v) => {
-                        field.onChange(v)
-                        form2.setValue('currentDesignation', '')
-                      }}
-                      disabled={!branchId}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select department" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {departments.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <SearchableSelect
+                        options={departmentOptions}
+                        value={
+                          departments.find((d) => d.id === field.value)?.name ??
+                          ''
+                        }
+                        onChange={(name) => {
+                          const dept = departments.find((d) => d.name === name)
+                          field.onChange(dept?.id ?? '')
+                          form2.setValue('currentDesignation', '')
+                        }}
+                        placeholder="Select department"
+                        disabled={!branchId}
+                        error={form2.formState.errors.currentDepartmentId?.message}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1235,17 +1245,14 @@ export function EmployeeCreatePage() {
                 render={({ field }) => (
                   <FormItem className="sm:col-span-2">
                     <FormControl>
-                      <DesignationSearchSelect
+                      <SearchableSelect
+                        label="Designation *"
+                        options={designationOptions}
                         value={field.value ?? ''}
                         onChange={field.onChange}
-                        categories={designationCategories}
-                        error={!!form2.formState.errors.currentDesignation}
+                        placeholder="Select designation"
                         disabled={!departmentId}
-                        helperText={
-                          !departmentId
-                            ? 'Please select a department first'
-                            : undefined
-                        }
+                        error={form2.formState.errors.currentDesignation?.message}
                       />
                     </FormControl>
                     <FormMessage />
@@ -1258,23 +1265,15 @@ export function EmployeeCreatePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Shift</FormLabel>
-                    <Select
-                      value={selectFieldValue(field.value)}
-                      onValueChange={field.onChange}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select shift (optional)" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {SHIFT_OPTIONS.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <SearchableSelect
+                        options={[...SHIFT_OPTIONS]}
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        placeholder="Select shift (optional)"
+                        error={form2.formState.errors.shiftName?.message}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

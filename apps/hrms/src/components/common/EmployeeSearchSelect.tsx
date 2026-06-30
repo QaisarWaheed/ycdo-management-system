@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search } from 'lucide-react'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -15,6 +15,7 @@ interface EmployeeSearchSelectProps {
   label?: string
   placeholder?: string
   className?: string
+  excludeIds?: string[]
 }
 
 export function EmployeeSearchSelect({
@@ -23,6 +24,7 @@ export function EmployeeSearchSelect({
   label = 'Employee',
   placeholder = 'Search by name or code...',
   className,
+  excludeIds,
 }: EmployeeSearchSelectProps) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
@@ -38,6 +40,11 @@ export function EmployeeSearchSelect({
       ),
     enabled: open || !!debouncedSearch,
   })
+
+  const filteredEmployees = useMemo(
+    () => employees.filter((e) => !excludeIds?.includes(e.id)),
+    [employees, excludeIds],
+  )
 
   useEffect(() => {
     if (value && !selectedLabel) {
@@ -93,10 +100,10 @@ export function EmployeeSearchSelect({
             <div className="p-3">
               <Skeleton className="h-8 w-full" />
             </div>
-          ) : employees.length === 0 ? (
+          ) : filteredEmployees.length === 0 ? (
             <p className="p-3 text-sm text-text-secondary">No employees found</p>
           ) : (
-            employees.slice(0, 20).map((emp) => (
+            filteredEmployees.slice(0, 20).map((emp) => (
               <button
                 key={emp.id}
                 type="button"
