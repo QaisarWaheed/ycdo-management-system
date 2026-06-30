@@ -6,6 +6,23 @@ import type {
   RelieverSummary,
 } from '@/types'
 
+export interface PortalCheckPayload {
+  latitude: number
+  longitude: number
+}
+
+export interface PortalCheckInResponse {
+  success: boolean
+  distance: number
+  message: string
+}
+
+export interface PortalCheckOutResponse {
+  success: boolean
+  hoursWorked: number
+  distance: number
+}
+
 export const attendanceApi = {
   getMy: (params?: Record<string, unknown>) =>
     api.get<unknown, AttendanceLog[]>('/attendance', { params }),
@@ -23,5 +40,15 @@ export const attendanceApi = {
     api.get<unknown, RelieverSummary>(
       `/attendance/reliever/${employeeId}`,
       { params },
+    ),
+  portalCheckIn: (data: PortalCheckPayload) =>
+    api.post<unknown, PortalCheckInResponse>(
+      '/attendance/portal-checkin',
+      data,
+    ),
+  portalCheckOut: (data: PortalCheckPayload) =>
+    api.post<unknown, PortalCheckOutResponse>(
+      '/attendance/portal-checkout',
+      data,
     ),
 }

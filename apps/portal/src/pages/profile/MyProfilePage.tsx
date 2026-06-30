@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { formatDutyDisplay } from '@/lib/dutyTimes'
 
 export function MyProfilePage() {
   const { user } = useAuth()
@@ -215,16 +216,50 @@ export function MyProfilePage() {
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-text-secondary">Shift</Label>
+                    <Label className="text-text-secondary">Province</Label>
+                    <p className="font-medium">{employee?.province ?? '—'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-text-secondary">City</Label>
+                    <p className="font-medium">{employee?.city ?? '—'}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-text-secondary">Domicile</Label>
+                    <p className="font-medium">{employee?.domicile ?? '—'}</p>
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label className="text-text-secondary">Current Address</Label>
                     <p className="font-medium">
-                      {employee?.shift
-                        ? `${employee.shift.name} (${employee.shift.startTime} – ${employee.shift.endTime})`
-                        : '—'}
+                      {employee?.currentAddress ?? employee?.address ?? '—'}
+                    </p>
+                  </div>
+                  {employee?.permanentAddress && (
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label className="text-text-secondary">
+                        Permanent Address
+                      </Label>
+                      <p className="font-medium">{employee.permanentAddress}</p>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <Label className="text-text-secondary">Branch</Label>
+                    <p className="font-medium">
+                      {employee?.currentBranch?.name ?? '—'}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-text-secondary">Duty Hours</Label>
+                    <p className="font-medium">
+                      {formatDutyDisplay(
+                        employee?.dutyStartTime,
+                        employee?.dutyEndTime,
+                      )}
                     </p>
                   </div>
                   <div className="space-y-1 sm:col-span-2">
-                    <Label className="text-text-secondary">Address</Label>
-                    <p className="font-medium">{employee?.address ?? '—'}</p>
+                    <p className="text-sm text-amber-700">
+                      Branch and duty hours can only be updated by HR.
+                    </p>
                   </div>
 
                   <div className="space-y-2">

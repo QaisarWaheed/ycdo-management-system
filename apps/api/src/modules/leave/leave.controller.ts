@@ -19,6 +19,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import {
   ApplyLeaveDto,
   ApproveLeaveDto,
+  EmergencyLeaveDto,
   HRAssignRelieverDto,
   LeaveQueryDto,
   RequestRelieverDto,
@@ -103,6 +104,31 @@ export class LeaveController {
   )
   getRelieverCandidates(@Query('search') search?: string) {
     return this.leaveService.getRelieverCandidates(search);
+  }
+
+  @Get('my-pending-reliever')
+  @Roles(UserRole.EMPLOYEE)
+  getMyPendingReliever(
+    @CurrentUser() user: { employeeId?: string | null },
+  ) {
+    if (!user.employeeId) {
+      throw new ForbiddenException('Employee profile required');
+    }
+    return this.leaveService.getMyPendingReliever(user.employeeId);
+  }
+
+  @Post('emergency')
+  @Roles(
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.SUPER_ADMIN,
+  )
+  markEmergencyLeave(
+    @Body() dto: EmergencyLeaveDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.leaveService.markEmergencyLeave(dto, user);
   }
 
   @Get()

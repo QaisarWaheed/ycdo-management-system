@@ -18,9 +18,11 @@ import {
   BiometricPushDto,
   ManualAttendanceDto,
   MarkAbsenteesDto,
+  PortalCheckDto,
   RelieverSessionsQueryDto,
 } from './attendance.dto';
 import { applyDisciplineRules } from './discipline.helper';
+import { haversineMeters } from './geo.helper';
 
 const OVERTIME_GRACE_MINUTES = 60;
 
@@ -544,6 +546,201 @@ export class AttendanceService {
         session: openRelieverSession,
       },
     };
+  }
+
+  async portalCheckIn(employeeId: string, lat: number, lng: number) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: {
+        shift: true,
+        currentBranch: { include: { location: true } },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${employeeId} not found`);
+    }
+
+    const branchLocation = employee.currentBranch.location;
+    if (!branchLocation) {
+      throw new BadRequestException(
+        'Branch location not configured. Contact HR to enable portal check-in.',
+      );
+    }
+
+    const distance = haversineMeters(
+      lat,
+      lng,
+      branchLocation.latitude,
+      branchLocation.longitude,
+    );
+
+    if (distance > branchLocation.radius) {
+      throw new BadRequestException(
+        `You must be within ${branchLocation.radius}m of your branch. Current distance: ${Math.round(distance)}m`,
+      );
+    }
+
+    const checkTime = new Date();
+    const dateOnly = this.toDateOnly(checkTime);
+
+    const existing = await this.prisma.attendanceLog.findUnique({
+      where: {
+        employeeId_date: { employeeId, date: dateOnly },
+      },
+    });
+
+    if (existing?.checkIn) {
+      throw new BadRequestException('Already checked in today');
+    }
+
+    let { status, lateMinutes } = this.determineCheckInStatus(
+      checkTime,
+      employee.shift,
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.portalAttendance.create({
+        data: {
+          employeeId,
+          type: 'CHECK_IN',
+          latitude: lat,
+          longitude: lng,
+          timestamp: checkTime,
+          verified: true,
+        },
+      });
+
+      const effectiveStatus = await applyDisciplineRules(
+        tx,
+        employeeId,
+        status,
+        dateOnly,
+        { lateMinutes },
+      );
+
+      if (effectiveStatus === AttendanceStatus.HALF_DAY) {
+        status = AttendanceStatus.HALF_DAY;
+        lateMinutes = 0;
+      }
+
+      await tx.attendanceLog.upsert({
+        where: {
+          employeeId_date: { employeeId, date: dateOnly },
+        },
+        create: {
+          employeeId,
+          branchId: employee.currentBranchId,
+          date: dateOnly,
+          checkIn: checkTime,
+          status,
+          lateMinutes,
+          source: AttendanceSource.MANUAL,
+          note: 'Portal check-in',
+        },
+        update: {
+          checkIn: checkTime,
+          status,
+          lateMinutes,
+          source: AttendanceSource.MANUAL,
+          note: 'Portal check-in',
+        },
+      });
+    });
+
+    if (employee.biometricId) {
+      await this.biometricPush({
+        biometricId: employee.biometricId,
+        timestamp: checkTime.toISOString(),
+      }).catch(() => undefined);
+    }
+
+    return {
+      success: true,
+      distance: Math.round(distance),
+      message: 'Check-in recorded',
+    };
+  }
+
+  async portalCheckOut(employeeId: string, lat: number, lng: number) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: {
+        shift: true,
+        currentBranch: { include: { location: true } },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${employeeId} not found`);
+    }
+
+    const branchLocation = employee.currentBranch.location;
+    if (!branchLocation) {
+      throw new BadRequestException(
+        'Branch location not configured. Contact HR to enable portal check-in.',
+      );
+    }
+
+    const distance = haversineMeters(
+      lat,
+      lng,
+      branchLocation.latitude,
+      branchLocation.longitude,
+    );
+
+    if (distance > branchLocation.radius) {
+      throw new BadRequestException(
+        `You must be within ${branchLocation.radius}m of your branch. Current distance: ${Math.round(distance)}m`,
+      );
+    }
+
+    const checkTime = new Date();
+    const dateOnly = this.toDateOnly(checkTime);
+
+    const existing = await this.prisma.attendanceLog.findUnique({
+      where: {
+        employeeId_date: { employeeId, date: dateOnly },
+      },
+    });
+
+    if (!existing?.checkIn) {
+      throw new BadRequestException('Must check in before checking out');
+    }
+
+    if (existing.checkOut) {
+      throw new BadRequestException('Already checked out today');
+    }
+
+    const overtimeMinutes = this.calculateOvertimeMinutes(
+      checkTime,
+      employee.shift,
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.portalAttendance.create({
+        data: {
+          employeeId,
+          type: 'CHECK_OUT',
+          latitude: lat,
+          longitude: lng,
+          timestamp: checkTime,
+          verified: true,
+        },
+      });
+
+      await tx.attendanceLog.update({
+        where: { id: existing.id },
+        data: { checkOut: checkTime, overtimeMinutes },
+      });
+    });
+
+    const hoursWorked =
+      Math.round(
+        ((checkTime.getTime() - existing.checkIn!.getTime()) / 3600000) * 100,
+      ) / 100;
+
+    return { success: true, hoursWorked, distance: Math.round(distance) };
   }
 
   private determineCheckInStatus(

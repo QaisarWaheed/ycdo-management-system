@@ -21,6 +21,13 @@ export interface Employee {
   dateOfBirth?: string | null
   gender: string
   address?: string | null
+  currentAddress?: string | null
+  permanentAddress?: string | null
+  province?: string | null
+  city?: string | null
+  domicile?: string | null
+  dutyStartTime?: string | null
+  dutyEndTime?: string | null
   status: string
   joiningDate: string
   currentDesignation: string
@@ -47,6 +54,15 @@ export interface AttendanceLog {
   status: string
   lateMinutes?: number
   overtimeMinutes?: number
+}
+
+export interface WorkingHours {
+  totalMinutes: number
+  totalHours: number
+  totalDays: number
+  thisMonthMinutes: number
+  thisMonthHours: number
+  averageDailyHours: number
 }
 
 export interface AttendanceSummary {

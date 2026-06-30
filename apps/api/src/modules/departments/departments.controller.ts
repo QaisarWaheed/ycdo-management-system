@@ -22,7 +22,7 @@ export class DepartmentsController {
   constructor(private departmentsService: DepartmentsService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.IT_ADMIN)
   create(@Body() dto: CreateDepartmentDto) {
     return this.departmentsService.create(dto);
   }
@@ -38,13 +38,13 @@ export class DepartmentsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.IT_ADMIN)
   update(@Param('id') id: string, @Body() dto: UpdateDepartmentDto) {
     return this.departmentsService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   deactivate(@Param('id') id: string) {
     return this.departmentsService.deactivate(id);
   }

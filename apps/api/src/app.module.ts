@@ -27,6 +27,7 @@ import { SeparationModule } from './modules/separation/separation.module';
 import { ShiftsModule } from './modules/shifts/shifts.module';
 import { StipendReceiptsModule } from './modules/stipend-receipts/stipend-receipts.module';
 import { IncentivesModule } from './modules/incentives/incentives.module';
+import { UserPasswordsModule } from './modules/user-passwords/user-passwords.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -62,6 +63,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AcknowledgementsModule,
     StipendReceiptsModule,
     IncentivesModule,
+    UserPasswordsModule,
   ],
 })
 export class AppModule {}

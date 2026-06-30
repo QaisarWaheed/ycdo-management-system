@@ -23,6 +23,7 @@ import {
   BiometricPushDto,
   ManualAttendanceDto,
   MarkAbsenteesDto,
+  PortalCheckDto,
   RelieverSessionsQueryDto,
 } from './attendance.dto';
 import { AttendanceService } from './attendance.service';
@@ -157,6 +158,10 @@ export class AttendanceController {
     UserRole.BRANCH_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
+    UserRole.CHAIRMAN,
+    UserRole.FOUNDER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
   )
   findAll(
     @Query() query: AttendanceQueryDto,
@@ -179,5 +184,39 @@ export class AttendanceController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
   markAbsentees(@Body() dto: MarkAbsenteesDto) {
     return this.attendanceService.markAbsentees(dto.date);
+  }
+
+  @Post('portal-checkin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.EMPLOYEE)
+  portalCheckIn(
+    @Body() dto: PortalCheckDto,
+    @CurrentUser() user: { employeeId?: string | null },
+  ) {
+    if (!user.employeeId) {
+      throw new ForbiddenException('Employee profile required');
+    }
+    return this.attendanceService.portalCheckIn(
+      user.employeeId,
+      dto.latitude,
+      dto.longitude,
+    );
+  }
+
+  @Post('portal-checkout')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.EMPLOYEE)
+  portalCheckOut(
+    @Body() dto: PortalCheckDto,
+    @CurrentUser() user: { employeeId?: string | null },
+  ) {
+    if (!user.employeeId) {
+      throw new ForbiddenException('Employee profile required');
+    }
+    return this.attendanceService.portalCheckOut(
+      user.employeeId,
+      dto.latitude,
+      dto.longitude,
+    );
   }
 }

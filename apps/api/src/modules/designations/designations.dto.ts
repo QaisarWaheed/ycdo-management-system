@@ -23,3 +23,13 @@ export class UpdateDesignationDto {
   @IsBoolean()
   isActive?: boolean;
 }
+
+export class DesignationQueryDto {
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  categories?: string;
+}

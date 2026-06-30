@@ -139,6 +139,16 @@ export class MarkAbsenteesDto {
   date: string;
 }
 
+export class PortalCheckDto {
+  @Type(() => Number)
+  @IsNumber()
+  latitude: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  longitude: number;
+}
+
 export class RelieverSessionsQueryDto {
   @IsOptional()
   @IsUUID()

@@ -13,6 +13,7 @@ import {
   CreateEmployeeDto,
   EmployeeQueryDto,
   TransferDto,
+  UpdateBranchDutyDto,
   UpdateEmployeeDto,
 } from './employees.dto';
 
@@ -320,6 +321,10 @@ export class EmployeesService {
     if (dto.dateOfBirth !== undefined) {
       data.dateOfBirth = new Date(dto.dateOfBirth);
     }
+    if (dto.joiningDate !== undefined) {
+      data.joiningDate = new Date(dto.joiningDate);
+    }
+    if (dto.gender !== undefined) data.gender = dto.gender;
     if (dto.address !== undefined) data.address = dto.address;
     if (dto.biometricId !== undefined) data.biometricId = dto.biometricId;
     if (dto.currentDesignation !== undefined) {
@@ -354,6 +359,14 @@ export class EmployeesService {
       data.policeStation = dto.policeStation;
     }
     if (dto.bloodGroup !== undefined) data.bloodGroup = dto.bloodGroup;
+    if (dto.dutyStartTime !== undefined) data.dutyStartTime = dto.dutyStartTime;
+    if (dto.dutyEndTime !== undefined) data.dutyEndTime = dto.dutyEndTime;
+    if (dto.province !== undefined) data.province = dto.province;
+    if (dto.city !== undefined) data.city = dto.city;
+    if (dto.permanentProvince !== undefined) {
+      data.permanentProvince = dto.permanentProvince;
+    }
+    if (dto.permanentCity !== undefined) data.permanentCity = dto.permanentCity;
 
     if (dto.email) {
       const existingEmail = await this.prisma.employee.findFirst({
@@ -517,5 +530,144 @@ export class EmployeesService {
         `Department with id ${departmentId} not found in branch`,
       );
     }
+  }
+
+  async getTotalWorkingHours(employeeId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${employeeId} not found`);
+    }
+
+    const logs = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId,
+        checkIn: { not: null },
+        checkOut: { not: null },
+      },
+      select: { checkIn: true, checkOut: true, date: true },
+    });
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    let totalMinutes = 0;
+    let thisMonthMinutes = 0;
+    const daysWithHours = new Set<string>();
+
+    for (const log of logs) {
+      if (!log.checkIn || !log.checkOut) continue;
+      const minutes = Math.round(
+        (log.checkOut.getTime() - log.checkIn.getTime()) / 60000,
+      );
+      totalMinutes += minutes;
+      daysWithHours.add(log.date.toISOString().split('T')[0]);
+
+      if (log.date >= monthStart && log.date <= monthEnd) {
+        thisMonthMinutes += minutes;
+      }
+    }
+
+    const totalDays = daysWithHours.size;
+    const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
+    const thisMonthHours = Math.round((thisMonthMinutes / 60) * 100) / 100;
+    const averageDailyHours =
+      totalDays > 0
+        ? Math.round((totalHours / totalDays) * 100) / 100
+        : 0;
+
+    return {
+      totalMinutes,
+      totalHours,
+      totalDays,
+      thisMonthMinutes,
+      thisMonthHours,
+      averageDailyHours,
+    };
+  }
+
+  async updateBranchDuty(
+    id: string,
+    dto: UpdateBranchDutyDto,
+    actingUserId: string,
+  ) {
+    const employee = await this.prisma.employee.findUnique({ where: { id } });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${id} not found`);
+    }
+
+    const branchChanged =
+      dto.currentBranchId !== undefined &&
+      dto.currentBranchId !== employee.currentBranchId;
+
+    const targetBranchId = dto.currentBranchId ?? employee.currentBranchId;
+
+    if (dto.currentBranchId) {
+      await this.ensureBranchExists(dto.currentBranchId);
+    }
+
+    if (dto.currentDepartmentId) {
+      await this.ensureDepartmentInBranch(
+        dto.currentDepartmentId,
+        targetBranchId,
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (branchChanged && dto.currentBranchId) {
+        await tx.employmentHistory.create({
+          data: {
+            employeeId: id,
+            branchId: dto.currentBranchId,
+            departmentId:
+              dto.currentDepartmentId ?? employee.currentDepartmentId,
+            designation: employee.currentDesignation,
+            changeType: ChangeType.TRANSFERRED,
+            effectiveDate: new Date(),
+          },
+        });
+      }
+
+      const data: Prisma.EmployeeUpdateInput = {};
+
+      if (dto.currentBranchId !== undefined) {
+        data.currentBranch = { connect: { id: dto.currentBranchId } };
+      }
+      if (dto.currentDepartmentId !== undefined) {
+        data.currentDepartment = { connect: { id: dto.currentDepartmentId } };
+      }
+      if (dto.dutyStartTime !== undefined) {
+        data.dutyStartTime = dto.dutyStartTime;
+      }
+      if (dto.dutyEndTime !== undefined) {
+        data.dutyEndTime = dto.dutyEndTime;
+      }
+
+      const result = await tx.employee.update({
+        where: { id },
+        data,
+        include: {
+          currentBranch: { select: { name: true } },
+          currentDepartment: { select: { name: true } },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'UPDATE_BRANCH_DUTY',
+          entity: 'Employee',
+          entityId: id,
+        },
+      });
+
+      return result;
+    });
+
+    return updated;
   }
 }

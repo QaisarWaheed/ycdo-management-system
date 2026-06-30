@@ -11,6 +11,41 @@ import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+async function ensureUserPassword(userId: string, plainPassword: string) {
+  await prisma.userPassword.upsert({
+    where: { userId },
+    update: { plainText: plainPassword },
+    create: { userId, plainText: plainPassword },
+  });
+}
+
+async function ensureUserAccount(
+  email: string,
+  plainPassword: string,
+  role: UserRole,
+  employeeId?: string | null,
+) {
+  const hashedPassword = await bcrypt.hash(plainPassword, 10);
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: {
+      password: hashedPassword,
+      role,
+      isActive: true,
+      ...(employeeId !== undefined ? { employeeId } : {}),
+    },
+    create: {
+      email,
+      password: hashedPassword,
+      role,
+      employeeId: employeeId ?? null,
+      isActive: true,
+    },
+  });
+  await ensureUserPassword(user.id, plainPassword);
+  return user;
+}
+
 type BranchSeed = { name: string; address: string; phone: string };
 
 const hospitalRunningBranches: BranchSeed[] = [
@@ -375,24 +410,7 @@ async function ensureEmployeePortalUser(
   email: string,
   employeeCode: string,
 ) {
-  const password = await bcrypt.hash(employeeCode, 10);
-
-  await prisma.user.upsert({
-    where: { email },
-    update: {
-      employeeId,
-      password,
-      role: UserRole.EMPLOYEE,
-      isActive: true,
-    },
-    create: {
-      email,
-      password,
-      role: UserRole.EMPLOYEE,
-      employeeId,
-      isActive: true,
-    },
-  });
+  await ensureUserAccount(email, employeeCode, UserRole.EMPLOYEE, employeeId);
 }
 
 async function ensureBranch(
@@ -465,18 +483,19 @@ async function seedProjectBranches(
 }
 
 async function main() {
-  const hashedPassword = await bcrypt.hash('Admin@123', 10);
+  await ensureUserAccount(
+    'admin@ycdo.org',
+    'Admin@123',
+    UserRole.SUPER_ADMIN,
+    null,
+  );
 
-  await prisma.user.upsert({
-    where: { email: 'admin@ycdo.org' },
-    update: {},
-    create: {
-      email: 'admin@ycdo.org',
-      password: hashedPassword,
-      role: UserRole.SUPER_ADMIN,
-      isActive: true,
-    },
-  });
+  await ensureUserAccount(
+    'it.team@ycdo.org',
+    'ITTeam@123',
+    UserRole.IT_ADMIN,
+    null,
+  );
 
   const hospital = await prisma.project.upsert({
     where: { id: 'project-hospital' },
@@ -820,116 +839,118 @@ async function main() {
     }
   }
 
-  const designations = [
-    { title: 'Medical Officer', category: 'Medical' },
-    { title: 'Women Medical Officer', category: 'Medical' },
-    { title: 'Senior Medical Officer', category: 'Medical' },
-    { title: 'House Officer', category: 'Medical' },
-    { title: 'Intern Doctor', category: 'Medical' },
-    { title: 'Consultant', category: 'Medical' },
-    { title: 'Surgeon', category: 'Medical' },
-    { title: 'Head Nurse', category: 'Nursing' },
-    { title: 'Senior Nurse', category: 'Nursing' },
-    { title: 'Nurse', category: 'Nursing' },
-    { title: 'Nursing Assistant', category: 'Nursing' },
-    { title: 'Midwife', category: 'Nursing' },
-    { title: 'Pharmacist', category: 'Allied Health' },
-    { title: 'Senior Pharmacist', category: 'Allied Health' },
-    { title: 'Lab Technician', category: 'Allied Health' },
-    { title: 'Senior Lab Technician', category: 'Allied Health' },
-    { title: 'Radiologist', category: 'Allied Health' },
-    { title: 'Physiotherapist', category: 'Allied Health' },
-    { title: 'Dispenser', category: 'Allied Health' },
-    { title: 'X-Ray Technician', category: 'Allied Health' },
-    { title: 'Receptionist', category: 'Admin' },
-    { title: 'Senior Receptionist', category: 'Admin' },
-    { title: 'Admin Officer', category: 'Admin' },
-    { title: 'Senior Admin Officer', category: 'Admin' },
-    { title: 'Office Assistant', category: 'Admin' },
-    { title: 'Data Entry Operator', category: 'Admin' },
-    { title: 'Store Keeper', category: 'Admin' },
-    { title: 'Cashier', category: 'Admin' },
-    { title: 'Branch Manager', category: 'Management' },
+  await prisma.designation.deleteMany({});
+
+  const newDesignations = [
     { title: 'Admin Manager', category: 'Management' },
-    { title: 'Operations Manager', category: 'Management' },
-    { title: 'Department Head', category: 'Management' },
-    { title: 'HR Manager', category: 'Management' },
-    { title: 'HR Officer', category: 'Management' },
-    { title: 'Incharge', category: 'Management' },
+    { title: 'Pharmacy Staff', category: 'Allied Health' },
+    { title: 'Lab Staff', category: 'Allied Health' },
+    { title: 'Admin Officer', category: 'Admin' },
+    { title: 'Doctor', category: 'Medical' },
+    { title: 'Human Resource Staff', category: 'HR' },
+    { title: 'Human Resource Manager', category: 'HR' },
+    { title: 'Staff Manager', category: 'Management' },
+    { title: 'Progress Officer', category: 'Management' },
+    { title: 'Accountant/Chief Finance Officer', category: 'Finance' },
+    { title: 'Assistant Accountant', category: 'Finance' },
+    { title: 'Finance Representative', category: 'Finance' },
+    { title: 'Admin Medicine', category: 'Admin' },
+    { title: 'Medicine Manager', category: 'Allied Health' },
+    { title: 'Medicine Store Manager', category: 'Allied Health' },
+    { title: 'Lab Admin Manager', category: 'Allied Health' },
+    { title: 'Lab Operation Manager', category: 'Allied Health' },
+    { title: 'Lab Store Manager', category: 'Allied Health' },
+    { title: 'Audit Officer', category: 'Finance' },
+    { title: 'Central Admin Officer', category: 'Admin' },
+    { title: 'Coordinator Projects', category: 'Management' },
+    { title: 'Surgeon', category: 'Medical' },
+    { title: 'Anaesthetics', category: 'Medical' },
+    { title: 'OTA', category: 'Medical' },
+    { title: 'R&D Coordinator', category: 'IT' },
+    { title: 'Biomedical Engineer', category: 'IT' },
+    { title: 'Assets Manager', category: 'Admin' },
+    { title: 'Kitchen Admin Manager', category: 'Kitchen' },
+    { title: 'Kitchen Operation Manager', category: 'Kitchen' },
+    { title: 'VTI Admin Officer', category: 'VTI' },
+    { title: 'Nurse', category: 'Nursing' },
+    { title: 'Head Nurse', category: 'Nursing' },
+    { title: 'Receptionist', category: 'Admin' },
+    { title: 'Pharmacist', category: 'Allied Health' },
+    { title: 'Lab Technician', category: 'Allied Health' },
     { title: 'Housekeeper', category: 'Support' },
     { title: 'Security Guard', category: 'Support' },
     { title: 'Driver', category: 'Support' },
-    { title: 'Cook', category: 'Support' },
-    { title: 'Helper', category: 'Support' },
-    { title: 'Sanitation Worker', category: 'Support' },
-    { title: 'Sweeper', category: 'Support' },
     { title: 'Software Engineer', category: 'IT' },
     { title: 'IT Officer', category: 'IT' },
     { title: 'Social Media Officer', category: 'IT' },
     { title: 'Graphic Designer', category: 'IT' },
-    { title: 'Media Officer', category: 'IT' },
-    { title: 'Content Creator', category: 'IT' },
     { title: 'Vocational Trainer', category: 'VTI' },
-    { title: 'Training Coordinator', category: 'VTI' },
-    { title: 'VTI Manager', category: 'VTI' },
-    { title: 'Accounts Officer', category: 'Finance' },
-    { title: 'Finance Manager', category: 'Finance' },
-    { title: 'Audit Officer', category: 'Finance' },
+    { title: 'Cashier', category: 'Finance' },
+    { title: 'Data Entry Operator', category: 'Admin' },
+    { title: 'Cook', category: 'Kitchen' },
   ];
 
-  for (const d of designations) {
+  for (const d of newDesignations) {
     await prisma.designation.upsert({
       where: { title: d.title },
-      update: {},
+      update: { category: d.category, isActive: true },
       create: d,
     });
   }
 
   const roleAccounts = [
-    {
-      email: 'branch.manager@ycdo.org',
-      password: 'BranchM@123',
-      role: 'BRANCH_MANAGER' as UserRole,
-    },
-    {
-      email: 'dept.incharge@ycdo.org',
-      password: 'DeptIn@123',
-      role: 'ADMIN_OFFICER' as UserRole,
-    },
-    {
-      email: 'hr.operations@ycdo.org',
-      password: 'HROps@123',
-      role: 'HR_OPERATIONS_MANAGER' as UserRole,
-    },
-    {
-      email: 'hr.admin@ycdo.org',
-      password: 'HRAdmin@123',
-      role: 'HR_ADMIN_MANAGER' as UserRole,
-    },
-    {
-      email: 'chairman@ycdo.org',
-      password: 'Chairman@123',
-      role: 'CHAIRMAN' as UserRole,
-    },
-    {
-      email: 'founder@ycdo.org',
-      password: 'Founder@123',
-      role: 'FOUNDER' as UserRole,
-    },
+    { email: 'branch.manager@ycdo.org', password: 'BranchM@123', role: UserRole.BRANCH_MANAGER },
+    { email: 'dept.incharge@ycdo.org', password: 'DeptIn@123', role: UserRole.ADMIN_OFFICER },
+    { email: 'hr.operations@ycdo.org', password: 'HROps@123', role: UserRole.HR_OPERATIONS_MANAGER },
+    { email: 'hr.admin@ycdo.org', password: 'HRAdmin@123', role: UserRole.HR_ADMIN_MANAGER },
+    { email: 'chairman@ycdo.org', password: 'Chairman@123', role: UserRole.CHAIRMAN },
+    { email: 'founder@ycdo.org', password: 'Founder@123', role: UserRole.FOUNDER },
   ];
 
   for (const account of roleAccounts) {
-    const hashedPassword = await bcrypt.hash(account.password, 10);
-    await prisma.user.upsert({
-      where: { email: account.email },
-      update: {},
-      create: {
-        email: account.email,
-        password: hashedPassword,
-        role: account.role,
-        isActive: true,
-      },
+    await ensureUserAccount(account.email, account.password, account.role, null);
+  }
+
+  const branchLocations = [
+    { name: 'YCDO Central Hospital', lat: 30.2014, lng: 71.495, radius: 200 },
+    { name: 'YCDO Executive Hospital-I', lat: 30.1956, lng: 71.4753, radius: 200 },
+    { name: 'YCDO Executive Hospital-II', lat: 30.182, lng: 71.4689, radius: 200 },
+    { name: 'Police & YCDO Drug Rehabilitation Hospital', lat: 30.1734, lng: 71.4801, radius: 200 },
+    { name: 'YCDO Executive-V Drug Rehabilitation Hospital', lat: 30.165, lng: 71.4712, radius: 200 },
+    { name: 'YCDO Hospital Hassan Abad', lat: 30.2089, lng: 71.4623, radius: 200 },
+    { name: 'YCDO Hospital Hassan Parwana', lat: 30.2134, lng: 71.4534, radius: 200 },
+    { name: 'YCDO Hospital Suraj Kund', lat: 30.2245, lng: 71.4423, radius: 200 },
+    { name: 'Idrees Memorial YCDO Hospital', lat: 30.1912, lng: 71.5023, radius: 200 },
+    { name: 'YCDO Hospital Jumma Wala', lat: 30.1456, lng: 71.4834, radius: 200 },
+    { name: 'YCDO Hospital Bilawal Pur', lat: 30.3912, lng: 71.8823, radius: 200 },
+    { name: 'YCDO Hospital Sikandar Abad', lat: 29.8734, lng: 71.6923, radius: 200 },
+    { name: 'YCDO Hospital Pul Dhram Pura', lat: 30.5512, lng: 71.9834, radius: 200 },
+    { name: 'Allah Dad Memorial YCDO Hospital', lat: 30.7012, lng: 70.6523, radius: 200 },
+    { name: 'YCDO Ghazi National Hospital E-III', lat: 30.0512, lng: 70.6334, radius: 200 },
+    { name: 'YCDO AR Executive-IV Hospital', lat: 30.1234, lng: 70.5823, radius: 200 },
+    { name: 'YCDO Hospital Budhla Santt', lat: 30.1945, lng: 71.4612, radius: 200 },
+    { name: 'YCDO VTI For Women Qasim Pur', lat: 30.1923, lng: 71.5034, radius: 200 },
+    { name: 'YCDO VTI For Women Basti Malook', lat: 30.1834, lng: 71.4923, radius: 200 },
+    { name: 'YCDO Kitchen Qasim Pur', lat: 30.1912, lng: 71.5023, radius: 200 },
+  ];
+
+  for (const loc of branchLocations) {
+    const searchTerm = loc.name.split(' ').slice(0, 3).join(' ');
+    const branch = await prisma.branch.findFirst({
+      where: { name: { contains: searchTerm } },
     });
+    if (branch) {
+      await prisma.branchLocation.upsert({
+        where: { branchId: branch.id },
+        update: { latitude: loc.lat, longitude: loc.lng, radius: loc.radius },
+        create: {
+          branchId: branch.id,
+          latitude: loc.lat,
+          longitude: loc.lng,
+          radius: loc.radius,
+        },
+      });
+    }
   }
 
   const branchCount = await prisma.branch.count();

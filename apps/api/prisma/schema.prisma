@@ -42,6 +42,7 @@ model Branch {
   attendanceLogs    AttendanceLog[]
   shifts            Shift[]
   relieverSessions  RelieverSession[]
+  location          BranchLocation?
 }
 
 model Shift {
@@ -116,6 +117,7 @@ model Employee {
   relieverRequestsReceived   RelieverRequest[] @relation("RelieverEmployee")
   stipendReceipts            StipendReceipt[]
   incentives                 Incentive[]
+  portalAttendances          PortalAttendance[]
 
   // Additional personal info
   fatherContactNumber    String?
@@ -132,6 +134,12 @@ model Employee {
   policeStation          String?
   bloodGroup             String?
   staffType              StaffType      @default(NEW)
+  dutyStartTime          String?
+  dutyEndTime            String?
+  province               String?
+  city                   String?
+  permanentProvince      String?
+  permanentCity          String?
 }
 
 enum Gender {
@@ -599,10 +607,46 @@ model User {
   broadcasts NotificationBroadcast[]
   incentivesAdded Incentive[]
   leaveApprovals LeaveApproval[] @relation("LeaveApprovals")
+  passwordRecord UserPassword?
+}
+
+model UserPassword {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  plainText String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BranchLocation {
+  id        String   @id @default(uuid())
+  branchId  String   @unique
+  latitude  Float
+  longitude Float
+  radius    Int      @default(200)
+  createdAt DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+}
+
+model PortalAttendance {
+  id         String   @id @default(uuid())
+  employeeId String
+  type       String
+  latitude   Float
+  longitude  Float
+  timestamp  DateTime @default(now())
+  verified   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
 }
 
 enum UserRole {
   SUPER_ADMIN
+  IT_ADMIN
   FOUNDER
   CHAIRMAN
   HR_OPERATIONS_MANAGER
@@ -610,6 +654,8 @@ enum UserRole {
   ADMIN_OFFICER
   HR_MANAGER
   BRANCH_MANAGER
+  DEPARTMENT_HEAD
+  PAYROLL_OFFICER
   EMPLOYEE
 }
 

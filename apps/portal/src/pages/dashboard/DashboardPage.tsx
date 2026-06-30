@@ -14,14 +14,14 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
 import { notificationsApi } from '@/api/endpoints/notifications'
-import { LiveTimerWidget } from '@/components/common/LiveTimerWidget'
+import { PortalCheckInWidget } from '@/components/attendance/PortalCheckInWidget'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
-import { getGreeting } from '@/lib/helpers'
-import type { LeaveRecord, Notification } from '@/types'
+import { calcHoursWorked, getGreeting } from '@/lib/helpers'
+import type { AttendanceLog, LeaveRecord, Notification } from '@/types'
 
 function StatCard({
   label,
@@ -112,6 +112,30 @@ export function DashboardPage() {
     enabled: !!employeeId,
   })
 
+  const { data: todayLogs = [] } = useQuery({
+    queryKey: ['attendance-today', employeeId, month, year],
+    queryFn: () =>
+      attendanceApi.getMy({
+        month,
+        year,
+      }),
+    enabled: !!employeeId,
+    select: (logs) => {
+      const todayStr = format(now, 'yyyy-MM-dd')
+      return (logs as AttendanceLog[]).filter(
+        (log) => format(new Date(log.date), 'yyyy-MM-dd') === todayStr,
+      )
+    },
+  })
+
+  const todayLog = todayLogs[0]
+  const todayHours =
+    todayLog?.checkIn && todayLog?.checkOut
+      ? calcHoursWorked(todayLog.checkIn, todayLog.checkOut)
+      : todayLog?.checkIn
+        ? 'In progress'
+        : '—'
+
   const pendingAckCount = pendingAcks.length
 
   const displayName = employee
@@ -163,13 +187,21 @@ export function DashboardPage() {
       )}
 
       {employeeId && (
-        <LiveTimerWidget
+        <PortalCheckInWidget
           employeeId={employeeId}
           shift={employee?.shift ?? undefined}
         />
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard
+          label="Today's Hours"
+          value={todayHours}
+          icon={Clock}
+          loading={!employeeId}
+          iconBg="bg-teal-100 text-teal-700"
+          subtitle={format(now, 'dd MMM yyyy')}
+        />
         <StatCard
           label="Present This Month"
           value={summary?.present ?? 0}

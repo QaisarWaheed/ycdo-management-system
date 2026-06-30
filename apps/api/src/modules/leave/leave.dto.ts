@@ -13,6 +13,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 export class ApplyLeaveDto {
@@ -112,4 +113,23 @@ export class HRAssignRelieverDto {
   @IsUUID()
   @IsNotEmpty()
   relieverId: string;
+}
+
+export class EmergencyLeaveDto {
+  @IsUUID()
+  @IsNotEmpty()
+  employeeId: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  startDate: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  endDate: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(10)
+  emergencyReason: string;
 }

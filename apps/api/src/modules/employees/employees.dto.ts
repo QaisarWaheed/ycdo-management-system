@@ -139,6 +139,32 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsEnum(StaffType)
   staffType?: StaffType;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
+  dutyStartTime?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
+  dutyEndTime?: string;
+
+  @IsOptional()
+  @IsString()
+  province?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  permanentProvince?: string;
+
+  @IsOptional()
+  @IsString()
+  permanentCity?: string;
 }
 
 export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {}
@@ -214,4 +240,24 @@ export class EmployeeQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+}
+
+export class UpdateBranchDutyDto {
+  @IsOptional()
+  @IsUUID()
+  currentBranchId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  currentDepartmentId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
+  dutyStartTime?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
+  dutyEndTime?: string;
 }

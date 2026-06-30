@@ -23,11 +23,19 @@ import {
 } from './payroll.dto';
 import { PayrollService } from './payroll.service';
 
+const PAYROLL_READ_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.HR_MANAGER,
+  UserRole.HR_ADMIN_MANAGER,
+  UserRole.HR_OPERATIONS_MANAGER,
+  UserRole.CHAIRMAN,
+  UserRole.FOUNDER,
+];
+
 @Controller('payroll')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PayrollController {
   constructor(private payrollService: PayrollService) {}
-
   @Post('entries')
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
   createOrGetEntry(@Body() dto: CreatePayrollEntryDto) {
@@ -57,7 +65,7 @@ export class PayrollController {
   }
 
   @Get('summary')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
+  @Roles(...PAYROLL_READ_ROLES)
   getMonthlyPayrollSummary(
     @Query('month') month: string,
     @Query('year') year: string,
@@ -82,7 +90,7 @@ export class PayrollController {
   }
 
   @Get('entries')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
+  @Roles(...PAYROLL_READ_ROLES)
   findAll(@Query() query: PayrollQueryDto) {
     return this.payrollService.findAll(query);
   }

@@ -19,6 +19,7 @@ import {
   CreateEmployeeDto,
   EmployeeQueryDto,
   TransferDto,
+  UpdateBranchDutyDto,
   UpdateEmployeeDto,
 } from './employees.dto';
 import { EmployeesService } from './employees.service';
@@ -46,6 +47,10 @@ export class EmployeesController {
     UserRole.HR_MANAGER,
     UserRole.BRANCH_MANAGER,
     UserRole.ADMIN_OFFICER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.CHAIRMAN,
+    UserRole.FOUNDER,
   )
   findAll(@Query() query: EmployeeQueryDto) {
     return this.employeesService.findAll(query);
@@ -80,10 +85,34 @@ export class EmployeesController {
     return this.employeesService.findOne(id);
   }
 
+  @Get(':id/working-hours')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.CHAIRMAN,
+    UserRole.FOUNDER,
+    UserRole.EMPLOYEE,
+  )
+  getWorkingHours(
+    @Param('id') id: string,
+    @CurrentUser() user: { role: UserRole; employeeId?: string | null },
+  ) {
+    if (user.role === UserRole.EMPLOYEE && user.employeeId !== id) {
+      throw new ForbiddenException('Access denied');
+    }
+    return this.employeesService.getTotalWorkingHours(id);
+  }
+
   @Patch(':id')
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
     UserRole.BRANCH_MANAGER,
     UserRole.EMPLOYEE,
   )
@@ -114,5 +143,20 @@ export class EmployeesController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
   changeStatus(@Param('id') id: string, @Body() dto: ChangeStatusDto) {
     return this.employeesService.changeStatus(id, dto);
+  }
+
+  @Patch(':id/branch-duty')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  updateBranchDuty(
+    @Param('id') id: string,
+    @Body() dto: UpdateBranchDutyDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.employeesService.updateBranchDuty(id, dto, user.id);
   }
 }

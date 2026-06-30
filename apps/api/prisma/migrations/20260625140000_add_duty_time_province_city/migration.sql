@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "dutyStartTime" TEXT;
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "dutyEndTime" TEXT;
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "province" TEXT;
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "city" TEXT;
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "permanentProvince" TEXT;
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "permanentCity" TEXT;

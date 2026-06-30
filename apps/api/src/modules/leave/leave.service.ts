@@ -22,6 +22,7 @@ import {
   ApplyLeaveDto,
   ApproveLeaveDto,
   HRAssignRelieverDto,
+  EmergencyLeaveDto,
   LeaveQueryDto,
   RequestRelieverDto,
   RespondRelieverDto,
@@ -600,6 +601,93 @@ export class LeaveService {
       include: this.leaveInclude(),
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async getMyPendingReliever(employeeId: string) {
+    return this.prisma.leaveRecord.findMany({
+      where: {
+        employeeId,
+        status: LeaveStatus.DEPT_APPROVED,
+        relieverRequest: { is: null },
+      },
+      include: this.leaveInclude(),
+      orderBy: { startDate: 'asc' },
+    });
+  }
+
+  async markEmergencyLeave(dto: EmergencyLeaveDto, actingUser: ActingUser) {
+    const allowedRoles: UserRole[] = [
+      UserRole.HR_MANAGER,
+      UserRole.HR_ADMIN_MANAGER,
+      UserRole.HR_OPERATIONS_MANAGER,
+      UserRole.SUPER_ADMIN,
+    ];
+
+    if (!allowedRoles.includes(actingUser.role)) {
+      throw new ForbiddenException('Not authorized to mark emergency leave');
+    }
+
+    if (!dto.emergencyReason?.trim()) {
+      throw new BadRequestException('Emergency reason is required');
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with id ${dto.employeeId} not found`,
+      );
+    }
+
+    const startDate = this.toDateOnly(new Date(dto.startDate));
+    const endDate = this.toDateOnly(new Date(dto.endDate));
+
+    if (startDate > endDate) {
+      throw new BadRequestException('Start date must be before or equal to end date');
+    }
+
+    const totalDays = this.calculateTotalDays(startDate, endDate);
+
+    const leave = await this.prisma.$transaction(async (tx) => {
+      const record = await tx.leaveRecord.create({
+        data: {
+          employeeId: dto.employeeId,
+          leaveType: LeaveType.EMERGENCY,
+          startDate,
+          endDate,
+          totalDays,
+          reason: dto.emergencyReason,
+          status: LeaveStatus.APPROVED,
+          currentStage: null,
+        },
+        include: { employee: true },
+      });
+
+      await this.markLeaveAttendance(tx, record);
+
+      await tx.notification.create({
+        data: {
+          employeeId: dto.employeeId,
+          type: 'EMERGENCY_LEAVE',
+          message: `Emergency leave has been marked by HR for ${this.formatDate(startDate)} to ${this.formatDate(endDate)}. Reason: ${dto.emergencyReason}`,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'EMERGENCY_LEAVE',
+          entity: 'LeaveRecord',
+          entityId: record.id,
+        },
+      });
+
+      return record;
+    });
+
+    return leave;
   }
 
   async getIncomingRelieverRequests(employeeId: string) {

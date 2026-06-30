@@ -52,4 +52,6 @@ export const leaveApi = {
     api.get<unknown, IncomingRelieverRequest[]>(
       '/leave/incoming-reliever-requests',
     ),
+  getPendingReliever: () =>
+    api.get<unknown, LeaveRecord[]>('/leave/my-pending-reliever'),
 }

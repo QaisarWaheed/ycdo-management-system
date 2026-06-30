@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
-import { LiveTimerWidget } from '@/components/common/LiveTimerWidget'
+import { PortalCheckInWidget } from '@/components/attendance/PortalCheckInWidget'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -110,6 +110,12 @@ export function MyAttendancePage() {
     enabled: !!employeeId,
   })
 
+  const { data: workingHours, isLoading: loadingWorkingHours } = useQuery({
+    queryKey: ['working-hours', employeeId],
+    queryFn: () => employeesApi.getWorkingHours(employeeId),
+    enabled: !!employeeId,
+  })
+
   const sortedLogs = useMemo(
     () =>
       [...(logs as AttendanceLog[])].sort(
@@ -127,8 +133,40 @@ export function MyAttendancePage() {
         </p>
       </div>
 
+      {loadingWorkingHours ? (
+        <Skeleton className="h-24 w-full" />
+      ) : (
+        <Card className="border-border bg-gradient-to-r from-primary/5 to-accent/5 shadow-sm">
+          <CardContent className="p-6">
+            <p className="mb-4 text-sm font-semibold text-text-secondary">
+              Total Working Hours
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-text-secondary">This Month</p>
+                <p className="text-2xl font-bold text-primary">
+                  {workingHours?.thisMonthHours ?? 0} hrs
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-text-secondary">All Time</p>
+                <p className="text-2xl font-bold text-text-primary">
+                  {workingHours?.totalHours ?? 0} hrs
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-text-secondary">Average Daily</p>
+                <p className="text-2xl font-bold text-accent-dark">
+                  {workingHours?.averageDailyHours ?? 0} hrs
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {employeeId && (
-        <LiveTimerWidget
+        <PortalCheckInWidget
           employeeId={employeeId}
           shift={employee?.shift ?? undefined}
           compact

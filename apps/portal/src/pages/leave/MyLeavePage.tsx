@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { differenceInCalendarDays, format } from 'date-fns'
+import { AlertTriangle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -50,6 +51,7 @@ import type { LeaveRecord } from '@/types'
 function LeaveStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
+    DEPT_APPROVED: 'bg-blue-100 text-blue-800 border-blue-200',
     RELIEVER_PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
     RELIEVER_CONFIRMED: 'bg-blue-100 text-blue-800 border-blue-200',
     RELIEVER_REJECTED: 'bg-red-100 text-red-800 border-red-200',
@@ -86,6 +88,116 @@ function RelieverStatusBadge({ status }: { status: string }) {
     )
   }
   return <span className="text-text-secondary">—</span>
+}
+
+function RelieverSelectDialog({
+  leave,
+  open,
+  onOpenChange,
+  employeeId,
+  requesterShift,
+}: {
+  leave: LeaveRecord | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  employeeId: string
+  requesterShift?: { startTime: string; endTime: string } | null
+}) {
+  const queryClient = useQueryClient()
+  const [relieverId, setRelieverId] = useState('')
+  const [selectedReliever, setSelectedReliever] = useState<
+    RelieverCandidate | undefined
+  >()
+
+  const shiftConflict = hasShiftConflict(requesterShift, selectedReliever?.shift)
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      leaveApi.requestReliever(leave!.id, {
+        leaveRecordId: leave!.id,
+        relieverId,
+      }),
+    onSuccess: () => {
+      toast({
+        title: 'Reliever request sent',
+        description: 'Awaiting response from the selected employee.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['pending-reliever'] })
+      queryClient.invalidateQueries({ queryKey: ['leave'] })
+      setRelieverId('')
+      setSelectedReliever(undefined)
+      onOpenChange(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to request reliever',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  if (!leave) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Select Reliever</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-surface p-3 text-sm">
+            <p className="text-text-secondary">Leave dates</p>
+            <p className="font-medium">
+              {format(new Date(leave.startDate), 'dd/MM/yyyy')} —{' '}
+              {format(new Date(leave.endDate), 'dd/MM/yyyy')}
+            </p>
+            <p className="mt-2 text-text-secondary">
+              {leave.totalDays} day{leave.totalDays !== 1 ? 's' : ''}
+              {leave.reason && ` · ${leave.reason}`}
+            </p>
+          </div>
+
+          <EmployeeSearchSelect
+            label="Select Reliever"
+            value={relieverId}
+            onChange={(id, emp) => {
+              setRelieverId(id)
+              setSelectedReliever(emp)
+            }}
+            excludeId={employeeId}
+          />
+
+          {selectedReliever?.shift && (
+            <p className="text-sm">
+              {selectedReliever.firstName} {selectedReliever.lastName} — Shift:{' '}
+              {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
+            </p>
+          )}
+
+          {shiftConflict && (
+            <p className="text-sm text-red-600">
+              This employee&apos;s shift conflicts with yours. Please select a
+              different reliever.
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            disabled={!relieverId || shiftConflict || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? 'Sending...' : 'Send Request'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function RespondDialog({
@@ -611,6 +723,14 @@ export function MyLeavePage() {
   const employeeId = user?.employeeId ?? ''
   const year = new Date().getFullYear()
   const [tab, setTab] = useState('requests')
+  const [relieverDialogLeave, setRelieverDialogLeave] =
+    useState<LeaveRecord | null>(null)
+
+  const { data: employee } = useQuery({
+    queryKey: ['employee-self-leave', employeeId],
+    queryFn: () => employeesApi.getOne(employeeId),
+    enabled: !!employeeId,
+  })
 
   const { data: balance, isLoading: loadingBalance } = useQuery({
     queryKey: ['leave-balance', employeeId, year],
@@ -624,7 +744,14 @@ export function MyLeavePage() {
     enabled: !!employeeId,
   })
 
+  const { data: pendingRelieverLeaves = [] } = useQuery({
+    queryKey: ['pending-reliever'],
+    queryFn: () => leaveApi.getPendingReliever(),
+    enabled: !!employeeId,
+  })
+
   const pendingRelieverCount = incomingReliever.length
+  const needsRelieverCount = pendingRelieverLeaves.length
 
   return (
     <div className="space-y-6">
@@ -671,6 +798,29 @@ export function MyLeavePage() {
         </CardContent>
       </Card>
 
+      {needsRelieverCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-2 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              Your leave requires a reliever selection. Please select a reliever
+              to proceed.
+              {needsRelieverCount > 1 &&
+                ` (${needsRelieverCount} leave requests pending)`}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="bg-amber-600 hover:bg-amber-700"
+            onClick={() =>
+              setRelieverDialogLeave(pendingRelieverLeaves[0] as LeaveRecord)
+            }
+          >
+            Select Reliever
+          </Button>
+        </div>
+      )}
+
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="requests">My Requests</TabsTrigger>
@@ -697,6 +847,14 @@ export function MyLeavePage() {
           <RelieverRequestsTab />
         </TabsContent>
       </Tabs>
+
+      <RelieverSelectDialog
+        leave={relieverDialogLeave}
+        open={!!relieverDialogLeave}
+        onOpenChange={(open) => !open && setRelieverDialogLeave(null)}
+        employeeId={employeeId}
+        requesterShift={employee?.shift}
+      />
     </div>
   )
 }
