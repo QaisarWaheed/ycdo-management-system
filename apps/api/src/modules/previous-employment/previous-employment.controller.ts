@@ -24,7 +24,12 @@ export class PreviousEmploymentController {
   constructor(private previousEmploymentService: PreviousEmploymentService) {}
 
   @Post()
-  @Roles(UserRole.HR_MANAGER, UserRole.ADMIN_OFFICER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.HR_ADMIN_MANAGER,
+  )
   create(@Body() dto: CreatePreviousEmploymentDto) {
     return this.previousEmploymentService.create(dto);
   }
@@ -35,13 +40,22 @@ export class PreviousEmploymentController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.HR_MANAGER, UserRole.ADMIN_OFFICER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.HR_ADMIN_MANAGER,
+  )
   update(@Param('id') id: string, @Body() dto: UpdatePreviousEmploymentDto) {
     return this.previousEmploymentService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+  )
   delete(@Param('id') id: string) {
     return this.previousEmploymentService.delete(id);
   }

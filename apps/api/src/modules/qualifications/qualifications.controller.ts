@@ -24,7 +24,12 @@ export class QualificationsController {
   constructor(private qualificationsService: QualificationsService) {}
 
   @Post()
-  @Roles(UserRole.HR_MANAGER, UserRole.ADMIN_OFFICER, UserRole.HR_ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.HR_ADMIN_MANAGER,
+  )
   create(@Body() dto: CreateQualificationDto) {
     return this.qualificationsService.create(dto);
   }
@@ -35,13 +40,22 @@ export class QualificationsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.HR_MANAGER, UserRole.ADMIN_OFFICER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.HR_ADMIN_MANAGER,
+  )
   update(@Param('id') id: string, @Body() dto: UpdateQualificationDto) {
     return this.qualificationsService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+  )
   delete(@Param('id') id: string) {
     return this.qualificationsService.delete(id);
   }

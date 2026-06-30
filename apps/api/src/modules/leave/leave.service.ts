@@ -1,4 +1,6 @@
 import { formatBranchLabel } from '../../common/branch-display';
+import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
