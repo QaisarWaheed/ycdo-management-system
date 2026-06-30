@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { differenceInCalendarDays, format } from 'date-fns'
@@ -31,6 +31,13 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -404,22 +411,36 @@ function MyRequestsTab() {
   )
 }
 
+const LEAVE_TYPES = ['REGULAR', 'SHORT_LEAVE', 'EMERGENCY'] as const
+
 const applySchema = z
   .object({
+    leaveType: z.enum(LEAVE_TYPES, { message: 'Leave type is required' }),
     startDate: z.string().min(1, 'Start date is required'),
-    endDate: z.string().min(1, 'End date is required'),
+    endDate: z.string().optional(),
     reason: z
       .string()
       .min(1, 'Reason is required')
       .max(500, 'Reason must be 500 characters or less'),
   })
-  .refine(
-    (data) => {
-      if (!data.startDate || !data.endDate) return true
-      return new Date(data.endDate) >= new Date(data.startDate)
-    },
-    { message: 'End date must be on or after start date', path: ['endDate'] },
-  )
+  .superRefine((data, ctx) => {
+    if (data.leaveType === 'SHORT_LEAVE') return
+    if (!data.endDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'End date is required',
+        path: ['endDate'],
+      })
+      return
+    }
+    if (new Date(data.endDate) < new Date(data.startDate)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'End date must be on or after start date',
+        path: ['endDate'],
+      })
+    }
+  })
 
 type ApplyFormValues = z.infer<typeof applySchema>
 
@@ -441,11 +462,23 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
 
   const form = useForm<ApplyFormValues>({
     resolver: zodResolver(applySchema),
-    defaultValues: { startDate: '', endDate: '', reason: '' },
+    defaultValues: {
+      leaveType: 'REGULAR',
+      startDate: '',
+      endDate: '',
+      reason: '',
+    },
   })
 
+  const leaveType = form.watch('leaveType')
   const startDate = form.watch('startDate')
   const endDate = form.watch('endDate')
+
+  useEffect(() => {
+    if (leaveType === 'SHORT_LEAVE' && startDate) {
+      form.setValue('endDate', startDate)
+    }
+  }, [leaveType, startDate, form])
   const year = startDate
     ? new Date(startDate).getFullYear()
     : new Date().getFullYear()
@@ -457,18 +490,29 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
   })
 
   const daysPreview = useMemo(() => {
-    if (!startDate || !endDate) return null
+    if (!startDate) return null
+    if (leaveType === 'SHORT_LEAVE') return 'same-day'
+    if (!endDate) return null
     const start = new Date(startDate)
     const end = new Date(endDate)
     if (end < start) return null
     return differenceInCalendarDays(end, start) + 1
-  }, [startDate, endDate])
+  }, [startDate, endDate, leaveType])
 
   const shiftConflict = hasShiftConflict(employee?.shift, selectedReliever?.shift)
 
   const mutation = useMutation({
     mutationFn: async (values: ApplyFormValues) => {
-      const leave = await leaveApi.apply({ employeeId, ...values })
+      const leave = await leaveApi.apply({
+        employeeId,
+        startDate: values.startDate,
+        endDate:
+          values.leaveType === 'SHORT_LEAVE'
+            ? values.startDate
+            : values.endDate!,
+        reason: values.reason,
+        leaveType: values.leaveType,
+      })
       if (relieverId) {
         await leaveApi.requestReliever(leave.id, {
           leaveRecordId: leave.id,
@@ -485,7 +529,12 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
       })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
       queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
-      form.reset()
+      form.reset({
+        leaveType: 'REGULAR',
+        startDate: '',
+        endDate: '',
+        reason: '',
+      })
       setRelieverId('')
       setSelectedReliever(undefined)
       onSuccess()
@@ -523,7 +572,48 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <FormField
+          control={form.control}
+          name="leaveType"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Leave Type</FormLabel>
+              <Select value={field.value} onValueChange={field.onChange}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select leave type" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="REGULAR">Regular Leave</SelectItem>
+                  <SelectItem value="SHORT_LEAVE">Short Leave</SelectItem>
+                  <SelectItem value="EMERGENCY">Emergency Leave</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {leaveType === 'EMERGENCY' && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            Emergency leave does not require 48 hours notice and will be
+            immediately processed.
+          </p>
+        )}
+
+        {leaveType === 'REGULAR' && (
+          <p className="text-sm text-text-secondary">
+            Regular leave must be requested at least 48 hours in advance.
+          </p>
+        )}
+
+        <div
+          className={cn(
+            'grid gap-4',
+            leaveType === 'SHORT_LEAVE' ? 'grid-cols-1' : 'grid-cols-2',
+          )}
+        >
           <FormField
             control={form.control}
             name="startDate"
@@ -537,28 +627,40 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name="endDate"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>End Date</FormLabel>
-                <FormControl>
-                  <Input type="date" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {leaveType !== 'SHORT_LEAVE' && (
+            <FormField
+              control={form.control}
+              name="endDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>End Date</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
         </div>
 
-        {daysPreview !== null && (
+        {leaveType === 'SHORT_LEAVE' && (
+          <p className="text-sm text-text-secondary">
+            Short leave is for a partial day absence. Maximum 2 short leaves per
+            month.
+          </p>
+        )}
+
+        {daysPreview === 'same-day' && (
+          <p className="text-sm text-text-secondary">Same day (short leave)</p>
+        )}
+        {typeof daysPreview === 'number' && (
           <p className="text-sm text-text-secondary">
             {daysPreview} day{daysPreview !== 1 ? 's' : ''} requested
           </p>
         )}
 
-        {startDate && endDate && (
+        {startDate && (leaveType === 'SHORT_LEAVE' || endDate) && (
           <div className="space-y-2 rounded-lg border border-border p-4">
             <EmployeeSearchSelect
               label="Select Reliever (Optional)"
@@ -612,7 +714,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
           disabled={
             mutation.isPending ||
             (balance !== undefined &&
-              daysPreview !== null &&
+              typeof daysPreview === 'number' &&
               daysPreview > balance.remaining) ||
             (relieverId !== '' && shiftConflict)
           }
