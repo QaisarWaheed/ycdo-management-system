@@ -67,6 +67,12 @@ export class EmployeesController {
     return this.employeesService.getFilterOptions();
   }
 
+  @Post('backfill-users')
+  @Roles(UserRole.SUPER_ADMIN)
+  backfillUsers() {
+    return this.employeesService.backfillUsers();
+  }
+
   @Get(':id')
   @Roles(
     UserRole.SUPER_ADMIN,

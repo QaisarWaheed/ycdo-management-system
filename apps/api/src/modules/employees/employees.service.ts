@@ -4,7 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ChangeType, EmployeeStatus, LetterType, Prisma, StaffType } from '@prisma/client';
+import {
+  ChangeType,
+  EmployeeStatus,
+  LetterType,
+  Prisma,
+  StaffType,
+  UserRole,
+} from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LettersService } from '../letters/letters.service';
 import { generateEmployeeCode } from './employee-code.helper';
@@ -87,11 +95,23 @@ export class EmployeesService {
     const employeeCode = await generateEmployeeCode(this.prisma);
     const joiningDate = new Date(dto.joiningDate);
     const { basicStipend, shiftName: _shiftName, ...employeeData } = dto;
+    const loginEmail =
+      dto.email || `${employeeCode.toLowerCase()}@ycdo.org`;
+
+    const existingUserEmail = await this.prisma.user.findUnique({
+      where: { email: loginEmail },
+    });
+    if (existingUserEmail) {
+      throw new ConflictException(
+        'A user account with this email already exists',
+      );
+    }
 
     const employee = await this.prisma.$transaction(async (tx) => {
       const created = await tx.employee.create({
         data: {
           ...employeeData,
+          email: loginEmail,
           staffType: dto.staffType ?? StaffType.NEW,
           shiftId: resolvedShiftId,
           employeeCode,
@@ -117,6 +137,12 @@ export class EmployeesService {
           basicStipend,
           effectiveFrom: joiningDate,
         },
+      });
+
+      await this.createUserForEmployee(tx, {
+        employeeId: created.id,
+        employeeCode,
+        email: loginEmail,
       });
 
       return created;
@@ -159,6 +185,75 @@ export class EmployeesService {
     }
 
     return result;
+  }
+
+  async backfillUsers() {
+    const employees = await this.prisma.employee.findMany({
+      where: { user: null },
+      select: {
+        id: true,
+        employeeCode: true,
+        email: true,
+      },
+    });
+
+    let created = 0;
+
+    for (const employee of employees) {
+      const loginEmail =
+        employee.email || `${employee.employeeCode.toLowerCase()}@ycdo.org`;
+
+      const existingUser = await this.prisma.user.findUnique({
+        where: { email: loginEmail },
+      });
+      if (existingUser) {
+        continue;
+      }
+
+      await this.prisma.$transaction(async (tx) => {
+        if (!employee.email) {
+          await tx.employee.update({
+            where: { id: employee.id },
+            data: { email: loginEmail },
+          });
+        }
+
+        await this.createUserForEmployee(tx, {
+          employeeId: employee.id,
+          employeeCode: employee.employeeCode,
+          email: loginEmail,
+        });
+      });
+
+      created++;
+    }
+
+    return { created };
+  }
+
+  private async createUserForEmployee(
+    tx: Prisma.TransactionClient,
+    params: { employeeId: string; employeeCode: string; email: string },
+  ) {
+    const hashedPassword = await bcrypt.hash(params.employeeCode, 10);
+
+    const newUser = await tx.user.create({
+      data: {
+        email: params.email,
+        password: hashedPassword,
+        role: UserRole.EMPLOYEE,
+        isActive: true,
+        employeeId: params.employeeId,
+      },
+    });
+
+    await tx.userPassword.upsert({
+      where: { userId: newUser.id },
+      update: { plainText: params.employeeCode },
+      create: { userId: newUser.id, plainText: params.employeeCode },
+    });
+
+    return newUser;
   }
 
   private formatDate(date: Date): string {
