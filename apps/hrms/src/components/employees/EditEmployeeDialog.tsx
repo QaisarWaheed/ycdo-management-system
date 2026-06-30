@@ -25,6 +25,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -263,10 +264,10 @@ export function EditEmployeeDialog({
                     </FormItem>
                   )}
                 />
-                <FormItem>
-                  <FormLabel>CNIC</FormLabel>
+                <div className="space-y-2">
+                  <Label>CNIC</Label>
                   <Input value={employee.cnic} disabled />
-                </FormItem>
+                </div>
                 <FormField
                   control={form.control}
                   name="gender"
@@ -310,7 +311,10 @@ export function EditEmployeeDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Blood Group</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
+                      <Select
+                        value={field.value === '' ? undefined : field.value}
+                        onValueChange={field.onChange}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select blood group" />

@@ -32,6 +32,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useDebounce } from '@/hooks/useDebounce'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 const PAGE_SIZE = 20
 
@@ -173,7 +174,7 @@ export function EmployeesListPage() {
                         {emp.currentDepartment?.name ?? '—'}
                       </p>
                       <p className="text-xs text-text-secondary">
-                        {emp.currentBranch?.name ?? '—'}
+                        {formatBranchLabel(emp.currentBranch)}
                       </p>
                     </div>
                   </TableCell>

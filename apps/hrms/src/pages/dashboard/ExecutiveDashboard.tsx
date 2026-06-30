@@ -17,6 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { LeaveRecord } from '@/types'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 export function ExecutiveDashboard() {
   const today = format(new Date(), 'yyyy-MM-dd')
@@ -60,7 +61,8 @@ export function ExecutiveDashboard() {
   )
 
   const branchCounts = branches.map((b) => ({
-    name: b.name,
+    id: b.id,
+    label: formatBranchLabel(b),
     count: employees.filter((e) => e.currentBranchId === b.id).length,
   }))
 
@@ -116,7 +118,7 @@ export function ExecutiveDashboard() {
                       : '—'}
                   </TableCell>
                   <TableCell>
-                    {leave.employee?.currentBranch?.name ?? '—'}
+                    {formatBranchLabel(leave.employee?.currentBranch)}
                   </TableCell>
                   <TableCell>
                     {format(new Date(leave.startDate), 'dd/MM/yyyy')} —{' '}
@@ -149,8 +151,8 @@ export function ExecutiveDashboard() {
             </TableHeader>
             <TableBody>
               {branchCounts.slice(0, 15).map((b) => (
-                <TableRow key={b.name}>
-                  <TableCell>{b.name}</TableCell>
+                <TableRow key={b.id}>
+                  <TableCell>{b.label}</TableCell>
                   <TableCell>{b.count}</TableCell>
                 </TableRow>
               ))}

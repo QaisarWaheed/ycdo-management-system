@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 interface TransferDialogProps {
   open: boolean
@@ -109,7 +110,7 @@ export function TransferDialog({
               <SelectContent>
                 {branches.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
-                    {b.name}
+                    {formatBranchLabel(b)}
                   </SelectItem>
                 ))}
               </SelectContent>

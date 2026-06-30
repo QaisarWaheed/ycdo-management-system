@@ -59,6 +59,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
   ALLOWANCE_TYPES,
   DEDUCTION_TYPES,
@@ -549,7 +550,7 @@ function MonthlyPayrollTab() {
                 <SelectItem value="all">All Branches</SelectItem>
                 {branches.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
-                    {b.name}
+                    {formatBranchLabel(b)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -948,7 +949,7 @@ function SummaryTab() {
                 <SelectItem value="all">All Branches</SelectItem>
                 {branches.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
-                    {b.name}
+                    {formatBranchLabel(b)}
                   </SelectItem>
                 ))}
               </SelectContent>

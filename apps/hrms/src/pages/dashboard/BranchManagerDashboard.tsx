@@ -30,6 +30,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import type { LeaveRecord } from '@/types'
 
 export function BranchManagerDashboard() {
@@ -112,7 +113,7 @@ export function BranchManagerDashboard() {
                   <SelectContent>
                     {branches.map((branch) => (
                       <SelectItem key={branch.id} value={branch.id}>
-                        {branch.name}
+                        {formatBranchLabel(branch)}
                       </SelectItem>
                     ))}
                   </SelectContent>

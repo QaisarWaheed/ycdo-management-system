@@ -14,6 +14,7 @@ import {
   EmployeeFiltersBar,
   employeeFiltersToAttendanceParams,
 } from '@/components/employees/EmployeeFiltersBar'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -234,7 +235,7 @@ function DailyLogTab({
                       : '—'}
                   </TableCell>
                   <TableCell className="text-text-secondary">
-                    {log.branch?.name ?? '—'}
+                    {formatBranchLabel(log.branch)}
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {formatTime(log.checkIn)}
@@ -702,7 +703,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
             <SelectContent>
               {branches.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
-                  {b.name}
+                  {formatBranchLabel(b)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1005,7 +1006,7 @@ function RelieverSessionsTab() {
                       ? `${session.employee.firstName} ${session.employee.lastName}`
                       : '—'}
                   </TableCell>
-                  <TableCell>{session.branch?.name ?? '—'}</TableCell>
+                  <TableCell>{formatBranchLabel(session.branch)}</TableCell>
                   <TableCell>{formatTime(session.checkIn)}</TableCell>
                   <TableCell>{formatTime(session.checkOut)}</TableCell>
                   <TableCell>

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 export function ProfilePage() {
   const { user } = useAuth()
@@ -129,7 +130,7 @@ export function ProfilePage() {
                   <div className="space-y-2">
                     <Label className="text-text-secondary">Branch</Label>
                     <Input
-                      value={employee?.currentBranch?.name ?? '—'}
+                      value={formatBranchLabel(employee?.currentBranch)}
                       disabled
                       className="bg-muted"
                     />

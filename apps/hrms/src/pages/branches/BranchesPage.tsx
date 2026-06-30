@@ -8,6 +8,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { StatusBadge } from '@/components/employees/StatusBadge'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -303,7 +304,7 @@ function BranchDetailSheet({
                 <Skeleton className="h-6 w-48" />
               ) : (
                 <>
-                  {detail?.name}
+                  {formatBranchLabel(detail, '')}
                   {detail?.project && (
                     <Badge
                       variant="outline"

@@ -12,7 +12,7 @@ export class DepartmentsService {
     return this.prisma.department.create({
       data: dto,
       include: {
-        branch: { select: { name: true } },
+        branch: { select: { name: true, address: true } },
       },
     });
   }
@@ -24,7 +24,7 @@ export class DepartmentsService {
         ...(branchId ? { branchId } : {}),
       },
       include: {
-        branch: { select: { name: true } },
+        branch: { select: { name: true, address: true } },
         _count: { select: { employees: true } },
       },
     });
@@ -54,7 +54,7 @@ export class DepartmentsService {
       where: { id },
       data: dto,
       include: {
-        branch: { select: { name: true } },
+        branch: { select: { name: true, address: true } },
       },
     });
   }

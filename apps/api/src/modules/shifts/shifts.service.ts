@@ -40,7 +40,7 @@ export class ShiftsService {
 
     return this.prisma.shift.create({
       data: dto,
-      include: { branch: { select: { name: true } } },
+      include: { branch: { select: { name: true, address: true } } },
     });
   }
 
@@ -54,7 +54,7 @@ export class ShiftsService {
     return this.prisma.shift.findMany({
       where,
       include: {
-        branch: { select: { name: true } },
+        branch: { select: { name: true, address: true } },
         _count: { select: { employees: true } },
       },
       orderBy: { startTime: 'asc' },
@@ -64,7 +64,7 @@ export class ShiftsService {
   async findOne(id: string) {
     const shift = await this.prisma.shift.findUnique({
       where: { id },
-      include: { branch: { select: { name: true } } },
+      include: { branch: { select: { name: true, address: true } } },
     });
 
     if (!shift) {
@@ -89,7 +89,7 @@ export class ShiftsService {
     return this.prisma.shift.update({
       where: { id },
       data: dto,
-      include: { branch: { select: { name: true } } },
+      include: { branch: { select: { name: true, address: true } } },
     });
   }
 

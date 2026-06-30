@@ -29,6 +29,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { AttendanceLog, DistrictSummary, Employee } from '@/types'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 const ALL = 'ALL'
 const now = new Date()
@@ -100,7 +101,7 @@ function useReportOptions() {
   const branchOptions = useMemo(
     () => [
       { value: ALL, label: 'All Branches' },
-      ...branches.map((b) => ({ value: b.id, label: b.name })),
+      ...branches.map((b) => ({ value: b.id, label: formatBranchLabel(b) })),
     ],
     [branches],
   )
@@ -193,7 +194,7 @@ function useReports(): ReportDef[] {
             employeeCode: e.employeeCode,
             name: `${e.firstName} ${e.lastName}`,
             designation: e.currentDesignation,
-            branch: e.currentBranch?.name ?? '—',
+            branch: formatBranchLabel(e.currentBranch),
             department: e.currentDepartment?.name ?? '—',
             status: e.status,
             phone: e.phone ?? '—',
@@ -243,7 +244,7 @@ function useReports(): ReportDef[] {
             employeeCode: e.employeeCode,
             name: `${e.firstName} ${e.lastName}`,
             designation: e.currentDesignation,
-            branch: e.currentBranch?.name ?? '—',
+            branch: formatBranchLabel(e.currentBranch),
             joiningDate: e.joiningDate
               ? format(new Date(e.joiningDate), 'dd/MM/yyyy')
               : '—',
@@ -270,7 +271,7 @@ function useReports(): ReportDef[] {
             employeeCode: e.employeeCode,
             name: `${e.firstName} ${e.lastName}`,
             designation: e.currentDesignation,
-            branch: e.currentBranch?.name ?? '—',
+            branch: formatBranchLabel(e.currentBranch),
             joiningDate: e.joiningDate
               ? format(new Date(e.joiningDate), 'dd/MM/yyyy')
               : '—',
@@ -313,7 +314,7 @@ function useReports(): ReportDef[] {
             name: l.employee
               ? `${l.employee.firstName} ${l.employee.lastName}`
               : '—',
-            branch: l.branch?.name ?? '—',
+            branch: formatBranchLabel(l.branch),
             status: l.status,
             checkIn: l.checkIn ? format(new Date(l.checkIn), 'HH:mm') : '—',
             checkOut: l.checkOut ? format(new Date(l.checkOut), 'HH:mm') : '—',
@@ -447,7 +448,7 @@ function useReports(): ReportDef[] {
             name: l.employee
               ? `${l.employee.firstName} ${l.employee.lastName}`
               : '—',
-            branch: l.branch?.name ?? '—',
+            branch: formatBranchLabel(l.branch),
             status: l.status,
           }))
         },
@@ -625,7 +626,7 @@ function useReports(): ReportDef[] {
             employeeCode: e.employeeCode,
             name: `${e.firstName} ${e.lastName}`,
             designation: e.currentDesignation,
-            branch: e.currentBranch?.name ?? '—',
+            branch: formatBranchLabel(e.currentBranch),
             status: e.status,
           }))
         },

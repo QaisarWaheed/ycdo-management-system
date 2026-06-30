@@ -1,5 +1,4 @@
-import {
-  BadRequestException,
+import { formatBranchLabel } from '../../common/branch-display';
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -54,7 +53,7 @@ export class LeaveService {
   async apply(dto: ApplyLeaveDto) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
-      include: { currentBranch: { select: { name: true } } },
+      include: { currentBranch: { select: { name: true, address: true } } },
     });
 
     if (!employee) {
@@ -509,7 +508,7 @@ export class LeaveService {
             employeeCode: true,
             currentBranchId: true,
             currentDepartmentId: true,
-            currentBranch: { select: { id: true, name: true } },
+            currentBranch: { select: { id: true, name: true, address: true } },
             currentDepartment: { select: { id: true, name: true } },
           },
         },
@@ -1150,7 +1149,7 @@ export class LeaveService {
             firstName: true,
             lastName: true,
             employeeCode: true,
-            currentBranch: { select: { name: true } },
+            currentBranch: { select: { name: true, address: true } },
             currentDepartment: { select: { name: true } },
           },
         },
@@ -1161,7 +1160,7 @@ export class LeaveService {
                 firstName: true,
                 lastName: true,
                 employeeCode: true,
-                currentBranch: { select: { name: true } },
+                currentBranch: { select: { name: true, address: true } },
                 currentDepartment: { select: { name: true } },
               },
             },
@@ -1175,14 +1174,16 @@ export class LeaveService {
       employee: {
         name: `${leave.employee.firstName} ${leave.employee.lastName}`,
         code: leave.employee.employeeCode,
-        branch: leave.employee.currentBranch?.name ?? null,
+        branch: formatBranchLabel(leave.employee.currentBranch),
         department: leave.employee.currentDepartment?.name ?? null,
       },
       reliever: leave.relieverRequest
         ? {
             name: `${leave.relieverRequest.reliever.firstName} ${leave.relieverRequest.reliever.lastName}`,
             code: leave.relieverRequest.reliever.employeeCode,
-            branch: leave.relieverRequest.reliever.currentBranch?.name ?? null,
+            branch: formatBranchLabel(
+              leave.relieverRequest.reliever.currentBranch,
+            ),
             department:
               leave.relieverRequest.reliever.currentDepartment?.name ?? null,
           }
@@ -1386,7 +1387,7 @@ export class LeaveService {
           employeeCode: true,
           currentBranchId: true,
           currentDepartmentId: true,
-          currentBranch: { select: { id: true, name: true } },
+          currentBranch: { select: { id: true, name: true, address: true } },
           currentDepartment: { select: { name: true } },
         },
       },

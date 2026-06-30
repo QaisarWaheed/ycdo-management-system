@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
   Table,
   TableBody,
@@ -406,7 +407,7 @@ function AdminDashboard() {
                       <TableCell className="font-medium">{emp.employeeCode}</TableCell>
                       <TableCell>{`${emp.firstName} ${emp.lastName}`}</TableCell>
                       <TableCell>{emp.currentDepartment?.name ?? '—'}</TableCell>
-                      <TableCell>{emp.currentBranch?.name ?? '—'}</TableCell>
+                      <TableCell>{formatBranchLabel(emp.currentBranch)}</TableCell>
                       <TableCell>{statusBadge(emp.status)}</TableCell>
                       <TableCell>
                         {format(new Date(emp.joiningDate), 'dd/MM/yyyy')}

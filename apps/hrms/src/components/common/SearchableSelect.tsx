@@ -12,6 +12,7 @@ export interface SearchableSelectProps {
   allowNew?: boolean
   onNewValue?: (value: string) => void
   error?: string
+  label?: string
   className?: string
 }
 
@@ -24,6 +25,7 @@ export function SearchableSelect({
   allowNew = false,
   onNewValue,
   error,
+  label,
   className,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false)
@@ -110,7 +112,12 @@ export function SearchableSelect({
   }
 
   return (
-    <div ref={containerRef} className={cn('relative', className)}>
+    <div ref={containerRef} className={cn('relative space-y-2', className)}>
+      {label && (
+        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+          {label}
+        </label>
+      )}
       <Input
         value={open ? query : value}
         placeholder={value || placeholder}

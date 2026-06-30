@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
 import type { LeaveRecord } from '@/types'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 export function HrOperationsDashboard() {
   const { user } = useAuth()
@@ -95,7 +96,7 @@ export function HrOperationsDashboard() {
                       : '—'}
                   </TableCell>
                   <TableCell>
-                    {leave.employee?.currentBranch?.name ?? '—'}
+                    {formatBranchLabel(leave.employee?.currentBranch)}
                   </TableCell>
                   <TableCell>
                     {format(new Date(leave.startDate), 'dd/MM/yyyy')}

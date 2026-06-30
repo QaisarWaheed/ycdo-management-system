@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 export function MyProfilePage() {
   const { user } = useAuth()
@@ -125,7 +126,7 @@ export function MyProfilePage() {
                   </Badge>
                 </div>
                 <p className="mt-2 text-sm text-text-secondary">
-                  {employee?.currentBranch?.name}
+                  {formatBranchLabel(employee?.currentBranch, '')}
                   {employee?.currentDepartment &&
                     ` · ${employee.currentDepartment.name}`}
                 </p>
@@ -244,7 +245,7 @@ export function MyProfilePage() {
                   <div className="space-y-1">
                     <Label className="text-text-secondary">Branch</Label>
                     <p className="font-medium">
-                      {employee?.currentBranch?.name ?? '—'}
+                      {formatBranchLabel(employee?.currentBranch)}
                     </p>
                   </div>
                   <div className="space-y-1">

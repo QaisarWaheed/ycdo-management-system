@@ -65,6 +65,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import type {
   AcademicQualification,
   DocumentType,
@@ -851,7 +852,7 @@ export function EmployeeProfilePage() {
             </span>
             {' · '}
             <span className="text-text-secondary">
-              {employee.currentBranch?.name ?? '—'}
+              {formatBranchLabel(employee.currentBranch)}
             </span>
           </p>
           <StatusBadge status={employee.status} />
@@ -1157,7 +1158,7 @@ export function EmployeeProfilePage() {
                           </span>
                         </div>
                         <p className="text-sm text-text-secondary">
-                          {entry.branch?.name ?? '—'} ·{' '}
+                          {formatBranchLabel(entry.branch)} ·{' '}
                           {entry.department?.name ?? '—'}
                         </p>
                         <p className="mt-1 text-xs text-text-secondary">
@@ -1883,15 +1884,17 @@ export function EmployeeProfilePage() {
           queryClient.invalidateQueries({ queryKey: ['employee', id] })
         }}
       />
-      <EditEmployeeDialog
-        employee={employee}
-        open={editDetailsOpen}
-        onOpenChange={setEditDetailsOpen}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['employee', id] })
-          queryClient.invalidateQueries({ queryKey: ['employees'] })
-        }}
-      />
+      {editDetailsOpen && (
+        <EditEmployeeDialog
+          employee={employee}
+          open={editDetailsOpen}
+          onOpenChange={setEditDetailsOpen}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['employee', id] })
+            queryClient.invalidateQueries({ queryKey: ['employees'] })
+          }}
+        />
+      )}
       {employee.user?.id && (
         <ResetPasswordDialog
           open={resetPasswordOpen}

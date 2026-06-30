@@ -40,6 +40,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import type { Branch, Department } from '@/types'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { PhoneInput } from '@/components/common/PhoneInput'
 
 function BranchesTab() {
@@ -424,7 +425,7 @@ function DepartmentsTab() {
               <SelectItem value="all">All branches</SelectItem>
               {branches.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
-                  {b.name}
+                  {formatBranchLabel(b)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -474,7 +475,7 @@ function DepartmentsTab() {
                 })[]).map((dept) => (
                   <TableRow key={dept.id}>
                     <TableCell className="font-medium">{dept.name}</TableCell>
-                    <TableCell>{dept.branch?.name ?? '—'}</TableCell>
+                    <TableCell>{formatBranchLabel(dept.branch)}</TableCell>
                     <TableCell>{dept._count?.employees ?? 0}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -526,7 +527,7 @@ function DepartmentsTab() {
                 <SelectContent>
                   {branches.map((b) => (
                     <SelectItem key={b.id} value={b.id}>
-                      {b.name}
+                      {formatBranchLabel(b)}
                     </SelectItem>
                   ))}
                 </SelectContent>

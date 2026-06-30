@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 export const ALL_FILTER = 'ALL'
 
@@ -177,7 +178,7 @@ export function EmployeeFiltersBar({
               <SelectItem value="all">All Branches</SelectItem>
               {filteredBranches.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
-                  {b.name}
+                  {formatBranchLabel(b)}
                 </SelectItem>
               ))}
             </SelectContent>

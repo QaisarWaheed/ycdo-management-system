@@ -20,7 +20,7 @@ export class LettersService {
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
-        currentBranch: { select: { name: true } },
+        currentBranch: { select: { name: true, address: true } },
         currentDepartment: { select: { name: true } },
         stipendRecords: {
           orderBy: { effectiveFrom: 'desc' },

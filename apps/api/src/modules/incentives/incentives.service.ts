@@ -136,7 +136,7 @@ export class IncentivesService {
             firstName: true,
             lastName: true,
             employeeCode: true,
-            currentBranch: { select: { name: true } },
+            currentBranch: { select: { name: true, address: true } },
           },
         },
       },

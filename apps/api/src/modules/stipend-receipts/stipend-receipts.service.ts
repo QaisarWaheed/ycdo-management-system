@@ -171,7 +171,7 @@ export class StipendReceiptsService {
             firstName: true,
             lastName: true,
             employeeCode: true,
-            currentBranch: { select: { name: true } },
+            currentBranch: { select: { name: true, address: true } },
           },
         },
       },

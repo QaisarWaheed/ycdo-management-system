@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X } from 'lucide-react'
@@ -15,10 +15,12 @@ import { CnicInput } from '@/components/common/CnicInput'
 import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { dutyTimeOptions, timeToMinutes } from '@/lib/dutyTimes'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import {
   Form,
   FormControl,
@@ -263,6 +265,32 @@ const STEPS = [
   { num: 4, label: 'Qualifications & Experience' },
 ]
 
+function selectFieldValue(value: string | undefined) {
+  const normalized = value ?? ''
+  return normalized === '' ? undefined : normalized
+}
+
+class StepErrorBoundary extends Component<
+  { children: ReactNode; onError: (message: string) => void },
+  { hasError: boolean }
+> {
+  state = { hasError: false }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    this.props.onError(error.message || 'Something went wrong rendering this step')
+    console.error('Step error:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) return null
+    return this.props.children
+  }
+}
+
 function StepIndicator({ step }: { step: number }) {
   return (
     <div className="mb-8">
@@ -406,6 +434,7 @@ export function EmployeeCreatePage() {
 
   const [step, setStep] = useState(0)
   const [staffType, setStaffType] = useState<StaffType | null>(null)
+  const [stepError, setStepError] = useState<string | null>(null)
   const [step1Data, setStep1Data] = useState<Step1Values | null>(null)
   const [step2Data, setStep2Data] = useState<Step2Values | null>(null)
   const [step3Data, setStep3Data] = useState<Step3Values | null>(null)
@@ -518,6 +547,7 @@ export function EmployeeCreatePage() {
         biometricId: '',
         dutyStartTime: '',
         dutyEndTime: '',
+        shiftName: '',
       })
     }
   }, [prefill, form1, form2])
@@ -619,27 +649,53 @@ export function EmployeeCreatePage() {
   })
 
   const onStep1Next = form1.handleSubmit((data) => {
-    if (!staffType) {
-      setStep(0)
-      return
+    try {
+      if (!staffType) {
+        setStep(0)
+        return
+      }
+      setStepError(null)
+      setStep1Data(data)
+      setStep(2)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to proceed to job information'
+      setStepError(message)
+      console.error('Step error:', error)
     }
-    setStep1Data(data)
-    setStep(2)
   })
 
   const onStep2Next = form2.handleSubmit((data) => {
-    setStep2Data(data)
-    setStep(3)
+    try {
+      setStepError(null)
+      setStep2Data(data)
+      setStep(3)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to proceed to stipend and documents'
+      setStepError(message)
+      console.error('Step error:', error)
+    }
   })
 
   const onStep3Next = form3.handleSubmit((data) => {
-    if (!cnicFront || !cnicBack) {
-      setDocErrors('CNIC front and back are both required')
-      return
+    try {
+      if (!cnicFront || !cnicBack) {
+        setDocErrors('CNIC front and back are both required')
+        return
+      }
+      setDocErrors(null)
+      setStepError(null)
+      setStep3Data(data)
+      setStep(4)
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to proceed to qualifications and experience'
+      setStepError(message)
+      console.error('Step error:', error)
     }
-    setDocErrors(null)
-    setStep3Data(data)
-    setStep(4)
   })
 
   const onSubmit = () => {
@@ -761,6 +817,21 @@ export function EmployeeCreatePage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <h1 className="text-2xl font-bold text-text-primary">Add Employee</h1>
 
+      {stepError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <p className="text-red-600">{stepError}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => setStepError(null)}
+          >
+            Try again
+          </Button>
+        </div>
+      )}
+
       {step === 0 && (
         <div className="space-y-6">
           <h2 className="text-lg font-semibold">
@@ -803,7 +874,10 @@ export function EmployeeCreatePage() {
               <Button
                 type="button"
                 className="bg-primary hover:bg-primary-dark"
-                onClick={() => setStep(1)}
+                onClick={() => {
+                  setStepError(null)
+                  setStep(1)
+                }}
               >
                 Continue
               </Button>
@@ -815,6 +889,7 @@ export function EmployeeCreatePage() {
       {step >= 1 && <StepIndicator step={step} />}
 
       {step === 1 && staffType && (
+        <StepErrorBoundary key="step-1" onError={setStepError}>
         <Form {...form1}>
           <form onSubmit={onStep1Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Personal Information</h2>
@@ -826,7 +901,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>First Name *</FormLabel>
                     <FormControl>
-                      <TextOnlyInput {...field} />
+                      <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -839,7 +914,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Last Name *</FormLabel>
                     <FormControl>
-                      <TextOnlyInput {...field} />
+                      <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -852,7 +927,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Father Name *</FormLabel>
                     <FormControl>
-                      <TextOnlyInput {...field} />
+                      <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -866,7 +941,7 @@ export function EmployeeCreatePage() {
                     <FormLabel>Father Contact Number *</FormLabel>
                     <FormControl>
                       <PhoneInput
-                        value={field.value}
+                        value={field.value ?? ''}
                         onChange={field.onChange}
                       />
                     </FormControl>
@@ -881,7 +956,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>CNIC *</FormLabel>
                     <FormControl>
-                      <CnicInput value={field.value} onChange={field.onChange} />
+                      <CnicInput value={field.value ?? ''} onChange={field.onChange} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -908,7 +983,7 @@ export function EmployeeCreatePage() {
                     <FormLabel>Phone *</FormLabel>
                     <FormControl>
                       <PhoneInput
-                        value={field.value}
+                        value={field.value ?? ''}
                         onChange={field.onChange}
                       />
                     </FormControl>
@@ -936,7 +1011,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Emergency Contact Name *</FormLabel>
                     <FormControl>
-                      <TextOnlyInput {...field} />
+                      <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -950,7 +1025,7 @@ export function EmployeeCreatePage() {
                     <FormLabel>Emergency Contact Number *</FormLabel>
                     <FormControl>
                       <PhoneInput
-                        value={field.value}
+                        value={field.value ?? ''}
                         onChange={field.onChange}
                       />
                     </FormControl>
@@ -965,7 +1040,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Spouse Name</FormLabel>
                     <FormControl>
-                      <TextOnlyInput {...field} />
+                      <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -979,7 +1054,7 @@ export function EmployeeCreatePage() {
                     <FormLabel>Spouse Contact Number</FormLabel>
                     <FormControl>
                       <PhoneInput
-                        value={field.value}
+                        value={field.value ?? ''}
                         onChange={field.onChange}
                       />
                     </FormControl>
@@ -994,7 +1069,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Blood Group *</FormLabel>
                     <Select
-                      value={field.value || undefined}
+                      value={selectFieldValue(field.value)}
                       onValueChange={field.onChange}
                     >
                       <FormControl>
@@ -1021,7 +1096,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Caste</FormLabel>
                     <FormControl>
-                      <TextOnlyInput {...field} />
+                      <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1039,7 +1114,7 @@ export function EmployeeCreatePage() {
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select gender" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -1072,9 +1147,11 @@ export function EmployeeCreatePage() {
             </div>
           </form>
         </Form>
+        </StepErrorBoundary>
       )}
 
       {step === 2 && staffType && (
+        <StepErrorBoundary key="step-2" onError={setStepError}>
         <Form {...form2}>
           <form onSubmit={onStep2Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Job Information</h2>
@@ -1086,7 +1163,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Branch *</FormLabel>
                     <Select
-                      value={field.value || undefined}
+                      value={selectFieldValue(field.value)}
                       onValueChange={(v) => {
                         field.onChange(v)
                         form2.setValue('currentDepartmentId', '')
@@ -1101,7 +1178,7 @@ export function EmployeeCreatePage() {
                       <SelectContent>
                         {branches.map((b) => (
                           <SelectItem key={b.id} value={b.id}>
-                            {b.name}
+                            {formatBranchLabel(b)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1117,7 +1194,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Department *</FormLabel>
                     <Select
-                      value={field.value || undefined}
+                      value={selectFieldValue(field.value)}
                       onValueChange={(v) => {
                         field.onChange(v)
                         form2.setValue('currentDesignation', '')
@@ -1148,7 +1225,7 @@ export function EmployeeCreatePage() {
                   <FormItem className="sm:col-span-2">
                     <FormControl>
                       <DesignationSearchSelect
-                        value={field.value}
+                        value={field.value ?? ''}
                         onChange={field.onChange}
                         categories={designationCategories}
                         error={!!form2.formState.errors.currentDesignation}
@@ -1171,7 +1248,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Shift</FormLabel>
                     <Select
-                      value={field.value || undefined}
+                      value={selectFieldValue(field.value)}
                       onValueChange={field.onChange}
                     >
                       <FormControl>
@@ -1192,7 +1269,7 @@ export function EmployeeCreatePage() {
                 )}
               />
               <div className="sm:col-span-2 space-y-3">
-                <FormLabel>Duty Hours</FormLabel>
+                <Label className="text-sm font-medium">Duty Hours</Label>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <FormField
                     control={form2.control}
@@ -1201,7 +1278,7 @@ export function EmployeeCreatePage() {
                       <FormItem>
                         <FormLabel className="text-text-secondary">Start</FormLabel>
                         <Select
-                          value={field.value}
+                          value={selectFieldValue(field.value)}
                           onValueChange={field.onChange}
                         >
                           <FormControl>
@@ -1228,7 +1305,7 @@ export function EmployeeCreatePage() {
                       <FormItem>
                         <FormLabel className="text-text-secondary">End</FormLabel>
                         <Select
-                          value={field.value}
+                          value={selectFieldValue(field.value)}
                           onValueChange={field.onChange}
                         >
                           <FormControl>
@@ -1292,9 +1369,11 @@ export function EmployeeCreatePage() {
             </div>
           </form>
         </Form>
+        </StepErrorBoundary>
       )}
 
       {step === 3 && staffType && (
+        <StepErrorBoundary key="step-3" onError={setStepError}>
         <Form {...form3}>
           <form onSubmit={onStep3Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Stipend & Documents</h2>
@@ -1391,9 +1470,11 @@ export function EmployeeCreatePage() {
             </div>
           </form>
         </Form>
+        </StepErrorBoundary>
       )}
 
       {step === 4 && staffType && (
+        <StepErrorBoundary key="step-4" onError={setStepError}>
         <div className="space-y-6">
           <h2 className="text-lg font-semibold">Qualifications & Experience</h2>
 
@@ -1536,6 +1617,7 @@ export function EmployeeCreatePage() {
             </Button>
           </div>
         </div>
+        </StepErrorBoundary>
       )}
     </div>
   )

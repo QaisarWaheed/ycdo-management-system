@@ -29,6 +29,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import type { Incentive } from '@/types'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { AddIncentiveDialog } from './AddIncentiveDialog'
 
 const ALL = 'ALL'
@@ -153,7 +154,7 @@ export function IncentivesPage() {
               <SelectItem value={ALL}>All Branches</SelectItem>
               {branches.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
-                  {b.name}
+                  {formatBranchLabel(b)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -205,7 +206,7 @@ export function IncentivesPage() {
                       : '—'}
                   </TableCell>
                   <TableCell>
-                    {item.employee?.currentBranch?.name ?? '—'}
+                    {formatBranchLabel(item.employee?.currentBranch)}
                   </TableCell>
                   <TableCell className="font-medium text-green-600">
                     {formatPKR(item.amount)}

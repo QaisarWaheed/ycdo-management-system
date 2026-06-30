@@ -31,7 +31,7 @@ export interface Employee {
   status: string
   joiningDate: string
   currentDesignation: string
-  currentBranch?: { name: string }
+  currentBranch?: { name: string; address?: string | null }
   currentDepartment?: { name: string }
   shift?: { name: string; startTime: string; endTime: string } | null
   stipendRecords?: { basicStipend: number | string; effectiveFrom: string }[]

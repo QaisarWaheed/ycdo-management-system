@@ -383,7 +383,7 @@ export class AttendanceService {
         employee: {
           select: { firstName: true, lastName: true, employeeCode: true },
         },
-        branch: { select: { name: true } },
+        branch: { select: { name: true, address: true } },
       },
       orderBy: { date: 'desc' },
     });
@@ -416,7 +416,7 @@ export class AttendanceService {
         employee: {
           select: { firstName: true, lastName: true, employeeCode: true },
         },
-        branch: { select: { name: true } },
+        branch: { select: { name: true, address: true } },
       },
       orderBy: { checkIn: 'desc' },
     });

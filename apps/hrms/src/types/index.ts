@@ -86,7 +86,7 @@ export interface Shift {
   startTime: string
   endTime: string
   isActive?: boolean
-  branch?: { name: string }
+  branch?: { name: string; address?: string | null }
   _count?: { employees: number }
 }
 
@@ -118,7 +118,7 @@ export interface RelieverSession {
     lastName: string
     employeeCode: string
   }
-  branch?: { name: string }
+  branch?: { name: string; address?: string | null }
 }
 
 export type BroadcastTarget =
@@ -284,7 +284,7 @@ export interface BranchChangeRequest {
     firstName: string
     lastName: string
     employeeCode: string
-    currentBranch?: { name: string }
+    currentBranch?: { name: string; address?: string | null }
   }
 }
 
@@ -324,7 +324,7 @@ export interface EmploymentHistory {
   designation: string
   effectiveDate: string
   endDate?: string | null
-  branch?: { name: string }
+  branch?: { name: string; address?: string | null }
   department?: { name: string }
 }
 
@@ -448,7 +448,7 @@ export interface LeaveRecord {
     employeeCode: string
     currentBranchId?: string
     currentDepartmentId?: string
-    currentBranch?: { id: string; name: string }
+    currentBranch?: { id: string; name: string; address?: string | null }
     currentDepartment?: { name: string }
   }
 }
@@ -481,7 +481,7 @@ export interface AttendanceLog {
     employeeCode: string
     currentDepartmentId?: string
   }
-  branch?: { name: string }
+  branch?: { name: string; address?: string | null }
 }
 
 export type AttendanceStatus =
@@ -525,7 +525,7 @@ export interface PayrollEntry {
       firstName: string
       lastName: string
       employeeCode: string
-      currentBranch?: { id: string; name: string }
+      currentBranch?: { id: string; name: string; address?: string | null }
       currentDepartment?: { id: string; name: string }
     }
   }
@@ -566,7 +566,7 @@ export interface StipendReceipt {
     firstName: string
     lastName: string
     employeeCode: string
-    currentBranch?: { name: string }
+    currentBranch?: { name: string; address?: string | null }
   }
 }
 
@@ -583,7 +583,7 @@ export interface Incentive {
     firstName: string
     lastName: string
     employeeCode: string
-    currentBranch?: { name: string }
+    currentBranch?: { name: string; address?: string | null }
   }
 }
 

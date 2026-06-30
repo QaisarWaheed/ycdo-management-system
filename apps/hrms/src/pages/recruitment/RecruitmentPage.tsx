@@ -10,6 +10,7 @@ import { shiftsApi } from '@/api/endpoints/shifts'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { PKRInput } from '@/components/common/PKRInput'
 import { StatusBadge } from '@/components/employees/StatusBadge'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -221,7 +222,7 @@ function AcceptCandidateDialog({
               <SelectContent>
                 {branches.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
-                    {b.name}
+                    {formatBranchLabel(b)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -510,8 +511,10 @@ function AcceptedTab({
   const findEmployee = (app: JobApplication) =>
     employees.find((e) => e.email === app.email)
 
-  const branchName = (id?: string | null) =>
-    branches.find((b) => b.id === id)?.name ?? '—'
+  const branchName = (id?: string | null) => {
+    const branch = branches.find((b) => b.id === id)
+    return formatBranchLabel(branch)
+  }
 
   return (
     <Table>

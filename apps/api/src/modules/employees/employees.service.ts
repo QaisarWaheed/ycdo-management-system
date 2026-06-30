@@ -125,7 +125,7 @@ export class EmployeesService {
     const result = await this.prisma.employee.findUnique({
       where: { id: employee.id },
       include: {
-        currentBranch: { select: { name: true } },
+        currentBranch: { select: { name: true, address: true } },
         currentDepartment: { select: { name: true } },
         shift: true,
       },
@@ -232,7 +232,7 @@ export class EmployeesService {
       this.prisma.employee.findMany({
         where,
         include: {
-          currentBranch: { select: { name: true } },
+          currentBranch: { select: { name: true, address: true } },
           currentDepartment: { select: { name: true } },
           shift: { select: { id: true, name: true } },
         },
@@ -296,7 +296,7 @@ export class EmployeesService {
         employmentHistory: {
           orderBy: { createdAt: 'desc' },
           include: {
-            branch: { select: { name: true } },
+            branch: { select: { name: true, address: true } },
             department: { select: { name: true } },
           },
         },
@@ -409,7 +409,7 @@ export class EmployeesService {
       where: { id },
       data,
       include: {
-        currentBranch: { select: { name: true } },
+        currentBranch: { select: { name: true, address: true } },
         currentDepartment: { select: { name: true } },
       },
     });
@@ -463,7 +463,7 @@ export class EmployeesService {
     return this.prisma.employee.findUnique({
       where: { id: employee.id },
       include: {
-        currentBranch: { select: { name: true } },
+        currentBranch: { select: { name: true, address: true } },
         currentDepartment: { select: { name: true } },
         employmentHistory: {
           orderBy: { createdAt: 'desc' },
@@ -506,7 +506,7 @@ export class EmployeesService {
       where: { id },
       data: { status: dto.status },
       include: {
-        currentBranch: { select: { name: true } },
+        currentBranch: { select: { name: true, address: true } },
         currentDepartment: { select: { name: true } },
       },
     });
@@ -705,7 +705,7 @@ export class EmployeesService {
         where: { id },
         data,
         include: {
-          currentBranch: { select: { name: true } },
+          currentBranch: { select: { name: true, address: true } },
           currentDepartment: { select: { name: true } },
         },
       });

@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from '@/hooks/use-toast'
 import { dutyTimeOptions, formatDutyDisplay } from '@/lib/dutyTimes'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import type { Employee } from '@/types'
 
 export function UpdateBranchDutyDialog({
@@ -98,7 +99,7 @@ export function UpdateBranchDutyDialog({
           <div className="rounded-lg border border-border bg-surface p-3 space-y-1">
             <p>
               <span className="text-text-secondary">Current Branch: </span>
-              {employee.currentBranch?.name ?? '—'}
+              {formatBranchLabel(employee.currentBranch)}
             </p>
             <p>
               <span className="text-text-secondary">Current Department: </span>
@@ -125,7 +126,7 @@ export function UpdateBranchDutyDialog({
               <SelectContent>
                 {branches.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
-                    {b.name}
+                    {formatBranchLabel(b)}
                   </SelectItem>
                 ))}
               </SelectContent>
