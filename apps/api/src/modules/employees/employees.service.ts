@@ -278,7 +278,12 @@ export class EmployeesService {
       where.currentBranch = { projectId: filters.projectId };
     }
 
-    if (filters.shiftId) {
+    if (filters.shiftIds) {
+      const ids = filters.shiftIds.split(',').filter(Boolean);
+      if (ids.length > 0) {
+        where.shiftId = { in: ids };
+      }
+    } else if (filters.shiftId) {
       where.shiftId = filters.shiftId;
     }
 
@@ -794,6 +799,9 @@ export class EmployeesService {
       }
       if (dto.dutyEndTime !== undefined) {
         data.dutyEndTime = dto.dutyEndTime;
+      }
+      if (dto.dutyTotalHours !== undefined) {
+        data.dutyTotalHours = dto.dutyTotalHours;
       }
 
       const result = await tx.employee.update({

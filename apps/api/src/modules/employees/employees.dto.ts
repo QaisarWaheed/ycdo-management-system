@@ -6,6 +6,7 @@ import {
   IsEmail,
   IsEnum,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -13,6 +14,8 @@ import {
   IsString,
   IsUUID,
   Matches,
+  Max,
+  Min,
 } from 'class-validator';
 
 export class CreateEmployeeDto {
@@ -150,6 +153,13 @@ export class CreateEmployeeDto {
   @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
   dutyEndTime?: string;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(24)
+  dutyTotalHours?: number;
+
   @IsString()
   @IsNotEmpty()
   province: string;
@@ -222,6 +232,10 @@ export class EmployeeQueryDto {
   shiftId?: string;
 
   @IsOptional()
+  @IsString()
+  shiftIds?: string;
+
+  @IsOptional()
   @IsEnum(EmployeeStatus)
   status?: EmployeeStatus;
 
@@ -268,4 +282,11 @@ export class UpdateBranchDutyDto {
   @IsString()
   @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
   dutyEndTime?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(24)
+  dutyTotalHours?: number;
 }

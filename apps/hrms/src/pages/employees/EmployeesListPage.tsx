@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { MoreHorizontal, Plus, Search, Users } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
+import { shiftsApi } from '@/api/endpoints/shifts'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import {
   EMPTY_EMPLOYEE_FILTERS,
@@ -50,12 +51,18 @@ export function EmployeesListPage() {
 
   const debouncedSearch = useDebounce(search, 400)
 
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts', employeeFilters.branchId || 'all'],
+    queryFn: () =>
+      shiftsApi.getAll(employeeFilters.branchId || undefined),
+  })
+
   const filters = useMemo(
     () => ({
-      ...employeeFiltersToParams(employeeFilters),
+      ...employeeFiltersToParams(employeeFilters, shifts),
       search: debouncedSearch || undefined,
     }),
-    [debouncedSearch, employeeFilters],
+    [debouncedSearch, employeeFilters, shifts],
   )
 
   const { data: employees = [], isLoading } = useQuery({

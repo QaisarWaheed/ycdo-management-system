@@ -53,6 +53,7 @@ export class ShiftsService {
 
     return this.prisma.shift.findMany({
       where,
+      distinct: ['name', 'branchId'],
       include: {
         branch: { select: { name: true, address: true } },
         _count: { select: { employees: true } },
@@ -118,6 +119,7 @@ export class ShiftsService {
   getShiftsByBranch(branchId: string) {
     return this.prisma.shift.findMany({
       where: { branchId, isActive: true },
+      distinct: ['name', 'branchId'],
       include: {
         _count: { select: { employees: true } },
       },

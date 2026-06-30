@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
@@ -43,8 +43,15 @@ import {
   calcLateMinutes,
   calcOvertimeMinutes,
   combineDateAndTime,
+  getEmployeeDutyStartTime,
   showsTimeFields,
+  statusFromLateMinutes,
 } from '@/lib/attendanceUtils'
+import {
+  getShiftIdsForStartTime,
+  getUniqueShiftStartTimes,
+  shiftStartTimeFilterLabel,
+} from '@/lib/shiftFilterUtils'
 import { cn } from '@/lib/utils'
 import {
   ATTENDANCE_STATUSES,
@@ -102,14 +109,20 @@ function DailyLogTab({
   const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [confirmAbsentees, setConfirmAbsentees] = useState(false)
 
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts', employeeFilters.branchId || 'all'],
+    queryFn: () =>
+      shiftsApi.getAll(employeeFilters.branchId || undefined),
+  })
+
   const queryParams = useMemo(
     () => ({
       startDate: date,
       endDate: date,
       status: statusFilter !== ALL ? statusFilter : undefined,
-      ...employeeFiltersToAttendanceParams(employeeFilters),
+      ...employeeFiltersToAttendanceParams(employeeFilters, shifts),
     }),
-    [date, statusFilter, employeeFilters],
+    [date, statusFilter, employeeFilters, shifts],
   )
 
   const { data: logs = [], isLoading } = useQuery({
@@ -332,10 +345,22 @@ function SingleManualTab() {
 
   const shift = employeeDetail?.shift ?? selectedEmployee?.shift
 
+  const dutyStartTime = employeeDetail
+    ? getEmployeeDutyStartTime(employeeDetail)
+    : selectedEmployee
+      ? getEmployeeDutyStartTime(selectedEmployee)
+      : ''
+
   const calculatedLate = useMemo(() => {
-    if (!checkIn || !shift?.startTime) return 0
-    return calcLateMinutes(checkIn, shift.startTime)
-  }, [checkIn, shift?.startTime])
+    if (!checkIn || !dutyStartTime) return 0
+    return calcLateMinutes(checkIn, dutyStartTime)
+  }, [checkIn, dutyStartTime])
+
+  useEffect(() => {
+    if (checkIn && dutyStartTime) {
+      setStatus(statusFromLateMinutes(calculatedLate))
+    }
+  }, [checkIn, dutyStartTime, calculatedLate])
 
   const calculatedOvertime = useMemo(() => {
     if (!checkOut || !shift?.endTime) return 0
@@ -464,9 +489,14 @@ function SingleManualTab() {
             className="bg-muted"
           />
           {calculatedLate > 0 && (
-            <p className="text-xs text-text-secondary">
-              Calculated from check-in vs shift start (+15 min grace)
+            <p className="text-sm text-amber-600">
+              {calculatedLate > 60
+                ? 'More than 1 hour late — marked as Half Day'
+                : `${calculatedLate} minutes late`}
             </p>
+          )}
+          {calculatedLate === 0 && checkIn && dutyStartTime && (
+            <p className="text-sm text-green-600">On time</p>
           )}
         </div>
       )}
@@ -536,7 +566,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
 
   const [branchId, setBranchId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
-  const [shiftId, setShiftId] = useState('')
+  const [shiftStartTime, setShiftStartTime] = useState('')
   const [date, setDate] = useState(today)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -567,13 +597,27 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
     queryFn: () => shiftsApi.getAll(branchId || undefined),
   })
 
+  const uniqueStartTimes = useMemo(
+    () => getUniqueShiftStartTimes(shifts),
+    [shifts],
+  )
+
+  const shiftIdsParam = shiftStartTime
+    ? getShiftIdsForStartTime(shifts, shiftStartTime) || undefined
+    : undefined
+
   const { data: employees = [], refetch: refetchEmployees } = useQuery({
-    queryKey: ['bulk-attendance-employees', branchId, departmentId, shiftId],
+    queryKey: [
+      'bulk-attendance-employees',
+      branchId,
+      departmentId,
+      shiftStartTime,
+    ],
     queryFn: () =>
       employeesApi.getAll({
         branchId,
         departmentId: departmentId || undefined,
-        shiftId: shiftId || undefined,
+        shiftIds: shiftIdsParam,
         status: 'ACTIVE',
       }),
     enabled: false,
@@ -645,15 +689,15 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
     for (const [employeeId, row] of toSave) {
       setProgress(`Saving ${saved + 1}/${toSave.length}...`)
       const emp = employees.find((e) => e.id === employeeId)
-      const shift = emp?.shift
+      const dutyStart = getEmployeeDutyStartTime(emp ?? {})
       const status = row.status!
       const lateMinutes =
-        row.checkIn && shift?.startTime
-          ? calcLateMinutes(row.checkIn, shift.startTime)
+        row.checkIn && dutyStart
+          ? calcLateMinutes(row.checkIn, dutyStart)
           : 0
       const overtimeMinutes =
-        row.checkOut && shift?.endTime
-          ? calcOvertimeMinutes(row.checkOut, shift.endTime)
+        row.checkOut && emp?.shift?.endTime
+          ? calcOvertimeMinutes(row.checkOut, emp.shift.endTime)
           : 0
 
       await attendanceApi.markManual({
@@ -693,7 +737,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
             onValueChange={(v) => {
               setBranchId(v)
               setDepartmentId('')
-              setShiftId('')
+              setShiftStartTime('')
               setLoaded(false)
             }}
           >
@@ -736,9 +780,9 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
         <div className="space-y-1">
           <Label>Shift</Label>
           <Select
-            value={shiftId || 'all'}
+            value={shiftStartTime || 'all'}
             onValueChange={(v) => {
-              setShiftId(v === 'all' ? '' : v)
+              setShiftStartTime(v === 'all' ? '' : v)
               setLoaded(false)
             }}
           >
@@ -747,9 +791,9 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Shifts</SelectItem>
-              {shifts.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name} ({s.startTime} - {s.endTime})
+              {uniqueStartTimes.map((startTime) => (
+                <SelectItem key={startTime} value={startTime}>
+                  {shiftStartTimeFilterLabel(startTime)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -806,6 +850,11 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
                     const row = rows[emp.id]
                     const showTimes =
                       row?.status && showsTimeFields(row.status)
+                    const dutyStart = getEmployeeDutyStartTime(emp)
+                    const rowLate =
+                      row?.checkIn && dutyStart
+                        ? calcLateMinutes(row.checkIn, dutyStart)
+                        : 0
                     return (
                       <TableRow key={emp.id}>
                         <TableCell>
@@ -863,10 +912,34 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
                             className="w-[120px]"
                             disabled={!showTimes}
                             value={row?.checkIn ?? ''}
-                            onChange={(e) =>
-                              updateRow(emp.id, { checkIn: e.target.value })
-                            }
+                            onChange={(e) => {
+                              const checkIn = e.target.value
+                              const late = checkIn && dutyStart
+                                ? calcLateMinutes(checkIn, dutyStart)
+                                : 0
+                              updateRow(emp.id, {
+                                checkIn,
+                                status: checkIn
+                                  ? statusFromLateMinutes(late)
+                                  : row?.status ?? null,
+                              })
+                            }}
                           />
+                          {showTimes && rowLate > 0 && (
+                            <p className="mt-1 text-xs text-amber-600">
+                              {rowLate > 60
+                                ? 'More than 1 hour late'
+                                : `${rowLate} min late`}
+                            </p>
+                          )}
+                          {showTimes &&
+                            rowLate === 0 &&
+                            row?.checkIn &&
+                            dutyStart && (
+                              <p className="mt-1 text-xs text-green-600">
+                                On time
+                              </p>
+                            )}
                         </TableCell>
                         <TableCell>
                           <Input
@@ -920,13 +993,19 @@ function RelieverSessionsTab() {
   const [date, setDate] = useState(today)
   const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
 
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts', employeeFilters.branchId || 'all'],
+    queryFn: () =>
+      shiftsApi.getAll(employeeFilters.branchId || undefined),
+  })
+
   const queryParams = useMemo(
     () => ({
       startDate: date,
       endDate: date,
-      ...employeeFiltersToAttendanceParams(employeeFilters),
+      ...employeeFiltersToAttendanceParams(employeeFilters, shifts),
     }),
-    [date, employeeFilters],
+    [date, employeeFilters, shifts],
   )
 
   const { data: sessions = [], isLoading } = useQuery({

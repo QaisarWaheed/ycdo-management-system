@@ -14,13 +14,13 @@ import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { CnicInput } from '@/components/common/CnicInput'
 import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
+import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
-import { dutyTimeOptions, timeToMinutes } from '@/lib/dutyTimes'
+import { timeToMinutes } from '@/lib/dutyTimes'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
 import {
   Form,
   FormControl,
@@ -129,6 +129,7 @@ const step2Schema = z
     joiningDate: z.string().min(1, 'Joining date is required'),
     biometricId: z.string().optional(),
     shiftName: z.string().optional(),
+    dutyTotalHours: z.number().int().min(1).max(24).optional(),
     dutyStartTime: z.string().optional(),
     dutyEndTime: z.string().optional(),
   })
@@ -487,6 +488,7 @@ export function EmployeeCreatePage() {
       currentDesignation: '',
       joiningDate: '',
       biometricId: '',
+      dutyTotalHours: undefined,
       dutyStartTime: '',
       dutyEndTime: '',
       shiftName: '',
@@ -545,6 +547,7 @@ export function EmployeeCreatePage() {
         currentDesignation: prefill.currentDesignation ?? '',
         joiningDate: '',
         biometricId: '',
+        dutyTotalHours: undefined,
         dutyStartTime: '',
         dutyEndTime: '',
         shiftName: '',
@@ -584,6 +587,7 @@ export function EmployeeCreatePage() {
         biometricId: step2Data.biometricId || undefined,
         dutyStartTime: step2Data.dutyStartTime || undefined,
         dutyEndTime: step2Data.dutyEndTime || undefined,
+        dutyTotalHours: step2Data.dutyTotalHours || undefined,
         shiftName: step2Data.shiftName || undefined,
       })
 
@@ -1268,65 +1272,23 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
-              <div className="sm:col-span-2 space-y-3">
-                <Label className="text-sm font-medium">Duty Hours</Label>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <FormField
-                    control={form2.control}
-                    name="dutyStartTime"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-text-secondary">Start</FormLabel>
-                        <Select
-                          value={selectFieldValue(field.value)}
-                          onValueChange={field.onChange}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select start time" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {dutyTimeOptions.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form2.control}
-                    name="dutyEndTime"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-text-secondary">End</FormLabel>
-                        <Select
-                          value={selectFieldValue(field.value)}
-                          onValueChange={field.onChange}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select end time" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {dutyTimeOptions.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
+              <DutyHoursFields
+                totalHours={form2.watch('dutyTotalHours') ?? ''}
+                startTime={form2.watch('dutyStartTime') ?? ''}
+                endTime={form2.watch('dutyEndTime') ?? ''}
+                onTotalHoursChange={(value) =>
+                  form2.setValue(
+                    'dutyTotalHours',
+                    value === '' ? undefined : value,
+                  )
+                }
+                onStartTimeChange={(value) =>
+                  form2.setValue('dutyStartTime', value)
+                }
+                onEndTimeChange={(value) =>
+                  form2.setValue('dutyEndTime', value)
+                }
+              />
               <FormField
                 control={form2.control}
                 name="joiningDate"

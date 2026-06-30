@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
+import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -20,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toast } from '@/hooks/use-toast'
-import { dutyTimeOptions, formatDutyDisplay } from '@/lib/dutyTimes'
+import { formatDutyDisplay } from '@/lib/dutyTimes'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import type { Employee } from '@/types'
 
@@ -39,6 +40,9 @@ export function UpdateBranchDutyDialog({
   const [departmentId, setDepartmentId] = useState(
     employee.currentDepartmentId ?? '',
   )
+  const [dutyTotalHours, setDutyTotalHours] = useState<number | ''>(
+    employee.dutyTotalHours ?? '',
+  )
   const [dutyStartTime, setDutyStartTime] = useState(
     employee.dutyStartTime ?? '',
   )
@@ -48,6 +52,7 @@ export function UpdateBranchDutyDialog({
     if (open) {
       setBranchId(employee.currentBranchId ?? '')
       setDepartmentId(employee.currentDepartmentId ?? '')
+      setDutyTotalHours(employee.dutyTotalHours ?? '')
       setDutyStartTime(employee.dutyStartTime ?? '')
       setDutyEndTime(employee.dutyEndTime ?? '')
     }
@@ -70,6 +75,8 @@ export function UpdateBranchDutyDialog({
       employeesApi.updateBranchDuty(employee.id, {
         currentBranchId: branchId || undefined,
         currentDepartmentId: departmentId || undefined,
+        dutyTotalHours:
+          dutyTotalHours !== '' ? Number(dutyTotalHours) : undefined,
         dutyStartTime: dutyStartTime || undefined,
         dutyEndTime: dutyEndTime || undefined,
       }),
@@ -108,6 +115,9 @@ export function UpdateBranchDutyDialog({
             <p>
               <span className="text-text-secondary">Current Duty: </span>
               {formatDutyDisplay(employee.dutyStartTime, employee.dutyEndTime)}
+              {employee.dutyTotalHours
+                ? ` (${employee.dutyTotalHours}h/day)`
+                : ''}
             </p>
           </div>
 
@@ -153,38 +163,14 @@ export function UpdateBranchDutyDialog({
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Duty Start Time</Label>
-              <Select value={dutyStartTime} onValueChange={setDutyStartTime}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select start time" />
-                </SelectTrigger>
-                <SelectContent>
-                  {dutyTimeOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Duty End Time</Label>
-              <Select value={dutyEndTime} onValueChange={setDutyEndTime}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select end time" />
-                </SelectTrigger>
-                <SelectContent>
-                  {dutyTimeOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <DutyHoursFields
+            totalHours={dutyTotalHours}
+            startTime={dutyStartTime}
+            endTime={dutyEndTime}
+            onTotalHoursChange={setDutyTotalHours}
+            onStartTimeChange={setDutyStartTime}
+            onEndTimeChange={setDutyEndTime}
+          />
 
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
             Changing the branch will create a transfer record in employment

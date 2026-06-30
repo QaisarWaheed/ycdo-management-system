@@ -30,7 +30,7 @@ export const attendanceApi = {
     branchId?: string
     projectId?: string
     departmentId?: string
-    shiftId?: string
+    shiftIds?: string
     employeeStatus?: string
     gender?: string
     designation?: string

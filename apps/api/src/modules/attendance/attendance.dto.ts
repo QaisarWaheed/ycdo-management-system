@@ -117,6 +117,10 @@ export class AttendanceQueryDto {
   shiftId?: string;
 
   @IsOptional()
+  @IsString()
+  shiftIds?: string;
+
+  @IsOptional()
   @IsEnum(EmployeeStatus)
   employeeStatus?: EmployeeStatus;
 
@@ -173,6 +177,10 @@ export class RelieverSessionsQueryDto {
   @IsOptional()
   @IsUUID()
   shiftId?: string;
+
+  @IsOptional()
+  @IsString()
+  shiftIds?: string;
 
   @IsOptional()
   @IsEnum(EmployeeStatus)

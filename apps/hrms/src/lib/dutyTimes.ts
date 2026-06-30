@@ -40,3 +40,12 @@ export function timeToMinutes(time: string): number {
   const [h, m] = time.split(':').map(Number)
   return h * 60 + m
 }
+
+export function calculateDutyEndTime(
+  startTime: string,
+  totalHours: number,
+): string {
+  const [h, m] = startTime.split(':').map(Number)
+  const endHour = (h + totalHours) % 24
+  return `${String(endHour).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}

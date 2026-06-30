@@ -9,13 +9,14 @@ export function combineDateAndTime(date: string, time: string): string {
 
 export function calcLateMinutes(
   checkInTime: string,
-  shiftStart: string,
+  dutyStart: string,
   graceMinutes = 15,
 ): number {
+  if (!checkInTime || !dutyStart) return 0
   const checkIn = parseTimeToMinutes(checkInTime)
-  const graceEnd = parseTimeToMinutes(shiftStart) + graceMinutes
-  if (checkIn <= graceEnd) return 0
-  return checkIn - graceEnd
+  const dutyTotal = parseTimeToMinutes(dutyStart)
+  const lateMinutes = checkIn - dutyTotal - graceMinutes
+  return lateMinutes > 0 ? lateMinutes : 0
 }
 
 export function calcOvertimeMinutes(
@@ -31,4 +32,19 @@ export function calcOvertimeMinutes(
 
 export function showsTimeFields(status: string): boolean {
   return status === 'PRESENT' || status === 'LATE' || status === 'HALF_DAY'
+}
+
+export function getEmployeeDutyStartTime(employee: {
+  dutyStartTime?: string | null
+  shift?: { startTime?: string } | null
+}): string {
+  return employee.dutyStartTime ?? employee.shift?.startTime ?? ''
+}
+
+export function statusFromLateMinutes(
+  lateMinutes: number,
+): 'PRESENT' | 'LATE' | 'HALF_DAY' {
+  if (lateMinutes > 60) return 'HALF_DAY'
+  if (lateMinutes > 0) return 'LATE'
+  return 'PRESENT'
 }

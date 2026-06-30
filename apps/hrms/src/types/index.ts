@@ -222,6 +222,7 @@ export interface Employee {
   shiftId?: string | null
   dutyStartTime?: string | null
   dutyEndTime?: string | null
+  dutyTotalHours?: number | null
   employmentHistory?: EmploymentHistory[]
   stipendRecords?: StipendRecord[]
   documents?: EmployeeDocument[]

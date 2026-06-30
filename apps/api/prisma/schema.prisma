@@ -56,6 +56,8 @@ model Shift {
 
   branch    Branch     @relation(fields: [branchId], references: [id])
   employees Employee[]
+
+  @@unique([branchId, name])
 }
 
 model Department {
@@ -136,6 +138,7 @@ model Employee {
   staffType              StaffType      @default(NEW)
   dutyStartTime          String?
   dutyEndTime            String?
+  dutyTotalHours         Int?
   province               String?
   city                   String?
   permanentProvince      String?

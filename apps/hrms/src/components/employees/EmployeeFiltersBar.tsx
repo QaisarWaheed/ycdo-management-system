@@ -14,6 +14,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  getShiftIdsForStartTime,
+  getUniqueShiftStartTimes,
+  shiftStartTimeFilterLabel,
+} from '@/lib/shiftFilterUtils'
 import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
@@ -27,7 +32,7 @@ export type EmployeeFilterState = {
   employeeStatus: string
   district: string
   gender: string
-  shiftId: string
+  shiftStartTime: string
   joinedFrom: string
   joinedTo: string
 }
@@ -40,12 +45,19 @@ export const EMPTY_EMPLOYEE_FILTERS: EmployeeFilterState = {
   employeeStatus: ALL_FILTER,
   district: ALL_FILTER,
   gender: ALL_FILTER,
-  shiftId: '',
+  shiftStartTime: '',
   joinedFrom: '',
   joinedTo: '',
 }
 
-export function employeeFiltersToParams(filters: EmployeeFilterState) {
+export function employeeFiltersToParams(
+  filters: EmployeeFilterState,
+  shifts: Array<{ id: string; startTime: string }> = [],
+) {
+  const shiftIds = filters.shiftStartTime
+    ? getShiftIdsForStartTime(shifts, filters.shiftStartTime) || undefined
+    : undefined
+
   return {
     projectId: filters.projectId || undefined,
     branchId: filters.branchId || undefined,
@@ -56,14 +68,17 @@ export function employeeFiltersToParams(filters: EmployeeFilterState) {
       filters.employeeStatus !== ALL_FILTER ? filters.employeeStatus : undefined,
     district: filters.district !== ALL_FILTER ? filters.district : undefined,
     gender: filters.gender !== ALL_FILTER ? filters.gender : undefined,
-    shiftId: filters.shiftId || undefined,
+    shiftIds,
     joinedFrom: filters.joinedFrom || undefined,
     joinedTo: filters.joinedTo || undefined,
   }
 }
 
-export function employeeFiltersToAttendanceParams(filters: EmployeeFilterState) {
-  const params = employeeFiltersToParams(filters)
+export function employeeFiltersToAttendanceParams(
+  filters: EmployeeFilterState,
+  shifts: Array<{ id: string; startTime: string }> = [],
+) {
+  const params = employeeFiltersToParams(filters, shifts)
   return {
     projectId: params.projectId,
     branchId: params.branchId,
@@ -72,7 +87,7 @@ export function employeeFiltersToAttendanceParams(filters: EmployeeFilterState) 
     employeeStatus: params.status,
     district: params.district,
     gender: params.gender,
-    shiftId: params.shiftId,
+    shiftIds: params.shiftIds,
   }
 }
 
@@ -111,6 +126,11 @@ export function EmployeeFiltersBar({
       shiftsApi.getAll(filters.branchId ? filters.branchId : undefined),
   })
 
+  const uniqueStartTimes = useMemo(
+    () => getUniqueShiftStartTimes(shifts),
+    [shifts],
+  )
+
   const { data: filterOptions } = useQuery({
     queryKey: ['employees', 'filter-options'],
     queryFn: () => employeesApi.getFilterOptions(),
@@ -130,7 +150,7 @@ export function EmployeeFiltersBar({
       projectId: value === 'all' ? '' : value,
       branchId: '',
       departmentId: '',
-      shiftId: '',
+      shiftStartTime: '',
     })
   }
 
@@ -138,7 +158,7 @@ export function EmployeeFiltersBar({
     update({
       branchId: value === 'all' ? '' : value,
       departmentId: '',
-      shiftId: '',
+      shiftStartTime: '',
     })
   }
 
@@ -210,17 +230,19 @@ export function EmployeeFiltersBar({
         <div className="space-y-1">
           <Label>Shift</Label>
           <Select
-            value={filters.shiftId || 'all'}
-            onValueChange={(v) => update({ shiftId: v === 'all' ? '' : v })}
+            value={filters.shiftStartTime || 'all'}
+            onValueChange={(v) =>
+              update({ shiftStartTime: v === 'all' ? '' : v })
+            }
           >
             <SelectTrigger>
               <SelectValue placeholder="All Shifts" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Shifts</SelectItem>
-              {shifts.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name} ({s.startTime} - {s.endTime})
+              {uniqueStartTimes.map((startTime) => (
+                <SelectItem key={startTime} value={startTime}>
+                  {shiftStartTimeFilterLabel(startTime)}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -302,6 +302,7 @@ export class AttendanceService {
     projectId?: string;
     departmentId?: string;
     shiftId?: string;
+    shiftIds?: string;
     employeeStatus?: EmployeeStatus;
     gender?: Gender;
     designation?: string;
@@ -317,7 +318,12 @@ export class AttendanceService {
       employeeWhere.currentBranch = { projectId: query.projectId };
     }
 
-    if (query.shiftId) {
+    if (query.shiftIds) {
+      const ids = query.shiftIds.split(',').filter(Boolean);
+      if (ids.length > 0) {
+        employeeWhere.shiftId = { in: ids };
+      }
+    } else if (query.shiftId) {
       employeeWhere.shiftId = query.shiftId;
     }
 
