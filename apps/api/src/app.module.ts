@@ -28,6 +28,7 @@ import { ShiftsModule } from './modules/shifts/shifts.module';
 import { StipendReceiptsModule } from './modules/stipend-receipts/stipend-receipts.module';
 import { IncentivesModule } from './modules/incentives/incentives.module';
 import { UserPasswordsModule } from './modules/user-passwords/user-passwords.module';
+import { LocationValuesModule } from './modules/location-values/location-values.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -64,6 +65,7 @@ import { PrismaModule } from './prisma/prisma.module';
     StipendReceiptsModule,
     IncentivesModule,
     UserPasswordsModule,
+    LocationValuesModule,
   ],
 })
 export class AppModule {}

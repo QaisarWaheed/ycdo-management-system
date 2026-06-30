@@ -32,6 +32,7 @@ export interface Branch {
   phone?: string | null
   projectId?: string | null
   project?: { id: string; name: string; type?: string } | null
+  isActive?: boolean
   _count?: {
     employees?: number
     departments?: number

@@ -76,19 +76,27 @@ export class EmployeesService {
       await this.ensureShiftInBranch(dto.shiftId, dto.currentBranchId);
     }
 
+    let resolvedShiftId = dto.shiftId;
+    if (dto.shiftName) {
+      resolvedShiftId = await this.resolveOrCreateShift(
+        dto.shiftName,
+        dto.currentBranchId,
+      );
+    }
+
     const employeeCode = await generateEmployeeCode(this.prisma);
     const joiningDate = new Date(dto.joiningDate);
-    const { basicStipend, ...employeeData } = dto;
+    const { basicStipend, shiftName: _shiftName, ...employeeData } = dto;
 
     const employee = await this.prisma.$transaction(async (tx) => {
       const created = await tx.employee.create({
         data: {
           ...employeeData,
           staffType: dto.staffType ?? StaffType.NEW,
-          shiftId: dto.shiftId,
+          shiftId: resolvedShiftId,
           employeeCode,
           joiningDate,
-          dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+          dateOfBirth: new Date(dto.dateOfBirth),
         },
       });
 
@@ -210,6 +218,16 @@ export class EmployeesService {
       ];
     }
 
+    if (filters.joinedFrom || filters.joinedTo) {
+      where.joiningDate = {};
+      if (filters.joinedFrom) {
+        where.joiningDate.gte = new Date(filters.joinedFrom);
+      }
+      if (filters.joinedTo) {
+        where.joiningDate.lte = new Date(filters.joinedTo);
+      }
+    }
+
     const [employees, designations] = await Promise.all([
       this.prisma.employee.findMany({
         where,
@@ -325,7 +343,6 @@ export class EmployeesService {
       data.joiningDate = new Date(dto.joiningDate);
     }
     if (dto.gender !== undefined) data.gender = dto.gender;
-    if (dto.address !== undefined) data.address = dto.address;
     if (dto.biometricId !== undefined) data.biometricId = dto.biometricId;
     if (dto.currentDesignation !== undefined) {
       data.currentDesignation = dto.currentDesignation;
@@ -505,6 +522,43 @@ export class EmployeesService {
         `Shift with id ${shiftId} not found in branch`,
       );
     }
+  }
+
+  private async resolveOrCreateShift(
+    shiftName: string,
+    branchId: string,
+  ): Promise<string> {
+    const existing = await this.prisma.shift.findFirst({
+      where: { name: shiftName, branchId, isActive: true },
+    });
+
+    if (existing) {
+      return existing.id;
+    }
+
+    const startTime =
+      shiftName === 'Day'
+        ? '08:00'
+        : shiftName === 'Night'
+          ? '20:00'
+          : '00:00';
+    const endTime =
+      shiftName === 'Day'
+        ? '20:00'
+        : shiftName === 'Night'
+          ? '08:00'
+          : '23:59';
+
+    const created = await this.prisma.shift.create({
+      data: {
+        name: shiftName,
+        branchId,
+        startTime,
+        endTime,
+      },
+    });
+
+    return created.id;
   }
 
   private async ensureBranchExists(branchId: string) {

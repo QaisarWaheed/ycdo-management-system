@@ -13,6 +13,13 @@ export class ShiftsService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateShiftDto) {
+    const allowedNames = ['Day', 'Night', '24 Hours'];
+    if (!allowedNames.includes(dto.name)) {
+      throw new BadRequestException(
+        'Shift name must be Day, Night, or 24 Hours',
+      );
+    }
+
     const branch = await this.prisma.branch.findFirst({
       where: { id: dto.branchId, isActive: true },
     });

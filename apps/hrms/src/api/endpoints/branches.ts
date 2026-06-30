@@ -9,4 +9,5 @@ export const branchesApi = {
   create: (data: Record<string, unknown>) => api.post('/branches', data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch(`/branches/${id}`, data),
+  deactivate: (id: string) => api.delete(`/branches/${id}`),
 }

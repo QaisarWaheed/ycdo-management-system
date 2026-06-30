@@ -20,13 +20,21 @@ export function StatusBadge({
   status: string
   className?: string
 }) {
+  const normalized = status === 'APPOINTED' ? 'ACTIVE' : status
   const style =
-    statusStyles[status as EmployeeStatus] ??
+    statusStyles[normalized as EmployeeStatus] ??
     'bg-gray-100 text-gray-700 border-gray-200'
+
+  const label =
+    status === 'DISMISSED'
+      ? 'Dismissed'
+      : status === 'APPOINTED'
+        ? 'Active'
+        : status.replace(/_/g, ' ')
 
   return (
     <Badge variant="outline" className={cn(style, className)}>
-      {status === 'DISMISSED' ? 'Dismissed' : status.replace(/_/g, ' ')}
+      {label}
     </Badge>
   )
 }

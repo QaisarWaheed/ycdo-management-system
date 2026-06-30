@@ -21,6 +21,8 @@ interface DesignationSearchSelectProps {
   error?: boolean
   className?: string
   categories?: string[]
+  disabled?: boolean
+  helperText?: string
 }
 
 export function DesignationSearchSelect({
@@ -30,6 +32,8 @@ export function DesignationSearchSelect({
   error,
   className,
   categories,
+  disabled = false,
+  helperText,
 }: DesignationSearchSelectProps) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
@@ -69,17 +73,23 @@ export function DesignationSearchSelect({
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
         <Input
-          placeholder={value || 'Search designation...'}
+          placeholder={disabled ? 'Select department first' : value || 'Search designation...'}
           className={cn('pl-9', error && 'border-destructive')}
           value={open ? search : value || search}
+          disabled={disabled}
           onChange={(e) => {
             setSearch(e.target.value)
             setOpen(true)
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            if (!disabled) setOpen(true)
+          }}
         />
       </div>
-      {open && (
+      {helperText && (
+        <p className="text-xs text-text-secondary">{helperText}</p>
+      )}
+      {open && !disabled && (
         <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-white shadow-lg">
           {isLoading ? (
             <div className="p-3">

@@ -811,3 +811,14 @@ model AllegationAcknowledgement {
   letter   Letter   @relation(fields: [letterId], references: [id])
   employee Employee @relation(fields: [employeeId], references: [id])
 }
+
+model LocationValue {
+  id        String   @id @default(uuid())
+  type      String
+  value     String
+  province  String?
+  city      String?
+  createdAt DateTime @default(now())
+
+  @@unique([type, value])
+}

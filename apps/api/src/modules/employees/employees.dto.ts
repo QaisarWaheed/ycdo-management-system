@@ -24,9 +24,9 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   lastName: string;
 
-  @IsOptional()
   @IsString()
-  fatherName?: string;
+  @IsNotEmpty()
+  fatherName: string;
 
   @IsString()
   @IsNotEmpty()
@@ -35,24 +35,24 @@ export class CreateEmployeeDto {
   })
   cnic: string;
 
-  @IsOptional()
   @IsString()
-  phone?: string;
+  @IsNotEmpty()
+  phone: string;
 
   @IsOptional()
   @IsEmail()
   email?: string;
 
-  @IsOptional()
   @IsDateString()
-  dateOfBirth?: string;
+  @IsNotEmpty()
+  dateOfBirth: string;
 
   @IsEnum(Gender)
   gender: Gender;
 
-  @IsOptional()
   @IsString()
-  address?: string;
+  @IsNotEmpty()
+  currentAddress: string;
 
   @IsDateString()
   @IsNotEmpty()
@@ -79,16 +79,20 @@ export class CreateEmployeeDto {
   shiftId?: string;
 
   @IsOptional()
-  @IsString()
-  fatherContactNumber?: string;
+  @IsIn(['Day', 'Night', '24 Hours'])
+  shiftName?: string;
 
-  @IsOptional()
   @IsString()
-  emergencyContactName?: string;
+  @IsNotEmpty()
+  fatherContactNumber: string;
 
-  @IsOptional()
   @IsString()
-  emergencyContactNumber?: string;
+  @IsNotEmpty()
+  emergencyContactName: string;
+
+  @IsString()
+  @IsNotEmpty()
+  emergencyContactNumber: string;
 
   @IsOptional()
   @IsString()
@@ -102,33 +106,29 @@ export class CreateEmployeeDto {
   @IsString()
   caste?: string;
 
-  @IsOptional()
   @IsString()
-  domicile?: string;
+  @IsNotEmpty()
+  domicile: string;
 
-  @IsOptional()
   @IsString()
-  currentAddress?: string;
+  @IsNotEmpty()
+  permanentAddress: string;
 
-  @IsOptional()
   @IsString()
-  permanentAddress?: string;
+  @IsNotEmpty()
+  district: string;
 
-  @IsOptional()
   @IsString()
-  district?: string;
+  @IsNotEmpty()
+  tehsil: string;
 
-  @IsOptional()
   @IsString()
-  tehsil?: string;
+  @IsNotEmpty()
+  policeStation: string;
 
-  @IsOptional()
   @IsString()
-  policeStation?: string;
-
-  @IsOptional()
-  @IsString()
-  bloodGroup?: string;
+  @IsNotEmpty()
+  bloodGroup: string;
 
   @Type(() => Number)
   @IsNumber()
@@ -150,13 +150,13 @@ export class CreateEmployeeDto {
   @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
   dutyEndTime?: string;
 
-  @IsOptional()
   @IsString()
-  province?: string;
+  @IsNotEmpty()
+  province: string;
 
-  @IsOptional()
   @IsString()
-  city?: string;
+  @IsNotEmpty()
+  city: string;
 
   @IsOptional()
   @IsString()
@@ -240,6 +240,14 @@ export class EmployeeQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @IsDateString()
+  joinedFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  joinedTo?: string;
 }
 
 export class UpdateBranchDutyDto {

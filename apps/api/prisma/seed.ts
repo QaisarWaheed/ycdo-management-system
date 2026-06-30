@@ -482,7 +482,65 @@ async function seedProjectBranches(
   }
 }
 
+const punjabDistricts = [
+  'Attock', 'Bahawalnagar', 'Bahawalpur', 'Bhakkar', 'Chakwal',
+  'Chiniot', 'Dera Ghazi Khan', 'Faisalabad', 'Gujranwala', 'Gujrat',
+  'Hafizabad', 'Jhang', 'Jhelum', 'Kasur', 'Khanewal', 'Khushab',
+  'Lahore', 'Layyah', 'Lodhran', 'Mandi Bahauddin', 'Mianwali',
+  'Multan', 'Muzaffargarh', 'Nankana Sahib', 'Narowal', 'Okara',
+  'Pakpattan', 'Rahim Yar Khan', 'Rawalpindi', 'Sahiwal', 'Sargodha',
+  'Sheikhupura', 'Sialkot', 'Toba Tek Singh', 'Vehari',
+];
+
+const sindhDistricts = [
+  'Badin', 'Dadu', 'Ghotki', 'Hyderabad', 'Jacobabad', 'Jamshoro',
+  'Karachi Central', 'Karachi East', 'Karachi Korangi', 'Karachi Malir',
+  'Karachi South', 'Karachi West', 'Kashmore', 'Khairpur', 'Larkana',
+  'Matiari', 'Mirpur Khas', 'Naushahro Feroze', 'Sanghar', 'Shaheed Benazirabad',
+  'Shikarpur', 'Sukkur', 'Tando Allahyar', 'Tando Muhammad Khan', 'Tharparkar',
+  'Thatta', 'Umerkot',
+];
+
+const kpkDistricts = [
+  'Abbottabad', 'Bajaur', 'Bannu', 'Batagram', 'Buner', 'Charsadda',
+  'Chitral', 'Dera Ismail Khan', 'Hangu', 'Haripur', 'Karak', 'Khyber',
+  'Kohat', 'Kohistan', 'Kurram', 'Lakki Marwat', 'Lower Dir', 'Malakand',
+  'Mansehra', 'Mardan', 'Mohmand', 'North Waziristan', 'Nowshera',
+  'Orakzai', 'Peshawar', 'Shangla', 'South Waziristan', 'Swabi',
+  'Swat', 'Tank', 'Tor Ghar', 'Upper Dir',
+];
+
+const balochistanDistricts = [
+  'Awaran', 'Barkhan', 'Chagai', 'Dera Bugti', 'Gwadar', 'Harnai',
+  'Jaffarabad', 'Jhal Magsi', 'Kalat', 'Kech', 'Kharan', 'Khuzdar',
+  'Killa Abdullah', 'Killa Saifullah', 'Kohlu', 'Lasbela', 'Lehri',
+  'Loralai', 'Mastung', 'Musakhel', 'Nasirabad', 'Nushki', 'Panjgur',
+  'Pishin', 'Quetta', 'Sherani', 'Sibi', 'Sohbatpur', 'Washuk',
+  'Zhob', 'Ziarat',
+];
+
+async function seedLocationDistricts() {
+  const allDistricts = [
+    ...punjabDistricts,
+    ...sindhDistricts,
+    ...kpkDistricts,
+    ...balochistanDistricts,
+  ];
+
+  for (const district of allDistricts) {
+    await prisma.locationValue.upsert({
+      where: {
+        type_value: { type: 'district', value: district },
+      },
+      update: {},
+      create: { type: 'district', value: district },
+    });
+  }
+}
+
 async function main() {
+  await seedLocationDistricts();
+
   await ensureUserAccount(
     'admin@ycdo.org',
     'Admin@123',

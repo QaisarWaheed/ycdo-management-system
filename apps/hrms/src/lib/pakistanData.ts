@@ -48,3 +48,69 @@ export const pakistanCities: Record<string, string[]> = {
   ],
   'Islamabad Capital Territory': ['Islamabad'],
 }
+
+export const pakistanDistricts: Record<string, string[]> = {
+  Punjab: [
+    'Attock', 'Bahawalnagar', 'Bahawalpur', 'Bhakkar', 'Chakwal',
+    'Chiniot', 'Dera Ghazi Khan', 'Faisalabad', 'Gujranwala', 'Gujrat',
+    'Hafizabad', 'Jhang', 'Jhelum', 'Kasur', 'Khanewal', 'Khushab',
+    'Lahore', 'Layyah', 'Lodhran', 'Mandi Bahauddin', 'Mianwali',
+    'Multan', 'Muzaffargarh', 'Nankana Sahib', 'Narowal', 'Okara',
+    'Pakpattan', 'Rahim Yar Khan', 'Rawalpindi', 'Sahiwal', 'Sargodha',
+    'Sheikhupura', 'Sialkot', 'Toba Tek Singh', 'Vehari',
+  ],
+  Sindh: [
+    'Badin', 'Dadu', 'Ghotki', 'Hyderabad', 'Jacobabad', 'Jamshoro',
+    'Karachi', 'Kashmore', 'Khairpur', 'Larkana', 'Matiari',
+    'Mirpur Khas', 'Naushahro Feroze', 'Sanghar', 'Shaheed Benazirabad',
+    'Shikarpur', 'Sukkur', 'Tando Allahyar', 'Tando Muhammad Khan',
+    'Tharparkar', 'Thatta', 'Umerkot',
+  ],
+  'Khyber Pakhtunkhwa': [
+    'Abbottabad', 'Bajaur', 'Bannu', 'Batagram', 'Buner', 'Charsadda',
+    'Chitral', 'Dera Ismail Khan', 'Hangu', 'Haripur', 'Karak',
+    'Kohat', 'Kohistan', 'Lakki Marwat', 'Lower Dir', 'Malakand',
+    'Mansehra', 'Mardan', 'Nowshera', 'Peshawar', 'Shangla',
+    'Swabi', 'Swat', 'Tank', 'Upper Dir',
+  ],
+  Balochistan: [
+    'Awaran', 'Barkhan', 'Chagai', 'Dera Bugti', 'Gwadar', 'Harnai',
+    'Jaffarabad', 'Kalat', 'Kech', 'Kharan', 'Khuzdar', 'Killa Abdullah',
+    'Kohlu', 'Lasbela', 'Loralai', 'Mastung', 'Musakhel', 'Nasirabad',
+    'Nushki', 'Panjgur', 'Pishin', 'Quetta', 'Sibi', 'Washuk',
+    'Zhob', 'Ziarat',
+  ],
+  'Gilgit-Baltistan': [
+    'Astore', 'Diamer', 'Ghanche', 'Ghizer', 'Gilgit',
+    'Hunza', 'Nagar', 'Skardu', 'Shigar',
+  ],
+  'Azad Jammu & Kashmir': [
+    'Bagh', 'Bhimber', 'Hattian Bala', 'Haveli', 'Kotli',
+    'Mirpur', 'Muzaffarabad', 'Neelum', 'Poonch', 'Rawalkot', 'Sudhnati',
+  ],
+  'Islamabad Capital Territory': ['Islamabad'],
+}
+
+export const punjabTehsils: Record<string, string[]> = {
+  Multan: [
+    'Multan City', 'Multan Saddar', 'Shujabad', 'Jalalpur Pirwala',
+    'Sher Shah',
+  ],
+  Lahore: ['Lahore City', 'Raiwind', 'Shalimar'],
+  Faisalabad: [
+    'Faisalabad City', 'Jaranwala', 'Samundri', 'Tandlianwala', 'Chak Jhumra',
+  ],
+  Rawalpindi: [
+    'Rawalpindi', 'Gujar Khan', 'Kahuta', 'Murree', 'Taxila',
+  ],
+  Gujranwala: ['Gujranwala', 'Kamoke', 'Nowshera Virkan', 'Wazirabad'],
+  Sargodha: ['Sargodha', 'Bhalwal', 'Kot Momin', 'Shahpur', 'Sillanwali'],
+  Bahawalpur: [
+    'Bahawalpur', 'Ahmadpur East', 'Hasilpur', 'Khairpur Tamewali',
+  ],
+  'Rahim Yar Khan': [
+    'Rahim Yar Khan', 'Liaquatpur', 'Sadiqabad', 'Khan Pur',
+  ],
+  Sialkot: ['Sialkot', 'Daska', 'Pasrur', 'Sambrial'],
+  'Dera Ghazi Khan': ['Dera Ghazi Khan', 'Taunsa', 'Kot Chutta', 'Vehova'],
+}

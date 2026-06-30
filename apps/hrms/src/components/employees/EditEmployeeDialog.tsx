@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
+import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { z } from 'zod'
 import { employeesApi } from '@/api/endpoints/employees'
 import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
@@ -31,13 +32,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
-import {
-  pakistanCities,
-  pakistanProvinces,
-} from '@/lib/pakistanData'
 import type { Employee, Gender } from '@/types'
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const
@@ -176,6 +173,7 @@ export function EditEmployeeDialog({
 
   const selectedProvince = form.watch('province')
   const selectedPermanentProvince = form.watch('permanentProvince')
+  const selectedDistrict = form.watch('district')
 
   const designationCategories = useMemo(
     () =>
@@ -343,69 +341,6 @@ export function EditEmployeeDialog({
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="domicile"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Domicile</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select province" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {pakistanProvinces.map((p) => (
-                            <SelectItem key={p} value={p}>
-                              {p}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="district"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>District</FormLabel>
-                      <FormControl>
-                        <TextOnlyInput {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="tehsil"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tehsil</FormLabel>
-                      <FormControl>
-                        <TextOnlyInput {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="policeStation"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Police Station</FormLabel>
-                      <FormControl>
-                        <TextOnlyInput {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
             </div>
 
@@ -508,178 +443,17 @@ export function EditEmployeeDialog({
 
             <div className="space-y-3">
               <p className="text-sm font-semibold text-text-secondary">
-                Current Address
+                Address & Location
               </p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="province"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Province</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={(v) => {
-                          field.onChange(v)
-                          form.setValue('city', '')
-                        }}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select province" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {pakistanProvinces.map((p) => (
-                            <SelectItem key={p} value={p}>
-                              {p}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="city"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>City</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={!selectedProvince}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue
-                              placeholder={
-                                selectedProvince
-                                  ? 'Select city'
-                                  : 'Select province first'
-                              }
-                            />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {(selectedProvince
-                            ? pakistanCities[selectedProvince]
-                            : []
-                          ).map((c: string) => (
-                            <SelectItem key={c} value={c}>
-                              {c}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                <EmployeeLocationFields
+                  control={form.control as unknown as Control<FieldValues>}
+                  setValue={form.setValue as unknown as UseFormSetValue<FieldValues>}
+                  province={selectedProvince ?? ''}
+                  district={selectedDistrict ?? ''}
+                  permanentProvince={selectedPermanentProvince ?? ''}
                 />
               </div>
-              <FormField
-                control={form.control}
-                name="currentAddress"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Street Address</FormLabel>
-                    <FormControl>
-                      <Textarea {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-text-secondary">
-                Permanent Address
-              </p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="permanentProvince"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Province</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={(v) => {
-                          field.onChange(v)
-                          form.setValue('permanentCity', '')
-                        }}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select province" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {pakistanProvinces.map((p) => (
-                            <SelectItem key={p} value={p}>
-                              {p}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="permanentCity"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>City</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        disabled={!selectedPermanentProvince}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue
-                              placeholder={
-                                selectedPermanentProvince
-                                  ? 'Select city'
-                                  : 'Select province first'
-                              }
-                            />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {(selectedPermanentProvince
-                            ? pakistanCities[selectedPermanentProvince]
-                            : []
-                          ).map((c: string) => (
-                            <SelectItem key={c} value={c}>
-                              {c}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={form.control}
-                name="permanentAddress"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Street Address</FormLabel>
-                    <FormControl>
-                      <Textarea {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </div>
 
             <div className="space-y-3">

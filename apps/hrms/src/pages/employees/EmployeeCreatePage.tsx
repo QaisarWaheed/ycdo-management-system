@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
+import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
@@ -12,12 +13,9 @@ import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { CnicInput } from '@/components/common/CnicInput'
 import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
+import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
 import { dutyTimeOptions, timeToMinutes } from '@/lib/dutyTimes'
-import {
-  pakistanCities,
-  pakistanProvinces,
-} from '@/lib/pakistanData'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
 import { Button } from '@/components/ui/button'
@@ -45,9 +43,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
-import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { toast } from '@/hooks/use-toast'
 import type { DocumentType, EmployeePrefill, Gender, QualType, StaffType } from '@/types'
 
 const cnicRegex = /^\d{5}-\d{7}-\d{1}$/
@@ -55,6 +52,13 @@ const phoneOptional = z
   .string()
   .optional()
   .refine((v) => !v || /^0\d{10}$/.test(v), 'Must be 11 digits starting with 0')
+
+const phoneRequired = z
+  .string()
+  .min(1, 'Phone number is required')
+  .refine((v) => /^0\d{10}$/.test(v), 'Must be 11 digits starting with 0')
+
+const SHIFT_OPTIONS = ['Day', 'Night', '24 Hours'] as const
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const
 
@@ -87,32 +91,32 @@ const STAFF_TYPE_OPTIONS: {
 const step1Schema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
-  fatherName: z.string().optional(),
-  fatherContactNumber: phoneOptional,
+  fatherName: z.string().min(1, 'Father name is required'),
+  fatherContactNumber: phoneRequired,
   cnic: z
     .string()
     .min(1, 'CNIC is required')
     .regex(cnicRegex, 'Format: 12345-1234567-1'),
-  dateOfBirth: z.string().optional(),
-  phone: phoneOptional,
+  dateOfBirth: z.string().min(1, 'Date of birth is required'),
+  phone: phoneRequired,
   email: z.string().email('Invalid email').optional().or(z.literal('')),
-  emergencyContactName: z.string().optional(),
-  emergencyContactNumber: phoneOptional,
+  emergencyContactName: z.string().min(1, 'Emergency contact name is required'),
+  emergencyContactNumber: phoneRequired,
   spouseName: z.string().optional(),
   spouseContactNumber: phoneOptional,
-  bloodGroup: z.string().optional(),
+  bloodGroup: z.string().min(1, 'Blood group is required'),
   caste: z.string().optional(),
-  domicile: z.string().optional(),
-  province: z.string().optional(),
-  city: z.string().optional(),
-  permanentProvince: z.string().optional(),
-  permanentCity: z.string().optional(),
-  district: z.string().optional(),
-  tehsil: z.string().optional(),
-  policeStation: z.string().optional(),
+  domicile: z.string().min(1, 'Domicile is required'),
+  province: z.string().min(1, 'Province is required'),
+  city: z.string().min(1, 'City is required'),
+  permanentProvince: z.string().min(1, 'Permanent province is required'),
+  permanentCity: z.string().min(1, 'Permanent city is required'),
+  district: z.string().min(1, 'District is required'),
+  tehsil: z.string().min(1, 'Tehsil is required'),
+  policeStation: z.string().min(1, 'Police station is required'),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
-  currentAddress: z.string().optional(),
-  permanentAddress: z.string().optional(),
+  currentAddress: z.string().min(1, 'Current address is required'),
+  permanentAddress: z.string().min(1, 'Permanent address is required'),
 })
 
 const step2Schema = z
@@ -122,6 +126,7 @@ const step2Schema = z
     currentDesignation: z.string().min(1, 'Designation is required'),
     joiningDate: z.string().min(1, 'Joining date is required'),
     biometricId: z.string().optional(),
+    shiftName: z.string().optional(),
     dutyStartTime: z.string().optional(),
     dutyEndTime: z.string().optional(),
   })
@@ -455,6 +460,7 @@ export function EmployeeCreatePage() {
       biometricId: '',
       dutyStartTime: '',
       dutyEndTime: '',
+      shiftName: '',
     },
   })
 
@@ -467,6 +473,13 @@ export function EmployeeCreatePage() {
   const departmentId = form2.watch('currentDepartmentId')
   const selectedProvince = form1.watch('province')
   const selectedPermanentProvince = form1.watch('permanentProvince')
+  const selectedDistrict = form1.watch('district')
+
+  useEffect(() => {
+    if (step >= 1 && !staffType) {
+      setStep(0)
+    }
+  }, [step, staffType])
 
   useEffect(() => {
     if (prefill) {
@@ -541,6 +554,7 @@ export function EmployeeCreatePage() {
         biometricId: step2Data.biometricId || undefined,
         dutyStartTime: step2Data.dutyStartTime || undefined,
         dutyEndTime: step2Data.dutyEndTime || undefined,
+        shiftName: step2Data.shiftName || undefined,
       })
 
       const uploadFile = async (
@@ -605,6 +619,10 @@ export function EmployeeCreatePage() {
   })
 
   const onStep1Next = form1.handleSubmit((data) => {
+    if (!staffType) {
+      setStep(0)
+      return
+    }
     setStep1Data(data)
     setStep(2)
   })
@@ -796,7 +814,7 @@ export function EmployeeCreatePage() {
 
       {step >= 1 && <StepIndicator step={step} />}
 
-      {step === 1 && (
+      {step === 1 && staffType && (
         <Form {...form1}>
           <form onSubmit={onStep1Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Personal Information</h2>
@@ -832,7 +850,7 @@ export function EmployeeCreatePage() {
                 name="fatherName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Father Name</FormLabel>
+                    <FormLabel>Father Name *</FormLabel>
                     <FormControl>
                       <TextOnlyInput {...field} />
                     </FormControl>
@@ -845,7 +863,7 @@ export function EmployeeCreatePage() {
                 name="fatherContactNumber"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Father Contact Number</FormLabel>
+                    <FormLabel>Father Contact Number *</FormLabel>
                     <FormControl>
                       <PhoneInput
                         value={field.value}
@@ -874,7 +892,7 @@ export function EmployeeCreatePage() {
                 name="dateOfBirth"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Date of Birth</FormLabel>
+                    <FormLabel>Date of Birth *</FormLabel>
                     <FormControl>
                       <Input type="date" {...field} />
                     </FormControl>
@@ -887,7 +905,7 @@ export function EmployeeCreatePage() {
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Phone</FormLabel>
+                    <FormLabel>Phone *</FormLabel>
                     <FormControl>
                       <PhoneInput
                         value={field.value}
@@ -916,7 +934,7 @@ export function EmployeeCreatePage() {
                 name="emergencyContactName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Emergency Contact Name</FormLabel>
+                    <FormLabel>Emergency Contact Name *</FormLabel>
                     <FormControl>
                       <TextOnlyInput {...field} />
                     </FormControl>
@@ -929,7 +947,7 @@ export function EmployeeCreatePage() {
                 name="emergencyContactNumber"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Emergency Contact Number</FormLabel>
+                    <FormLabel>Emergency Contact Number *</FormLabel>
                     <FormControl>
                       <PhoneInput
                         value={field.value}
@@ -974,8 +992,11 @@ export function EmployeeCreatePage() {
                 name="bloodGroup"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Blood Group</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <FormLabel>Blood Group *</FormLabel>
+                    <Select
+                      value={field.value || undefined}
+                      onValueChange={field.onChange}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select blood group" />
@@ -1008,72 +1029,9 @@ export function EmployeeCreatePage() {
               />
               <FormField
                 control={form1.control}
-                name="domicile"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Domicile</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select province" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {pakistanProvinces.map((p) => (
-                          <SelectItem key={p} value={p}>
-                            {p}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="district"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>District</FormLabel>
-                    <FormControl>
-                      <TextOnlyInput {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="tehsil"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tehsil</FormLabel>
-                    <FormControl>
-                      <TextOnlyInput {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="policeStation"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Police Station</FormLabel>
-                    <FormControl>
-                      <TextOnlyInput {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
                 name="gender"
                 render={({ field }) => (
-                  <FormItem className="sm:col-span-2">
+                  <FormItem>
                     <FormLabel>Gender *</FormLabel>
                     <Select
                       value={field.value}
@@ -1096,177 +1054,14 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
-            </div>
-            <h3 className="text-sm font-semibold text-text-secondary">
-              Current Address
-            </h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField
-                control={form1.control}
-                name="province"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Province</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={(v) => {
-                        field.onChange(v)
-                        form1.setValue('city', '')
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select province" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {pakistanProvinces.map((p) => (
-                          <SelectItem key={p} value={p}>
-                            {p}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="city"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>City</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={!selectedProvince}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              selectedProvince
-                                ? 'Select city'
-                                : 'Select province first'
-                            }
-                          />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {(selectedProvince
-                          ? pakistanCities[selectedProvince]
-                          : []
-                        ).map((c: string) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
+              <EmployeeLocationFields
+                control={form1.control as unknown as Control<FieldValues>}
+                setValue={form1.setValue as unknown as UseFormSetValue<FieldValues>}
+                province={selectedProvince ?? ''}
+                district={selectedDistrict ?? ''}
+                permanentProvince={selectedPermanentProvince ?? ''}
               />
             </div>
-            <FormField
-              control={form1.control}
-              name="currentAddress"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Street Address</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <h3 className="text-sm font-semibold text-text-secondary">
-              Permanent Address
-            </h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField
-                control={form1.control}
-                name="permanentProvince"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Province</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={(v) => {
-                        field.onChange(v)
-                        form1.setValue('permanentCity', '')
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select province" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {pakistanProvinces.map((p) => (
-                          <SelectItem key={p} value={p}>
-                            {p}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="permanentCity"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>City</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={!selectedPermanentProvince}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              selectedPermanentProvince
-                                ? 'Select city'
-                                : 'Select province first'
-                            }
-                          />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {(selectedPermanentProvince
-                          ? pakistanCities[selectedPermanentProvince]
-                          : []
-                        ).map((c: string) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-            <FormField
-              control={form1.control}
-              name="permanentAddress"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Street Address</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <div className="flex justify-between">
               <Button type="button" variant="outline" onClick={() => setStep(0)}>
                 Back
@@ -1279,7 +1074,7 @@ export function EmployeeCreatePage() {
         </Form>
       )}
 
-      {step === 2 && (
+      {step === 2 && staffType && (
         <Form {...form2}>
           <form onSubmit={onStep2Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Job Information</h2>
@@ -1291,10 +1086,11 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Branch *</FormLabel>
                     <Select
-                      value={field.value}
+                      value={field.value || undefined}
                       onValueChange={(v) => {
                         field.onChange(v)
                         form2.setValue('currentDepartmentId', '')
+                        form2.setValue('currentDesignation', '')
                       }}
                     >
                       <FormControl>
@@ -1321,7 +1117,7 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Department *</FormLabel>
                     <Select
-                      value={field.value}
+                      value={field.value || undefined}
                       onValueChange={(v) => {
                         field.onChange(v)
                         form2.setValue('currentDesignation', '')
@@ -1356,8 +1152,41 @@ export function EmployeeCreatePage() {
                         onChange={field.onChange}
                         categories={designationCategories}
                         error={!!form2.formState.errors.currentDesignation}
+                        disabled={!departmentId}
+                        helperText={
+                          !departmentId
+                            ? 'Please select a department first'
+                            : undefined
+                        }
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form2.control}
+                name="shiftName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Shift</FormLabel>
+                    <Select
+                      value={field.value || undefined}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select shift (optional)" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {SHIFT_OPTIONS.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1428,7 +1257,12 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Joining Date *</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input
+                        type="date"
+                        min="1990-01-01"
+                        max="2099-12-31"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1460,7 +1294,7 @@ export function EmployeeCreatePage() {
         </Form>
       )}
 
-      {step === 3 && (
+      {step === 3 && staffType && (
         <Form {...form3}>
           <form onSubmit={onStep3Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Stipend & Documents</h2>
@@ -1477,13 +1311,18 @@ export function EmployeeCreatePage() {
                       </span>
                       <Input
                         type="number"
+                        min="0"
+                        step="1"
                         className="pl-12"
-                        {...field}
-                        onChange={(e) =>
-                          field.onChange(
-                            e.target.value === '' ? 0 : Number(e.target.value),
-                          )
-                        }
+                        value={field.value || ''}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          if (val === '') {
+                            field.onChange(0)
+                            return
+                          }
+                          field.onChange(parseInt(val, 10))
+                        }}
                       />
                     </div>
                   </FormControl>
@@ -1554,7 +1393,7 @@ export function EmployeeCreatePage() {
         </Form>
       )}
 
-      {step === 4 && (
+      {step === 4 && staffType && (
         <div className="space-y-6">
           <h2 className="text-lg font-semibold">Qualifications & Experience</h2>
 

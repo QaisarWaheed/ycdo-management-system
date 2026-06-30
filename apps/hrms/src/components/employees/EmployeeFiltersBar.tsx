@@ -5,6 +5,7 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
 import { shiftsApi } from '@/api/endpoints/shifts'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -26,6 +27,8 @@ export type EmployeeFilterState = {
   district: string
   gender: string
   shiftId: string
+  joinedFrom: string
+  joinedTo: string
 }
 
 export const EMPTY_EMPLOYEE_FILTERS: EmployeeFilterState = {
@@ -37,6 +40,8 @@ export const EMPTY_EMPLOYEE_FILTERS: EmployeeFilterState = {
   district: ALL_FILTER,
   gender: ALL_FILTER,
   shiftId: '',
+  joinedFrom: '',
+  joinedTo: '',
 }
 
 export function employeeFiltersToParams(filters: EmployeeFilterState) {
@@ -51,6 +56,8 @@ export function employeeFiltersToParams(filters: EmployeeFilterState) {
     district: filters.district !== ALL_FILTER ? filters.district : undefined,
     gender: filters.gender !== ALL_FILTER ? filters.gender : undefined,
     shiftId: filters.shiftId || undefined,
+    joinedFrom: filters.joinedFrom || undefined,
+    joinedTo: filters.joinedTo || undefined,
   }
 }
 
@@ -297,6 +304,28 @@ export function EmployeeFiltersBar({
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label>Joined From</Label>
+          <Input
+            type="date"
+            min="1990-01-01"
+            max="2099-12-31"
+            value={filters.joinedFrom}
+            onChange={(e) => update({ joinedFrom: e.target.value })}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label>Joined To</Label>
+          <Input
+            type="date"
+            min="1990-01-01"
+            max="2099-12-31"
+            value={filters.joinedTo}
+            onChange={(e) => update({ joinedTo: e.target.value })}
+          />
         </div>
       </div>
     </div>
