@@ -1,0 +1,761 @@
+import { useEffect, useMemo } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useMutation } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
+import { employeesApi } from '@/api/endpoints/employees'
+import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
+import { PhoneInput } from '@/components/common/PhoneInput'
+import { TextOnlyInput } from '@/components/common/TextOnlyInput'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/hooks/use-toast'
+import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
+import {
+  pakistanCities,
+  pakistanProvinces,
+} from '@/lib/pakistanData'
+import type { Employee, Gender } from '@/types'
+
+const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const
+
+const phoneOptional = z
+  .string()
+  .optional()
+  .refine((v) => !v || /^0\d{10}$/.test(v), 'Must be 11 digits starting with 0')
+
+const editSchema = z.object({
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().min(1, 'Last name is required'),
+  fatherName: z.string().optional(),
+  dateOfBirth: z.string().optional(),
+  phone: phoneOptional,
+  email: z.string().email('Invalid email').optional().or(z.literal('')),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
+  bloodGroup: z.string().optional(),
+  caste: z.string().optional(),
+  domicile: z.string().optional(),
+  province: z.string().optional(),
+  city: z.string().optional(),
+  permanentProvince: z.string().optional(),
+  permanentCity: z.string().optional(),
+  district: z.string().optional(),
+  tehsil: z.string().optional(),
+  policeStation: z.string().optional(),
+  currentAddress: z.string().optional(),
+  permanentAddress: z.string().optional(),
+  fatherContactNumber: phoneOptional,
+  emergencyContactName: z.string().optional(),
+  emergencyContactNumber: phoneOptional,
+  spouseName: z.string().optional(),
+  spouseContactNumber: phoneOptional,
+  biometricId: z.string().optional(),
+  joiningDate: z.string().optional(),
+  currentDesignation: z.string().optional(),
+})
+
+type EditFormValues = z.infer<typeof editSchema>
+
+function toDateInput(value?: string | null) {
+  if (!value) return ''
+  return value.slice(0, 10)
+}
+
+function buildPayload(data: EditFormValues): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    firstName: data.firstName,
+    lastName: data.lastName,
+    gender: data.gender,
+  }
+
+  const optionalKeys = [
+    'fatherName',
+    'dateOfBirth',
+    'phone',
+    'email',
+    'bloodGroup',
+    'caste',
+    'domicile',
+    'province',
+    'city',
+    'permanentProvince',
+    'permanentCity',
+    'district',
+    'tehsil',
+    'policeStation',
+    'currentAddress',
+    'permanentAddress',
+    'fatherContactNumber',
+    'emergencyContactName',
+    'emergencyContactNumber',
+    'spouseName',
+    'spouseContactNumber',
+    'biometricId',
+    'joiningDate',
+    'currentDesignation',
+  ] as const
+
+  for (const key of optionalKeys) {
+    const val = data[key]
+    if (val) payload[key] = val
+  }
+
+  return payload
+}
+
+function employeeToFormValues(employee: Employee): EditFormValues {
+  return {
+    firstName: employee.firstName,
+    lastName: employee.lastName,
+    fatherName: employee.fatherName ?? '',
+    dateOfBirth: toDateInput(employee.dateOfBirth),
+    phone: employee.phone ?? '',
+    email: employee.email ?? '',
+    gender: employee.gender,
+    bloodGroup: employee.bloodGroup ?? '',
+    caste: employee.caste ?? '',
+    domicile: employee.domicile ?? '',
+    province: employee.province ?? '',
+    city: employee.city ?? '',
+    permanentProvince: employee.permanentProvince ?? '',
+    permanentCity: employee.permanentCity ?? '',
+    district: employee.district ?? '',
+    tehsil: employee.tehsil ?? '',
+    policeStation: employee.policeStation ?? '',
+    currentAddress: employee.currentAddress ?? '',
+    permanentAddress: employee.permanentAddress ?? '',
+    fatherContactNumber: employee.fatherContactNumber ?? '',
+    emergencyContactName: employee.emergencyContactName ?? '',
+    emergencyContactNumber: employee.emergencyContactNumber ?? '',
+    spouseName: employee.spouseName ?? '',
+    spouseContactNumber: employee.spouseContactNumber ?? '',
+    biometricId: employee.biometricId ?? '',
+    joiningDate: toDateInput(employee.joiningDate),
+    currentDesignation: employee.currentDesignation,
+  }
+}
+
+export function EditEmployeeDialog({
+  employee,
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  employee: Employee
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSuccess: () => void
+}) {
+  const form = useForm<EditFormValues>({
+    resolver: zodResolver(editSchema),
+    defaultValues: employeeToFormValues(employee),
+  })
+
+  const selectedProvince = form.watch('province')
+  const selectedPermanentProvince = form.watch('permanentProvince')
+
+  const designationCategories = useMemo(
+    () =>
+      getDesignationCategoriesForDepartment(
+        employee.currentDepartment?.name ?? '',
+      ),
+    [employee.currentDepartment?.name],
+  )
+
+  useEffect(() => {
+    if (open) {
+      form.reset(employeeToFormValues(employee))
+    }
+  }, [open, employee, form])
+
+  const mutation = useMutation({
+    mutationFn: (data: EditFormValues) =>
+      employeesApi.update(employee.id, buildPayload(data)),
+    onSuccess: () => {
+      toast({ title: 'Employee details updated' })
+      onSuccess()
+      onOpenChange(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Update failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit Employee Details</DialogTitle>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+            className="space-y-6"
+          >
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-text-secondary">
+                Basic Information
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name *</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name *</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="fatherName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Father Name</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormItem>
+                  <FormLabel>CNIC</FormLabel>
+                  <Input value={employee.cnic} disabled />
+                </FormItem>
+                <FormField
+                  control={form.control}
+                  name="gender"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Gender *</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {(['MALE', 'FEMALE', 'OTHER'] as Gender[]).map((g) => (
+                            <SelectItem key={g} value={g}>
+                              {g.charAt(0) + g.slice(1).toLowerCase()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="dateOfBirth"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date of Birth</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="bloodGroup"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Blood Group</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select blood group" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {BLOOD_GROUPS.map((bg) => (
+                            <SelectItem key={bg} value={bg}>
+                              {bg}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="caste"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Caste</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="domicile"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Domicile</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select province" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {pakistanProvinces.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="district"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>District</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="tehsil"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tehsil</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="policeStation"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Police Station</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-text-secondary">Contact</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone</FormLabel>
+                      <FormControl>
+                        <PhoneInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="fatherContactNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Father Contact</FormLabel>
+                      <FormControl>
+                        <PhoneInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="emergencyContactName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Emergency Contact Name</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="emergencyContactNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Emergency Contact Number</FormLabel>
+                      <FormControl>
+                        <PhoneInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="spouseName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Spouse Name</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="spouseContactNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Spouse Contact</FormLabel>
+                      <FormControl>
+                        <PhoneInput {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-text-secondary">
+                Current Address
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="province"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Province</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(v) => {
+                          field.onChange(v)
+                          form.setValue('city', '')
+                        }}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select province" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {pakistanProvinces.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="city"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>City</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={!selectedProvince}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                selectedProvince
+                                  ? 'Select city'
+                                  : 'Select province first'
+                              }
+                            />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {(selectedProvince
+                            ? pakistanCities[selectedProvince]
+                            : []
+                          ).map((c: string) => (
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={form.control}
+                name="currentAddress"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Street Address</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-text-secondary">
+                Permanent Address
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="permanentProvince"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Province</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(v) => {
+                          field.onChange(v)
+                          form.setValue('permanentCity', '')
+                        }}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select province" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {pakistanProvinces.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="permanentCity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>City</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={!selectedPermanentProvince}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                selectedPermanentProvince
+                                  ? 'Select city'
+                                  : 'Select province first'
+                              }
+                            />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {(selectedPermanentProvince
+                            ? pakistanCities[selectedPermanentProvince]
+                            : []
+                          ).map((c: string) => (
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={form.control}
+                name="permanentAddress"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Street Address</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-text-secondary">
+                Job Information
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="currentDesignation"
+                  render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                      <FormControl>
+                        <DesignationSearchSelect
+                          value={field.value}
+                          onChange={field.onChange}
+                          categories={designationCategories}
+                          error={!!form.formState.errors.currentDesignation}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="joiningDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Joining Date</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="biometricId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Biometric ID</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <p className="text-sm text-amber-700">
+                To change branch, department, or duty hours, use Edit Branch &
+                Duty.
+              </p>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-primary hover:bg-primary-dark"
+                disabled={mutation.isPending}
+              >
+                {mutation.isPending ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}

@@ -37,6 +37,13 @@ export interface ApproveLeavePayload {
   notes?: string
 }
 
+export interface EmergencyLeavePayload {
+  employeeId: string
+  startDate: string
+  endDate: string
+  emergencyReason: string
+}
+
 export const leaveApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, LeaveRecord[]>('/leave', { params }),
@@ -70,4 +77,6 @@ export const leaveApi = {
     api.patch(`/leave/reliever/${requestId}/respond`, data),
   hrAssignReliever: (leaveId: string, data: HRAssignRelieverPayload) =>
     api.post(`/leave/${leaveId}/hr-assign-reliever`, data),
+  markEmergency: (data: EmergencyLeavePayload) =>
+    api.post<unknown, LeaveRecord>('/leave/emergency', data),
 }

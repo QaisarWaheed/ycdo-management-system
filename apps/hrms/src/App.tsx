@@ -19,6 +19,7 @@ import { RecruitmentPage } from '@/pages/recruitment/RecruitmentPage'
 import { BranchesPage } from '@/pages/branches/BranchesPage'
 import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
 import { ProfilePage } from '@/pages/settings/ProfilePage'
+import { UserPasswordsPage } from '@/pages/admin/UserPasswordsPage'
 
 export default function App() {
   return (
@@ -151,6 +152,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/user-passwords"
+        element={
+          <ProtectedRoute>
+            <UserPasswordsPage />
           </ProtectedRoute>
         }
       />

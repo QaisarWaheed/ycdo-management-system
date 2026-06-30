@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { differenceInCalendarDays, format } from 'date-fns'
-import { Users } from 'lucide-react'
+import { AlertTriangle, Users } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -61,6 +61,17 @@ import { hasShiftConflict } from '@/lib/shiftUtils'
 import type { Employee, LeaveRecord } from '@/types'
 
 const ALL = 'ALL'
+
+const HR_ROLES = [
+  'SUPER_ADMIN',
+  'HR_MANAGER',
+  'HR_ADMIN_MANAGER',
+  'HR_OPERATIONS_MANAGER',
+] as const
+
+function canMarkEmergencyLeave(role?: string) {
+  return !!role && HR_ROLES.includes(role as (typeof HR_ROLES)[number])
+}
 
 function LeaveStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -310,6 +321,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
   const [approveLeave, setApproveLeave] = useState<LeaveRecord | null>(null)
   const [expandedLeaveId, setExpandedLeaveId] = useState<string | null>(null)
   const [assignLeave, setAssignLeave] = useState<LeaveRecord | null>(null)
+  const [emergencyOpen, setEmergencyOpen] = useState(false)
 
   const filters = useMemo(
     () => ({
@@ -366,10 +378,22 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
           </div>
           <MonthYearPicker value={monthYear} onChange={setMonthYear} />
         </div>
-        <Button variant="outline" onClick={onOpenToday}>
-          <Users className="mr-2 h-4 w-4" />
-          Today&apos;s Relievers
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {canMarkEmergencyLeave(user?.role) && (
+            <Button
+              variant="outline"
+              className="border-amber-300 text-amber-800 hover:bg-amber-50"
+              onClick={() => setEmergencyOpen(true)}
+            >
+              <AlertTriangle className="mr-2 h-4 w-4" />
+              Mark Emergency Leave
+            </Button>
+          )}
+          <Button variant="outline" onClick={onOpenToday}>
+            <Users className="mr-2 h-4 w-4" />
+            Today&apos;s Relievers
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-lg border border-border bg-white">
@@ -513,7 +537,152 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
         open={!!assignLeave}
         onOpenChange={(v) => !v && setAssignLeave(null)}
       />
+
+      <EmergencyLeaveDialog
+        open={emergencyOpen}
+        onOpenChange={setEmergencyOpen}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['leave'] })}
+      />
     </div>
+  )
+}
+
+const emergencySchema = z.object({
+  employeeId: z.string().min(1, 'Employee is required'),
+  startDate: z.string().min(1, 'Start date is required'),
+  endDate: z.string().min(1, 'End date is required'),
+  emergencyReason: z.string().min(10, 'Reason must be at least 10 characters'),
+})
+
+type EmergencyFormValues = z.infer<typeof emergencySchema>
+
+function EmergencyLeaveDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSuccess: () => void
+}) {
+  const form = useForm<EmergencyFormValues>({
+    resolver: zodResolver(emergencySchema),
+    defaultValues: {
+      employeeId: '',
+      startDate: '',
+      endDate: '',
+      emergencyReason: '',
+    },
+  })
+
+  const mutation = useMutation({
+    mutationFn: (values: EmergencyFormValues) => leaveApi.markEmergency(values),
+    onSuccess: () => {
+      toast({ title: 'Emergency leave marked successfully' })
+      form.reset()
+      onOpenChange(false)
+      onSuccess()
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to mark emergency leave',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) form.reset()
+        onOpenChange(v)
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Mark Emergency Leave</DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
+            className="space-y-4"
+          >
+            <FormField
+              control={form.control}
+              name="employeeId"
+              render={({ field }) => (
+                <FormItem>
+                  <EmployeeSearchSelect
+                    value={field.value}
+                    onChange={(id) => field.onChange(id)}
+                  />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="startDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Start Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="endDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>End Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <FormField
+              control={form.control}
+              name="emergencyReason"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Emergency Reason</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      placeholder="Describe the emergency (min 10 characters)"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-primary hover:bg-primary-dark"
+                disabled={mutation.isPending}
+              >
+                {mutation.isPending ? 'Saving...' : 'Mark Emergency Leave'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -8,4 +8,5 @@ export const departmentsApi = {
   create: (data: Record<string, unknown>) => api.post('/departments', data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch(`/departments/${id}`, data),
+  deactivate: (id: string) => api.delete(`/departments/${id}`),
 }

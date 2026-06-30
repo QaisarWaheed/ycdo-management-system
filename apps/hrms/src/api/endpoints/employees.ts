@@ -5,6 +5,15 @@ export interface CreateEmployeePayload extends Record<string, unknown> {
   basicStipend: number
 }
 
+export interface WorkingHoursSummary {
+  totalMinutes: number
+  totalHours: number
+  totalDays: number
+  thisMonthMinutes: number
+  thisMonthHours: number
+  averageDailyHours: number
+}
+
 export const employeesApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, Employee[]>('/employees', { params }),
@@ -28,4 +37,8 @@ export const employeesApi = {
   getDocuments: (id: string) => api.get(`/employees/${id}/documents`),
   deleteDocument: (employeeId: string, documentId: string) =>
     api.delete(`/employees/${employeeId}/documents/${documentId}`),
+  getWorkingHours: (id: string) =>
+    api.get<unknown, WorkingHoursSummary>(`/employees/${id}/working-hours`),
+  updateBranchDuty: (id: string, data: Record<string, unknown>) =>
+    api.patch(`/employees/${id}/branch-duty`, data),
 }

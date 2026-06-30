@@ -7,8 +7,32 @@ export interface Designation {
   isActive: boolean
 }
 
+export interface DesignationQueryParams {
+  category?: string
+  categories?: string
+}
+
+export const DESIGNATION_CATEGORIES = [
+  'Management',
+  'Admin',
+  'Medical',
+  'Nursing',
+  'Allied Health',
+  'HR',
+  'Finance',
+  'IT',
+  'Kitchen',
+  'VTI',
+  'Support',
+  'Other',
+] as const
+
 export const designationsApi = {
-  getAll: () => api.get<unknown, Designation[]>('/designations'),
+  getAll: (params?: DesignationQueryParams) =>
+    api.get<unknown, Designation[]>('/designations', { params }),
   create: (data: { title: string; category: string }) =>
     api.post('/designations', data),
+  update: (id: string, data: { title?: string; category?: string }) =>
+    api.patch(`/designations/${id}`, data),
+  deactivate: (id: string) => api.delete(`/designations/${id}`),
 }

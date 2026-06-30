@@ -201,6 +201,10 @@ export interface Employee {
   domicile?: string | null
   currentAddress?: string | null
   permanentAddress?: string | null
+  province?: string | null
+  city?: string | null
+  permanentProvince?: string | null
+  permanentCity?: string | null
   district?: string | null
   tehsil?: string | null
   policeStation?: string | null
@@ -215,6 +219,8 @@ export interface Employee {
   currentDepartment?: Department
   shift?: Shift | null
   shiftId?: string | null
+  dutyStartTime?: string | null
+  dutyEndTime?: string | null
   employmentHistory?: EmploymentHistory[]
   stipendRecords?: StipendRecord[]
   documents?: EmployeeDocument[]

@@ -35,6 +35,7 @@ import { BranchManagerDashboard } from '@/pages/dashboard/BranchManagerDashboard
 import { DeptInchargeDashboard } from '@/pages/dashboard/DeptInchargeDashboard'
 import { ExecutiveDashboard } from '@/pages/dashboard/ExecutiveDashboard'
 import { HrOperationsDashboard } from '@/pages/dashboard/HrOperationsDashboard'
+import { ItAdminDashboard } from '@/pages/dashboard/ItAdminDashboard'
 
 function todayRange() {
   const today = format(new Date(), 'yyyy-MM-dd')
@@ -186,6 +187,15 @@ function DashboardContent({ role }: { role?: string }) {
           Organization Overview
         </h1>
         <ExecutiveDashboard />
+      </div>
+    )
+  }
+
+  if (role === 'IT_ADMIN') {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
+        <ItAdminDashboard />
       </div>
     )
   }

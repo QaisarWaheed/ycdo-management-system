@@ -20,6 +20,7 @@ interface DesignationSearchSelectProps {
   label?: string
   error?: boolean
   className?: string
+  categories?: string[]
 }
 
 export function DesignationSearchSelect({
@@ -28,15 +29,21 @@ export function DesignationSearchSelect({
   label = 'Designation *',
   error,
   className,
+  categories,
 }: DesignationSearchSelectProps) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const debouncedSearch = useDebounce(search, 300)
 
+  const designationParams = useMemo(() => {
+    if (!categories?.length) return undefined
+    return { categories: categories.join(',') }
+  }, [categories])
+
   const { data: designations = [], isLoading } = useQuery({
-    queryKey: ['designations'],
-    queryFn: () => designationsApi.getAll(),
+    queryKey: ['designations', designationParams],
+    queryFn: () => designationsApi.getAll(designationParams),
   })
 
   const grouped = useMemo(() => {

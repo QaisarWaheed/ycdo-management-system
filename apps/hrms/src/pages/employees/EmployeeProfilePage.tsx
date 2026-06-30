@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import {
   ChevronDown,
   ChevronRight,
+  Clock,
   Download,
   FileText,
   Fingerprint,
@@ -25,10 +26,12 @@ import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
+import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { TransferDialog } from '@/components/employees/TransferDialog'
+import { UpdateBranchDutyDialog } from '@/components/employees/UpdateBranchDutyDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -61,6 +64,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { formatDutyDisplay } from '@/lib/dutyTimes'
 import type {
   AcademicQualification,
   DocumentType,
@@ -72,6 +76,13 @@ import type {
   QualType,
   StipendRecord,
 } from '@/types'
+
+const HR_EMPLOYEE_EDIT_ROLES = [
+  'SUPER_ADMIN',
+  'HR_MANAGER',
+  'HR_ADMIN_MANAGER',
+  'ADMIN_OFFICER',
+] as const
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://187.127.115.103:3000'
 
@@ -612,6 +623,8 @@ export function EmployeeProfilePage() {
   const [letterOpen, setLetterOpen] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
+  const [branchDutyOpen, setBranchDutyOpen] = useState(false)
+  const [editDetailsOpen, setEditDetailsOpen] = useState(false)
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
   const [prevEmpOpen, setPrevEmpOpen] = useState(false)
   const [incentiveOpen, setIncentiveOpen] = useState(false)
@@ -628,6 +641,12 @@ export function EmployeeProfilePage() {
   const { data: attendanceSummary, isLoading: loadingSummary } = useQuery({
     queryKey: ['attendance-summary', id, month, year],
     queryFn: () => attendanceApi.getSummary(id, month, year),
+    enabled: !!id,
+  })
+
+  const { data: workingHours, isLoading: loadingWorkingHours } = useQuery({
+    queryKey: ['working-hours', id],
+    queryFn: () => employeesApi.getWorkingHours(id),
     enabled: !!id,
   })
 
@@ -778,10 +797,21 @@ export function EmployeeProfilePage() {
   const documents = (employee.documents ?? []) as EmployeeDocument[]
   const overtimeHours = ((attendanceSummary?.overtimeMinutes ?? 0) / 60).toFixed(1)
 
+  const canEditEmployee =
+    !!user?.role &&
+    HR_EMPLOYEE_EDIT_ROLES.includes(
+      user.role as (typeof HR_EMPLOYEE_EDIT_ROLES)[number],
+    )
+
+  const canEditBranchDuty =
+    canEditEmployee && user?.employeeId !== employee.id
+
   const hasPersonalInfo =
     employee.bloodGroup ||
     employee.caste ||
     employee.domicile ||
+    employee.province ||
+    employee.city ||
     employee.district ||
     employee.tehsil ||
     employee.policeStation ||
@@ -825,6 +855,21 @@ export function EmployeeProfilePage() {
             </span>
           </p>
           <StatusBadge status={employee.status} />
+          <p
+            className={`flex w-full items-center justify-center gap-1.5 text-sm ${
+              employee.dutyStartTime && employee.dutyEndTime
+                ? 'text-text-primary'
+                : 'text-text-secondary'
+            }`}
+          >
+            <Clock className="h-4 w-4 shrink-0" />
+            <span>
+              Duty:{' '}
+              {employee.dutyStartTime && employee.dutyEndTime
+                ? formatDutyDisplay(employee.dutyStartTime, employee.dutyEndTime)
+                : 'Not assigned'}
+            </span>
+          </p>
           <div className="w-full space-y-2 text-left text-sm">
             <p>
               <span className="text-text-secondary">Joined: </span>
@@ -843,6 +888,16 @@ export function EmployeeProfilePage() {
             </p>
           </div>
           <div className="flex w-full flex-col gap-2">
+            {canEditEmployee && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setEditDetailsOpen(true)}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit Details
+              </Button>
+            )}
             <Button
               variant="outline"
               className="w-full"
@@ -864,6 +919,15 @@ export function EmployeeProfilePage() {
             >
               Transfer
             </Button>
+            {canEditBranchDuty && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setBranchDutyOpen(true)}
+              >
+                Edit Branch & Duty
+              </Button>
+            )}
             {user?.role === 'SUPER_ADMIN' && employee.user?.id && (
               <Button
                 variant="outline"
@@ -891,12 +955,23 @@ export function EmployeeProfilePage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          {hasPersonalInfo && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Personal Info</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-lg">Personal Info</CardTitle>
+              {canEditEmployee && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditDetailsOpen(true)}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              {hasPersonalInfo ? (
+                <>
                 <div className="flex flex-wrap items-center gap-2">
                   {employee.bloodGroup && (
                     <Badge variant="outline" className="bg-red-50 text-red-700">
@@ -910,6 +985,22 @@ export function EmployeeProfilePage() {
                     </span>
                   )}
                 </div>
+                {(employee.province || employee.city) && (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {employee.province && (
+                      <p>
+                        <span className="text-text-secondary">Province: </span>
+                        {employee.province}
+                      </p>
+                    )}
+                    {employee.city && (
+                      <p>
+                        <span className="text-text-secondary">City: </span>
+                        {employee.city}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {(employee.domicile ||
                   employee.district ||
                   employee.tehsil ||
@@ -986,9 +1077,62 @@ export function EmployeeProfilePage() {
                     </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
+                </>
+              ) : (
+                <p className="text-text-secondary">
+                  No personal details recorded yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Working Hours Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loadingWorkingHours ? (
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                  {[...Array(5)].map((_, i) => (
+                    <Skeleton key={i} className="h-20" />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                  {[
+                    {
+                      label: 'Total Hours',
+                      value: workingHours?.totalHours ?? 0,
+                    },
+                    {
+                      label: 'This Month',
+                      value: workingHours?.thisMonthHours ?? 0,
+                    },
+                    {
+                      label: 'Days Worked',
+                      value: workingHours?.totalDays ?? 0,
+                    },
+                    {
+                      label: 'Avg Daily Hours',
+                      value: workingHours?.averageDailyHours ?? 0,
+                    },
+                    {
+                      label: 'Total Minutes',
+                      value: workingHours?.totalMinutes ?? 0,
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-lg border border-border p-4 text-center"
+                    >
+                      <p className="text-2xl font-bold">{item.value}</p>
+                      <p className="text-xs text-text-secondary">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
@@ -1730,6 +1874,23 @@ export function EmployeeProfilePage() {
         onOpenChange={setTransferOpen}
         employeeId={id}
         currentDesignation={employee.currentDesignation}
+      />
+      <UpdateBranchDutyDialog
+        employee={employee}
+        open={branchDutyOpen}
+        onOpenChange={setBranchDutyOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['employee', id] })
+        }}
+      />
+      <EditEmployeeDialog
+        employee={employee}
+        open={editDetailsOpen}
+        onOpenChange={setEditDetailsOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['employee', id] })
+          queryClient.invalidateQueries({ queryKey: ['employees'] })
+        }}
       />
       {employee.user?.id && (
         <ResetPasswordDialog

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X } from 'lucide-react'
@@ -10,9 +10,14 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
-import { shiftsApi } from '@/api/endpoints/shifts'
 import { CnicInput } from '@/components/common/CnicInput'
 import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
+import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
+import { dutyTimeOptions, timeToMinutes } from '@/lib/dutyTimes'
+import {
+  pakistanCities,
+  pakistanProvinces,
+} from '@/lib/pakistanData'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
 import { Button } from '@/components/ui/button'
@@ -98,6 +103,10 @@ const step1Schema = z.object({
   bloodGroup: z.string().optional(),
   caste: z.string().optional(),
   domicile: z.string().optional(),
+  province: z.string().optional(),
+  city: z.string().optional(),
+  permanentProvince: z.string().optional(),
+  permanentCity: z.string().optional(),
   district: z.string().optional(),
   tehsil: z.string().optional(),
   policeStation: z.string().optional(),
@@ -106,14 +115,30 @@ const step1Schema = z.object({
   permanentAddress: z.string().optional(),
 })
 
-const step2Schema = z.object({
-  currentBranchId: z.string().min(1, 'Branch is required'),
-  currentDepartmentId: z.string().min(1, 'Department is required'),
-  currentDesignation: z.string().min(1, 'Designation is required'),
-  joiningDate: z.string().min(1, 'Joining date is required'),
-  biometricId: z.string().optional(),
-  shiftId: z.string().optional(),
-})
+const step2Schema = z
+  .object({
+    currentBranchId: z.string().min(1, 'Branch is required'),
+    currentDepartmentId: z.string().min(1, 'Department is required'),
+    currentDesignation: z.string().min(1, 'Designation is required'),
+    joiningDate: z.string().min(1, 'Joining date is required'),
+    biometricId: z.string().optional(),
+    dutyStartTime: z.string().optional(),
+    dutyEndTime: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.dutyStartTime && data.dutyEndTime) {
+        return (
+          timeToMinutes(data.dutyEndTime) > timeToMinutes(data.dutyStartTime)
+        )
+      }
+      return true
+    },
+    {
+      message: 'End time must be after start time',
+      path: ['dutyEndTime'],
+    },
+  )
 
 const step3Schema = z.object({
   basicStipend: z
@@ -342,6 +367,10 @@ function buildStep1Payload(data: Step1Values) {
     'bloodGroup',
     'caste',
     'domicile',
+    'province',
+    'city',
+    'permanentProvince',
+    'permanentCity',
     'district',
     'tehsil',
     'policeStation',
@@ -403,6 +432,10 @@ export function EmployeeCreatePage() {
       bloodGroup: '',
       caste: '',
       domicile: '',
+      province: '',
+      city: '',
+      permanentProvince: '',
+      permanentCity: '',
       district: '',
       tehsil: '',
       policeStation: '',
@@ -420,7 +453,8 @@ export function EmployeeCreatePage() {
       currentDesignation: '',
       joiningDate: '',
       biometricId: '',
-      shiftId: '',
+      dutyStartTime: '',
+      dutyEndTime: '',
     },
   })
 
@@ -430,6 +464,9 @@ export function EmployeeCreatePage() {
   })
 
   const branchId = form2.watch('currentBranchId')
+  const departmentId = form2.watch('currentDepartmentId')
+  const selectedProvince = form1.watch('province')
+  const selectedPermanentProvince = form1.watch('permanentProvince')
 
   useEffect(() => {
     if (prefill) {
@@ -449,6 +486,10 @@ export function EmployeeCreatePage() {
         bloodGroup: '',
         caste: '',
         domicile: '',
+        province: '',
+        city: '',
+        permanentProvince: '',
+        permanentCity: '',
         district: '',
         tehsil: '',
         policeStation: '',
@@ -462,6 +503,8 @@ export function EmployeeCreatePage() {
         currentDesignation: prefill.currentDesignation ?? '',
         joiningDate: '',
         biometricId: '',
+        dutyStartTime: '',
+        dutyEndTime: '',
       })
     }
   }, [prefill, form1, form2])
@@ -477,11 +520,12 @@ export function EmployeeCreatePage() {
     enabled: !!branchId,
   })
 
-  const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', branchId],
-    queryFn: () => shiftsApi.getAll(branchId),
-    enabled: !!branchId,
-  })
+  const designationCategories = useMemo(() => {
+    if (!departmentId) return undefined
+    const dept = departments.find((d) => d.id === departmentId)
+    if (!dept) return undefined
+    return getDesignationCategoriesForDepartment(dept.name)
+  }, [departmentId, departments])
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -495,7 +539,8 @@ export function EmployeeCreatePage() {
         ...step3Data,
         staffType,
         biometricId: step2Data.biometricId || undefined,
-        shiftId: step2Data.shiftId || undefined,
+        dutyStartTime: step2Data.dutyStartTime || undefined,
+        dutyEndTime: step2Data.dutyEndTime || undefined,
       })
 
       const uploadFile = async (
@@ -967,9 +1012,20 @@ export function EmployeeCreatePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Domicile</FormLabel>
-                    <FormControl>
-                      <TextOnlyInput {...field} />
-                    </FormControl>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select province" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {pakistanProvinces.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {p}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1041,12 +1097,84 @@ export function EmployeeCreatePage() {
                 )}
               />
             </div>
+            <h3 className="text-sm font-semibold text-text-secondary">
+              Current Address
+            </h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                control={form1.control}
+                name="province"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Province</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(v) => {
+                        field.onChange(v)
+                        form1.setValue('city', '')
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select province" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {pakistanProvinces.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {p}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>City</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={!selectedProvince}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              selectedProvince
+                                ? 'Select city'
+                                : 'Select province first'
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {(selectedProvince
+                          ? pakistanCities[selectedProvince]
+                          : []
+                        ).map((c: string) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form1.control}
               name="currentAddress"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Current Address</FormLabel>
+                  <FormLabel>Street Address</FormLabel>
                   <FormControl>
                     <Textarea {...field} />
                   </FormControl>
@@ -1054,12 +1182,84 @@ export function EmployeeCreatePage() {
                 </FormItem>
               )}
             />
+            <h3 className="text-sm font-semibold text-text-secondary">
+              Permanent Address
+            </h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                control={form1.control}
+                name="permanentProvince"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Province</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(v) => {
+                        field.onChange(v)
+                        form1.setValue('permanentCity', '')
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select province" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {pakistanProvinces.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {p}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="permanentCity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>City</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={!selectedPermanentProvince}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              selectedPermanentProvince
+                                ? 'Select city'
+                                : 'Select province first'
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {(selectedPermanentProvince
+                          ? pakistanCities[selectedPermanentProvince]
+                          : []
+                        ).map((c: string) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form1.control}
               name="permanentAddress"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Permanent Address</FormLabel>
+                  <FormLabel>Street Address</FormLabel>
                   <FormControl>
                     <Textarea {...field} />
                   </FormControl>
@@ -1095,7 +1295,6 @@ export function EmployeeCreatePage() {
                       onValueChange={(v) => {
                         field.onChange(v)
                         form2.setValue('currentDepartmentId', '')
-                        form2.setValue('shiftId', '')
                       }}
                     >
                       <FormControl>
@@ -1123,7 +1322,10 @@ export function EmployeeCreatePage() {
                     <FormLabel>Department *</FormLabel>
                     <Select
                       value={field.value}
-                      onValueChange={field.onChange}
+                      onValueChange={(v) => {
+                        field.onChange(v)
+                        form2.setValue('currentDesignation', '')
+                      }}
                       disabled={!branchId}
                     >
                       <FormControl>
@@ -1152,6 +1354,7 @@ export function EmployeeCreatePage() {
                       <DesignationSearchSelect
                         value={field.value}
                         onChange={field.onChange}
+                        categories={designationCategories}
                         error={!!form2.formState.errors.currentDesignation}
                       />
                     </FormControl>
@@ -1159,34 +1362,65 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form2.control}
-                name="shiftId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Shift</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={!branchId}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Optional" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {shifts.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name} ({s.startTime} - {s.endTime})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="sm:col-span-2 space-y-3">
+                <FormLabel>Duty Hours</FormLabel>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={form2.control}
+                    name="dutyStartTime"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-text-secondary">Start</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select start time" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {dutyTimeOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form2.control}
+                    name="dutyEndTime"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-text-secondary">End</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select end time" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {dutyTimeOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
               <FormField
                 control={form2.control}
                 name="joiningDate"
