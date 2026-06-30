@@ -1,3 +1,5 @@
+import { format } from 'date-fns'
+
 export function parseTimeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number)
   return hours * 60 + (minutes ?? 0)
@@ -39,6 +41,32 @@ export function getEmployeeDutyStartTime(employee: {
   shift?: { startTime?: string } | null
 }): string {
   return employee.dutyStartTime ?? employee.shift?.startTime ?? ''
+}
+
+export function getLogLateMinutes(log: {
+  lateMinutes?: number | null
+  checkIn?: string | null
+  status?: string
+  employee?: {
+    dutyStartTime?: string | null
+    shift?: { startTime?: string } | null
+  } | null
+}): number {
+  if ((log.lateMinutes ?? 0) > 0) {
+    return log.lateMinutes ?? 0
+  }
+
+  if (!log.checkIn || !log.employee) {
+    return 0
+  }
+
+  const dutyStart = getEmployeeDutyStartTime(log.employee)
+  if (!dutyStart) {
+    return 0
+  }
+
+  const checkInTime = format(new Date(log.checkIn), 'HH:mm')
+  return calcLateMinutes(checkInTime, dutyStart)
 }
 
 export function statusFromLateMinutes(

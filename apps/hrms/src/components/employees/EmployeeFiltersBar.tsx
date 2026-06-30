@@ -98,12 +98,14 @@ export function employeeFiltersToAttendanceParams(
 type EmployeeFiltersBarProps = {
   filters: EmployeeFilterState
   onChange: (filters: EmployeeFilterState) => void
+  showSpecificShift?: boolean
   className?: string
 }
 
 export function EmployeeFiltersBar({
   filters,
   onChange,
+  showSpecificShift = true,
   className,
 }: EmployeeFiltersBarProps) {
   const { data: projects = [] } = useQuery({
@@ -228,11 +230,12 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className="space-y-1 sm:col-span-2">
+        <div className={showSpecificShift ? 'space-y-1 sm:col-span-2' : 'space-y-1'}>
           <ShiftFilterDropdowns
             shifts={shifts}
             shiftStartTime={filters.shiftStartTime}
             shiftId={filters.shiftId}
+            showSpecificShift={showSpecificShift}
             onShiftStartTimeChange={(startTime) =>
               update({
                 shiftStartTime: startTime,

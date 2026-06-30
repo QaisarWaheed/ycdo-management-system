@@ -482,6 +482,8 @@ export interface AttendanceLog {
     lastName: string
     employeeCode: string
     currentDepartmentId?: string
+    dutyStartTime?: string | null
+    shift?: { startTime?: string } | null
   }
   branch?: { name: string; address?: string | null }
 }

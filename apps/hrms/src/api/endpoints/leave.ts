@@ -5,6 +5,8 @@ export interface TodayRelieverRow {
   employee: {
     name: string
     code: string
+    designation: string
+    lastName: string
     branch: string | null
     department: string | null
   }

@@ -35,6 +35,7 @@ import {
 import { useDebounce } from '@/hooks/useDebounce'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { formatShiftTime } from '@/lib/shiftFilterUtils'
+import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 
 const PAGE_SIZE = 20
 
@@ -71,8 +72,13 @@ export function EmployeesListPage() {
     queryFn: () => employeesApi.getAll(filters),
   })
 
-  const totalPages = Math.max(1, Math.ceil(employees.length / PAGE_SIZE))
-  const paginated = employees.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const sortedEmployees = useMemo(
+    () => sortEmployeesByHierarchy(employees),
+    [employees],
+  )
+
+  const totalPages = Math.max(1, Math.ceil(sortedEmployees.length / PAGE_SIZE))
+  const paginated = sortedEmployees.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   const clearFilters = () => {
     setSearch('')
@@ -115,6 +121,7 @@ export function EmployeesListPage() {
         <EmployeeFiltersBar
           filters={employeeFilters}
           onChange={handleFiltersChange}
+          showSpecificShift={false}
         />
 
         <div className="flex justify-end">
@@ -246,12 +253,12 @@ export function EmployeesListPage() {
           </TableBody>
         </Table>
 
-        {!isLoading && employees.length > PAGE_SIZE && (
+        {!isLoading && sortedEmployees.length > PAGE_SIZE && (
           <div className="flex items-center justify-between border-t border-border px-4 py-3">
             <p className="text-sm text-text-secondary">
               Showing {page * PAGE_SIZE + 1}–
-              {Math.min((page + 1) * PAGE_SIZE, employees.length)} of{' '}
-              {employees.length}
+              {Math.min((page + 1) * PAGE_SIZE, sortedEmployees.length)} of{' '}
+              {sortedEmployees.length}
             </p>
             <div className="flex gap-2">
               <Button

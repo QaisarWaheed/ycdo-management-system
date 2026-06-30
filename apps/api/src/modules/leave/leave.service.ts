@@ -19,6 +19,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getHierarchyPriority } from '../employees/employee-hierarchy';
 import {
   ApplyLeaveDto,
   ApproveLeaveDto,
@@ -732,20 +733,28 @@ export class LeaveService {
       ];
     }
 
-    return this.prisma.employee.findMany({
+    const candidates = await this.prisma.employee.findMany({
       where,
       select: {
         id: true,
         employeeCode: true,
         firstName: true,
         lastName: true,
+        currentDesignation: true,
         shift: {
           select: { id: true, name: true, startTime: true, endTime: true },
         },
       },
-      take: 20,
-      orderBy: { firstName: 'asc' },
     });
+
+    return candidates
+      .sort((a, b) => {
+        const aPriority = getHierarchyPriority(a.currentDesignation);
+        const bPriority = getHierarchyPriority(b.currentDesignation);
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return a.lastName.localeCompare(b.lastName);
+      })
+      .slice(0, 20);
   }
 
   async findOne(leaveId: string) {
@@ -1151,6 +1160,7 @@ export class LeaveService {
             firstName: true,
             lastName: true,
             employeeCode: true,
+            currentDesignation: true,
             currentBranch: { select: { name: true, address: true } },
             currentDepartment: { select: { name: true } },
           },
@@ -1172,10 +1182,19 @@ export class LeaveService {
       orderBy: { startDate: 'asc' },
     });
 
+    leaves.sort((a, b) => {
+      const aPriority = getHierarchyPriority(a.employee.currentDesignation);
+      const bPriority = getHierarchyPriority(b.employee.currentDesignation);
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return a.employee.lastName.localeCompare(b.employee.lastName);
+    });
+
     return leaves.map((leave) => ({
       employee: {
         name: `${leave.employee.firstName} ${leave.employee.lastName}`,
         code: leave.employee.employeeCode,
+        designation: leave.employee.currentDesignation,
+        lastName: leave.employee.lastName,
         branch: formatBranchLabel(leave.employee.currentBranch),
         department: leave.employee.currentDepartment?.name ?? null,
       },

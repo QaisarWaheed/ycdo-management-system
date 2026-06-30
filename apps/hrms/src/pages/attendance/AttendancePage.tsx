@@ -48,6 +48,7 @@ import {
   calcOvertimeMinutes,
   combineDateAndTime,
   getEmployeeDutyStartTime,
+  getLogLateMinutes,
   showsTimeFields,
   statusFromLateMinutes,
 } from '@/lib/attendanceUtils'
@@ -61,6 +62,7 @@ import {
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
 import { cn } from '@/lib/utils'
+import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import {
   ATTENDANCE_STATUSES,
   type AttendanceLog,
@@ -246,7 +248,9 @@ function DailyLogTab({
                 </TableCell>
               </TableRow>
             ) : (
-              attendanceLogs.map((log) => (
+              attendanceLogs.map((log) => {
+                const displayLateMinutes = getLogLateMinutes(log)
+                return (
                 <TableRow key={log.id}>
                   <TableCell className="font-mono text-sm">
                     {log.employee?.employeeCode ?? '—'}
@@ -270,10 +274,10 @@ function DailyLogTab({
                   </TableCell>
                   <TableCell
                     className={cn(
-                      (log.lateMinutes ?? 0) > 0 && 'font-medium text-red-600',
+                      displayLateMinutes > 0 && 'font-medium text-red-600',
                     )}
                   >
-                    {(log.lateMinutes ?? 0) > 0 ? log.lateMinutes : '—'}
+                    {displayLateMinutes > 0 ? displayLateMinutes : '—'}
                   </TableCell>
                   <TableCell
                     className={cn(
@@ -312,7 +316,8 @@ function DailyLogTab({
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))
+                )
+              })
             )}
           </TableBody>
         </Table>
@@ -696,10 +701,15 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
     return map
   }, [existingLogs])
 
+  const sortedEmployees = useMemo(
+    () => sortEmployeesByHierarchy(employees),
+    [employees],
+  )
+
   const { notAttendedEmployees, attendedEmployees } = useMemo(() => {
     const notAttended: Employee[] = []
     const attended: Employee[] = []
-    for (const emp of employees) {
+    for (const emp of sortedEmployees) {
       if (logByEmployee.has(emp.id)) {
         attended.push(emp)
       } else {
@@ -710,7 +720,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
       notAttendedEmployees: notAttended,
       attendedEmployees: attended,
     }
-  }, [employees, logByEmployee])
+  }, [sortedEmployees, logByEmployee])
 
   const renderBulkEmployeeRow = (emp: Employee, editable: boolean) => {
     const log = logByEmployee.get(emp.id)
@@ -1030,7 +1040,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {employees.length === 0 ? (
+                {sortedEmployees.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-text-secondary">
                       No employees found

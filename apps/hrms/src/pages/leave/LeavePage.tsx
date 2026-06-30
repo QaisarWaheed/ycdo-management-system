@@ -56,6 +56,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { getHierarchyPriority } from '@/lib/employeeHierarchy'
 import { useAuthStore } from '@/store/auth.store'
 import { cn } from '@/lib/utils'
 import {
@@ -130,6 +131,17 @@ function TodayRelieversModal({
     enabled: open,
   })
 
+  const sortedRows = useMemo(
+    () =>
+      [...rows].sort((a, b) => {
+        const aPriority = getHierarchyPriority(a.employee.designation ?? '')
+        const bPriority = getHierarchyPriority(b.employee.designation ?? '')
+        if (aPriority !== bPriority) return aPriority - bPriority
+        return a.employee.lastName.localeCompare(b.employee.lastName)
+      }),
+    [rows],
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl">
@@ -158,14 +170,14 @@ function TodayRelieversModal({
                     ))}
                   </TableRow>
                 ))
-              ) : rows.length === 0 ? (
+              ) : sortedRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="py-8 text-center text-text-secondary">
                     No employees on leave with relievers today
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((row, idx) => (
+                sortedRows.map((row, idx) => (
                   <TableRow key={idx}>
                     <TableCell>
                       <div>

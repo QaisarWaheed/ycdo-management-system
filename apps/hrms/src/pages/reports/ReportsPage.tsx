@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { AttendanceLog, DistrictSummary, Employee } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 
 const ALL = 'ALL'
 const now = new Date()
@@ -185,12 +186,14 @@ function useReports(): ReportDef[] {
           { key: 'joiningDate', label: 'Joining Date' },
         ],
         fetchFn: async (f) => {
-          const employees = await employeesApi.getAll({
-            branchId: f.branchId !== ALL ? f.branchId : undefined,
-            departmentId: f.departmentId !== ALL ? f.departmentId : undefined,
-            status: f.status !== ALL ? f.status : undefined,
-          })
-          return (employees as Employee[]).map((e) => ({
+          const employees = sortEmployeesByHierarchy(
+            (await employeesApi.getAll({
+              branchId: f.branchId !== ALL ? f.branchId : undefined,
+              departmentId: f.departmentId !== ALL ? f.departmentId : undefined,
+              status: f.status !== ALL ? f.status : undefined,
+            })) as Employee[],
+          )
+          return employees.map((e) => ({
             employeeCode: e.employeeCode,
             name: `${e.firstName} ${e.lastName}`,
             designation: e.currentDesignation,
@@ -239,8 +242,10 @@ function useReports(): ReportDef[] {
           { key: 'joiningDate', label: 'Joining Date' },
         ],
         fetchFn: async () => {
-          const employees = await employeesApi.getAll({ status: 'TRAINEE' })
-          return (employees as Employee[]).map((e) => ({
+          const employees = sortEmployeesByHierarchy(
+            (await employeesApi.getAll({ status: 'TRAINEE' })) as Employee[],
+          )
+          return employees.map((e) => ({
             employeeCode: e.employeeCode,
             name: `${e.firstName} ${e.lastName}`,
             designation: e.currentDesignation,
@@ -266,8 +271,10 @@ function useReports(): ReportDef[] {
           { key: 'joiningDate', label: 'Joining Date' },
         ],
         fetchFn: async () => {
-          const employees = await employeesApi.getAll({ status: 'APPOINTED' })
-          return (employees as Employee[]).map((e) => ({
+          const employees = sortEmployeesByHierarchy(
+            (await employeesApi.getAll({ status: 'APPOINTED' })) as Employee[],
+          )
+          return employees.map((e) => ({
             employeeCode: e.employeeCode,
             name: `${e.firstName} ${e.lastName}`,
             designation: e.currentDesignation,
@@ -343,11 +350,13 @@ function useReports(): ReportDef[] {
         fetchFn: async (f) => {
           const month = Number(f.month)
           const year = Number(f.year)
-          const employees = await employeesApi.getAll({
-            branchId: f.branchId !== ALL ? f.branchId : undefined,
-          })
+          const employees = sortEmployeesByHierarchy(
+            (await employeesApi.getAll({
+              branchId: f.branchId !== ALL ? f.branchId : undefined,
+            })) as Employee[],
+          )
           const rows: Record<string, unknown>[] = []
-          for (const emp of employees as Employee[]) {
+          for (const emp of employees) {
             const summary = await attendanceApi.getSummary(emp.id, month, year)
             rows.push({
               employeeCode: emp.employeeCode,
@@ -619,10 +628,12 @@ function useReports(): ReportDef[] {
           { key: 'status', label: 'Status' },
         ],
         fetchFn: async (f) => {
-          const employees = await employeesApi.getAll({
-            departmentId: f.departmentId || undefined,
-          })
-          return (employees as Employee[]).map((e) => ({
+          const employees = sortEmployeesByHierarchy(
+            (await employeesApi.getAll({
+              departmentId: f.departmentId || undefined,
+            })) as Employee[],
+          )
+          return employees.map((e) => ({
             employeeCode: e.employeeCode,
             name: `${e.firstName} ${e.lastName}`,
             designation: e.currentDesignation,

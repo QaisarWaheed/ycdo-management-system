@@ -16,6 +16,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LettersService } from '../letters/letters.service';
 import { generateEmployeeCode } from './employee-code.helper';
+import { getHierarchyPriority } from './employee-hierarchy';
 import {
   ChangeStatusDto,
   CreateEmployeeDto,
@@ -26,18 +27,6 @@ import {
 } from './employees.dto';
 
 export type EmployeeFilters = EmployeeQueryDto;
-
-const HIERARCHY_ORDER: Record<string, number> = {
-  Management: 1,
-  Admin: 2,
-  Medical: 3,
-  Nursing: 4,
-  'Allied Health': 5,
-  IT: 6,
-  Finance: 7,
-  VTI: 8,
-  Support: 9,
-};
 
 @Injectable()
 export class EmployeesService {
@@ -328,33 +317,20 @@ export class EmployeesService {
       }
     }
 
-    const [employees, designations] = await Promise.all([
-      this.prisma.employee.findMany({
-        where,
-        include: {
-          currentBranch: { select: { name: true, address: true } },
-          currentDepartment: { select: { name: true } },
-          shift: { select: { id: true, name: true, startTime: true, endTime: true } },
-        },
-      }),
-      this.prisma.designation.findMany({
-        where: { isActive: true },
-        select: { title: true, category: true },
-      }),
-    ]);
-
-    const categoryByTitle = new Map(
-      designations.map((d) => [d.title.toLowerCase(), d.category]),
-    );
-
-    const getCategory = (title: string) =>
-      categoryByTitle.get(title.toLowerCase()) ?? 'Other';
+    const employees = await this.prisma.employee.findMany({
+      where,
+      include: {
+        currentBranch: { select: { name: true, address: true } },
+        currentDepartment: { select: { name: true } },
+        shift: { select: { id: true, name: true, startTime: true, endTime: true } },
+      },
+    });
 
     return employees.sort((a, b) => {
-      const aPriority = HIERARCHY_ORDER[getCategory(a.currentDesignation)] ?? 99;
-      const bPriority = HIERARCHY_ORDER[getCategory(b.currentDesignation)] ?? 99;
+      const aPriority = getHierarchyPriority(a.currentDesignation);
+      const bPriority = getHierarchyPriority(b.currentDesignation);
       if (aPriority !== bPriority) return aPriority - bPriority;
-      return a.firstName.localeCompare(b.firstName);
+      return a.lastName.localeCompare(b.lastName);
     });
   }
 

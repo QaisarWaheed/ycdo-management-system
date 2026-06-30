@@ -24,6 +24,7 @@ type ShiftFilterDropdownsProps = {
   shiftId: string
   onShiftStartTimeChange: (startTime: string) => void
   onShiftIdChange: (shiftId: string) => void
+  showSpecificShift?: boolean
   className?: string
   triggerClassName?: string
 }
@@ -34,6 +35,7 @@ export function ShiftFilterDropdowns({
   shiftId,
   onShiftStartTimeChange,
   onShiftIdChange,
+  showSpecificShift = true,
   className,
   triggerClassName,
 }: ShiftFilterDropdownsProps) {
@@ -71,30 +73,32 @@ export function ShiftFilterDropdowns({
         </Select>
       </div>
 
-      <div className="space-y-1">
-        <Label>Specific Shift</Label>
-        <Select
-          value={shiftId || ALL_SHIFTS_AT_START}
-          onValueChange={onShiftIdChange}
-          disabled={!shiftStartTime}
-        >
-          <SelectTrigger className={triggerClassName}>
-            <SelectValue placeholder="Select shift" />
-          </SelectTrigger>
-          <SelectContent>
-            {shiftStartTime && (
-              <SelectItem value={ALL_SHIFTS_AT_START}>
-                {allShiftsAtStartLabel(shiftStartTime)}
-              </SelectItem>
-            )}
-            {matchingShifts.map((shift) => (
-              <SelectItem key={shift.id} value={shift.id}>
-                {formatShiftOptionLabel(shift)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {showSpecificShift && (
+        <div className="space-y-1">
+          <Label>Specific Shift</Label>
+          <Select
+            value={shiftId || ALL_SHIFTS_AT_START}
+            onValueChange={onShiftIdChange}
+            disabled={!shiftStartTime}
+          >
+            <SelectTrigger className={triggerClassName}>
+              <SelectValue placeholder="Select shift" />
+            </SelectTrigger>
+            <SelectContent>
+              {shiftStartTime && (
+                <SelectItem value={ALL_SHIFTS_AT_START}>
+                  {allShiftsAtStartLabel(shiftStartTime)}
+                </SelectItem>
+              )}
+              {matchingShifts.map((shift) => (
+                <SelectItem key={shift.id} value={shift.id}>
+                  {formatShiftOptionLabel(shift)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   )
 }

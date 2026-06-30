@@ -24,6 +24,10 @@ import {
   UpdateAttendanceDto,
 } from './attendance.dto';
 import { applyDisciplineRules } from './discipline.helper';
+import {
+  computeLateMinutesFromCheckIn,
+  resolveDutyStartTime,
+} from './attendance-late.util';
 import { haversineMeters } from './geo.helper';
 
 const OVERTIME_GRACE_MINUTES = 60;
@@ -104,7 +108,6 @@ export class AttendanceService {
 
         if (effectiveStatus === AttendanceStatus.HALF_DAY) {
           status = AttendanceStatus.HALF_DAY;
-          lateMinutes = 0;
         }
 
         const created = await tx.attendanceLog.create({
@@ -187,9 +190,22 @@ export class AttendanceService {
         status === AttendanceStatus.LATE ||
         status === AttendanceStatus.HALF_DAY)
     ) {
+      const dutyStart = resolveDutyStartTime(employee);
+      const computedLate = dutyStart
+        ? computeLateMinutesFromCheckIn(checkIn, dutyStart)
+        : this.determineCheckInStatus(checkIn, employee.shift).lateMinutes;
+
+      if (typeof dto.lateMinutes === 'number' && dto.lateMinutes > 0) {
+        lateMinutes = dto.lateMinutes;
+      } else {
+        lateMinutes = computedLate;
+      }
+
       const derived = this.determineCheckInStatus(checkIn, employee.shift);
-      lateMinutes = dto.lateMinutes ?? derived.lateMinutes;
-      if (status === AttendanceStatus.PRESENT && derived.status === AttendanceStatus.LATE) {
+      if (
+        status === AttendanceStatus.PRESENT &&
+        derived.status === AttendanceStatus.LATE
+      ) {
         status = AttendanceStatus.LATE;
       }
     }
@@ -228,7 +244,6 @@ export class AttendanceService {
 
       if (effectiveStatus === AttendanceStatus.HALF_DAY) {
         status = AttendanceStatus.HALF_DAY;
-        lateMinutes = 0;
       }
 
       const attendanceLog = await tx.attendanceLog.upsert({
@@ -489,7 +504,13 @@ export class AttendanceService {
       where,
       include: {
         employee: {
-          select: { firstName: true, lastName: true, employeeCode: true },
+          select: {
+            firstName: true,
+            lastName: true,
+            employeeCode: true,
+            dutyStartTime: true,
+            shift: { select: { startTime: true } },
+          },
         },
         branch: { select: { name: true, address: true } },
       },
@@ -729,7 +750,6 @@ export class AttendanceService {
 
       if (effectiveStatus === AttendanceStatus.HALF_DAY) {
         status = AttendanceStatus.HALF_DAY;
-        lateMinutes = 0;
       }
 
       await tx.attendanceLog.upsert({
@@ -872,7 +892,10 @@ export class AttendanceService {
           lateMinutes: checkInMinutes - (defaultStart + 15),
         };
       }
-      return { status: AttendanceStatus.HALF_DAY, lateMinutes: 0 };
+      return {
+        status: AttendanceStatus.HALF_DAY,
+        lateMinutes: checkInMinutes - (defaultStart + 15),
+      };
     }
 
     const startMinutes = this.parseTimeToMinutes(shift.startTime);
@@ -884,14 +907,16 @@ export class AttendanceService {
       return { status: AttendanceStatus.PRESENT, lateMinutes: 0 };
     }
 
+    const lateMinutes = checkInMinutes - graceEnd;
+
     if (checkInMinutes <= midpoint) {
       return {
         status: AttendanceStatus.LATE,
-        lateMinutes: checkInMinutes - graceEnd,
+        lateMinutes,
       };
     }
 
-    return { status: AttendanceStatus.HALF_DAY, lateMinutes: 0 };
+    return { status: AttendanceStatus.HALF_DAY, lateMinutes };
   }
 
   private calculateOvertimeMinutes(
