@@ -161,9 +161,9 @@ export function ApproveRejectDialog({
 
 export function canApproveLeave(
   role: string | undefined,
-  leave: LeaveRecord,
+  leave: LeaveRecord | null | undefined,
 ): ApprovalRole | null {
-  if (!role) return null
+  if (!role || !leave) return null
   if (role === 'SUPER_ADMIN') return 'SUPER_ADMIN'
   if (role === 'BRANCH_MANAGER' && leave.status === 'PENDING') {
     return 'BRANCH_MANAGER'

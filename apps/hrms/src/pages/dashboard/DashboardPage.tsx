@@ -30,6 +30,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
+import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
 import { BranchManagerDashboard } from '@/pages/dashboard/BranchManagerDashboard'
 import { DeptInchargeDashboard } from '@/pages/dashboard/DeptInchargeDashboard'
 import { ExecutiveDashboard } from '@/pages/dashboard/ExecutiveDashboard'
@@ -143,6 +144,14 @@ export function DashboardPage() {
   const { user } = useAuth()
   const role = user?.role
 
+  return (
+    <DashboardErrorBoundary>
+      <DashboardContent role={role} />
+    </DashboardErrorBoundary>
+  )
+}
+
+function DashboardContent({ role }: { role?: string }) {
   if (role === 'BRANCH_MANAGER') {
     return (
       <div className="space-y-6">

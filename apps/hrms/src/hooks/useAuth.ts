@@ -9,6 +9,8 @@ export function useAuth() {
     return roles.includes(user.role)
   }
 
+  const hasEmployeeProfile = !!user?.employeeId
+
   return {
     token,
     user,
@@ -17,5 +19,6 @@ export function useAuth() {
     logout,
     hydrate,
     hasRole,
+    hasEmployeeProfile,
   }
 }

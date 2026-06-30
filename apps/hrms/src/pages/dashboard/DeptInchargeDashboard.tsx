@@ -120,13 +120,17 @@ export function DeptInchargeDashboard({
         </CardContent>
       </Card>
 
-      <ApproveRejectDialog
-        leave={reviewLeave}
-        role={canApproveLeave(user?.role, reviewLeave!) ?? 'ADMIN_OFFICER'}
-        open={!!reviewLeave}
-        onOpenChange={(open) => !open && setReviewLeave(null)}
-        onSuccess={() => refetch()}
-      />
+      {reviewLeave && (
+        <ApproveRejectDialog
+          leave={reviewLeave}
+          role={
+            canApproveLeave(user?.role, reviewLeave) ?? 'ADMIN_OFFICER'
+          }
+          open={!!reviewLeave}
+          onOpenChange={(open) => !open && setReviewLeave(null)}
+          onSuccess={() => refetch()}
+        />
+      )}
     </div>
   )
 }

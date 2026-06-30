@@ -133,15 +133,18 @@ export function HrOperationsDashboard() {
         </CardContent>
       </Card>
 
-      <ApproveRejectDialog
-        leave={reviewLeave}
-        role={
-          canApproveLeave(user?.role, reviewLeave!) ?? 'HR_OPERATIONS_MANAGER'
-        }
-        open={!!reviewLeave}
-        onOpenChange={(open) => !open && setReviewLeave(null)}
-        onSuccess={() => refetch()}
-      />
+      {reviewLeave && (
+        <ApproveRejectDialog
+          leave={reviewLeave}
+          role={
+            canApproveLeave(user?.role, reviewLeave) ??
+            'HR_OPERATIONS_MANAGER'
+          }
+          open={!!reviewLeave}
+          onOpenChange={(open) => !open && setReviewLeave(null)}
+          onSuccess={() => refetch()}
+        />
+      )}
     </div>
   )
 }
