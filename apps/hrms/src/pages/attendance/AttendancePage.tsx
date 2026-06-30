@@ -7,6 +7,7 @@ import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
+import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import {
@@ -47,10 +48,10 @@ import {
   showsTimeFields,
   statusFromLateMinutes,
 } from '@/lib/attendanceUtils'
+import { ShiftFilterDropdowns } from '@/components/employees/ShiftFilterDropdowns'
 import {
-  getShiftIdsForStartTime,
-  getUniqueShiftStartTimes,
-  shiftStartTimeFilterLabel,
+  ALL_SHIFTS_AT_START,
+  resolveShiftIds,
 } from '@/lib/shiftFilterUtils'
 import { cn } from '@/lib/utils'
 import {
@@ -163,11 +164,10 @@ function DailyLogTab({
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <Label>Date</Label>
-            <Input
-              type="date"
+            <DateInput
               className="w-[160px]"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={setDate}
             />
           </div>
 
@@ -436,7 +436,7 @@ function SingleManualTab() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1">
           <Label>Date *</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <DateInput value={date} onChange={setDate} />
         </div>
         <div className="space-y-1">
           <Label>Status *</Label>
@@ -567,6 +567,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
   const [branchId, setBranchId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
   const [shiftStartTime, setShiftStartTime] = useState('')
+  const [shiftId, setShiftId] = useState('')
   const [date, setDate] = useState(today)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -597,14 +598,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
     queryFn: () => shiftsApi.getAll(branchId || undefined),
   })
 
-  const uniqueStartTimes = useMemo(
-    () => getUniqueShiftStartTimes(shifts),
-    [shifts],
-  )
-
-  const shiftIdsParam = shiftStartTime
-    ? getShiftIdsForStartTime(shifts, shiftStartTime) || undefined
-    : undefined
+  const shiftIdsParam = resolveShiftIds(shiftStartTime, shiftId, shifts)
 
   const { data: employees = [], refetch: refetchEmployees } = useQuery({
     queryKey: [
@@ -612,6 +606,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
       branchId,
       departmentId,
       shiftStartTime,
+      shiftId,
     ],
     queryFn: () =>
       employeesApi.getAll({
@@ -738,6 +733,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
               setBranchId(v)
               setDepartmentId('')
               setShiftStartTime('')
+              setShiftId('')
               setLoaded(false)
             }}
           >
@@ -777,37 +773,29 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
           </Select>
         </div>
 
-        <div className="space-y-1">
-          <Label>Shift</Label>
-          <Select
-            value={shiftStartTime || 'all'}
-            onValueChange={(v) => {
-              setShiftStartTime(v === 'all' ? '' : v)
-              setLoaded(false)
-            }}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="All Shifts" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Shifts</SelectItem>
-              {uniqueStartTimes.map((startTime) => (
-                <SelectItem key={startTime} value={startTime}>
-                  {shiftStartTimeFilterLabel(startTime)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <ShiftFilterDropdowns
+          shifts={shifts}
+          shiftStartTime={shiftStartTime}
+          shiftId={shiftId}
+          triggerClassName="w-[180px]"
+          onShiftStartTimeChange={(startTime) => {
+            setShiftStartTime(startTime)
+            setShiftId(startTime ? ALL_SHIFTS_AT_START : '')
+            setLoaded(false)
+          }}
+          onShiftIdChange={(id) => {
+            setShiftId(id)
+            setLoaded(false)
+          }}
+        />
 
         <div className="space-y-1">
           <Label>Date</Label>
-          <Input
-            type="date"
+          <DateInput
             className="w-[160px]"
             value={date}
-            onChange={(e) => {
-              setDate(e.target.value)
+            onChange={(value) => {
+              setDate(value)
               setLoaded(false)
             }}
           />
@@ -1021,11 +1009,10 @@ function RelieverSessionsTab() {
     <div className="space-y-4">
       <div className="space-y-1">
         <Label>Date</Label>
-        <Input
-          type="date"
+        <DateInput
           className="w-[160px]"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={setDate}
         />
       </div>
 

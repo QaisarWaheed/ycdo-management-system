@@ -5,7 +5,7 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
 import { shiftsApi } from '@/api/endpoints/shifts'
-import { Input } from '@/components/ui/input'
+import { DateInput } from '@/components/common/DateInput'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -14,10 +14,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { ShiftFilterDropdowns } from '@/components/employees/ShiftFilterDropdowns'
 import {
-  getShiftIdsForStartTime,
-  getUniqueShiftStartTimes,
-  shiftStartTimeFilterLabel,
+  ALL_SHIFTS_AT_START,
+  resolveShiftIds,
 } from '@/lib/shiftFilterUtils'
 import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
@@ -33,6 +33,7 @@ export type EmployeeFilterState = {
   district: string
   gender: string
   shiftStartTime: string
+  shiftId: string
   joinedFrom: string
   joinedTo: string
 }
@@ -46,6 +47,7 @@ export const EMPTY_EMPLOYEE_FILTERS: EmployeeFilterState = {
   district: ALL_FILTER,
   gender: ALL_FILTER,
   shiftStartTime: '',
+  shiftId: '',
   joinedFrom: '',
   joinedTo: '',
 }
@@ -54,9 +56,11 @@ export function employeeFiltersToParams(
   filters: EmployeeFilterState,
   shifts: Array<{ id: string; startTime: string }> = [],
 ) {
-  const shiftIds = filters.shiftStartTime
-    ? getShiftIdsForStartTime(shifts, filters.shiftStartTime) || undefined
-    : undefined
+  const shiftIds = resolveShiftIds(
+    filters.shiftStartTime,
+    filters.shiftId,
+    shifts,
+  )
 
   return {
     projectId: filters.projectId || undefined,
@@ -126,11 +130,6 @@ export function EmployeeFiltersBar({
       shiftsApi.getAll(filters.branchId ? filters.branchId : undefined),
   })
 
-  const uniqueStartTimes = useMemo(
-    () => getUniqueShiftStartTimes(shifts),
-    [shifts],
-  )
-
   const { data: filterOptions } = useQuery({
     queryKey: ['employees', 'filter-options'],
     queryFn: () => employeesApi.getFilterOptions(),
@@ -151,6 +150,7 @@ export function EmployeeFiltersBar({
       branchId: '',
       departmentId: '',
       shiftStartTime: '',
+      shiftId: '',
     })
   }
 
@@ -159,6 +159,7 @@ export function EmployeeFiltersBar({
       branchId: value === 'all' ? '' : value,
       departmentId: '',
       shiftStartTime: '',
+      shiftId: '',
     })
   }
 
@@ -227,26 +228,19 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className="space-y-1">
-          <Label>Shift</Label>
-          <Select
-            value={filters.shiftStartTime || 'all'}
-            onValueChange={(v) =>
-              update({ shiftStartTime: v === 'all' ? '' : v })
+        <div className="space-y-1 sm:col-span-2">
+          <ShiftFilterDropdowns
+            shifts={shifts}
+            shiftStartTime={filters.shiftStartTime}
+            shiftId={filters.shiftId}
+            onShiftStartTimeChange={(startTime) =>
+              update({
+                shiftStartTime: startTime,
+                shiftId: startTime ? ALL_SHIFTS_AT_START : '',
+              })
             }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="All Shifts" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Shifts</SelectItem>
-              {uniqueStartTimes.map((startTime) => (
-                <SelectItem key={startTime} value={startTime}>
-                  {shiftStartTimeFilterLabel(startTime)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onShiftIdChange={(shiftId) => update({ shiftId })}
+          />
         </div>
 
         <div className="space-y-1">
@@ -331,23 +325,21 @@ export function EmployeeFiltersBar({
 
         <div className="space-y-1">
           <Label>Joined From</Label>
-          <Input
-            type="date"
+          <DateInput
             min="1990-01-01"
             max="2099-12-31"
             value={filters.joinedFrom}
-            onChange={(e) => update({ joinedFrom: e.target.value })}
+            onChange={(value) => update({ joinedFrom: value })}
           />
         </div>
 
         <div className="space-y-1">
           <Label>Joined To</Label>
-          <Input
-            type="date"
+          <DateInput
             min="1990-01-01"
             max="2099-12-31"
             value={filters.joinedTo}
-            onChange={(e) => update({ joinedTo: e.target.value })}
+            onChange={(value) => update({ joinedTo: value })}
           />
         </div>
       </div>

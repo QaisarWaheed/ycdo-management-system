@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { z } from 'zod'
 import { employeesApi } from '@/api/endpoints/employees'
+import { DateInput } from '@/components/common/DateInput'
 import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
@@ -299,7 +300,13 @@ export function EditEmployeeDialog({
                     <FormItem>
                       <FormLabel>Date of Birth</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} />
+                        <DateInput
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -489,7 +496,13 @@ export function EditEmployeeDialog({
                     <FormItem>
                       <FormLabel>Joining Date</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} />
+                        <DateInput
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

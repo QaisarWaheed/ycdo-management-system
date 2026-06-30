@@ -6,6 +6,7 @@ import { CheckCircle, Clock, MapPin, Plus, XCircle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { branchChangeRequestApi } from '@/api/endpoints/branchChangeRequest'
+import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { Badge } from '@/components/ui/badge'
@@ -250,7 +251,13 @@ function NewRequestDialog({
                   <FormItem>
                     <FormLabel>Start Date</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DateInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -263,7 +270,13 @@ function NewRequestDialog({
                   <FormItem>
                     <FormLabel>End Date</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DateInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -415,21 +428,19 @@ function RequestsTab() {
 
         <div className="space-y-1">
           <Label>From</Label>
-          <Input
-            type="date"
+          <DateInput
             className="w-[150px]"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={setStartDate}
           />
         </div>
 
         <div className="space-y-1">
           <Label>To</Label>
-          <Input
-            type="date"
+          <DateInput
             className="w-[150px]"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={setEndDate}
           />
         </div>
       </div>

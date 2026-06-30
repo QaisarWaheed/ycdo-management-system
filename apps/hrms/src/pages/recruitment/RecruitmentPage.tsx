@@ -7,6 +7,7 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { recruitmentApi } from '@/api/endpoints/recruitment'
 import { shiftsApi } from '@/api/endpoints/shifts'
+import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { PKRInput } from '@/components/common/PKRInput'
 import { StatusBadge } from '@/components/employees/StatusBadge'
@@ -105,7 +106,7 @@ function ScheduleInterviewDialog({
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>Interview Date</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput value={date} onChange={setDate} />
           </div>
           <div className="space-y-2">
             <Label>Interview Time</Label>

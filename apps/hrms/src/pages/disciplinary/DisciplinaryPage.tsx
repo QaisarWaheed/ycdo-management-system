@@ -6,6 +6,7 @@ import { MoreHorizontal } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
+import { DateInput } from '@/components/common/DateInput'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -216,7 +217,13 @@ function NewActionDialog({
                 <FormItem>
                   <FormLabel>Issued Date</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} />
+                    <DateInput
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -566,11 +573,11 @@ function ActionsTab({
         </div>
         <div className="space-y-1">
           <Label>From</Label>
-          <Input type="date" className="w-[140px]" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          <DateInput className="w-[140px]" value={startDate} onChange={setStartDate} />
         </div>
         <div className="space-y-1">
           <Label>To</Label>
-          <Input type="date" className="w-[140px]" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          <DateInput className="w-[140px]" value={endDate} onChange={setEndDate} />
         </div>
       </div>
 

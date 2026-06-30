@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/table'
 import { useDebounce } from '@/hooks/useDebounce'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { formatShiftTime } from '@/lib/shiftFilterUtils'
 
 const PAGE_SIZE = 20
 
@@ -131,6 +132,7 @@ export function EmployeesListPage() {
               <TableHead>Full Name</TableHead>
               <TableHead>Designation</TableHead>
               <TableHead>Department</TableHead>
+              <TableHead>Shift</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Joining Date</TableHead>
               <TableHead className="w-[50px]" />
@@ -140,7 +142,7 @@ export function EmployeesListPage() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(7)].map((__, j) => (
+                  {[...Array(8)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -149,7 +151,7 @@ export function EmployeesListPage() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-48 text-center">
+                <TableCell colSpan={8} className="h-48 text-center">
                   <div className="flex flex-col items-center gap-2 text-text-secondary">
                     <Users className="h-10 w-10 opacity-40" />
                     <p>No employees found</p>
@@ -184,6 +186,19 @@ export function EmployeesListPage() {
                         {formatBranchLabel(emp.currentBranch)}
                       </p>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {emp.shift ? (
+                      <div>
+                        <p className="font-medium">{emp.shift.name}</p>
+                        <p className="text-xs text-text-secondary">
+                          {formatShiftTime(emp.shift.startTime)} -{' '}
+                          {formatShiftTime(emp.shift.endTime)}
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="text-text-secondary">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={emp.status} />

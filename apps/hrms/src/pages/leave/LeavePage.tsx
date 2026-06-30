@@ -15,6 +15,7 @@ import {
   type ApprovalRole,
 } from '@/components/leave/ApproveRejectDialog'
 import { StageBadge } from '@/components/leave/StageBadge'
+import { DateInput } from '@/components/common/DateInput'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { Badge } from '@/components/ui/badge'
@@ -34,7 +35,6 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -631,7 +631,13 @@ function EmergencyLeaveDialog({
                   <FormItem>
                     <FormLabel>Start Date</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DateInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -644,7 +650,13 @@ function EmergencyLeaveDialog({
                   <FormItem>
                     <FormLabel>End Date</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DateInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -817,7 +829,13 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
               <FormItem>
                 <FormLabel>Start Date</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} />
+                  <DateInput
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                    ref={field.ref}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -830,7 +848,13 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
               <FormItem>
                 <FormLabel>End Date</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} />
+                  <DateInput
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                    ref={field.ref}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

@@ -25,6 +25,7 @@ import {
 import { lettersApi } from '@/api/endpoints/letters'
 import { letterRepliesApi } from '@/api/endpoints/letterReplies'
 import { notificationsApi } from '@/api/endpoints/notifications'
+import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { Badge } from '@/components/ui/badge'
@@ -634,21 +635,19 @@ export function LettersPage() {
 
         <div className="space-y-1">
           <Label>From</Label>
-          <Input
-            type="date"
+          <DateInput
             className="w-[150px]"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={setStartDate}
           />
         </div>
 
         <div className="space-y-1">
           <Label>To</Label>
-          <Input
-            type="date"
+          <DateInput
             className="w-[150px]"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={setEndDate}
           />
         </div>
 

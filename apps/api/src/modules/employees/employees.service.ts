@@ -334,7 +334,7 @@ export class EmployeesService {
         include: {
           currentBranch: { select: { name: true, address: true } },
           currentDepartment: { select: { name: true } },
-          shift: { select: { id: true, name: true } },
+          shift: { select: { id: true, name: true, startTime: true, endTime: true } },
         },
       }),
       this.prisma.designation.findMany({

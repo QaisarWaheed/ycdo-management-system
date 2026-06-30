@@ -10,6 +10,7 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { stipendReceiptsApi } from '@/api/endpoints/stipendReceipts'
+import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
@@ -868,7 +869,13 @@ function StipendIncrementTab() {
             <FormItem>
               <FormLabel>Effective From</FormLabel>
               <FormControl>
-                <Input type="date" {...field} />
+                <DateInput
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  ref={field.ref}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

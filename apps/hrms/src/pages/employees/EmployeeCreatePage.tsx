@@ -11,6 +11,7 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
+import { DateInput } from '@/components/common/DateInput'
 import { CnicInput } from '@/components/common/CnicInput'
 import { DesignationSearchSelect } from '@/components/common/DesignationSearchSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
@@ -973,7 +974,13 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Date of Birth *</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DateInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1296,11 +1303,14 @@ export function EmployeeCreatePage() {
                   <FormItem>
                     <FormLabel>Joining Date *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="date"
+                      <DateInput
                         min="1990-01-01"
                         max="2099-12-31"
-                        {...field}
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />
