@@ -22,7 +22,12 @@ export class DepartmentsController {
   constructor(private departmentsService: DepartmentsService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.IT_ADMIN)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
+  )
   create(@Body() dto: CreateDepartmentDto) {
     return this.departmentsService.create(dto);
   }

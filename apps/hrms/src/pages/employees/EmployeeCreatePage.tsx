@@ -1,6 +1,6 @@
 import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
@@ -18,6 +18,11 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
+import {
+  createDepartmentInline,
+  createDesignationInline,
+  findDepartmentByName,
+} from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
   BLOOD_GROUP_OPTIONS,
@@ -438,6 +443,7 @@ function buildStep1Payload(data: Step1Values) {
 
 export function EmployeeCreatePage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const location = useLocation()
   const prefill = (location.state as { prefill?: EmployeePrefill } | null)
     ?.prefill
@@ -583,21 +589,27 @@ export function EmployeeCreatePage() {
   }, [departmentId, departments])
 
   const designationParams = useMemo(() => {
-    if (!designationCategories?.length) return undefined
+    if (!departmentId) return undefined
+    if (!designationCategories?.length) return {}
     return { categories: designationCategories.join(',') }
-  }, [designationCategories])
+  }, [departmentId, designationCategories])
 
   const { data: designations = [] } = useQuery({
     queryKey: ['designations', designationParams],
     queryFn: () => designationsApi.getAll(designationParams),
-    enabled: !!departmentId && !!designationCategories?.length,
+    enabled: !!departmentId,
   })
 
-  const designationOptions = useMemo(
-    () =>
-      [...new Set(designations.map((d: { title: string }) => d.title))].sort(),
-    [designations],
-  )
+  const designationOptions = useMemo(() => {
+    const titles = [
+      ...new Set(designations.map((d: { title: string }) => d.title)),
+    ].sort()
+    const current = form2.watch('currentDesignation')
+    if (current && !titles.includes(current)) {
+      return [...titles, current].sort()
+    }
+    return titles
+  }, [designations, form2])
 
   const departmentOptions = useMemo(
     () => departments.map((d) => d.name),
@@ -1226,9 +1238,39 @@ export function EmployeeCreatePage() {
                           ''
                         }
                         onChange={(name) => {
-                          const dept = departments.find((d) => d.name === name)
-                          field.onChange(dept?.id ?? '')
-                          form2.setValue('currentDesignation', '')
+                          const dept = findDepartmentByName(departments, name)
+                          if (dept) {
+                            field.onChange(dept.id)
+                            form2.setValue('currentDesignation', '')
+                          }
+                        }}
+                        allowNew
+                        onNewValue={async (name) => {
+                          if (!branchId) {
+                            toast({
+                              title: 'Select a branch first',
+                              variant: 'destructive',
+                            })
+                            return
+                          }
+                          const existing = findDepartmentByName(
+                            departments,
+                            name,
+                          )
+                          if (existing) {
+                            field.onChange(existing.id)
+                            form2.setValue('currentDesignation', '')
+                            return
+                          }
+                          const created = await createDepartmentInline(
+                            queryClient,
+                            branchId,
+                            name,
+                          )
+                          if (created) {
+                            field.onChange(created.id)
+                            form2.setValue('currentDesignation', '')
+                          }
                         }}
                         placeholder="Select department"
                         disabled={!branchId}
@@ -1250,6 +1292,27 @@ export function EmployeeCreatePage() {
                         options={designationOptions}
                         value={field.value ?? ''}
                         onChange={field.onChange}
+                        allowNew
+                        onNewValue={async (title) => {
+                          const dept = departments.find(
+                            (d) => d.id === departmentId,
+                          )
+                          if (!dept) {
+                            toast({
+                              title: 'Select a department first',
+                              variant: 'destructive',
+                            })
+                            return
+                          }
+                          const created = await createDesignationInline(
+                            queryClient,
+                            dept.name,
+                            title,
+                          )
+                          if (created) {
+                            field.onChange(created)
+                          }
+                        }}
                         placeholder="Select designation"
                         disabled={!departmentId}
                         error={form2.formState.errors.currentDesignation?.message}

@@ -10,7 +10,7 @@ export interface SearchableSelectProps {
   placeholder?: string
   disabled?: boolean
   allowNew?: boolean
-  onNewValue?: (value: string) => void
+  onNewValue?: (value: string) => void | Promise<void>
   error?: string
   label?: string
   className?: string
@@ -71,10 +71,10 @@ export function SearchableSelect({
     setOpen(false)
   }
 
-  const handleAddNew = () => {
+  const handleAddNew = async () => {
     const trimmed = query.trim()
     if (!trimmed || !onNewValue) return
-    onNewValue(trimmed)
+    await Promise.resolve(onNewValue(trimmed))
     onChange(trimmed)
     setQuery('')
     setOpen(false)

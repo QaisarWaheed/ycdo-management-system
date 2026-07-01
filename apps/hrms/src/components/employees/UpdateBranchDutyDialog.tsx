@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -24,6 +24,10 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import {
+  createDepartmentInline,
+  findDepartmentByName,
+} from '@/lib/inlineMasterData'
 import type { Employee } from '@/types'
 
 export function UpdateBranchDutyDialog({
@@ -37,6 +41,7 @@ export function UpdateBranchDutyDialog({
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
 }) {
+  const queryClient = useQueryClient()
   const [branchId, setBranchId] = useState(employee.currentBranchId ?? '')
   const [departmentId, setDepartmentId] = useState(
     employee.currentDepartmentId ?? '',
@@ -149,8 +154,33 @@ export function UpdateBranchDutyDialog({
             options={departments.map((d) => d.name)}
             value={departments.find((d) => d.id === departmentId)?.name ?? ''}
             onChange={(name) => {
-              const dept = departments.find((d) => d.name === name)
-              setDepartmentId(dept?.id ?? '')
+              const dept = findDepartmentByName(departments, name)
+              if (dept) {
+                setDepartmentId(dept.id)
+              }
+            }}
+            allowNew
+            onNewValue={async (name) => {
+              if (!branchId) {
+                toast({
+                  title: 'Select a branch first',
+                  variant: 'destructive',
+                })
+                return
+              }
+              const existing = findDepartmentByName(departments, name)
+              if (existing) {
+                setDepartmentId(existing.id)
+                return
+              }
+              const created = await createDepartmentInline(
+                queryClient,
+                branchId,
+                name,
+              )
+              if (created) {
+                setDepartmentId(created.id)
+              }
             }}
             placeholder="Select department"
             disabled={!branchId}

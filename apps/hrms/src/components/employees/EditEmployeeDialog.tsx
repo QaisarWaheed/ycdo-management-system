@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { z } from 'zod'
@@ -31,6 +31,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
+import { createDesignationInline } from '@/lib/inlineMasterData'
 import {
   BLOOD_GROUP_OPTIONS,
   GENDER_OPTIONS,
@@ -168,6 +169,7 @@ export function EditEmployeeDialog({
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
 }) {
+  const queryClient = useQueryClient()
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
     defaultValues: employeeToFormValues(employee),
@@ -186,21 +188,28 @@ export function EditEmployeeDialog({
   )
 
   const designationParams = useMemo(() => {
-    if (!designationCategories?.length) return undefined
+    if (!designationCategories?.length) return {}
     return { categories: designationCategories.join(',') }
   }, [designationCategories])
 
   const { data: designations = [] } = useQuery({
     queryKey: ['designations', designationParams],
     queryFn: () => designationsApi.getAll(designationParams),
-    enabled: open && !!designationCategories?.length,
+    enabled: open,
   })
 
-  const designationOptions = useMemo(
-    () =>
-      [...new Set(designations.map((d: { title: string }) => d.title))].sort(),
-    [designations],
-  )
+  const designationOptions = useMemo(() => {
+    const titles = [
+      ...new Set(designations.map((d: { title: string }) => d.title)),
+    ].sort()
+    if (
+      employee.currentDesignation &&
+      !titles.includes(employee.currentDesignation)
+    ) {
+      return [...titles, employee.currentDesignation].sort()
+    }
+    return titles
+  }, [designations, employee.currentDesignation])
 
   useEffect(() => {
     if (open) {
@@ -489,6 +498,26 @@ export function EditEmployeeDialog({
                           options={designationOptions}
                           value={field.value ?? ''}
                           onChange={field.onChange}
+                          allowNew
+                          onNewValue={async (title) => {
+                            const deptName =
+                              employee.currentDepartment?.name ?? ''
+                            if (!deptName) {
+                              toast({
+                                title: 'Employee has no department assigned',
+                                variant: 'destructive',
+                              })
+                              return
+                            }
+                            const created = await createDesignationInline(
+                              queryClient,
+                              deptName,
+                              title,
+                            )
+                            if (created) {
+                              field.onChange(created)
+                            }
+                          }}
                           placeholder="Select designation"
                           error={form.formState.errors.currentDesignation?.message}
                         />
