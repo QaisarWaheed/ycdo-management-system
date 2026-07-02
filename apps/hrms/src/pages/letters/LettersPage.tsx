@@ -684,19 +684,19 @@ export function LettersPage() {
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-[11.5rem] shrink-0 space-y-1">
           <Label>From</Label>
           <DateInput
-            className="w-[150px]"
+            compact
             value={startDate}
             onChange={setStartDate}
           />
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-[11.5rem] shrink-0 space-y-1">
           <Label>To</Label>
           <DateInput
-            className="w-[150px]"
+            compact
             value={endDate}
             onChange={setEndDate}
           />

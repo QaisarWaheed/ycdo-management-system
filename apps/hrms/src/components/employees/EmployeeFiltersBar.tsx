@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ShiftFilterDropdowns } from '@/components/employees/ShiftFilterDropdowns'
+import { ShiftStartFilter, SpecificShiftFilter } from '@/components/employees/ShiftFilterDropdowns'
 import {
   ALL_SHIFTS_AT_START,
   resolveShiftIds,
@@ -167,14 +167,14 @@ export function EmployeeFiltersBar({
 
   return (
     <div className={className}>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-        <div className="space-y-1">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="min-w-0 space-y-1">
           <Label>Project</Label>
           <Select
             value={filters.projectId || 'all'}
             onValueChange={handleProjectChange}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="All Projects" />
             </SelectTrigger>
             <SelectContent>
@@ -188,13 +188,13 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <Label>Branch</Label>
           <Select
             value={filters.branchId || 'all'}
             onValueChange={handleBranchChange}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="All Branches" />
             </SelectTrigger>
             <SelectContent>
@@ -208,7 +208,7 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <Label>Department</Label>
           <Select
             value={filters.departmentId || 'all'}
@@ -216,7 +216,7 @@ export function EmployeeFiltersBar({
               update({ departmentId: v === 'all' ? '' : v })
             }
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="All Departments" />
             </SelectTrigger>
             <SelectContent>
@@ -230,12 +230,24 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className={showSpecificShift ? 'space-y-1 sm:col-span-2' : 'space-y-1'}>
-          <ShiftFilterDropdowns
+        <ShiftStartFilter
+          shifts={shifts}
+          shiftStartTime={filters.shiftStartTime}
+          shiftId={filters.shiftId}
+          onShiftStartTimeChange={(startTime) =>
+            update({
+              shiftStartTime: startTime,
+              shiftId: startTime ? ALL_SHIFTS_AT_START : '',
+            })
+          }
+          onShiftIdChange={(shiftId) => update({ shiftId })}
+        />
+
+        {showSpecificShift && (
+          <SpecificShiftFilter
             shifts={shifts}
             shiftStartTime={filters.shiftStartTime}
             shiftId={filters.shiftId}
-            showSpecificShift={showSpecificShift}
             onShiftStartTimeChange={(startTime) =>
               update({
                 shiftStartTime: startTime,
@@ -244,15 +256,15 @@ export function EmployeeFiltersBar({
             }
             onShiftIdChange={(shiftId) => update({ shiftId })}
           />
-        </div>
+        )}
 
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <Label>Designation</Label>
           <Select
             value={filters.designation || ALL_FILTER}
             onValueChange={(v) => update({ designation: v })}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="All Designations" />
             </SelectTrigger>
             <SelectContent>
@@ -266,13 +278,13 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <Label>Status</Label>
           <Select
             value={filters.employeeStatus}
             onValueChange={(v) => update({ employeeStatus: v })}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="All Statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -286,13 +298,13 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <Label>Location</Label>
           <Select
             value={filters.district}
             onValueChange={(v) => update({ district: v })}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="All Locations" />
             </SelectTrigger>
             <SelectContent>
@@ -306,13 +318,13 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <Label>Gender</Label>
           <Select
             value={filters.gender}
             onValueChange={(v) => update({ gender: v })}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="All Genders" />
             </SelectTrigger>
             <SelectContent>
@@ -326,17 +338,19 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-[11.5rem] space-y-1">
           <Label>Joined From</Label>
           <DateInput
+            compact
             value={filters.joinedFrom}
             onChange={(value) => update({ joinedFrom: value })}
           />
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-[11.5rem] space-y-1">
           <Label>Joined To</Label>
           <DateInput
+            compact
             value={filters.joinedTo}
             onChange={(value) => update({ joinedTo: value })}
           />

@@ -641,15 +641,16 @@ function EmergencyLeaveDialog({
                 </FormItem>
               )}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="startDate"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="min-w-0">
                     <FormLabel>Start Date</FormLabel>
                     <FormControl>
                       <DateInput
+                        compact
                         value={field.value ?? ''}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
@@ -663,10 +664,11 @@ function EmergencyLeaveDialog({
                 control={form.control}
                 name="endDate"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="min-w-0">
                     <FormLabel>End Date</FormLabel>
                     <FormControl>
                       <DateInput
+                        compact
                         value={field.value ?? ''}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
@@ -892,12 +894,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
           </p>
         )}
 
-        <div
-          className={cn(
-            'grid gap-4',
-            leaveType === 'SHORT_LEAVE' ? 'grid-cols-1' : 'grid-cols-2',
-          )}
-        >
+        <div className="grid grid-cols-1 gap-4">
           <FormField
             control={form.control}
             name="startDate"

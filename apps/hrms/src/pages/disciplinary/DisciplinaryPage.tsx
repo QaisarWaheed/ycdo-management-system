@@ -569,13 +569,13 @@ function ActionsTab({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1">
+        <div className="min-w-[11.5rem] shrink-0 space-y-1">
           <Label>From</Label>
-          <DateInput className="w-[140px]" value={startDate} onChange={setStartDate} />
+          <DateInput compact value={startDate} onChange={setStartDate} />
         </div>
-        <div className="space-y-1">
+        <div className="min-w-[11.5rem] shrink-0 space-y-1">
           <Label>To</Label>
-          <DateInput className="w-[140px]" value={endDate} onChange={setEndDate} />
+          <DateInput compact value={endDate} onChange={setEndDate} />
         </div>
       </div>
 

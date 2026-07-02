@@ -243,15 +243,16 @@ function NewRequestDialog({
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="startDate"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="min-w-0">
                     <FormLabel>Start Date</FormLabel>
                     <FormControl>
                       <DateInput
+                        compact
                         value={field.value ?? ''}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
@@ -265,10 +266,11 @@ function NewRequestDialog({
                 control={form.control}
                 name="endDate"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="min-w-0">
                     <FormLabel>End Date</FormLabel>
                     <FormControl>
                       <DateInput
+                        compact
                         value={field.value ?? ''}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
@@ -422,19 +424,19 @@ function RequestsTab() {
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-[11.5rem] shrink-0 space-y-1">
           <Label>From</Label>
           <DateInput
-            className="w-[150px]"
+            compact
             value={startDate}
             onChange={setStartDate}
           />
         </div>
 
-        <div className="space-y-1">
+        <div className="min-w-[11.5rem] shrink-0 space-y-1">
           <Label>To</Label>
           <DateInput
-            className="w-[150px]"
+            compact
             value={endDate}
             onChange={setEndDate}
           />

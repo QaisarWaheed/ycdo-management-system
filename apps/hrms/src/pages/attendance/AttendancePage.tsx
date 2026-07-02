@@ -175,26 +175,24 @@ function DailyLogTab({
 
   return (
     <div className="space-y-4">
-      <div
-        className="flex flex-wrap items-end gap-2"
-        style={{ marginBottom: '16px' }}
-      >
+      <div className="flex flex-wrap items-end gap-3">
         <EmployeeSearchInput
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder="Search by name or code..."
+          className="min-w-[220px] flex-1"
         />
 
-        <div className="space-y-1" style={{ maxWidth: '160px' }}>
+        <div className="min-w-[11.5rem] shrink-0 space-y-1">
           <Label>Date</Label>
           <DateInput
-            className="w-full"
+            compact
             value={date}
             onChange={setDate}
           />
         </div>
 
-        <div className="space-y-1">
+        <div className="shrink-0 space-y-1">
           <Label>Attendance Status</Label>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[180px]">
@@ -1043,10 +1041,10 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
           }}
         />
 
-        <div className="space-y-1">
+        <div className="min-w-[11.5rem] shrink-0 space-y-1">
           <Label>Date</Label>
           <DateInput
-            className="w-[160px]"
+            compact
             value={date}
             onChange={(value) => {
               setDate(value)

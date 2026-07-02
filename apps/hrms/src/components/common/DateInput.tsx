@@ -11,6 +11,7 @@ export interface DateInputProps {
   error?: string
   disabled?: boolean
   className?: string
+  compact?: boolean
   onBlur?: () => void
 }
 
@@ -38,7 +39,10 @@ function digitsOnly(value: string, maxLen: number) {
 }
 
 export const DateInput = React.forwardRef<HTMLDivElement, DateInputProps>(
-  ({ value, onChange, label, required, error, disabled, className, onBlur }, ref) => {
+  (
+    { value, onChange, label, required, error, disabled, className, compact, onBlur },
+    ref,
+  ) => {
     const parsed = parseYMD(value)
     const [day, setDay] = React.useState(parsed.day)
     const [month, setMonth] = React.useState(parsed.month)
@@ -81,41 +85,53 @@ export const DateInput = React.forwardRef<HTMLDivElement, DateInputProps>(
     }
 
     return (
-      <div ref={ref} className={cn('w-full', className)}>
+      <div ref={ref} className={cn(compact ? 'w-fit max-w-full' : 'w-full', className)}>
         {label && (
           <Label className="mb-2 block">
             {label}
             {required && <span className="text-destructive"> *</span>}
           </Label>
         )}
-        <div className="flex items-center gap-2">
+        <div className={cn('flex flex-nowrap items-center', compact ? 'gap-1' : 'gap-2')}>
           <Input
             inputMode="numeric"
             placeholder="DD"
             maxLength={2}
             value={day}
             disabled={disabled}
-            className={cn('w-16 text-center', error && 'border-destructive')}
+            className={cn(
+              'shrink-0 text-center',
+              compact ? 'h-9 w-10 px-1 text-sm' : 'w-16',
+              error && 'border-destructive',
+            )}
             onChange={(e) => handleDay(e.target.value)}
           />
-          <span className="text-text-secondary">/</span>
+          <span className="shrink-0 text-text-secondary">/</span>
           <Input
             inputMode="numeric"
             placeholder="MM"
             maxLength={2}
             value={month}
             disabled={disabled}
-            className={cn('w-16 text-center', error && 'border-destructive')}
+            className={cn(
+              'shrink-0 text-center',
+              compact ? 'h-9 w-10 px-1 text-sm' : 'w-16',
+              error && 'border-destructive',
+            )}
             onChange={(e) => handleMonth(e.target.value)}
           />
-          <span className="text-text-secondary">/</span>
+          <span className="shrink-0 text-text-secondary">/</span>
           <Input
             inputMode="numeric"
             placeholder="YYYY"
             maxLength={4}
             value={year}
             disabled={disabled}
-            className={cn('w-24 text-center', error && 'border-destructive')}
+            className={cn(
+              'shrink-0 text-center',
+              compact ? 'h-9 w-[4.25rem] px-1 text-sm' : 'w-24',
+              error && 'border-destructive',
+            )}
             onChange={(e) => handleYear(e.target.value)}
             onBlur={onBlur}
           />
