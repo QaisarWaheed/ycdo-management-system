@@ -21,6 +21,8 @@ export const employeesApi = {
     api.get<unknown, { designations: string[]; districts: string[] }>(
       '/employees/filter-options',
     ),
+  getActiveShift: (params: { date: string; time: string; branchId?: string; departmentId?: string }) =>
+    api.get<unknown, Employee[]>('/employees/active-shift', { params }),
   getOne: (id: string) => api.get<unknown, Employee>(`/employees/${id}`),
   create: (data: CreateEmployeePayload) =>
     api.post<unknown, Employee>('/employees', data),

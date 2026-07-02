@@ -19,6 +19,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
+  ActiveShiftQueryDto,
   ChangeStatusDto,
   CreateEmployeeDto,
   EmployeeQueryDto,
@@ -70,6 +71,19 @@ export class EmployeesController {
   )
   getFilterOptions() {
     return this.employeesService.getFilterOptions();
+  }
+
+  @Get('active-shift')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  findActiveShift(@Query() query: ActiveShiftQueryDto) {
+    return this.employeesService.findActiveShiftEmployees(query);
   }
 
   @Post('backfill-users')

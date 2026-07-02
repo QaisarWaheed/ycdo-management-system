@@ -29,15 +29,12 @@ import {
   enumValueToLabel,
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
+import { TimeAmpmSelect } from '@/components/common/TimeAmpmSelect'
+import { formatDateTimeTime } from '@/lib/timeFormat'
 import { ATTENDANCE_STATUSES, type AttendanceLog, type AttendanceStatus } from '@/types'
 
 function isoToTimeInput(value?: string | null): string {
   if (!value) return ''
-  return format(new Date(value), 'HH:mm')
-}
-
-function formatDisplayTime(value?: string | null) {
-  if (!value) return '—'
   return format(new Date(value), 'HH:mm')
 }
 
@@ -157,11 +154,11 @@ export function UpdateAttendanceDialog({
             </div>
             <p>
               <span className="text-text-secondary">Current Check In: </span>
-              {formatDisplayTime(log.checkIn)}
+              {formatDateTimeTime(log.checkIn)}
             </p>
             <p>
               <span className="text-text-secondary">Current Check Out: </span>
-              {formatDisplayTime(log.checkOut)}
+              {formatDateTimeTime(log.checkOut)}
             </p>
           </div>
 
@@ -181,22 +178,16 @@ export function UpdateAttendanceDialog({
 
           {showsTimeFields(status) && (
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Check In</Label>
-                <Input
-                  type="time"
-                  value={checkIn}
-                  onChange={(e) => setCheckIn(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Check Out</Label>
-                <Input
-                  type="time"
-                  value={checkOut}
-                  onChange={(e) => setCheckOut(e.target.value)}
-                />
-              </div>
+              <TimeAmpmSelect
+                label="Check In"
+                value={checkIn}
+                onChange={setCheckIn}
+              />
+              <TimeAmpmSelect
+                label="Check Out"
+                value={checkOut}
+                onChange={setCheckOut}
+              />
             </div>
           )}
 

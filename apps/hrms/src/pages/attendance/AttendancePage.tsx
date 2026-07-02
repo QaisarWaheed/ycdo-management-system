@@ -9,7 +9,9 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { DateInput } from '@/components/common/DateInput'
+import { EmployeeSearchInput } from '@/components/common/EmployeeSearchInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { TimeAmpmSelect } from '@/components/common/TimeAmpmSelect'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
@@ -43,6 +45,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { useDebounce } from '@/hooks/useDebounce'
 import {
   calcLateMinutes,
   calcOvertimeMinutes,
@@ -55,8 +58,9 @@ import {
 import { ShiftFilterDropdowns } from '@/components/employees/ShiftFilterDropdowns'
 import {
   ALL_SHIFTS_AT_START,
-  resolveShiftIds,
+  formatShiftTime,
 } from '@/lib/shiftFilterUtils'
+import { formatDateTimeTime } from '@/lib/timeFormat'
 import {
   enumValueToLabel,
   labelToEnumValue,
@@ -93,11 +97,6 @@ function AttendanceStatusBadge({ status }: { status: string }) {
   )
 }
 
-function formatTime(value?: string | null) {
-  if (!value) return '—'
-  return format(new Date(value), 'HH:mm')
-}
-
 function formatDuration(minutes: number) {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
@@ -115,6 +114,8 @@ function DailyLogTab({
   const queryClient = useQueryClient()
   const today = format(new Date(), 'yyyy-MM-dd')
   const [date, setDate] = useState(initialDate ?? today)
+  const [searchQuery, setSearchQuery] = useState('')
+  const debouncedSearch = useDebounce(searchQuery, 300)
   const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
   const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [confirmAbsentees, setConfirmAbsentees] = useState(false)
@@ -131,9 +132,10 @@ function DailyLogTab({
       startDate: date,
       endDate: date,
       status: statusFilter !== ALL ? statusFilter : undefined,
+      search: debouncedSearch || undefined,
       ...employeeFiltersToAttendanceParams(employeeFilters, shifts),
     }),
-    [date, statusFilter, employeeFilters, shifts],
+    [date, statusFilter, debouncedSearch, employeeFilters, shifts],
   )
 
   const { data: logs = [], isLoading } = useQuery({
@@ -173,37 +175,44 @@ function DailyLogTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Label>Date</Label>
-            <DateInput
-              className="w-[160px]"
-              value={date}
-              onChange={setDate}
-            />
-          </div>
+      <div
+        className="flex flex-wrap items-end gap-2"
+        style={{ marginBottom: '16px' }}
+      >
+        <EmployeeSearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search by name or code..."
+        />
 
-          <div className="space-y-1">
-            <Label>Attendance Status</Label>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All Statuses</SelectItem>
-                {ATTENDANCE_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s.replace(/_/g, ' ')}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-1" style={{ maxWidth: '160px' }}>
+          <Label>Date</Label>
+          <DateInput
+            className="w-full"
+            value={date}
+            onChange={setDate}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label>Attendance Status</Label>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All Statuses</SelectItem>
+              {ATTENDANCE_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s.replace(/_/g, ' ')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <Button
-          className="bg-amber-500 hover:bg-amber-600"
+          className="ml-auto bg-amber-500 hover:bg-amber-600"
           onClick={() => setConfirmAbsentees(true)}
         >
           Mark Absentees
@@ -268,10 +277,10 @@ function DailyLogTab({
                     {formatBranchLabel(log.branch)}
                   </TableCell>
                   <TableCell className="text-text-secondary">
-                    {formatTime(log.checkIn)}
+                    {formatDateTimeTime(log.checkIn)}
                   </TableCell>
                   <TableCell className="text-text-secondary">
-                    {formatTime(log.checkOut)}
+                    {formatDateTimeTime(log.checkOut)}
                   </TableCell>
                   <TableCell>
                     <AttendanceStatusBadge status={log.status} />
@@ -383,37 +392,35 @@ function SingleManualTab() {
     null,
   )
   const [date, setDate] = useState(today)
+  const [currentTime, setCurrentTime] = useState(() =>
+    format(new Date(), 'HH:mm'),
+  )
   const [status, setStatus] = useState<AttendanceStatus>('PRESENT')
   const [checkIn, setCheckIn] = useState('')
   const [checkOut, setCheckOut] = useState('')
   const [overtimeMinutes, setOvertimeMinutes] = useState<number | ''>('')
   const [note, setNote] = useState('')
 
-  const { data: existingAttendance = [] } = useQuery({
-    queryKey: ['attendance', date, 'manual-exclude'],
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCurrentTime(format(new Date(), 'HH:mm'))
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const { data: activeShiftEmployees = [] } = useQuery({
+    queryKey: ['active-shift-manual', date, currentTime],
     queryFn: () =>
-      attendanceApi.getAll({
-        startDate: date,
-        endDate: date,
-        limit: 1000,
-      }),
-    enabled: !!date,
+      employeesApi.getActiveShift({ date, time: currentTime }),
+    refetchInterval: 60_000,
   })
 
-  const attendedEmployeeIds = useMemo(
-    () =>
-      (existingAttendance as AttendanceLog[])
-        .map((a) => a.employeeId)
-        .filter(Boolean) as string[],
-    [existingAttendance],
-  )
-
   useEffect(() => {
-    if (employeeId && attendedEmployeeIds.includes(employeeId)) {
+    if (employeeId && !activeShiftEmployees.some((e) => e.id === employeeId)) {
       setEmployeeId('')
       setSelectedEmployee(null)
     }
-  }, [date, attendedEmployeeIds, employeeId])
+  }, [activeShiftEmployees, employeeId])
 
   const { data: employeeDetail } = useQuery({
     queryKey: ['employee', employeeId],
@@ -496,17 +503,17 @@ function SingleManualTab() {
       <EmployeeSearchSelect
         label="Employee *"
         value={employeeId}
-        excludeIds={attendedEmployeeIds}
+        employees={activeShiftEmployees}
         onChange={(id, emp) => {
           setEmployeeId(id)
           setSelectedEmployee(emp ?? null)
         }}
+        placeholder="Search active shift employees..."
       />
 
-      {attendedEmployeeIds.length > 0 && (
-        <p className="text-sm text-gray-500">
-          {attendedEmployeeIds.length} employees already have attendance marked
-          for this date
+      {activeShiftEmployees.length === 0 && (
+        <p className="text-sm text-text-secondary">
+          No employees with an active shift right now
         </p>
       )}
 
@@ -514,7 +521,7 @@ function SingleManualTab() {
         <p className="text-sm text-text-secondary">
           Shift:{' '}
           {shift
-            ? `${shift.name} (${shift.startTime} - ${shift.endTime})`
+            ? `${shift.name} (${formatShiftTime(shift.startTime)} - ${formatShiftTime(shift.endTime)})`
             : 'Not assigned'}
         </p>
       )}
@@ -541,22 +548,16 @@ function SingleManualTab() {
 
       {showsTimeFields(status) && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label>Check In Time</Label>
-            <Input
-              type="time"
-              value={checkIn}
-              onChange={(e) => setCheckIn(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Check Out Time</Label>
-            <Input
-              type="time"
-              value={checkOut}
-              onChange={(e) => setCheckOut(e.target.value)}
-            />
-          </div>
+          <TimeAmpmSelect
+            label="Check In Time"
+            value={checkIn}
+            onChange={setCheckIn}
+          />
+          <TimeAmpmSelect
+            label="Check Out Time"
+            value={checkOut}
+            onChange={setCheckOut}
+          />
         </div>
       )}
 
@@ -650,11 +651,21 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
   const [shiftStartTime, setShiftStartTime] = useState('')
   const [shiftId, setShiftId] = useState('')
   const [date, setDate] = useState(today)
+  const [currentTime, setCurrentTime] = useState(() =>
+    format(new Date(), 'HH:mm'),
+  )
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [progress, setProgress] = useState('')
   const [rows, setRows] = useState<Record<string, BulkRowState>>({})
   const [showAlreadyMarked, setShowAlreadyMarked] = useState(false)
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCurrentTime(format(new Date(), 'HH:mm'))
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   const BULK_STATUSES: { value: AttendanceStatus; label: string }[] = [
     { value: 'PRESENT', label: 'Present' },
@@ -680,25 +691,39 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
     queryFn: () => shiftsApi.getAll(branchId || undefined),
   })
 
-  const shiftIdsParam = resolveShiftIds(shiftStartTime, shiftId, shifts)
-
-  const { data: employees = [], refetch: refetchEmployees } = useQuery({
+  const { data: activeEmployees = [], refetch: refetchEmployees } = useQuery({
     queryKey: [
-      'bulk-attendance-employees',
+      'active-shift-bulk',
+      date,
+      currentTime,
       branchId,
       departmentId,
-      shiftStartTime,
-      shiftId,
     ],
     queryFn: () =>
-      employeesApi.getAll({
+      employeesApi.getActiveShift({
+        date,
+        time: currentTime,
         branchId,
         departmentId: departmentId || undefined,
-        shiftIds: shiftIdsParam,
-        status: 'ACTIVE',
       }),
     enabled: false,
   })
+
+  const employees = useMemo(() => {
+    if (!shiftStartTime) return activeEmployees
+    if (shiftId && shiftId !== ALL_SHIFTS_AT_START) {
+      return activeEmployees.filter((e) => e.shiftId === shiftId)
+    }
+    return activeEmployees.filter((e) => e.shift?.startTime === shiftStartTime)
+  }, [activeEmployees, shiftStartTime, shiftId])
+
+  useEffect(() => {
+    if (!loaded) return
+    const id = setInterval(() => {
+      void refetchEmployees()
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [loaded, refetchEmployees])
 
   const { data: existingLogs = [] } = useQuery({
     queryKey: ['attendance-bulk', date, branchId],
@@ -763,7 +788,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
           </TableCell>
           <TableCell className="text-sm text-text-secondary">
             {emp.shift
-              ? `${emp.shift.name} (${emp.shift.startTime} - ${emp.shift.endTime})`
+              ? `${emp.shift.name} (${formatShiftTime(emp.shift.startTime)} - ${formatShiftTime(emp.shift.endTime)})`
               : '—'}
           </TableCell>
           <TableCell>
@@ -822,13 +847,9 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
           </div>
         </TableCell>
         <TableCell>
-          <Input
-            type="time"
-            className="w-[120px]"
-            disabled={!showTimes}
+          <TimeAmpmSelect
             value={row?.checkIn ?? ''}
-            onChange={(e) => {
-              const checkIn = e.target.value
+            onChange={(checkIn) => {
               const late =
                 checkIn && dutyStart ? calcLateMinutes(checkIn, dutyStart) : 0
               updateRow(emp.id, {
@@ -838,6 +859,8 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
                   : (row?.status ?? null),
               })
             }}
+            disabled={!showTimes}
+            className="w-[140px]"
           />
           {showTimes && rowLate > 0 && (
             <p className="mt-1 text-xs text-amber-600">
@@ -849,12 +872,11 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
           )}
         </TableCell>
         <TableCell>
-          <Input
-            type="time"
-            className="w-[120px]"
-            disabled={!showTimes}
+          <TimeAmpmSelect
             value={row?.checkOut ?? ''}
-            onChange={(e) => updateRow(emp.id, { checkOut: e.target.value })}
+            onChange={(checkOut) => updateRow(emp.id, { checkOut })}
+            disabled={!showTimes}
+            className="w-[140px]"
           />
         </TableCell>
         <TableCell>
@@ -1229,8 +1251,8 @@ function RelieverSessionsTab() {
                       : '—'}
                   </TableCell>
                   <TableCell>{formatBranchLabel(session.branch)}</TableCell>
-                  <TableCell>{formatTime(session.checkIn)}</TableCell>
-                  <TableCell>{formatTime(session.checkOut)}</TableCell>
+                  <TableCell>{formatDateTimeTime(session.checkIn)}</TableCell>
+                  <TableCell>{formatDateTimeTime(session.checkOut)}</TableCell>
                   <TableCell>
                     {session.checkOut
                       ? formatDuration(session.totalMinutes)

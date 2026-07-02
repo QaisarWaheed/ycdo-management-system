@@ -159,7 +159,7 @@ export class CreateEmployeeDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  incentiveReward?: number;
+  progressReward?: number;
 
   @IsOptional()
   @Type(() => Number)
@@ -341,4 +341,23 @@ export class UpdateBranchDutyDto {
   @Min(1)
   @Max(24)
   dutyTotalHours?: number;
+}
+
+export class ActiveShiftQueryDto {
+  @IsDateString()
+  @IsNotEmpty()
+  date: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
+  time: string;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
 }

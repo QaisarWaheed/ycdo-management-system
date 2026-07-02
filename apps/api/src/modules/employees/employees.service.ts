@@ -8,6 +8,7 @@ import {
   ChangeType,
   EmployeeStatus,
   LetterType,
+  LeaveStatus,
   Prisma,
   StaffType,
   UserRole,
@@ -15,9 +16,11 @@ import {
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LettersService } from '../letters/letters.service';
+import { parseTimeToMinutes } from '../attendance/attendance-late.util';
 import { generateEmployeeCode } from './employee-code.helper';
 import { getHierarchyPriority } from './employee-hierarchy';
 import {
+  ActiveShiftQueryDto,
   ChangeStatusDto,
   CreateEmployeeDto,
   EmployeeQueryDto,
@@ -77,7 +80,7 @@ export class EmployeesService {
       basicStipend,
       allowances,
       reward,
-      incentiveReward,
+      progressReward,
       fuelAllowance,
       loanDeduction,
       advanceDeduction,
@@ -90,7 +93,7 @@ export class EmployeesService {
       basicStipend,
       allowances,
       reward,
-      incentiveReward,
+      progressReward,
       fuelAllowance,
       loanDeduction,
       advanceDeduction,
@@ -140,7 +143,7 @@ export class EmployeesService {
           basicStipend,
           allowances: allowances ?? 0,
           reward: reward ?? 0,
-          incentiveReward: incentiveReward ?? 0,
+          progressReward: progressReward ?? 0,
           fuelAllowance: fuelAllowance ?? 0,
           loanDeduction: loanDeduction ?? 0,
           advanceDeduction: advanceDeduction ?? 0,
@@ -820,6 +823,63 @@ export class EmployeesService {
     return updated;
   }
 
+  async findActiveShiftEmployees(query: ActiveShiftQueryDto) {
+    const today = new Date(query.date);
+    today.setHours(0, 0, 0, 0);
+    const [currentH, currentM] = query.time.split(':').map(Number);
+    const currentMinutes = currentH * 60 + currentM;
+
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        status: {
+          in: [
+            EmployeeStatus.ACTIVE,
+            EmployeeStatus.APPOINTED,
+            EmployeeStatus.TRAINEE,
+          ],
+        },
+        shiftId: { not: null },
+        ...(query.branchId ? { currentBranchId: query.branchId } : {}),
+        ...(query.departmentId
+          ? { currentDepartmentId: query.departmentId }
+          : {}),
+      },
+      include: {
+        shift: true,
+        currentBranch: { select: { name: true, address: true } },
+        currentDepartment: { select: { name: true } },
+        attendanceLogs: { where: { date: today }, take: 1 },
+        leaveRecords: {
+          where: {
+            status: LeaveStatus.APPROVED,
+            startDate: { lte: today },
+            endDate: { gte: today },
+          },
+        },
+      },
+    });
+
+    return employees
+      .filter((emp) => {
+        if (emp.leaveRecords.length > 0) return false;
+        if (emp.attendanceLogs.length > 0) return false;
+        if (!emp.shift) return false;
+
+        const startMin = parseTimeToMinutes(emp.shift.startTime);
+        const endMin = parseTimeToMinutes(emp.shift.endTime);
+        const isOvernight = endMin < startMin;
+
+        if (isOvernight) {
+          return (
+            currentMinutes >= startMin || currentMinutes <= endMin
+          );
+        }
+
+        return currentMinutes >= startMin && currentMinutes <= endMin;
+      })
+      .map(({ attendanceLogs: _a, leaveRecords: _l, ...emp }) => emp);
+  }
+
   async uploadPhoto(id: string, file: Express.Multer.File) {
     await this.findOne(id);
     const photoUrl = `/uploads/photos/${id}/${file.filename}`;
@@ -845,7 +905,7 @@ export class EmployeesService {
     basicStipend: number;
     allowances?: number;
     reward?: number;
-    incentiveReward?: number;
+    progressReward?: number;
     fuelAllowance?: number;
     loanDeduction?: number;
     advanceDeduction?: number;
@@ -856,7 +916,7 @@ export class EmployeesService {
       (params.basicStipend || 0) +
       (params.allowances || 0) +
       (params.reward || 0) +
-      (params.incentiveReward || 0) +
+      (params.progressReward || 0) +
       (params.fuelAllowance || 0) -
       (params.loanDeduction || 0) -
       (params.advanceDeduction || 0) -

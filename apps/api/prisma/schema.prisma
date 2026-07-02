@@ -293,7 +293,7 @@ model StipendRecord {
   basicStipend     Decimal   @db.Decimal(10, 2)
   allowances       Decimal?  @db.Decimal(10, 2)
   reward           Decimal?  @db.Decimal(10, 2)
-  incentiveReward  Decimal?  @db.Decimal(10, 2)
+  progressReward  Decimal?  @db.Decimal(10, 2)
   fuelAllowance    Decimal?  @db.Decimal(10, 2)
   loanDeduction    Decimal?  @db.Decimal(10, 2)
   advanceDeduction Decimal?  @db.Decimal(10, 2)
@@ -771,6 +771,8 @@ model AcademicQualification {
   cgpa            Decimal? @db.Decimal(3, 2)
   divisionGrade   String?
   status          String   @default("COMPLETED")
+  startYear       Int?
+  endYear         Int?
   createdAt       DateTime @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id])

@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   IsEnum,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -48,6 +49,20 @@ export class CreateQualificationDto {
   @Min(0)
   @Max(4)
   cgpa?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1950)
+  @Max(2099)
+  startYear?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1950)
+  @Max(2099)
+  endYear?: number;
 
   @IsOptional()
   @IsString()

@@ -1,3 +1,5 @@
+import { formatTime } from '@/lib/timeFormat'
+
 export const dutyTimeOptions = [
   { label: '12:00 AM', value: '00:00' },
   { label: '01:00 AM', value: '01:00' },
@@ -31,8 +33,9 @@ export function formatDutyDisplay(
 ): string {
   if (!start || !end) return 'Not assigned'
   const startLabel =
-    dutyTimeOptions.find((o) => o.value === start)?.label ?? start
-  const endLabel = dutyTimeOptions.find((o) => o.value === end)?.label ?? end
+    dutyTimeOptions.find((o) => o.value === start)?.label ?? formatTime(start)
+  const endLabel =
+    dutyTimeOptions.find((o) => o.value === end)?.label ?? formatTime(end)
   return `${startLabel} - ${endLabel}`
 }
 

@@ -140,7 +140,7 @@ export class LettersService {
       return record;
     });
 
-    return { letter, previewHtml: htmlContent };
+    return { warning: false, letter, previewHtml: htmlContent };
   }
 
   findAll(query: LetterQueryDto) {

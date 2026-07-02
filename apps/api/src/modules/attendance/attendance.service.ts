@@ -25,6 +25,7 @@ import {
 } from './attendance.dto';
 import { applyDisciplineRules } from './discipline.helper';
 import {
+  calculateLateMinutes,
   computeLateMinutesFromCheckIn,
   resolveDutyStartTime,
 } from './attendance-late.util';
@@ -424,8 +425,16 @@ export class AttendanceService {
     gender?: Gender;
     designation?: string;
     district?: string;
+    search?: string;
   }): Prisma.EmployeeWhereInput | undefined {
     const employeeWhere: Prisma.EmployeeWhereInput = {};
+
+    if (query.search) {
+      employeeWhere.OR = [
+        { fullName: { contains: query.search, mode: 'insensitive' } },
+        { employeeCode: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
 
     if (query.departmentId) {
       employeeWhere.currentDepartmentId = query.departmentId;
@@ -901,24 +910,18 @@ export class AttendanceService {
     }
 
     const startMinutes = this.parseTimeToMinutes(shift.startTime);
-    const endMinutes = this.parseTimeToMinutes(shift.endTime);
-    const midpoint = Math.floor((startMinutes + endMinutes) / 2);
-    const graceThreshold = startMinutes + 15;
+    const checkInTime = `${String(checkIn.getHours()).padStart(2, '0')}:${String(checkIn.getMinutes()).padStart(2, '0')}`;
+    const lateMinutes = calculateLateMinutes(checkInTime, shift.startTime);
 
-    if (checkInMinutes <= graceThreshold) {
+    if (lateMinutes === 0) {
       return { status: AttendanceStatus.PRESENT, lateMinutes: 0 };
     }
 
-    const lateMinutes = checkInMinutes - startMinutes;
-
-    if (checkInMinutes <= midpoint) {
-      return {
-        status: AttendanceStatus.LATE,
-        lateMinutes,
-      };
+    if (lateMinutes > 60) {
+      return { status: AttendanceStatus.HALF_DAY, lateMinutes };
     }
 
-    return { status: AttendanceStatus.HALF_DAY, lateMinutes };
+    return { status: AttendanceStatus.LATE, lateMinutes };
   }
 
   private calculateOvertimeMinutes(

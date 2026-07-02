@@ -16,6 +16,7 @@ interface EmployeeSearchSelectProps {
   placeholder?: string
   className?: string
   excludeIds?: string[]
+  employees?: Employee[]
 }
 
 export function EmployeeSearchSelect({
@@ -25,6 +26,7 @@ export function EmployeeSearchSelect({
   placeholder = 'Search by name or code...',
   className,
   excludeIds,
+  employees: employeesProp,
 }: EmployeeSearchSelectProps) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
@@ -32,19 +34,29 @@ export function EmployeeSearchSelect({
   const containerRef = useRef<HTMLDivElement>(null)
   const debouncedSearch = useDebounce(search, 400)
 
-  const { data: employees = [], isLoading } = useQuery({
+  const { data: fetchedEmployees = [], isLoading } = useQuery({
     queryKey: ['employees-search', debouncedSearch],
     queryFn: () =>
       employeesApi.getAll(
         debouncedSearch ? { search: debouncedSearch } : {},
       ),
-    enabled: open || !!debouncedSearch,
+    enabled: !employeesProp && (open || !!debouncedSearch),
   })
 
-  const filteredEmployees = useMemo(
-    () => employees.filter((e) => !excludeIds?.includes(e.id)),
-    [employees, excludeIds],
-  )
+  const employees = employeesProp ?? fetchedEmployees
+
+  const filteredEmployees = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase()
+    return employees
+      .filter((e) => !excludeIds?.includes(e.id))
+      .filter((e) => {
+        if (!q) return true
+        return (
+          e.fullName.toLowerCase().includes(q) ||
+          e.employeeCode.toLowerCase().includes(q)
+        )
+      })
+  }, [employees, excludeIds, debouncedSearch])
 
   useEffect(() => {
     if (value && !selectedLabel) {
@@ -96,7 +108,7 @@ export function EmployeeSearchSelect({
       </div>
       {open && (
         <div className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-white shadow-md">
-          {isLoading ? (
+          {isLoading && !employeesProp ? (
             <div className="p-3">
               <Skeleton className="h-8 w-full" />
             </div>

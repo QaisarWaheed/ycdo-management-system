@@ -8,16 +8,26 @@ export function calculateLateMinutes(
   shiftStartTime: string,
   gracePeriodMinutes = 15,
 ): number {
-  const [ciH, ciM] = checkInTime.split(':').map(Number);
-  const [ssH, ssM] = shiftStartTime.split(':').map(Number);
+  const toMinutes = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
 
-  const checkInTotal = ciH * 60 + ciM;
-  const shiftStartTotal = ssH * 60 + ssM;
-  const graceThreshold = shiftStartTotal + gracePeriodMinutes;
+  const checkIn = toMinutes(checkInTime);
+  const shiftStart = toMinutes(shiftStartTime);
+  const isOvernightShift = shiftStart >= 720;
 
-  if (checkInTotal <= graceThreshold) return 0;
+  let diff: number;
 
-  return checkInTotal - shiftStartTotal;
+  if (isOvernightShift && checkIn < shiftStart) {
+    diff = 1440 - shiftStart + checkIn;
+  } else {
+    diff = checkIn - shiftStart;
+  }
+
+  if (diff <= gracePeriodMinutes) return 0;
+
+  return diff;
 }
 
 export function computeLateMinutesFromCheckIn(
@@ -34,4 +44,20 @@ export function resolveDutyStartTime(employee: {
   shift?: { startTime: string } | null;
 }): string | null {
   return employee.dutyStartTime ?? employee.shift?.startTime ?? null;
+}
+
+export function isShiftActiveNow(
+  startTime: string,
+  endTime: string,
+  currentMinutes: number,
+): boolean {
+  const startMin = parseTimeToMinutes(startTime);
+  const endMin = parseTimeToMinutes(endTime);
+  const isOvernight = endMin < startMin;
+
+  if (isOvernight) {
+    return currentMinutes >= startMin || currentMinutes <= endMin;
+  }
+
+  return currentMinutes >= startMin && currentMinutes <= endMin;
 }

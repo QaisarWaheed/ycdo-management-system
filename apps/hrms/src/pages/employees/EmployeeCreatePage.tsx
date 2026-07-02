@@ -219,7 +219,7 @@ const step3Schema = z.object({
     .positive('Stipend must be greater than 0'),
   allowances: z.number().min(0).optional(),
   reward: z.number().min(0).optional(),
-  incentiveReward: z.number().min(0).optional(),
+  progressReward: z.number().min(0).optional(),
   fuelAllowance: z.number().min(0).optional(),
   loanDeduction: z.number().min(0).optional(),
   advanceDeduction: z.number().min(0).optional(),
@@ -232,7 +232,7 @@ function calcLumpsumTotal(values: Step3Values) {
     (values.basicStipend || 0) +
     (values.allowances || 0) +
     (values.reward || 0) +
-    (values.incentiveReward || 0) +
+    (values.progressReward || 0) +
     (values.fuelAllowance || 0) -
     (values.loanDeduction || 0) -
     (values.advanceDeduction || 0) -
@@ -256,6 +256,8 @@ interface QualRow {
   divisionGrade: string
   qualType: QualType
   status: QualificationStatus
+  startYear: string
+  endYear: string
 }
 
 interface PrevEmpRow {
@@ -525,6 +527,8 @@ function emptyQualRow(qualType: QualType): QualRow {
     divisionGrade: '',
     qualType,
     status: 'COMPLETED',
+    startYear: '',
+    endYear: '',
   }
 }
 
@@ -672,7 +676,7 @@ export function EmployeeCreatePage() {
       basicStipend: 0,
       allowances: 0,
       reward: 0,
-      incentiveReward: 0,
+      progressReward: 0,
       fuelAllowance: 0,
       loanDeduction: 0,
       advanceDeduction: 0,
@@ -876,6 +880,13 @@ export function EmployeeCreatePage() {
               : undefined,
           divisionGrade: qual.divisionGrade || undefined,
           status: qual.status,
+          startYear: qual.startYear ? Number(qual.startYear) : undefined,
+          endYear:
+            qual.status === 'CONTINUING'
+              ? undefined
+              : qual.endYear
+                ? Number(qual.endYear)
+                : undefined,
         })
       }
 
@@ -999,11 +1010,13 @@ export function EmployeeCreatePage() {
           <p className="text-sm text-text-secondary">No qualifications added</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
-            <Table>
+            <Table style={{ minWidth: '700px', width: '100%' }}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Degree</TableHead>
                   <TableHead>Board / University</TableHead>
+                  <TableHead>Start Year</TableHead>
+                  <TableHead>End Year</TableHead>
                   <TableHead>Marks</TableHead>
                   <TableHead>Division / Grade</TableHead>
                   <TableHead>Status</TableHead>
@@ -1030,6 +1043,36 @@ export function EmployeeCreatePage() {
                         }
                         placeholder="Board / University"
                       />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min={1950}
+                        max={2099}
+                        value={row.startYear}
+                        onChange={(e) =>
+                          updateQual(row.key, 'startYear', e.target.value)
+                        }
+                        placeholder="2018"
+                        className="w-20"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {row.status === 'CONTINUING' ? (
+                        <span className="text-sm text-text-secondary">Present</span>
+                      ) : (
+                        <Input
+                          type="number"
+                          min={1950}
+                          max={2099}
+                          value={row.endYear}
+                          onChange={(e) =>
+                            updateQual(row.key, 'endYear', e.target.value)
+                          }
+                          placeholder="2022"
+                          className="w-20"
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="space-y-2">
@@ -1116,13 +1159,24 @@ export function EmployeeCreatePage() {
                           value={
                             row.status === 'COMPLETED' ? 'Completed' : 'Continuing'
                           }
-                          onChange={(label) =>
-                            updateQual(
-                              row.key,
-                              'status',
-                              label === 'Completed' ? 'COMPLETED' : 'CONTINUING',
+                          onChange={(label) => {
+                            const nextStatus =
+                              label === 'Completed' ? 'COMPLETED' : 'CONTINUING'
+                            setQualifications((prev) =>
+                              prev.map((q) =>
+                                q.key === row.key
+                                  ? {
+                                      ...q,
+                                      status: nextStatus,
+                                      endYear:
+                                        nextStatus === 'CONTINUING'
+                                          ? ''
+                                          : q.endYear,
+                                    }
+                                  : q,
+                              ),
                             )
-                          }
+                          }}
                           placeholder="Status"
                         />
                         <Badge
@@ -1806,7 +1860,7 @@ export function EmployeeCreatePage() {
                     ['basicStipend', 'Basic Stipend *'],
                     ['allowances', 'Allowances'],
                     ['reward', 'Reward'],
-                    ['incentiveReward', 'Incentive Reward'],
+                    ['progressReward', 'Progress Reward'],
                     ['fuelAllowance', 'Fuel Allowance'],
                   ] as const
                 ).map(([name, label]) => (

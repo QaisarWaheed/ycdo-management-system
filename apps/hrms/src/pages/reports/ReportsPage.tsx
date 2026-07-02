@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { AttendanceLog, DistrictSummary, Employee } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { formatDateTimeTime } from '@/lib/timeFormat'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 
 const ALL = 'ALL'
@@ -323,8 +324,8 @@ function useReports(): ReportDef[] {
               : '—',
             branch: formatBranchLabel(l.branch),
             status: l.status,
-            checkIn: l.checkIn ? format(new Date(l.checkIn), 'HH:mm') : '—',
-            checkOut: l.checkOut ? format(new Date(l.checkOut), 'HH:mm') : '—',
+            checkIn: l.checkIn ? formatDateTimeTime(l.checkIn) : '—',
+            checkOut: l.checkOut ? formatDateTimeTime(l.checkOut) : '—',
           }))
         },
       },

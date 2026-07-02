@@ -135,6 +135,10 @@ export class AttendanceQueryDto {
   @IsOptional()
   @IsString()
   district?: string;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
 }
 
 export class MarkAbsenteesDto {

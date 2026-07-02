@@ -66,6 +66,7 @@ import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { formatDateTimeTime } from '@/lib/timeFormat'
 import type {
   AcademicQualification,
   DocumentType,
@@ -137,6 +138,14 @@ function formatQualificationMarks(qual: AcademicQualification): string {
     return `${qual.obtainedMarks}/${qual.totalMarks}`
   }
   return qual.obtainedMarks ?? '—'
+}
+
+function formatQualificationYears(qual: AcademicQualification): string {
+  if (!qual.startYear) return '—'
+  if (qual.status === 'CONTINUING' || qual.endYear == null) {
+    return `${qual.startYear} – Present`
+  }
+  return `${qual.startYear} – ${qual.endYear}`
 }
 
 function QualificationSection({
@@ -316,6 +325,7 @@ function QualificationSection({
               <TableRow>
                 <TableHead>Degree</TableHead>
                 <TableHead>Board / University</TableHead>
+                <TableHead>Years</TableHead>
                 <TableHead>Marks</TableHead>
                 <TableHead>Division / Grade</TableHead>
                 <TableHead className="w-28">Actions</TableHead>
@@ -324,7 +334,7 @@ function QualificationSection({
             <TableBody>
               {filtered.length === 0 && !adding && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-text-secondary">
+                  <TableCell colSpan={6} className="text-text-secondary">
                     No qualifications recorded
                   </TableCell>
                 </TableRow>
@@ -342,6 +352,7 @@ function QualificationSection({
                     <TableRow key={qual.id}>
                       <TableCell>{qual.degree}</TableCell>
                       <TableCell>{qual.boardUniversity}</TableCell>
+                      <TableCell>{formatQualificationYears(qual)}</TableCell>
                       <TableCell>{formatQualificationMarks(qual)}</TableCell>
                       <TableCell>{qual.divisionGrade ?? '—'}</TableCell>
                       <TableCell>
@@ -1328,14 +1339,10 @@ export function EmployeeProfilePage() {
                             {format(new Date(log.date), 'dd/MM/yyyy')}
                           </TableCell>
                           <TableCell>
-                            {log.checkIn
-                              ? format(new Date(log.checkIn), 'HH:mm')
-                              : '—'}
+                            {formatDateTimeTime(log.checkIn)}
                           </TableCell>
                           <TableCell>
-                            {log.checkOut
-                              ? format(new Date(log.checkOut), 'HH:mm')
-                              : '—'}
+                            {formatDateTimeTime(log.checkOut)}
                           </TableCell>
                           <TableCell>{log.status}</TableCell>
                           <TableCell>{log.lateMinutes ?? 0}</TableCell>
@@ -1874,6 +1881,7 @@ export function EmployeeProfilePage() {
         open={letterOpen}
         onOpenChange={setLetterOpen}
         employeeId={id}
+        employeeName={employee?.fullName}
       />
       <ChangeStatusDialog
         open={statusOpen}

@@ -254,6 +254,8 @@ export interface AcademicQualification {
   cgpa?: number | string | null
   divisionGrade?: string | null
   status?: QualificationStatus
+  startYear?: number | null
+  endYear?: number | null
   createdAt: string
 }
 
@@ -340,7 +342,7 @@ export interface StipendRecord {
   basicStipend: number | string
   allowances?: number | string | null
   reward?: number | string | null
-  incentiveReward?: number | string | null
+  progressReward?: number | string | null
   fuelAllowance?: number | string | null
   loanDeduction?: number | string | null
   advanceDeduction?: number | string | null
