@@ -137,7 +137,7 @@ function TodayRelieversModal({
         const aPriority = getHierarchyPriority(a.employee.designation ?? '')
         const bPriority = getHierarchyPriority(b.employee.designation ?? '')
         if (aPriority !== bPriority) return aPriority - bPriority
-        return a.employee.lastName.localeCompare(b.employee.lastName)
+        return a.employee.fullName.localeCompare(b.employee.fullName)
       }),
     [rows],
   )
@@ -237,7 +237,7 @@ function HRAssignRelieverDialog({
   })
 
   const employeeName = leave?.employee
-    ? `${leave.employee.firstName} ${leave.employee.lastName}`
+    ? `${leave.employee.fullName}`
     : ''
 
   const shiftConflict = hasShiftConflict(
@@ -298,7 +298,7 @@ function HRAssignRelieverDialog({
           </p>
           {selectedReliever?.shift && (
             <p className="text-sm">
-              {selectedReliever.firstName} {selectedReliever.lastName} — Shift:{' '}
+              {selectedReliever.fullName} — Shift:{' '}
               {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
             </p>
           )}
@@ -455,7 +455,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
                       <div>
                         <p className="font-medium">
                           {leave.employee
-                            ? `${leave.employee.firstName} ${leave.employee.lastName}`
+                            ? `${leave.employee.fullName}`
                             : '—'}
                         </p>
                         <p className="font-mono text-xs text-text-secondary">
@@ -491,7 +491,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
                     </TableCell>
                     <TableCell>
                       {leave.relieverRequest?.reliever
-                        ? `${leave.relieverRequest.reliever.firstName} ${leave.relieverRequest.reliever.lastName}`
+                        ? `${leave.relieverRequest.reliever.fullName}`
                         : '—'}
                     </TableCell>
                     <TableCell>
@@ -653,8 +653,6 @@ function EmergencyLeaveDialog({
                         value={field.value ?? ''}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />
@@ -672,8 +670,6 @@ function EmergencyLeaveDialog({
                         value={field.value ?? ''}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />
@@ -913,8 +909,6 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
                     value={field.value ?? ''}
                     onChange={field.onChange}
                     onBlur={field.onBlur}
-                    name={field.name}
-                    ref={field.ref}
                   />
                 </FormControl>
                 <FormMessage />
@@ -933,8 +927,6 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
                       value={field.value ?? ''}
                       onChange={field.onChange}
                       onBlur={field.onBlur}
-                      name={field.name}
-                      ref={field.ref}
                     />
                   </FormControl>
                   <FormMessage />
@@ -969,7 +961,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
             </p>
             {selectedReliever?.shift && (
               <p className="text-sm">
-                {selectedReliever.firstName} {selectedReliever.lastName} — Shift:{' '}
+                {selectedReliever.fullName} — Shift:{' '}
                 {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
               </p>
             )}

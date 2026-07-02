@@ -136,7 +136,7 @@ export function UpdateAttendanceDialog({
   if (!log) return null
 
   const employeeName = log.employee
-    ? `${log.employee.firstName} ${log.employee.lastName}`
+    ? `${log.employee.fullName}`
     : 'Employee'
 
   return (

@@ -58,17 +58,6 @@ export class EmployeesService {
       }
     }
 
-    if (dto.biometricId) {
-      const existingBiometric = await this.prisma.employee.findUnique({
-        where: { biometricId: dto.biometricId },
-      });
-      if (existingBiometric) {
-        throw new ConflictException(
-          'Employee with this biometric ID already exists',
-        );
-      }
-    }
-
     if (dto.shiftId) {
       await this.ensureShiftInBranch(dto.shiftId, dto.currentBranchId);
     }
@@ -82,8 +71,32 @@ export class EmployeesService {
     }
 
     const employeeCode = await generateEmployeeCode(this.prisma);
+    const biometricId = await this.generateBiometricId();
     const joiningDate = new Date(dto.joiningDate);
-    const { basicStipend, shiftName: _shiftName, ...employeeData } = dto;
+    const {
+      basicStipend,
+      allowances,
+      reward,
+      incentiveReward,
+      fuelAllowance,
+      loanDeduction,
+      advanceDeduction,
+      fineDeduction,
+      healthDeduction,
+      shiftName: _shiftName,
+      ...employeeData
+    } = dto;
+    const lumpsumTotal = this.calculateLumpsumTotal({
+      basicStipend,
+      allowances,
+      reward,
+      incentiveReward,
+      fuelAllowance,
+      loanDeduction,
+      advanceDeduction,
+      fineDeduction,
+      healthDeduction,
+    });
     const loginEmail =
       dto.email || `${employeeCode.toLowerCase()}@ycdo.org`;
 
@@ -101,6 +114,7 @@ export class EmployeesService {
         data: {
           ...employeeData,
           email: loginEmail,
+          biometricId,
           staffType: dto.staffType ?? StaffType.NEW,
           shiftId: resolvedShiftId,
           employeeCode,
@@ -124,6 +138,15 @@ export class EmployeesService {
         data: {
           employeeId: created.id,
           basicStipend,
+          allowances: allowances ?? 0,
+          reward: reward ?? 0,
+          incentiveReward: incentiveReward ?? 0,
+          fuelAllowance: fuelAllowance ?? 0,
+          loanDeduction: loanDeduction ?? 0,
+          advanceDeduction: advanceDeduction ?? 0,
+          fineDeduction: fineDeduction ?? 0,
+          healthDeduction: healthDeduction ?? 0,
+          lumpsumTotal,
           effectiveFrom: joiningDate,
         },
       });
@@ -300,8 +323,7 @@ export class EmployeesService {
 
     if (filters.search) {
       where.OR = [
-        { firstName: { contains: filters.search, mode: 'insensitive' } },
-        { lastName: { contains: filters.search, mode: 'insensitive' } },
+        { fullName: { contains: filters.search, mode: 'insensitive' } },
         { employeeCode: { contains: filters.search, mode: 'insensitive' } },
         { cnic: { contains: filters.search, mode: 'insensitive' } },
       ];
@@ -330,7 +352,7 @@ export class EmployeesService {
       const aPriority = getHierarchyPriority(a.currentDesignation);
       const bPriority = getHierarchyPriority(b.currentDesignation);
       if (aPriority !== bPriority) return aPriority - bPriority;
-      return a.lastName.localeCompare(b.lastName);
+      return a.fullName.localeCompare(b.fullName);
     });
   }
 
@@ -407,9 +429,15 @@ export class EmployeesService {
 
     const data: Prisma.EmployeeUpdateInput = {};
 
-    if (dto.firstName !== undefined) data.firstName = dto.firstName;
-    if (dto.lastName !== undefined) data.lastName = dto.lastName;
+    if (dto.fullName !== undefined) data.fullName = dto.fullName;
     if (dto.fatherName !== undefined) data.fatherName = dto.fatherName;
+    if (dto.fatherStatus !== undefined) data.fatherStatus = dto.fatherStatus;
+    if (dto.guardianContact !== undefined) {
+      data.guardianContact = dto.guardianContact;
+    }
+    if (dto.emergencyRelation !== undefined) {
+      data.emergencyRelation = dto.emergencyRelation;
+    }
     if (dto.phone !== undefined) data.phone = dto.phone;
     if (dto.email !== undefined) data.email = dto.email;
     if (dto.dateOfBirth !== undefined) {
@@ -419,7 +447,6 @@ export class EmployeesService {
       data.joiningDate = new Date(dto.joiningDate);
     }
     if (dto.gender !== undefined) data.gender = dto.gender;
-    if (dto.biometricId !== undefined) data.biometricId = dto.biometricId;
     if (dto.currentDesignation !== undefined) {
       data.currentDesignation = dto.currentDesignation;
     }
@@ -467,17 +494,6 @@ export class EmployeesService {
       });
       if (existingEmail) {
         throw new ConflictException('Employee with this email already exists');
-      }
-    }
-
-    if (dto.biometricId) {
-      const existingBiometric = await this.prisma.employee.findFirst({
-        where: { biometricId: dto.biometricId, NOT: { id } },
-      });
-      if (existingBiometric) {
-        throw new ConflictException(
-          'Employee with this biometric ID already exists',
-        );
       }
     }
 
@@ -802,5 +818,50 @@ export class EmployeesService {
     });
 
     return updated;
+  }
+
+  async uploadPhoto(id: string, file: Express.Multer.File) {
+    await this.findOne(id);
+    const photoUrl = `/uploads/photos/${id}/${file.filename}`;
+    return this.prisma.employee.update({
+      where: { id },
+      data: { photoUrl },
+      select: { id: true, photoUrl: true },
+    });
+  }
+
+  private async generateBiometricId(): Promise<string> {
+    const lastEmployee = await this.prisma.employee.findFirst({
+      orderBy: { createdAt: 'desc' },
+      where: { biometricId: { not: null } },
+    });
+    const lastNum = lastEmployee?.biometricId
+      ? parseInt(lastEmployee.biometricId.replace('BIO', ''), 10)
+      : 0;
+    return `BIO${String(lastNum + 1).padStart(4, '0')}`;
+  }
+
+  private calculateLumpsumTotal(params: {
+    basicStipend: number;
+    allowances?: number;
+    reward?: number;
+    incentiveReward?: number;
+    fuelAllowance?: number;
+    loanDeduction?: number;
+    advanceDeduction?: number;
+    fineDeduction?: number;
+    healthDeduction?: number;
+  }): number {
+    return (
+      (params.basicStipend || 0) +
+      (params.allowances || 0) +
+      (params.reward || 0) +
+      (params.incentiveReward || 0) +
+      (params.fuelAllowance || 0) -
+      (params.loanDeduction || 0) -
+      (params.advanceDeduction || 0) -
+      (params.fineDeduction || 0) -
+      (params.healthDeduction || 0)
+    );
   }
 }

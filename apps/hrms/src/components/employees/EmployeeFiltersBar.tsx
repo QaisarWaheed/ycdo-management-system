@@ -329,8 +329,6 @@ export function EmployeeFiltersBar({
         <div className="space-y-1">
           <Label>Joined From</Label>
           <DateInput
-            min="1990-01-01"
-            max="2099-12-31"
             value={filters.joinedFrom}
             onChange={(value) => update({ joinedFrom: value })}
           />
@@ -339,8 +337,6 @@ export function EmployeeFiltersBar({
         <div className="space-y-1">
           <Label>Joined To</Label>
           <DateInput
-            min="1990-01-01"
-            max="2099-12-31"
             value={filters.joinedTo}
             onChange={(value) => update({ joinedTo: value })}
           />

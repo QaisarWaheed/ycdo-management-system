@@ -178,7 +178,7 @@ function RelieverSelectDialog({
 
           {selectedReliever?.shift && (
             <p className="text-sm">
-              {selectedReliever.firstName} {selectedReliever.lastName} — Shift:{' '}
+              {selectedReliever.fullName} — Shift:{' '}
               {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
             </p>
           )}
@@ -246,7 +246,7 @@ function RespondDialog({
 
   if (!request) return null
 
-  const name = `${request.requestedBy.firstName} ${request.requestedBy.lastName}`
+  const name = request.requestedBy.fullName
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -677,7 +677,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
             </p>
             {selectedReliever?.shift && (
               <p className="text-sm">
-                {selectedReliever.firstName} {selectedReliever.lastName} — Shift:{' '}
+                {selectedReliever.fullName} — Shift:{' '}
                 {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
               </p>
             )}
@@ -771,7 +771,7 @@ function RelieverRequestsTab() {
               (requests as IncomingRelieverRequest[]).map((req) => (
                 <TableRow key={req.id}>
                   <TableCell>
-                    {req.requestedBy.firstName} {req.requestedBy.lastName}
+                    {req.requestedBy.fullName}
                   </TableCell>
                   <TableCell>
                     {format(new Date(req.leaveRecord.startDate), 'dd/MM/yyyy')} —{' '}

@@ -77,8 +77,7 @@ model Department {
 model Employee {
   id                  String         @id @default(uuid())
   employeeCode        String         @unique
-  firstName           String
-  lastName            String
+  fullName            String
   fatherName          String?
   cnic                String         @unique
   phone               String?
@@ -120,13 +119,18 @@ model Employee {
   stipendReceipts            StipendReceipt[]
   incentives                 Incentive[]
   portalAttendances          PortalAttendance[]
+  advanceLoanRequests        AdvanceLoanRequest[]
 
   // Additional personal info
+  fatherStatus           String?
+  guardianContact        String?
   fatherContactNumber    String?
   emergencyContactName   String?
   emergencyContactNumber String?
+  emergencyRelation      String?
   spouseName             String?
   spouseContactNumber    String?
+  photoUrl               String?
   caste                  String?
   domicile               String?
   currentAddress         String?
@@ -284,12 +288,21 @@ enum AttendanceSource {
 // ─── STIPEND ──────────────────────────────────────────────
 
 model StipendRecord {
-  id            String    @id @default(uuid())
-  employeeId    String
-  basicStipend  Decimal   @db.Decimal(10, 2)
-  effectiveFrom DateTime
-  effectiveTo   DateTime?
-  createdAt     DateTime  @default(now())
+  id               String    @id @default(uuid())
+  employeeId       String
+  basicStipend     Decimal   @db.Decimal(10, 2)
+  allowances       Decimal?  @db.Decimal(10, 2)
+  reward           Decimal?  @db.Decimal(10, 2)
+  incentiveReward  Decimal?  @db.Decimal(10, 2)
+  fuelAllowance    Decimal?  @db.Decimal(10, 2)
+  loanDeduction    Decimal?  @db.Decimal(10, 2)
+  advanceDeduction Decimal?  @db.Decimal(10, 2)
+  fineDeduction    Decimal?  @db.Decimal(10, 2)
+  healthDeduction  Decimal?  @db.Decimal(10, 2)
+  lumpsumTotal     Decimal?  @db.Decimal(10, 2)
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  createdAt        DateTime  @default(now())
 
   employee       Employee       @relation(fields: [employeeId], references: [id])
   payrollEntries PayrollEntry[]
@@ -753,7 +766,11 @@ model AcademicQualification {
   degree          String
   boardUniversity String
   obtainedMarks   String?
+  totalMarks      String?
+  marksType       String?
+  cgpa            Decimal? @db.Decimal(3, 2)
   divisionGrade   String?
+  status          String   @default("COMPLETED")
   createdAt       DateTime @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id])
@@ -824,4 +841,22 @@ model LocationValue {
   createdAt DateTime @default(now())
 
   @@unique([type, value])
+}
+
+model AdvanceLoanRequest {
+  id               String    @id @default(uuid())
+  employeeId       String
+  type             String
+  amount           Decimal   @db.Decimal(10, 2)
+  reason           String    @db.Text
+  status           String    @default("PENDING")
+  approvedBy       String?
+  approvedAt       DateTime?
+  rejectedBy       String?
+  rejectionReason  String?
+  repaymentMonths  Int?
+  monthlyDeduction Decimal?  @db.Decimal(10, 2)
+  createdAt        DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
 }

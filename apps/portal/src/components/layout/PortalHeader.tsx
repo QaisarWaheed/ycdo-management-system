@@ -65,11 +65,17 @@ export function PortalHeader() {
   })
 
   const displayName = employee
-    ? `${employee.firstName} ${employee.lastName}`
+    ? employee.fullName
     : user?.email ?? 'Employee'
 
   const initials = employee
-    ? `${employee.firstName[0]}${employee.lastName[0]}`.toUpperCase()
+    ? employee.fullName
+        .trim()
+        .split(/\s+/)
+        .map((part) => part[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
     : user?.email?.slice(0, 2).toUpperCase() ?? 'EP'
 
   const recentNotifications = (notifications as Notification[]).slice(0, 10)

@@ -168,6 +168,9 @@ function DailyLogTab({
     },
   })
 
+  const showContactColumn =
+    statusFilter === 'LATE' || statusFilter === 'ABSENT'
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -224,6 +227,7 @@ function DailyLogTab({
               <TableHead>Check In</TableHead>
               <TableHead>Check Out</TableHead>
               <TableHead>Status</TableHead>
+              {showContactColumn && <TableHead>Contact</TableHead>}
               <TableHead>Late Minutes</TableHead>
               <TableHead>Overtime</TableHead>
               <TableHead>Source</TableHead>
@@ -234,7 +238,7 @@ function DailyLogTab({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(10)].map((__, j) => (
+                  {[...Array(showContactColumn ? 11 : 10)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -243,7 +247,7 @@ function DailyLogTab({
               ))
             ) : attendanceLogs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={showContactColumn ? 11 : 10} className="h-32 text-center text-text-secondary">
                   No attendance records for this date
                 </TableCell>
               </TableRow>
@@ -257,7 +261,7 @@ function DailyLogTab({
                   </TableCell>
                   <TableCell className="font-medium">
                     {log.employee
-                      ? `${log.employee.firstName} ${log.employee.lastName}`
+                      ? `${log.employee.fullName}`
                       : '—'}
                   </TableCell>
                   <TableCell className="text-text-secondary">
@@ -272,6 +276,20 @@ function DailyLogTab({
                   <TableCell>
                     <AttendanceStatusBadge status={log.status} />
                   </TableCell>
+                  {showContactColumn && (
+                    <TableCell>
+                      {log.employee?.phone ? (
+                        <a
+                          href={`tel:${log.employee.phone}`}
+                          className="text-sm text-blue-600 hover:underline"
+                        >
+                          {log.employee.phone}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell
                     className={cn(
                       displayLateMinutes > 0 && 'font-medium text-red-600',
@@ -736,7 +754,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
           <TableCell>
             <div>
               <p className="font-medium">
-                {emp.firstName} {emp.lastName}
+                {emp.fullName}
               </p>
               <p className="font-mono text-xs text-text-secondary">
                 {emp.employeeCode}
@@ -764,7 +782,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
         <TableCell>
           <div>
             <p className="font-medium">
-              {emp.firstName} {emp.lastName}
+              {emp.fullName}
             </p>
             <p className="font-mono text-xs text-text-secondary">
               {emp.employeeCode}
@@ -1207,7 +1225,7 @@ function RelieverSessionsTab() {
                   </TableCell>
                   <TableCell>
                     {session.employee
-                      ? `${session.employee.firstName} ${session.employee.lastName}`
+                      ? `${session.employee.fullName}`
                       : '—'}
                   </TableCell>
                   <TableCell>{formatBranchLabel(session.branch)}</TableCell>

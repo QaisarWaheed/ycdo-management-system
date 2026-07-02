@@ -127,7 +127,7 @@ export class DisciplinaryService {
       where,
       include: {
         employee: {
-          select: { firstName: true, lastName: true, employeeCode: true },
+          select: { fullName: true, employeeCode: true },
         },
         inquiry: true,
       },
@@ -142,8 +142,7 @@ export class DisciplinaryService {
         employee: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
             currentDesignation: true,
             status: true,

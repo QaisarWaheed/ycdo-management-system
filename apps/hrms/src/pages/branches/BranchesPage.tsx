@@ -439,7 +439,7 @@ function BranchDetailSheet({
                           {emp.employeeCode}
                         </TableCell>
                         <TableCell>
-                          {emp.firstName} {emp.lastName}
+                          {emp.fullName}
                         </TableCell>
                         <TableCell>{emp.currentDesignation}</TableCell>
                         <TableCell>

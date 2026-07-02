@@ -479,7 +479,7 @@ export function MyPayrollPage() {
 
   const currentStipend = employee?.stipendRecords?.[0]
   const employeeName = employee
-    ? `${employee.firstName} ${employee.lastName}`
+    ? employee.fullName
     : 'Employee'
 
   const sortedHistory = [...(history as PayrollEntry[])].sort(

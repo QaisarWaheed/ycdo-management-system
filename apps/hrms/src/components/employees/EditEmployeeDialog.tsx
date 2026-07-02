@@ -48,8 +48,7 @@ const phoneOptional = z
   .refine((v) => !v || /^0\d{10}$/.test(v), 'Must be 11 digits starting with 0')
 
 const editSchema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
+  fullName: z.string().min(1, 'Full name is required'),
   fatherName: z.string().optional(),
   dateOfBirth: z.string().optional(),
   phone: phoneOptional,
@@ -86,8 +85,7 @@ function toDateInput(value?: string | null) {
 
 function buildPayload(data: EditFormValues): Record<string, unknown> {
   const payload: Record<string, unknown> = {
-    firstName: data.firstName,
-    lastName: data.lastName,
+    fullName: data.fullName,
     gender: data.gender,
   }
 
@@ -128,8 +126,7 @@ function buildPayload(data: EditFormValues): Record<string, unknown> {
 
 function employeeToFormValues(employee: Employee): EditFormValues {
   return {
-    firstName: employee.firstName,
-    lastName: employee.lastName,
+    fullName: employee.fullName,
     fatherName: employee.fatherName ?? '',
     dateOfBirth: toDateInput(employee.dateOfBirth),
     phone: employee.phone ?? '',
@@ -254,23 +251,10 @@ export function EditEmployeeDialog({
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="firstName"
+                  name="fullName"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>First Name *</FormLabel>
-                      <FormControl>
-                        <TextOnlyInput {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="lastName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Last Name *</FormLabel>
+                    <FormItem className="sm:col-span-2">
+                      <FormLabel>Full Name *</FormLabel>
                       <FormControl>
                         <TextOnlyInput {...field} />
                       </FormControl>
@@ -327,8 +311,6 @@ export function EditEmployeeDialog({
                           value={field.value ?? ''}
                           onChange={field.onChange}
                           onBlur={field.onBlur}
-                          name={field.name}
-                          ref={field.ref}
                         />
                       </FormControl>
                       <FormMessage />
@@ -537,8 +519,6 @@ export function EditEmployeeDialog({
                           value={field.value ?? ''}
                           onChange={field.onChange}
                           onBlur={field.onBlur}
-                          name={field.name}
-                          ref={field.ref}
                         />
                       </FormControl>
                       <FormMessage />

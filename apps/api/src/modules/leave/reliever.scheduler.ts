@@ -54,7 +54,7 @@ export class RelieverScheduler {
           await tx.notification.create({
             data: {
               employeeId: hr.employeeId!,
-              message: `Reliever request auto-rejected for ${request.leaveRecord.employee.firstName} ${request.leaveRecord.employee.lastName}. Please assign a reliever manually.`,
+              message: `Reliever request auto-rejected for ${request.leaveRecord.employee.fullName}. Please assign a reliever manually.`,
               type: 'RELIEVER_AUTO_REJECTED',
             },
           });

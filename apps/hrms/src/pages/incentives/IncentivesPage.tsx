@@ -202,7 +202,7 @@ export function IncentivesPage() {
                 <TableRow key={item.id}>
                   <TableCell>
                     {item.employee
-                      ? `${item.employee.firstName} ${item.employee.lastName}`
+                      ? `${item.employee.fullName}`
                       : '—'}
                   </TableCell>
                   <TableCell>

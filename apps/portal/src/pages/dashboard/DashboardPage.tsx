@@ -139,7 +139,7 @@ export function DashboardPage() {
   const pendingAckCount = pendingAcks.length
 
   const displayName = employee
-    ? employee.firstName
+    ? employee.fullName.split(' ')[0]
     : user?.email?.split('@')[0] ?? 'there'
 
   const recentNotifications = (notifications as Notification[]).slice(0, 3)

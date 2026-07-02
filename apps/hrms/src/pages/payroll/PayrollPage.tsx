@@ -621,7 +621,7 @@ function MonthlyPayrollTab() {
                       <div>
                         <p className="font-medium">
                           {emp
-                            ? `${emp.firstName} ${emp.lastName}`
+                            ? `${emp.fullName}`
                             : '—'}
                         </p>
                         <p className="font-mono text-xs text-text-secondary">
@@ -873,8 +873,6 @@ function StipendIncrementTab() {
                   value={field.value ?? ''}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
-                  name={field.name}
-                  ref={field.ref}
                 />
               </FormControl>
               <FormMessage />
@@ -1199,7 +1197,7 @@ function StipendReceiptsTab() {
                   <TableRow>
                     <TableCell>
                       {receipt.employee
-                        ? `${receipt.employee.firstName} ${receipt.employee.lastName}`
+                        ? `${receipt.employee.fullName}`
                         : '—'}
                     </TableCell>
                     <TableCell>

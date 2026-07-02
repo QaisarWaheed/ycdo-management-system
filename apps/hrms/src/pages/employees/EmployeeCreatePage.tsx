@@ -1,7 +1,7 @@
 import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X } from 'lucide-react'
+import { GraduationCap, Plus, Trash2, Upload, User, UserPlus, Users, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -14,6 +14,7 @@ import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { designationsApi } from '@/api/endpoints/designations'
 import { DateInput } from '@/components/common/DateInput'
 import { CnicInput } from '@/components/common/CnicInput'
+import { PKRInput } from '@/components/common/PKRInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
@@ -44,13 +45,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -61,7 +56,14 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { toast } from '@/hooks/use-toast'
-import type { DocumentType, EmployeePrefill, QualType, StaffType } from '@/types'
+import type {
+  DocumentType,
+  EmployeePrefill,
+  FatherStatus,
+  QualType,
+  QualificationStatus,
+  StaffType,
+} from '@/types'
 
 const cnicRegex = /^\d{5}-\d{7}-\d{1}$/
 const phoneOptional = z
@@ -104,36 +106,86 @@ const STAFF_TYPE_OPTIONS: {
   },
 ]
 
-const step1Schema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
-  fatherName: z.string().min(1, 'Father name is required'),
-  fatherContactNumber: phoneRequired,
-  cnic: z
-    .string()
-    .min(1, 'CNIC is required')
-    .regex(cnicRegex, 'Format: 12345-1234567-1'),
-  dateOfBirth: z.string().min(1, 'Date of birth is required'),
-  phone: phoneRequired,
-  email: z.string().email('Invalid email').optional().or(z.literal('')),
-  emergencyContactName: z.string().min(1, 'Emergency contact name is required'),
-  emergencyContactNumber: phoneRequired,
-  spouseName: z.string().optional(),
-  spouseContactNumber: phoneOptional,
-  bloodGroup: z.string().min(1, 'Blood group is required'),
-  caste: z.string().optional(),
-  domicile: z.string().min(1, 'Domicile is required'),
-  province: z.string().min(1, 'Province is required'),
-  city: z.string().min(1, 'City is required'),
-  permanentProvince: z.string().min(1, 'Permanent province is required'),
-  permanentCity: z.string().min(1, 'Permanent city is required'),
-  district: z.string().min(1, 'District is required'),
-  tehsil: z.string().min(1, 'Tehsil is required'),
-  policeStation: z.string().min(1, 'Police station is required'),
-  gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
-  currentAddress: z.string().min(1, 'Current address is required'),
-  permanentAddress: z.string().min(1, 'Permanent address is required'),
-})
+const EMERGENCY_RELATION_OPTIONS = [
+  'Father',
+  'Mother',
+  'Brother',
+  'Sister',
+  'Spouse',
+  'Son',
+  'Daughter',
+  'Friend',
+  'Colleague',
+  'Other',
+]
+
+const step1Schema = z
+  .object({
+    fullName: z.string().min(1, 'Full name is required'),
+    fatherName: z.string().min(1, 'Father name is required'),
+    fatherStatus: z.enum(['ALIVE', 'DECEASED']),
+    fatherContactNumber: z.string().optional(),
+    guardianContact: z.string().optional(),
+    maritalStatus: z.enum(['MARRIED', 'UNMARRIED']),
+    cnic: z
+      .string()
+      .min(1, 'CNIC is required')
+      .regex(cnicRegex, 'Format: 12345-1234567-1'),
+    dateOfBirth: z.string().min(1, 'Date of birth is required'),
+    phone: phoneRequired,
+    email: z.string().email('Invalid email').optional().or(z.literal('')),
+    emergencyContactName: z.string().min(1, 'Emergency contact name is required'),
+    emergencyContactNumber: phoneRequired,
+    emergencyRelation: z.string().min(1, 'Emergency relation is required'),
+    spouseName: z.string().optional(),
+    spouseContactNumber: phoneOptional,
+    bloodGroup: z.string().min(1, 'Blood group is required'),
+    caste: z.string().optional(),
+    domicile: z.string().min(1, 'Domicile is required'),
+    province: z.string().min(1, 'Province is required'),
+    city: z.string().min(1, 'City is required'),
+    permanentProvince: z.string().min(1, 'Permanent province is required'),
+    permanentCity: z.string().min(1, 'Permanent city is required'),
+    district: z.string().min(1, 'District is required'),
+    tehsil: z.string().min(1, 'Tehsil is required'),
+    policeStation: z.string().min(1, 'Police station is required'),
+    gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
+    currentAddress: z.string().min(1, 'Current address is required'),
+    permanentAddress: z.string().min(1, 'Permanent address is required'),
+  })
+  .superRefine((data, ctx) => {
+    if (data.fatherStatus === 'ALIVE') {
+      if (!data.fatherContactNumber || !/^0\d{10}$/.test(data.fatherContactNumber)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Father contact is required',
+          path: ['fatherContactNumber'],
+        })
+      }
+    } else if (!data.guardianContact || !/^0\d{10}$/.test(data.guardianContact)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Guardian contact is required',
+        path: ['guardianContact'],
+      })
+    }
+    if (data.maritalStatus === 'MARRIED') {
+      if (!data.spouseName?.trim()) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Spouse name is required',
+          path: ['spouseName'],
+        })
+      }
+      if (!data.spouseContactNumber || !/^0\d{10}$/.test(data.spouseContactNumber)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Spouse contact is required',
+          path: ['spouseContactNumber'],
+        })
+      }
+    }
+  })
 
 const step2Schema = z
   .object({
@@ -141,7 +193,6 @@ const step2Schema = z
     currentDepartmentId: z.string().min(1, 'Department is required'),
     currentDesignation: z.string().min(1, 'Designation is required'),
     joiningDate: z.string().min(1, 'Joining date is required'),
-    biometricId: z.string().optional(),
     shiftName: z.string().optional(),
     dutyTotalHours: z.number().int().min(1).max(24).optional(),
     dutyStartTime: z.string().optional(),
@@ -166,7 +217,29 @@ const step3Schema = z.object({
   basicStipend: z
     .number({ error: 'Basic stipend is required' })
     .positive('Stipend must be greater than 0'),
+  allowances: z.number().min(0).optional(),
+  reward: z.number().min(0).optional(),
+  incentiveReward: z.number().min(0).optional(),
+  fuelAllowance: z.number().min(0).optional(),
+  loanDeduction: z.number().min(0).optional(),
+  advanceDeduction: z.number().min(0).optional(),
+  fineDeduction: z.number().min(0).optional(),
+  healthDeduction: z.number().min(0).optional(),
 })
+
+function calcLumpsumTotal(values: Step3Values) {
+  return (
+    (values.basicStipend || 0) +
+    (values.allowances || 0) +
+    (values.reward || 0) +
+    (values.incentiveReward || 0) +
+    (values.fuelAllowance || 0) -
+    (values.loanDeduction || 0) -
+    (values.advanceDeduction || 0) -
+    (values.fineDeduction || 0) -
+    (values.healthDeduction || 0)
+  )
+}
 
 type Step1Values = z.infer<typeof step1Schema>
 type Step2Values = z.infer<typeof step2Schema>
@@ -176,9 +249,13 @@ interface QualRow {
   key: string
   degree: string
   boardUniversity: string
+  marksType: 'MARKS' | 'CGPA'
   obtainedMarks: string
+  totalMarks: string
+  cgpa: string
   divisionGrade: string
   qualType: QualType
+  status: QualificationStatus
 }
 
 interface PrevEmpRow {
@@ -205,26 +282,67 @@ function MultiFileUpload({
   onRemove: (index: number) => void
   addButtonLabel?: string
 }) {
+  const [isDragging, setIsDragging] = useState(false)
+  const inputId = `multi-upload-${label.replace(/\s/g, '-')}`
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    const dropped = Array.from(e.dataTransfer.files)
+    if (dropped.length > 0) {
+      dropped.forEach((file) => onAdd(file))
+    }
+  }
+
+  const handleFiles = (fileList: FileList | null) => {
+    const file = fileList?.[0]
+    if (file) onAdd(file)
+  }
+
   return (
     <div className="space-y-3">
       <div>
         <p className="text-sm font-medium">{label}</p>
         <p className="text-xs text-text-secondary">{subLabel}</p>
       </div>
-      <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-surface p-4 transition-colors hover:bg-muted">
-        <Upload className="h-6 w-6 text-text-secondary" />
-        <span className="text-sm text-text-secondary">Click or drag file to upload</span>
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => document.getElementById(inputId)?.click()}
+        className={cn(
+          'flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-4 text-center transition-colors',
+          isDragging
+            ? 'border-blue-500 bg-blue-50'
+            : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50',
+        )}
+      >
+        <Upload className="mx-auto mb-2 h-6 w-6 text-gray-400" />
+        <p className="text-sm text-text-secondary">Drag & drop or click to upload</p>
         <input
+          id={inputId}
           type="file"
           className="hidden"
           accept=".jpg,.jpeg,.png,.pdf"
           onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) onAdd(file)
+            handleFiles(e.target.files)
             e.target.value = ''
           }}
         />
-      </label>
+      </div>
       {files.length > 0 && (
         <ul className="space-y-2">
           {files.map((file, index) => (
@@ -249,26 +367,11 @@ function MultiFileUpload({
         type="button"
         variant="outline"
         size="sm"
-        onClick={() =>
-          document
-            .getElementById(`multi-upload-${label.replace(/\s/g, '-')}`)
-            ?.click()
-        }
+        onClick={() => document.getElementById(inputId)?.click()}
       >
         <Plus className="mr-1 h-4 w-4" />
         {addButtonLabel}
       </Button>
-      <input
-        id={`multi-upload-${label.replace(/\s/g, '-')}`}
-        type="file"
-        className="hidden"
-        accept=".jpg,.jpeg,.png,.pdf"
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) onAdd(file)
-          e.target.value = ''
-        }}
-      />
     </div>
   )
 }
@@ -280,10 +383,6 @@ const STEPS = [
   { num: 4, label: 'Qualifications & Experience' },
 ]
 
-function selectFieldValue(value: string | undefined) {
-  const normalized = value ?? ''
-  return normalized === '' ? undefined : normalized
-}
 
 class StepErrorBoundary extends Component<
   { children: ReactNode; onError: (message: string) => void },
@@ -360,21 +459,56 @@ function FileDropZone({
   file: File | null
   onChange: (file: File | null) => void
 }) {
+  const [isDragging, setIsDragging] = useState(false)
+  const inputId = `file-drop-${label.replace(/\s/g, '-')}`
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    const dropped = e.dataTransfer.files?.[0]
+    if (dropped) onChange(dropped)
+  }
+
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium">{label}</p>
-      <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-surface p-4 transition-colors hover:bg-muted">
-        <Upload className="h-6 w-6 text-text-secondary" />
-        <span className="text-sm text-text-secondary">
-          {file ? file.name : 'Click or drag file to upload'}
-        </span>
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => document.getElementById(inputId)?.click()}
+        className={cn(
+          'flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-4 text-center transition-colors',
+          isDragging
+            ? 'border-blue-500 bg-blue-50'
+            : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50',
+        )}
+      >
+        <Upload className="mx-auto mb-2 h-6 w-6 text-gray-400" />
+        <p className="text-sm text-text-secondary">
+          {file ? file.name : 'Drag & drop or click to upload'}
+        </p>
         <input
+          id={inputId}
           type="file"
           className="hidden"
           accept=".jpg,.jpeg,.png,.pdf"
           onChange={(e) => onChange(e.target.files?.[0] ?? null)}
         />
-      </label>
+      </div>
     </div>
   )
 }
@@ -384,9 +518,13 @@ function emptyQualRow(qualType: QualType): QualRow {
     key: crypto.randomUUID(),
     degree: '',
     boardUniversity: '',
+    marksType: 'MARKS',
     obtainedMarks: '',
+    totalMarks: '',
+    cgpa: '',
     divisionGrade: '',
     qualType,
+    status: 'COMPLETED',
   }
 }
 
@@ -405,11 +543,13 @@ function buildStep1Payload(data: Step1Values) {
   const optionalKeys = [
     'fatherName',
     'fatherContactNumber',
+    'guardianContact',
     'phone',
     'email',
     'dateOfBirth',
     'emergencyContactName',
     'emergencyContactNumber',
+    'emergencyRelation',
     'spouseName',
     'spouseContactNumber',
     'bloodGroup',
@@ -427,8 +567,8 @@ function buildStep1Payload(data: Step1Values) {
   ] as const
 
   const payload: Record<string, unknown> = {
-    firstName: data.firstName,
-    lastName: data.lastName,
+    fullName: data.fullName,
+    fatherStatus: data.fatherStatus,
     cnic: data.cnic,
     gender: data.gender,
   }
@@ -436,6 +576,17 @@ function buildStep1Payload(data: Step1Values) {
   for (const key of optionalKeys) {
     const val = data[key]
     if (val) payload[key] = val
+  }
+
+  if (data.maritalStatus === 'UNMARRIED') {
+    delete payload.spouseName
+    delete payload.spouseContactNumber
+  }
+
+  if (data.fatherStatus === 'DECEASED') {
+    delete payload.fatherContactNumber
+  } else {
+    delete payload.guardianContact
   }
 
   return payload
@@ -456,6 +607,9 @@ export function EmployeeCreatePage() {
   const [step3Data, setStep3Data] = useState<Step3Values | null>(null)
   const [cnicFront, setCnicFront] = useState<File | null>(null)
   const [cnicBack, setCnicBack] = useState<File | null>(null)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoError, setPhotoError] = useState<string | null>(null)
   const [educationalCerts, setEducationalCerts] = useState<File[]>([])
   const [medicalCerts, setMedicalCerts] = useState<File[]>([])
   const [docErrors, setDocErrors] = useState<string | null>(null)
@@ -467,16 +621,19 @@ export function EmployeeCreatePage() {
   const form1 = useForm<Step1Values>({
     resolver: zodResolver(step1Schema),
     defaultValues: {
-      firstName: '',
-      lastName: '',
+      fullName: '',
       fatherName: '',
+      fatherStatus: 'ALIVE' as FatherStatus,
       fatherContactNumber: '',
+      guardianContact: '',
+      maritalStatus: 'UNMARRIED' as const,
       cnic: '',
       dateOfBirth: '',
       phone: '',
       email: '',
       emergencyContactName: '',
       emergencyContactNumber: '',
+      emergencyRelation: '',
       spouseName: '',
       spouseContactNumber: '',
       bloodGroup: '',
@@ -502,7 +659,6 @@ export function EmployeeCreatePage() {
       currentDepartmentId: '',
       currentDesignation: '',
       joiningDate: '',
-      biometricId: '',
       dutyTotalHours: undefined,
       dutyStartTime: '',
       dutyEndTime: '',
@@ -512,11 +668,23 @@ export function EmployeeCreatePage() {
 
   const form3 = useForm<Step3Values>({
     resolver: zodResolver(step3Schema),
-    defaultValues: { basicStipend: 0 },
+    defaultValues: {
+      basicStipend: 0,
+      allowances: 0,
+      reward: 0,
+      incentiveReward: 0,
+      fuelAllowance: 0,
+      loanDeduction: 0,
+      advanceDeduction: 0,
+      fineDeduction: 0,
+      healthDeduction: 0,
+    },
   })
 
   const branchId = form2.watch('currentBranchId')
   const departmentId = form2.watch('currentDepartmentId')
+  const selectedFatherStatus = form1.watch('fatherStatus')
+  const selectedMaritalStatus = form1.watch('maritalStatus')
   const selectedProvince = form1.watch('province')
   const selectedPermanentProvince = form1.watch('permanentProvince')
   const selectedDistrict = form1.watch('district')
@@ -530,16 +698,19 @@ export function EmployeeCreatePage() {
   useEffect(() => {
     if (prefill) {
       form1.reset({
-        firstName: prefill.firstName ?? '',
-        lastName: prefill.lastName ?? '',
+        fullName: prefill.fullName ?? '',
         fatherName: '',
+        fatherStatus: 'ALIVE',
         fatherContactNumber: '',
+        guardianContact: '',
+        maritalStatus: 'UNMARRIED',
         cnic: prefill.cnic ?? '',
         phone: prefill.phone ?? '',
         email: prefill.email ?? '',
         dateOfBirth: '',
         emergencyContactName: '',
         emergencyContactNumber: '',
+        emergencyRelation: '',
         spouseName: '',
         spouseContactNumber: '',
         bloodGroup: '',
@@ -561,7 +732,6 @@ export function EmployeeCreatePage() {
         currentDepartmentId: '',
         currentDesignation: prefill.currentDesignation ?? '',
         joiningDate: '',
-        biometricId: '',
         dutyTotalHours: undefined,
         dutyStartTime: '',
         dutyEndTime: '',
@@ -616,6 +786,36 @@ export function EmployeeCreatePage() {
     [departments],
   )
 
+  const branchOptions = useMemo(
+    () => branches.map((b) => formatBranchLabel(b)),
+    [branches],
+  )
+
+  const payrollValues = form3.watch()
+  const lumpsumTotal = useMemo(
+    () => calcLumpsumTotal(payrollValues),
+    [payrollValues],
+  )
+
+  const handlePhotoSelect = (file: File | null) => {
+    setPhotoError(null)
+    if (!file) {
+      setPhotoFile(null)
+      setPhotoPreview(null)
+      return
+    }
+    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
+      setPhotoError('Only JPG and PNG images are allowed')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setPhotoError('Photo must be 2MB or smaller')
+      return
+    }
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!step1Data || !step2Data || !step3Data || !staffType) {
@@ -627,12 +827,15 @@ export function EmployeeCreatePage() {
         ...step2Data,
         ...step3Data,
         staffType,
-        biometricId: step2Data.biometricId || undefined,
         dutyStartTime: step2Data.dutyStartTime || undefined,
         dutyEndTime: step2Data.dutyEndTime || undefined,
         dutyTotalHours: step2Data.dutyTotalHours || undefined,
         shiftName: step2Data.shiftName || undefined,
       })
+
+      if (photoFile) {
+        await employeesApi.uploadPhoto(employee.id, photoFile)
+      }
 
       const uploadFile = async (
         file: File,
@@ -662,8 +865,17 @@ export function EmployeeCreatePage() {
           qualType: qual.qualType,
           degree: qual.degree,
           boardUniversity: qual.boardUniversity,
-          obtainedMarks: qual.obtainedMarks || undefined,
+          marksType: qual.marksType,
+          obtainedMarks:
+            qual.marksType === 'MARKS' ? qual.obtainedMarks || undefined : undefined,
+          totalMarks:
+            qual.marksType === 'MARKS' ? qual.totalMarks || undefined : undefined,
+          cgpa:
+            qual.marksType === 'CGPA' && qual.cgpa
+              ? Number(qual.cgpa)
+              : undefined,
           divisionGrade: qual.divisionGrade || undefined,
+          status: qual.status,
         })
       }
 
@@ -794,6 +1006,7 @@ export function EmployeeCreatePage() {
                   <TableHead>Board / University</TableHead>
                   <TableHead>Marks</TableHead>
                   <TableHead>Division / Grade</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
@@ -819,13 +1032,73 @@ export function EmployeeCreatePage() {
                       />
                     </TableCell>
                     <TableCell>
-                      <Input
-                        value={row.obtainedMarks}
-                        onChange={(e) =>
-                          updateQual(row.key, 'obtainedMarks', e.target.value)
-                        }
-                        placeholder="Marks"
-                      />
+                      <div className="space-y-2">
+                        <div className="flex gap-3 text-xs">
+                          <label className="flex items-center gap-1">
+                            <input
+                              type="radio"
+                              checked={row.marksType === 'MARKS'}
+                              onChange={() =>
+                                updateQual(row.key, 'marksType', 'MARKS')
+                              }
+                            />
+                            Marks
+                          </label>
+                          <label className="flex items-center gap-1">
+                            <input
+                              type="radio"
+                              checked={row.marksType === 'CGPA'}
+                              onChange={() =>
+                                updateQual(row.key, 'marksType', 'CGPA')
+                              }
+                            />
+                            CGPA
+                          </label>
+                        </div>
+                        {row.marksType === 'MARKS' ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={1100}
+                              value={row.obtainedMarks}
+                              onChange={(e) =>
+                                updateQual(row.key, 'obtainedMarks', e.target.value)
+                              }
+                              placeholder="Obtained"
+                              className="w-20"
+                            />
+                            <span>/</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={1100}
+                              value={row.totalMarks}
+                              onChange={(e) =>
+                                updateQual(row.key, 'totalMarks', e.target.value)
+                              }
+                              placeholder="Total"
+                              className="w-20"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={4}
+                              step={0.01}
+                              value={row.cgpa}
+                              onChange={(e) =>
+                                updateQual(row.key, 'cgpa', e.target.value)
+                              }
+                              placeholder="CGPA"
+                              className="w-24"
+                            />
+                            <span className="text-xs text-text-secondary">/4.00</span>
+                          </div>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Input
@@ -835,6 +1108,31 @@ export function EmployeeCreatePage() {
                         }
                         placeholder="Division / Grade"
                       />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <SearchableSelect
+                          options={['Completed', 'Continuing']}
+                          value={
+                            row.status === 'COMPLETED' ? 'Completed' : 'Continuing'
+                          }
+                          onChange={(label) =>
+                            updateQual(
+                              row.key,
+                              'status',
+                              label === 'Completed' ? 'COMPLETED' : 'CONTINUING',
+                            )
+                          }
+                          placeholder="Status"
+                        />
+                        <Badge
+                          variant={
+                            row.status === 'COMPLETED' ? 'default' : 'secondary'
+                          }
+                        >
+                          {row.status === 'COMPLETED' ? 'Completed' : 'Continuing'}
+                        </Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -940,26 +1238,42 @@ export function EmployeeCreatePage() {
         <Form {...form1}>
           <form onSubmit={onStep1Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Personal Information</h2>
+
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative h-20 w-20 overflow-hidden rounded-full border border-border bg-muted">
+                {photoPreview ? (
+                  <img
+                    src={photoPreview}
+                    alt="Preview"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <User className="h-8 w-8 text-text-secondary" />
+                  </div>
+                )}
+              </div>
+              <label className="cursor-pointer text-sm text-primary hover:underline">
+                Upload photo (JPG/PNG, max 2MB)
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".jpg,.jpeg,.png"
+                  onChange={(e) => handlePhotoSelect(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              {photoError && (
+                <p className="text-sm text-destructive">{photoError}</p>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
                 control={form1.control}
-                name="firstName"
+                name="fullName"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>First Name *</FormLabel>
-                    <FormControl>
-                      <TextOnlyInput {...field} value={field.value ?? ''} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Last Name *</FormLabel>
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>Full Name *</FormLabel>
                     <FormControl>
                       <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
@@ -982,15 +1296,82 @@ export function EmployeeCreatePage() {
               />
               <FormField
                 control={form1.control}
-                name="fatherContactNumber"
+                name="fatherStatus"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Father Contact Number *</FormLabel>
+                    <FormLabel>Father Status *</FormLabel>
                     <FormControl>
-                      <PhoneInput
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                      />
+                      <div className="flex gap-4">
+                        {(['ALIVE', 'DECEASED'] as FatherStatus[]).map((status) => (
+                          <label key={status} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              checked={field.value === status}
+                              onChange={() => field.onChange(status)}
+                            />
+                            {status === 'ALIVE' ? 'Alive' : 'Deceased'}
+                          </label>
+                        ))}
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {selectedFatherStatus === 'ALIVE' ? (
+                <FormField
+                  control={form1.control}
+                  name="fatherContactNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Father Contact Number *</FormLabel>
+                      <FormControl>
+                        <PhoneInput
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <FormField
+                  control={form1.control}
+                  name="guardianContact"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Guardian Contact Number *</FormLabel>
+                      <FormControl>
+                        <PhoneInput
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              <FormField
+                control={form1.control}
+                name="maritalStatus"
+                render={({ field }) => (
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>Marital Status *</FormLabel>
+                    <FormControl>
+                      <div className="flex gap-4">
+                        {(['MARRIED', 'UNMARRIED'] as const).map((status) => (
+                          <label key={status} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              checked={field.value === status}
+                              onChange={() => field.onChange(status)}
+                            />
+                            {status === 'MARRIED' ? 'Married' : 'Unmarried'}
+                          </label>
+                        ))}
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1019,9 +1400,6 @@ export function EmployeeCreatePage() {
                       <DateInput
                         value={field.value ?? ''}
                         onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />
@@ -1088,10 +1466,31 @@ export function EmployeeCreatePage() {
               />
               <FormField
                 control={form1.control}
+                name="emergencyRelation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Emergency Relation *</FormLabel>
+                    <FormControl>
+                      <SearchableSelect
+                        options={EMERGENCY_RELATION_OPTIONS}
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        placeholder="Select relation"
+                        error={form1.formState.errors.emergencyRelation?.message}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {selectedMaritalStatus === 'MARRIED' && (
+                <>
+              <FormField
+                control={form1.control}
                 name="spouseName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Spouse Name</FormLabel>
+                    <FormLabel>Spouse Name *</FormLabel>
                     <FormControl>
                       <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
@@ -1104,7 +1503,7 @@ export function EmployeeCreatePage() {
                 name="spouseContactNumber"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Spouse Contact Number</FormLabel>
+                    <FormLabel>Spouse Contact Number *</FormLabel>
                     <FormControl>
                       <PhoneInput
                         value={field.value ?? ''}
@@ -1115,6 +1514,8 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
+                </>
+              )}
               <FormField
                 control={form1.control}
                 name="bloodGroup"
@@ -1199,27 +1600,30 @@ export function EmployeeCreatePage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Branch *</FormLabel>
-                    <Select
-                      value={selectFieldValue(field.value)}
-                      onValueChange={(v) => {
-                        field.onChange(v)
-                        form2.setValue('currentDepartmentId', '')
-                        form2.setValue('currentDesignation', '')
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select branch" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {branches.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {formatBranchLabel(b)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <SearchableSelect
+                        options={branchOptions}
+                        value={
+                          branches.find((b) => b.id === field.value)
+                            ? formatBranchLabel(
+                                branches.find((b) => b.id === field.value)!,
+                              )
+                            : ''
+                        }
+                        onChange={(label) => {
+                          const branch = branches.find(
+                            (b) => formatBranchLabel(b) === label,
+                          )
+                          if (branch) {
+                            field.onChange(branch.id)
+                            form2.setValue('currentDepartmentId', '')
+                            form2.setValue('currentDesignation', '')
+                          }
+                        }}
+                        placeholder="Search branch..."
+                        error={form2.formState.errors.currentBranchId?.message}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1366,27 +1770,9 @@ export function EmployeeCreatePage() {
                     <FormLabel>Joining Date *</FormLabel>
                     <FormControl>
                       <DateInput
-                        min="1990-01-01"
-                        max="2099-12-31"
                         value={field.value ?? ''}
                         onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
                       />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form2.control}
-                name="biometricId"
-                render={({ field }) => (
-                  <FormItem className="sm:col-span-2">
-                    <FormLabel>Biometric ID</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1411,38 +1797,76 @@ export function EmployeeCreatePage() {
         <Form {...form3}>
           <form onSubmit={onStep3Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Stipend & Documents</h2>
-            <FormField
-              control={form3.control}
-              name="basicStipend"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Basic Stipend *</FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-secondary">
-                        PKR
-                      </span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="1"
-                        className="pl-12"
-                        value={field.value || ''}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          if (val === '') {
-                            field.onChange(0)
-                            return
-                          }
-                          field.onChange(parseInt(val, 10))
-                        }}
-                      />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+
+            <div className="space-y-4 rounded-lg border border-border p-4">
+              <h3 className="text-sm font-semibold">Earnings</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {(
+                  [
+                    ['basicStipend', 'Basic Stipend *'],
+                    ['allowances', 'Allowances'],
+                    ['reward', 'Reward'],
+                    ['incentiveReward', 'Incentive Reward'],
+                    ['fuelAllowance', 'Fuel Allowance'],
+                  ] as const
+                ).map(([name, label]) => (
+                  <FormField
+                    key={name}
+                    control={form3.control}
+                    name={name}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{label}</FormLabel>
+                        <FormControl>
+                          <PKRInput
+                            value={field.value ?? 0}
+                            onChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+              </div>
+
+              <h3 className="text-sm font-semibold">Deductions</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {(
+                  [
+                    ['loanDeduction', 'Loan'],
+                    ['advanceDeduction', 'Advance'],
+                    ['fineDeduction', 'Fine'],
+                    ['healthDeduction', 'Health'],
+                  ] as const
+                ).map(([name, label]) => (
+                  <FormField
+                    key={name}
+                    control={form3.control}
+                    name={name}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{label}</FormLabel>
+                        <FormControl>
+                          <PKRInput
+                            value={field.value ?? 0}
+                            onChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between rounded-md bg-muted px-4 py-3">
+                <span className="text-sm font-medium">Lumpsum Total</span>
+                <span className="text-lg font-bold text-primary">
+                  PKR {lumpsumTotal.toLocaleString('en-PK')}
+                </span>
+              </div>
+            </div>
 
             <div className="space-y-6">
               <div>

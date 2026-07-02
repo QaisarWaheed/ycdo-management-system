@@ -70,7 +70,7 @@ export function ApprovalTrail({ leave }: { leave: LeaveRecord }) {
               </p>
             ) : 'reliever' in step && step.reliever ? (
               <p className="text-xs text-green-700">
-                {step.reliever.firstName} {step.reliever.lastName} (
+                {step.reliever.fullName} (
                 {step.reliever.employeeCode}) — {step.status}
               </p>
             ) : (

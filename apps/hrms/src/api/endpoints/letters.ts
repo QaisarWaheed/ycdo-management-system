@@ -2,8 +2,13 @@ import api from '../axios'
 import type { Letter } from '@/types'
 
 interface GenerateLetterResponse {
-  letter: Letter
-  previewHtml: string
+  letter?: Letter
+  previewHtml?: string
+  warning?: boolean
+  warningMessage?: string
+  existingLetterId?: string
+  existingLetterDate?: string
+  employeeName?: string
 }
 
 export const lettersApi = {

@@ -35,6 +35,24 @@ export class LettersService {
       );
     }
 
+    const existingLetter = await this.prisma.letter.findFirst({
+      where: {
+        employeeId: dto.employeeId,
+        letterType: dto.letterType,
+      },
+      orderBy: { generatedAt: 'desc' },
+    });
+
+    if (existingLetter && !dto.forceCreate && actingUserId !== 'SYSTEM') {
+      return {
+        warning: true,
+        warningMessage: `A ${dto.letterType} letter was already sent to this employee on ${this.formatDate(existingLetter.generatedAt)}`,
+        existingLetterId: existingLetter.id,
+        existingLetterDate: existingLetter.generatedAt,
+        employeeName: employee.fullName,
+      };
+    }
+
     const year = new Date().getFullYear();
     const typeShort = getLetterTypeShort(dto.letterType);
     const existingCount = await this.prisma.letter.count({
@@ -46,7 +64,7 @@ export class LettersService {
     const letterData: LetterData = {
       refNumber,
       date: this.formatDate(new Date()),
-      employeeName: `${employee.firstName} ${employee.lastName}`,
+      employeeName: employee.fullName,
       employeeCode: employee.employeeCode,
       designation: employee.currentDesignation,
       department: employee.currentDepartment.name,
@@ -147,7 +165,7 @@ export class LettersService {
       where,
       include: {
         employee: {
-          select: { firstName: true, lastName: true, employeeCode: true },
+          select: { fullName: true, employeeCode: true },
         },
         acknowledgement: true,
         replies: {
@@ -165,8 +183,7 @@ export class LettersService {
         employee: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
             currentDesignation: true,
           },

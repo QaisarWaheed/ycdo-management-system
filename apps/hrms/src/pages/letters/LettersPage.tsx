@@ -275,7 +275,7 @@ function LetterRepliesDialog({
                 <div className="flex items-center justify-between">
                   <p className="font-medium">
                     {reply.employee
-                      ? `${reply.employee.firstName} ${reply.employee.lastName}`
+                      ? `${reply.employee.fullName}`
                       : 'Employee'}
                     {reply.employee?.employeeCode && (
                       <span className="ml-2 font-mono text-xs text-text-secondary">
@@ -332,12 +332,21 @@ function GenerateLetterWizard({
     id: string
     reference: string
   } | null>(null)
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    message: string
+    employeeName: string
+    letterType: LetterType
+    date: string
+  } | null>(null)
+  const [forceCreate, setForceCreate] = useState(false)
 
   const reset = () => {
     setStep(1)
     setEmployeeId('')
     setLetterType('APPOINTMENT')
     setFields({})
+    setForceCreate(false)
+    setDuplicateWarning(null)
   }
 
   const extraFields = getLetterExtraFields(letterType)
@@ -359,13 +368,35 @@ function GenerateLetterWizard({
   }
 
   const mutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (overrideForce?: boolean) =>
       lettersApi.generate({
         employeeId,
         letterType,
         extraFields: buildExtraFieldsPayload(),
+        forceCreate: overrideForce ?? forceCreate,
       }),
     onSuccess: (data) => {
+      if (data.warning) {
+        setDuplicateWarning({
+          message: data.warningMessage ?? 'Duplicate letter detected',
+          employeeName: data.employeeName ?? 'this employee',
+          letterType,
+          date: data.existingLetterDate
+            ? format(new Date(data.existingLetterDate), 'dd/MM/yyyy')
+            : '',
+        })
+        return
+      }
+
+      if (!data.letter) {
+        toast({
+          title: 'Failed to generate letter',
+          description: 'No letter was returned from the server',
+          variant: 'destructive',
+        })
+        return
+      }
+
       const ref = letterReference(data.letter)
       toast({
         title: 'Letter generated',
@@ -492,7 +523,7 @@ function GenerateLetterWizard({
               <Button
                 className="bg-primary hover:bg-primary-dark"
                 disabled={mutation.isPending}
-                onClick={() => mutation.mutate()}
+                onClick={() => mutation.mutate(undefined)}
               >
                 {mutation.isPending ? 'Generating...' : 'Generate'}
               </Button>
@@ -500,6 +531,26 @@ function GenerateLetterWizard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!duplicateWarning}
+        title="Duplicate Letter Warning"
+        description={
+          duplicateWarning
+            ? `You have already sent a ${duplicateWarning.letterType.replace(/_/g, ' ')} letter to ${duplicateWarning.employeeName} on ${duplicateWarning.date}. Are you sure you want to send another one?`
+            : ''
+        }
+        confirmLabel="Send Anyway"
+        loading={mutation.isPending}
+        onConfirm={() => {
+          setDuplicateWarning(null)
+          mutation.mutate(true)
+        }}
+        onCancel={() => {
+          setDuplicateWarning(null)
+          setForceCreate(false)
+        }}
+      />
 
       <ConfirmDialog
         open={!!downloadPrompt}
@@ -699,7 +750,7 @@ export function LettersPage() {
                     <div>
                       <p className="font-medium">
                         {letter.employee
-                          ? `${letter.employee.firstName} ${letter.employee.lastName}`
+                          ? `${letter.employee.fullName}`
                           : '—'}
                       </p>
                       <p className="font-mono text-xs text-text-secondary">

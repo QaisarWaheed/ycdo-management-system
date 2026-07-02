@@ -13,8 +13,7 @@ export interface AuthLoginResponse {
 export interface Employee {
   id: string
   employeeCode: string
-  firstName: string
-  lastName: string
+  fullName: string
   cnic: string
   phone?: string | null
   email?: string | null
@@ -116,7 +115,7 @@ export interface LeaveRecord {
   relieverRequest?: {
     id: string
     status: string
-    reliever?: { firstName: string; lastName: string }
+    reliever?: { fullName: string }
   } | null
 }
 
@@ -236,5 +235,21 @@ export interface Notification {
   message: string
   type: string
   isRead: boolean
+  createdAt: string
+}
+
+export interface AdvanceLoanRequest {
+  id: string
+  employeeId: string
+  type: string
+  amount: number | string
+  reason: string
+  status: string
+  approvedBy?: string | null
+  approvedAt?: string | null
+  rejectedBy?: string | null
+  rejectionReason?: string | null
+  repaymentMonths?: number | null
+  monthlyDeduction?: number | string | null
   createdAt: string
 }

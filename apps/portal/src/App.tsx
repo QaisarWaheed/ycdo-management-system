@@ -7,6 +7,7 @@ import { MyLeavePage } from '@/pages/leave/MyLeavePage'
 import { MyPayrollPage } from '@/pages/payroll/MyPayrollPage'
 import { MyLettersPage } from '@/pages/letters/MyLettersPage'
 import { MyBranchChangeRequestPage } from '@/pages/branch-change-request/MyBranchChangeRequestPage'
+import { AdvanceLoanPage } from '@/pages/advance-loan/AdvanceLoanPage'
 import { MyProfilePage } from '@/pages/profile/MyProfilePage'
 
 export default function App() {
@@ -65,6 +66,14 @@ export default function App() {
       <Route
         path="/outstation"
         element={<Navigate to="/branch-change-request" replace />}
+      />
+      <Route
+        path="/advance-loan"
+        element={
+          <ProtectedRoute>
+            <AdvanceLoanPage />
+          </ProtectedRoute>
+        }
       />
       <Route
         path="/profile"

@@ -405,7 +405,7 @@ function AdminDashboard() {
                       onClick={() => navigate(`/employees/${emp.id}`)}
                     >
                       <TableCell className="font-medium">{emp.employeeCode}</TableCell>
-                      <TableCell>{`${emp.firstName} ${emp.lastName}`}</TableCell>
+                      <TableCell>{`${emp.fullName}`}</TableCell>
                       <TableCell>{emp.currentDepartment?.name ?? '—'}</TableCell>
                       <TableCell>{formatBranchLabel(emp.currentBranch)}</TableCell>
                       <TableCell>{statusBadge(emp.status)}</TableCell>
@@ -454,7 +454,7 @@ function AdminDashboard() {
                     >
                       <TableCell>
                         {leave.employee
-                          ? `${leave.employee.firstName} ${leave.employee.lastName}`
+                          ? `${leave.employee.fullName}`
                           : '—'}
                       </TableCell>
                       <TableCell>

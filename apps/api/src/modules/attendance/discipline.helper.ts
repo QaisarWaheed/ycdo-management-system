@@ -6,6 +6,9 @@ import {
   LetterType,
   Prisma,
 } from '@prisma/client';
+import { calculateLateMinutes } from './attendance-late.util';
+
+export { calculateLateMinutes };
 
 export type DisciplineOptions = {
   lateMinutes?: number;

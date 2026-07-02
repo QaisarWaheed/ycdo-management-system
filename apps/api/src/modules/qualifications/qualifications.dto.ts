@@ -1,11 +1,16 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { QualType } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  Min,
 } from 'class-validator';
 
 export class CreateQualificationDto {
@@ -31,7 +36,25 @@ export class CreateQualificationDto {
 
   @IsOptional()
   @IsString()
-  divisionGrade?: string;
-}
+  totalMarks?: string;
 
+  @IsOptional()
+  @IsIn(['MARKS', 'CGPA'])
+  marksType?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(4)
+  cgpa?: number;
+
+  @IsOptional()
+  @IsString()
+  divisionGrade?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
 export class UpdateQualificationDto extends PartialType(CreateQualificationDto) {}

@@ -212,8 +212,7 @@ export class PayrollService {
             employee: {
               select: {
                 id: true,
-                firstName: true,
-                lastName: true,
+                fullName: true,
                 employeeCode: true,
                 currentBranch: { select: { id: true, name: true, address: true } },
                 currentDepartment: { select: { id: true, name: true } },
@@ -288,8 +287,7 @@ export class PayrollService {
             employee: {
               select: {
                 id: true,
-                firstName: true,
-                lastName: true,
+                fullName: true,
                 employeeCode: true,
                 currentBranch: { select: { id: true, name: true, address: true } },
                 currentDepartment: { select: { id: true, name: true } },
@@ -312,8 +310,7 @@ export class PayrollService {
             employee: {
               select: {
                 id: true,
-                firstName: true,
-                lastName: true,
+                fullName: true,
                 employeeCode: true,
                 currentBranch: { select: { id: true, name: true, address: true } },
                 currentDepartment: { select: { id: true, name: true } },

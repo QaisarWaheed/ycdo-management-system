@@ -14,8 +14,7 @@ import { formatBranchLabel } from '@/lib/formatBranchLabel'
 export function ProfilePage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
+  const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
 
   const { data: employee } = useQuery({
@@ -26,8 +25,7 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (employee) {
-      setFirstName(employee.firstName)
-      setLastName(employee.lastName)
+      setFullName(employee.fullName)
       setPhone(employee.phone ?? '')
     }
   }, [employee])
@@ -35,8 +33,7 @@ export function ProfilePage() {
   const updateMutation = useMutation({
     mutationFn: () =>
       employeesApi.update(user!.employeeId!, {
-        firstName,
-        lastName,
+        fullName,
         phone: phone || undefined,
       }),
     onSuccess: () => {
@@ -53,9 +50,7 @@ export function ProfilePage() {
     },
   })
 
-  const displayName = employee
-    ? `${employee.firstName} ${employee.lastName}`
-    : user?.email ?? 'User'
+  const displayName = employee?.fullName ?? user?.email ?? 'User'
 
   return (
     <div className="space-y-6">
@@ -65,8 +60,8 @@ export function ProfilePage() {
         <Card className="lg:col-span-1">
           <CardContent className="flex flex-col items-center space-y-4 p-6 text-center">
             <EmployeeAvatar
-              firstName={employee?.firstName ?? user?.email?.[0] ?? 'U'}
-              lastName={employee?.lastName ?? ''}
+              fullName={employee?.fullName ?? user?.email ?? 'User'}
+              photoUrl={employee?.photoUrl}
               size="lg"
             />
             <div>
@@ -90,18 +85,11 @@ export function ProfilePage() {
             {user?.employeeId ? (
               <>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>First Name</Label>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Full Name</Label>
                     <Input
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Last Name</Label>
-                    <Input
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
@@ -119,39 +107,45 @@ export function ProfilePage() {
                       className="bg-muted"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-text-secondary">Department</Label>
-                    <Input
-                      value={employee?.currentDepartment?.name ?? '—'}
-                      disabled
-                      className="bg-muted"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-text-secondary">Branch</Label>
-                    <Input
-                      value={formatBranchLabel(employee?.currentBranch)}
-                      disabled
-                      className="bg-muted"
-                    />
-                  </div>
                 </div>
                 <Button
-                  className="bg-primary hover:bg-primary-dark"
-                  disabled={updateMutation.isPending}
                   onClick={() => updateMutation.mutate()}
+                  disabled={updateMutation.isPending}
+                  className="bg-primary hover:bg-primary-dark"
                 >
-                  {updateMutation.isPending ? 'Saving...' : 'Save Profile'}
+                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
                 </Button>
               </>
             ) : (
-              <p className="text-text-secondary">
-                No employee profile linked to this account.
+              <p className="text-sm text-text-secondary">
+                Profile editing is only available for employee accounts.
               </p>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {employee?.currentBranch && (
+        <Card>
+          <CardContent className="p-6">
+            <h2 className="mb-2 text-lg font-semibold">Work Information</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-sm text-text-secondary">Branch</p>
+                <p className="font-medium">
+                  {formatBranchLabel(employee.currentBranch)}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-text-secondary">Department</p>
+                <p className="font-medium">
+                  {employee.currentDepartment?.name ?? '—'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

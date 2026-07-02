@@ -1,5 +1,12 @@
 import { LetterType } from '@prisma/client';
-import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsUUID } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsUUID,
+} from 'class-validator';
 
 export class GenerateLetterDto {
   @IsUUID()
@@ -13,6 +20,10 @@ export class GenerateLetterDto {
   @IsOptional()
   @IsObject()
   extraFields?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsBoolean()
+  forceCreate?: boolean;
 }
 
 export class LetterQueryDto {

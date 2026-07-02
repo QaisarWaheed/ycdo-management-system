@@ -74,7 +74,7 @@ export function ApproveRejectDialog({
   if (!leave) return null
 
   const employeeName = leave.employee
-    ? `${leave.employee.firstName} ${leave.employee.lastName}`
+    ? `${leave.employee.fullName}`
     : 'Employee'
 
   return (

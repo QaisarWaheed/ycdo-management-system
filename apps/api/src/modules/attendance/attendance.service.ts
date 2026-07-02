@@ -324,7 +324,7 @@ export class AttendanceService {
       where: { id },
       include: {
         employee: {
-          select: { firstName: true, lastName: true, employeeCode: true },
+          select: { fullName: true, employeeCode: true },
         },
         branch: { select: { name: true, address: true } },
       },
@@ -383,7 +383,7 @@ export class AttendanceService {
         data,
         include: {
           employee: {
-            select: { firstName: true, lastName: true, employeeCode: true },
+            select: { fullName: true, employeeCode: true },
           },
           branch: { select: { name: true, address: true } },
         },
@@ -505,9 +505,9 @@ export class AttendanceService {
       include: {
         employee: {
           select: {
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
+            phone: true,
             dutyStartTime: true,
             shift: { select: { startTime: true } },
           },
@@ -543,7 +543,7 @@ export class AttendanceService {
       where,
       include: {
         employee: {
-          select: { firstName: true, lastName: true, employeeCode: true },
+          select: { fullName: true, employeeCode: true },
         },
         branch: { select: { name: true, address: true } },
       },
@@ -883,31 +883,33 @@ export class AttendanceService {
     if (!shift) {
       const defaultStart = 9 * 60;
       const defaultMidpoint = 13 * 60;
-      if (checkInMinutes <= defaultStart + 15) {
+      const graceThreshold = defaultStart + 15;
+      if (checkInMinutes <= graceThreshold) {
         return { status: AttendanceStatus.PRESENT, lateMinutes: 0 };
       }
+      const lateMinutes = checkInMinutes - defaultStart;
       if (checkInMinutes <= defaultMidpoint) {
         return {
           status: AttendanceStatus.LATE,
-          lateMinutes: checkInMinutes - (defaultStart + 15),
+          lateMinutes,
         };
       }
       return {
         status: AttendanceStatus.HALF_DAY,
-        lateMinutes: checkInMinutes - (defaultStart + 15),
+        lateMinutes,
       };
     }
 
     const startMinutes = this.parseTimeToMinutes(shift.startTime);
     const endMinutes = this.parseTimeToMinutes(shift.endTime);
     const midpoint = Math.floor((startMinutes + endMinutes) / 2);
-    const graceEnd = startMinutes + 15;
+    const graceThreshold = startMinutes + 15;
 
-    if (checkInMinutes <= graceEnd) {
+    if (checkInMinutes <= graceThreshold) {
       return { status: AttendanceStatus.PRESENT, lateMinutes: 0 };
     }
 
-    const lateMinutes = checkInMinutes - graceEnd;
+    const lateMinutes = checkInMinutes - startMinutes;
 
     if (checkInMinutes <= midpoint) {
       return {

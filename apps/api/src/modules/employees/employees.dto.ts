@@ -21,11 +21,7 @@ import {
 export class CreateEmployeeDto {
   @IsString()
   @IsNotEmpty()
-  firstName: string;
-
-  @IsString()
-  @IsNotEmpty()
-  lastName: string;
+  fullName: string;
 
   @IsString()
   @IsNotEmpty()
@@ -74,8 +70,20 @@ export class CreateEmployeeDto {
   currentDesignation: string;
 
   @IsOptional()
+  @IsIn(['ALIVE', 'DECEASED'])
+  fatherStatus?: string;
+
+  @IsOptional()
   @IsString()
-  biometricId?: string;
+  guardianContact?: string;
+
+  @IsOptional()
+  @IsString()
+  emergencyRelation?: string;
+
+  @IsOptional()
+  @IsString()
+  fatherContactNumber?: string;
 
   @IsOptional()
   @IsUUID()
@@ -84,10 +92,6 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsIn(['Day', 'Night', '24 Hours'])
   shiftName?: string;
-
-  @IsString()
-  @IsNotEmpty()
-  fatherContactNumber: string;
 
   @IsString()
   @IsNotEmpty()
@@ -138,6 +142,54 @@ export class CreateEmployeeDto {
   @IsPositive()
   @IsNotEmpty()
   basicStipend: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  allowances?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  reward?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  incentiveReward?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  fuelAllowance?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  loanDeduction?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  advanceDeduction?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  fineDeduction?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  healthDeduction?: number;
 
   @IsOptional()
   @IsEnum(StaffType)

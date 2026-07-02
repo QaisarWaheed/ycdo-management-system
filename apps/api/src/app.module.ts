@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import * as path from 'path';
+import { AdvanceLoanModule } from './modules/advance-loan/advance-loan.module';
 import { AcknowledgementsModule } from './modules/acknowledgements/acknowledgements.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -45,6 +46,7 @@ import { PrismaModule } from './prisma/prisma.module';
     DepartmentsModule,
     DesignationsModule,
     EmployeesModule,
+    AdvanceLoanModule,
     DocumentsModule,
     AttendanceModule,
     LeaveModule,

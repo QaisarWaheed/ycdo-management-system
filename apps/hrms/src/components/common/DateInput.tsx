@@ -1,78 +1,125 @@
 import * as React from 'react'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
-export type DateInputProps = Omit<
-  React.ComponentProps<'input'>,
-  'type' | 'value' | 'onChange'
-> & {
+export interface DateInputProps {
   value: string
   onChange: (value: string) => void
-  min?: string
-  max?: string
+  label?: string
+  required?: boolean
   error?: string
+  disabled?: boolean
+  className?: string
+  onBlur?: () => void
 }
 
-function sanitizeDateValue(val: string): string {
-  if (!val) return ''
-  const parts = val.split('-')
-  if (parts[0] && parts[0].length > 4) {
-    parts[0] = parts[0].slice(0, 4)
-    return parts.join('-')
+function parseYMD(value: string) {
+  if (!value) return { day: '', month: '', year: '' }
+  const [year, month, day] = value.split('-')
+  return {
+    day: day ?? '',
+    month: month ?? '',
+    year: year ?? '',
   }
-  return val
 }
 
-export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
-  (
-    {
-      value,
-      onChange,
-      min = '1900-01-01',
-      max = '2099-12-31',
-      disabled,
-      placeholder,
-      error,
-      className,
-      onKeyDown,
-      ...props
-    },
-    ref,
-  ) => {
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      onChange(sanitizeDateValue(e.target.value))
+function toYMD(day: string, month: string, year: string): string {
+  if (day.length !== 2 || month.length !== 2 || year.length !== 4) return ''
+  const d = Number(day)
+  const m = Number(month)
+  const y = Number(year)
+  if (d < 1 || d > 31 || m < 1 || m > 12 || y < 1900 || y > 2099) return ''
+  return `${year}-${month}-${day}`
+}
+
+function digitsOnly(value: string, maxLen: number) {
+  return value.replace(/\D/g, '').slice(0, maxLen)
+}
+
+export const DateInput = React.forwardRef<HTMLDivElement, DateInputProps>(
+  ({ value, onChange, label, required, error, disabled, className, onBlur }, ref) => {
+    const parsed = parseYMD(value)
+    const [day, setDay] = React.useState(parsed.day)
+    const [month, setMonth] = React.useState(parsed.month)
+    const [year, setYear] = React.useState(parsed.year)
+
+    React.useEffect(() => {
+      const next = parseYMD(value)
+      setDay(next.day)
+      setMonth(next.month)
+      setYear(next.year)
+    }, [value])
+
+    const emitChange = (d: string, m: string, y: string) => {
+      const ymd = toYMD(d, m, y)
+      if (ymd) {
+        onChange(ymd)
+        return
+      }
+      if (!d && !m && !y) {
+        onChange('')
+      }
     }
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      const input = e.currentTarget
-      const val = input.value
-      if (val) {
-        const year = val.split('-')[0]
-        if (year && year.length >= 4) {
-          const cursorPos = input.selectionStart ?? 0
-          if (cursorPos <= 4 && /[0-9]/.test(e.key)) {
-            e.preventDefault()
-          }
-        }
-      }
-      onKeyDown?.(e)
+    const handleDay = (raw: string) => {
+      const next = digitsOnly(raw, 2)
+      setDay(next)
+      emitChange(next, month, year)
+    }
+
+    const handleMonth = (raw: string) => {
+      const next = digitsOnly(raw, 2)
+      setMonth(next)
+      emitChange(day, next, year)
+    }
+
+    const handleYear = (raw: string) => {
+      const next = digitsOnly(raw, 4)
+      setYear(next)
+      emitChange(day, month, next)
     }
 
     return (
-      <div className="w-full">
-        <Input
-          ref={ref}
-          type="date"
-          value={value}
-          min={min}
-          max={max}
-          disabled={disabled}
-          placeholder={placeholder}
-          className={cn(error && 'border-destructive', className)}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          {...props}
-        />
+      <div ref={ref} className={cn('w-full', className)}>
+        {label && (
+          <Label className="mb-2 block">
+            {label}
+            {required && <span className="text-destructive"> *</span>}
+          </Label>
+        )}
+        <div className="flex items-center gap-2">
+          <Input
+            inputMode="numeric"
+            placeholder="DD"
+            maxLength={2}
+            value={day}
+            disabled={disabled}
+            className={cn('w-16 text-center', error && 'border-destructive')}
+            onChange={(e) => handleDay(e.target.value)}
+          />
+          <span className="text-text-secondary">/</span>
+          <Input
+            inputMode="numeric"
+            placeholder="MM"
+            maxLength={2}
+            value={month}
+            disabled={disabled}
+            className={cn('w-16 text-center', error && 'border-destructive')}
+            onChange={(e) => handleMonth(e.target.value)}
+          />
+          <span className="text-text-secondary">/</span>
+          <Input
+            inputMode="numeric"
+            placeholder="YYYY"
+            maxLength={4}
+            value={year}
+            disabled={disabled}
+            className={cn('w-24 text-center', error && 'border-destructive')}
+            onChange={(e) => handleYear(e.target.value)}
+            onBlur={onBlur}
+          />
+        </div>
         {error && <p className="mt-1 text-sm text-destructive">{error}</p>}
       </div>
     )

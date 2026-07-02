@@ -34,6 +34,13 @@ export const employeesApi = {
     api.post(`/employees/${id}/documents`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
+  uploadPhoto: (id: string, file: File) => {
+    const formData = new FormData()
+    formData.append('photo', file)
+    return api.post(`/employees/${id}/photo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
   getDocuments: (id: string) => api.get(`/employees/${id}/documents`),
   deleteDocument: (employeeId: string, documentId: string) =>
     api.delete(`/employees/${employeeId}/documents/${documentId}`),

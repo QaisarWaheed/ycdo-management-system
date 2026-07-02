@@ -128,6 +128,17 @@ const emptyQualForm = (): QualFormState => ({
   divisionGrade: '',
 })
 
+function formatQualificationMarks(qual: AcademicQualification): string {
+  if (qual.marksType === 'CGPA' && qual.cgpa != null) {
+    const value = Number(qual.cgpa)
+    return `${value.toFixed(2)}/4.00`
+  }
+  if (qual.obtainedMarks && qual.totalMarks) {
+    return `${qual.obtainedMarks}/${qual.totalMarks}`
+  }
+  return qual.obtainedMarks ?? '—'
+}
+
 function QualificationSection({
   employeeId,
   qualType,
@@ -331,7 +342,7 @@ function QualificationSection({
                     <TableRow key={qual.id}>
                       <TableCell>{qual.degree}</TableCell>
                       <TableCell>{qual.boardUniversity}</TableCell>
-                      <TableCell>{qual.obtainedMarks ?? '—'}</TableCell>
+                      <TableCell>{formatQualificationMarks(qual)}</TableCell>
                       <TableCell>{qual.divisionGrade ?? '—'}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -829,13 +840,13 @@ export function EmployeeProfilePage() {
       <Card>
         <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
           <EmployeeAvatar
-            firstName={employee.firstName}
-            lastName={employee.lastName}
+            fullName={employee.fullName}
+            photoUrl={employee.photoUrl}
             size="lg"
           />
           <div>
             <h1 className="text-xl font-bold">
-              {employee.firstName} {employee.lastName}
+              {employee.fullName}
             </h1>
             <Badge variant="outline" className="mt-2 font-mono">
               {employee.employeeCode}
@@ -1899,7 +1910,7 @@ export function EmployeeProfilePage() {
         <ResetPasswordDialog
           open={resetPasswordOpen}
           onOpenChange={setResetPasswordOpen}
-          employeeName={`${employee.firstName} ${employee.lastName}`}
+          employeeName={`${employee.fullName}`}
           userId={employee.user.id}
         />
       )}

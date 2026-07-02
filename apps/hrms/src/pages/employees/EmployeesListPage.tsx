@@ -178,7 +178,7 @@ export function EmployeesListPage() {
                       to={`/employees/${emp.id}`}
                       className="font-semibold text-primary hover:underline"
                     >
-                      {emp.firstName} {emp.lastName}
+                      {emp.fullName}
                     </Link>
                   </TableCell>
                   <TableCell className="text-text-secondary">

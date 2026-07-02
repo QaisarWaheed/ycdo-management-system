@@ -15,10 +15,16 @@ export function calcLateMinutes(
   graceMinutes = 15,
 ): number {
   if (!checkInTime || !dutyStart) return 0
-  const checkIn = parseTimeToMinutes(checkInTime)
-  const dutyTotal = parseTimeToMinutes(dutyStart)
-  const lateMinutes = checkIn - dutyTotal - graceMinutes
-  return lateMinutes > 0 ? lateMinutes : 0
+  const [ciH, ciM] = checkInTime.split(':').map(Number)
+  const [ssH, ssM] = dutyStart.split(':').map(Number)
+
+  const checkInTotal = ciH * 60 + ciM
+  const shiftStartTotal = ssH * 60 + ssM
+  const graceThreshold = shiftStartTotal + graceMinutes
+
+  if (checkInTotal <= graceThreshold) return 0
+
+  return checkInTotal - shiftStartTotal
 }
 
 export function calcOvertimeMinutes(
