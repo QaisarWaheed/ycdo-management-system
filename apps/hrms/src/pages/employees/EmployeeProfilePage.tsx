@@ -11,6 +11,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Printer,
   Trash2,
   X,
 } from 'lucide-react'
@@ -66,6 +67,7 @@ import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { maritalStatusToLabel } from '@/lib/searchableSelectOptions'
 import type {
   AcademicQualification,
   DocumentType,
@@ -615,6 +617,7 @@ export function EmployeeProfilePage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -749,6 +752,26 @@ export function EmployeeProfilePage() {
     },
   })
 
+  const photoUploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData()
+      formData.append('photo', file)
+      return employeesApi.uploadPhoto(id, formData)
+    },
+    onSuccess: () => {
+      toast({ title: 'Photo updated' })
+      queryClient.invalidateQueries({ queryKey: ['employee', id] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Photo upload failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
   const deleteDocMutation = useMutation({
     mutationFn: (documentId: string) =>
       employeesApi.deleteDocument(id, documentId),
@@ -795,6 +818,14 @@ export function EmployeeProfilePage() {
 
   const history = (employee.employmentHistory ?? []) as EmploymentHistory[]
   const stipends = (employee.stipendRecords ?? []) as StipendRecord[]
+  const latestStipend = stipends[0]
+  const basicStipendAmount = latestStipend
+    ? Number(latestStipend.basicStipend)
+    : 0
+  const payrollTotal = basicStipendAmount + incentiveTotal
+  const photoSrc = employee.photoUrl
+    ? resolveFileUrl(employee.photoUrl)
+    : undefined
   const documents = (employee.documents ?? []) as EmployeeDocument[]
   const overtimeHours = ((attendanceSummary?.overtimeMinutes ?? 0) / 60).toFixed(1)
 
@@ -825,13 +856,159 @@ export function EmployeeProfilePage() {
     employee.permanentAddress
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[35%_1fr]">
+    <>
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/jpg"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) photoUploadMutation.mutate(file)
+          e.target.value = ''
+        }}
+      />
+
+      <div className="print-only hidden">
+        <div className="print-header">
+          <h1 className="text-2xl font-bold">YCDO</h1>
+          <p className="text-sm">Youth Community Development Organization</p>
+        </div>
+        <h2 className="mb-2 text-center text-lg font-semibold">
+          Employee Profile
+        </h2>
+        <p className="mb-6 text-center text-sm">
+          {employee.employeeCode} · Printed{' '}
+          {format(new Date(), 'dd/MM/yyyy')}
+        </p>
+
+        <h3 className="mb-2 font-semibold">Personal Information</h3>
+        <div className="print-grid mb-6">
+          <div className="print-field">
+            <div className="print-label">Full Name</div>
+            {employee.firstName} {employee.lastName}
+          </div>
+          <div className="print-field">
+            <div className="print-label">CNIC</div>
+            {employee.cnic ?? '—'}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Date of Birth</div>
+            {employee.dateOfBirth
+              ? format(new Date(employee.dateOfBirth), 'dd/MM/yyyy')
+              : '—'}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Gender</div>
+            {employee.gender}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Blood Group</div>
+            {employee.bloodGroup ?? '—'}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Marital Status</div>
+            {employee.maritalStatus
+              ? maritalStatusToLabel(employee.maritalStatus)
+              : '—'}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Father Name</div>
+            {employee.fatherName ?? '—'}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Caste</div>
+            {employee.caste ?? '—'}
+          </div>
+        </div>
+
+        <h3 className="mb-2 font-semibold">Contact Information</h3>
+        <div className="print-grid mb-6">
+          <div className="print-field">
+            <div className="print-label">Phone</div>
+            {employee.phone ?? '—'}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Email</div>
+            {employee.email ?? '—'}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Emergency Contact</div>
+            {employee.emergencyContactName ?? '—'}
+            {employee.emergencyRelation
+              ? ` (${employee.emergencyRelation})`
+              : ''}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Emergency Number</div>
+            {employee.emergencyContactNumber ?? '—'}
+          </div>
+          <div className="print-field sm:col-span-2">
+            <div className="print-label">Current Address</div>
+            {employee.currentAddress ?? '—'}
+          </div>
+        </div>
+
+        <h3 className="mb-2 font-semibold">Employment Details</h3>
+        <div className="print-grid mb-6">
+          <div className="print-field">
+            <div className="print-label">Designation</div>
+            {employee.currentDesignation}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Department</div>
+            {employee.currentDepartment?.name ?? '—'}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Branch</div>
+            {formatBranchLabel(employee.currentBranch)}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Joining Date</div>
+            {format(new Date(employee.joiningDate), 'dd/MM/yyyy')}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Shift</div>
+            {employee.shift?.name ?? '—'}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Duty Hours</div>
+            {employee.dutyStartTime && employee.dutyEndTime
+              ? formatDutyDisplay(employee.dutyStartTime, employee.dutyEndTime)
+              : '—'}
+          </div>
+        </div>
+
+        <h3 className="mb-2 font-semibold">Payroll Summary</h3>
+        <div className="print-grid mb-10">
+          <div className="print-field">
+            <div className="print-label">Basic Stipend</div>
+            PKR {basicStipendAmount.toLocaleString()}
+          </div>
+          <div className="print-field">
+            <div className="print-label">Total (incl. incentives)</div>
+            PKR {payrollTotal.toLocaleString()}
+          </div>
+        </div>
+
+        <p className="mt-8 text-sm">
+          HR Manager _________________________ Date _______________
+        </p>
+      </div>
+
+    <div className="no-print grid grid-cols-1 gap-6 lg:grid-cols-[35%_1fr]">
       <Card>
         <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
           <EmployeeAvatar
             firstName={employee.firstName}
             lastName={employee.lastName}
+            photoUrl={photoSrc}
             size="lg"
+            onPhotoClick={
+              canEditEmployee
+                ? () => photoInputRef.current?.click()
+                : undefined
+            }
           />
           <div>
             <h1 className="text-xl font-bold">
@@ -889,6 +1066,16 @@ export function EmployeeProfilePage() {
             </p>
           </div>
           <div className="flex w-full flex-col gap-2">
+            {canEditEmployee && (
+              <Button
+                variant="outline"
+                className="w-full no-print"
+                onClick={() => window.print()}
+              >
+                <Printer className="mr-2 h-4 w-4" />
+                Print Profile
+              </Button>
+            )}
             {canEditEmployee && (
               <Button
                 variant="outline"
@@ -1904,5 +2091,6 @@ export function EmployeeProfilePage() {
         />
       )}
     </div>
+    </>
   )
 }

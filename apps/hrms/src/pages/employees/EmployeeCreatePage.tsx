@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X } from 'lucide-react'
@@ -26,12 +26,18 @@ import {
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
   BLOOD_GROUP_OPTIONS,
+  FATHER_STATUS_LABELS,
   GENDER_OPTIONS,
   genderToLabel,
+  labelToFatherStatus,
   labelToGender,
+  labelToMaritalStatus,
+  MARITAL_STATUS_LABELS,
+  maritalStatusToLabel,
   SHIFT_NAME_OPTIONS,
+  fatherStatusToLabel,
 } from '@/lib/searchableSelectOptions'
-import { timeToMinutes } from '@/lib/dutyTimes'
+import { getStartTimeOptionsForShift } from '@/lib/dutyTimes'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
 import { Button } from '@/components/ui/button'
@@ -104,11 +110,13 @@ const STAFF_TYPE_OPTIONS: {
   },
 ]
 
-const step1Schema = z.object({
+const newStaffStep1Schema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   fatherName: z.string().min(1, 'Father name is required'),
+  fatherStatus: z.enum(['ALIVE', 'DECEASED']).optional(),
   fatherContactNumber: phoneRequired,
+  guardianContact: phoneOptional,
   cnic: z
     .string()
     .min(1, 'CNIC is required')
@@ -116,7 +124,11 @@ const step1Schema = z.object({
   dateOfBirth: z.string().min(1, 'Date of birth is required'),
   phone: phoneRequired,
   email: z.string().email('Invalid email').optional().or(z.literal('')),
+  maritalStatus: z
+    .enum(['MARRIED', 'UNMARRIED', 'DIVORCED', 'WIDOW'])
+    .optional(),
   emergencyContactName: z.string().min(1, 'Emergency contact name is required'),
+  emergencyRelation: z.string().optional(),
   emergencyContactNumber: phoneRequired,
   spouseName: z.string().optional(),
   spouseContactNumber: phoneOptional,
@@ -135,32 +147,156 @@ const step1Schema = z.object({
   permanentAddress: z.string().min(1, 'Permanent address is required'),
 })
 
-const step2Schema = z
+const existingStaffStep1Schema = z
   .object({
-    currentBranchId: z.string().min(1, 'Branch is required'),
-    currentDepartmentId: z.string().min(1, 'Department is required'),
-    currentDesignation: z.string().min(1, 'Designation is required'),
-    joiningDate: z.string().min(1, 'Joining date is required'),
-    biometricId: z.string().optional(),
-    shiftName: z.string().optional(),
-    dutyTotalHours: z.number().int().min(1).max(24).optional(),
-    dutyStartTime: z.string().optional(),
-    dutyEndTime: z.string().optional(),
+    firstName: z.string().min(1, 'First name is required'),
+    lastName: z.string().min(1, 'Last name is required'),
+    fatherName: z.string().min(1, 'Father name is required'),
+    fatherStatus: z.enum(['ALIVE', 'DECEASED'], {
+      message: 'Father status is required',
+    }),
+    fatherContactNumber: phoneOptional,
+    guardianContact: phoneOptional,
+    cnic: z
+      .string()
+      .optional()
+      .refine((v) => !v || cnicRegex.test(v), 'Format: 12345-1234567-1'),
+    dateOfBirth: z.string().min(1, 'Date of birth is required'),
+    phone: phoneRequired,
+    email: z.string().email('Invalid email').optional().or(z.literal('')),
+    maritalStatus: z.enum(['MARRIED', 'UNMARRIED', 'DIVORCED', 'WIDOW'], {
+      message: 'Marital status is required',
+    }),
+    emergencyContactName: z.string().min(1, 'Emergency contact name is required'),
+    emergencyRelation: z.string().min(1, 'Emergency relation is required'),
+    emergencyContactNumber: phoneRequired,
+    spouseName: z.string().optional(),
+    spouseContactNumber: phoneOptional,
+    bloodGroup: z.string().min(1, 'Blood group is required'),
+    caste: z.string().optional(),
+    domicile: z.string().optional(),
+    province: z.string().min(1, 'Province is required'),
+    city: z.string().min(1, 'City is required'),
+    permanentProvince: z.string().optional(),
+    permanentCity: z.string().optional(),
+    district: z.string().optional(),
+    tehsil: z.string().optional(),
+    policeStation: z.string().optional(),
+    gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
+    currentAddress: z.string().min(1, 'Current address is required'),
+    permanentAddress: z.string().optional(),
   })
-  .refine(
-    (data) => {
-      if (data.dutyStartTime && data.dutyEndTime) {
-        return (
-          timeToMinutes(data.dutyEndTime) > timeToMinutes(data.dutyStartTime)
-        )
+  .superRefine((data, ctx) => {
+    if (data.fatherStatus === 'ALIVE') {
+      if (!data.fatherContactNumber || !/^0\d{10}$/.test(data.fatherContactNumber)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Father contact number is required',
+          path: ['fatherContactNumber'],
+        })
       }
-      return true
-    },
-    {
-      message: 'End time must be after start time',
-      path: ['dutyEndTime'],
-    },
-  )
+    }
+    if (data.fatherStatus === 'DECEASED') {
+      if (!data.guardianContact || !/^0\d{10}$/.test(data.guardianContact)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Guardian contact is required',
+          path: ['guardianContact'],
+        })
+      }
+    }
+    if (data.maritalStatus === 'MARRIED') {
+      if (!data.spouseName?.trim()) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Spouse name is required',
+          path: ['spouseName'],
+        })
+      }
+      if (!data.spouseContactNumber || !/^0\d{10}$/.test(data.spouseContactNumber)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Spouse contact number is required',
+          path: ['spouseContactNumber'],
+        })
+      }
+    }
+  })
+
+
+const step1FormSchema = z.object({
+  firstName: z.string(),
+  lastName: z.string(),
+  fatherName: z.string(),
+  fatherStatus: z.enum(['ALIVE', 'DECEASED']).optional(),
+  fatherContactNumber: z.string().optional(),
+  guardianContact: z.string().optional(),
+  cnic: z.string().optional(),
+  dateOfBirth: z.string(),
+  phone: z.string(),
+  email: z.string().optional(),
+  maritalStatus: z
+    .enum(['MARRIED', 'UNMARRIED', 'DIVORCED', 'WIDOW'])
+    .optional(),
+  emergencyContactName: z.string(),
+  emergencyRelation: z.string().optional(),
+  emergencyContactNumber: z.string(),
+  spouseName: z.string().optional(),
+  spouseContactNumber: z.string().optional(),
+  bloodGroup: z.string(),
+  caste: z.string().optional(),
+  domicile: z.string().optional(),
+  province: z.string(),
+  city: z.string(),
+  permanentProvince: z.string().optional(),
+  permanentCity: z.string().optional(),
+  district: z.string().optional(),
+  tehsil: z.string().optional(),
+  policeStation: z.string().optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
+  currentAddress: z.string(),
+  permanentAddress: z.string().optional(),
+})
+
+type Step1Values = z.infer<typeof step1FormSchema>
+
+const step2BaseSchema = z.object({
+  currentBranchId: z.string().min(1, 'Branch is required'),
+  currentDepartmentId: z.string().min(1, 'Department is required'),
+  currentDesignation: z.string().min(1, 'Designation is required'),
+  joiningDate: z.string().min(1, 'Joining date is required'),
+  biometricId: z.string().optional(),
+  shiftName: z.string().optional(),
+  dutyTotalHours: z.number().int().min(1).max(24).optional(),
+  dutyStartTime: z.string().optional(),
+  dutyEndTime: z.string().optional(),
+})
+
+const dutyTimeRefine = (data: {
+  dutyStartTime?: string
+  dutyEndTime?: string
+}) => {
+  if (!data.dutyStartTime || !data.dutyEndTime) return true
+  const toMin = (t: string) => {
+    const [h, m] = t.split(':').map(Number)
+    return h * 60 + m
+  }
+  return toMin(data.dutyStartTime) !== toMin(data.dutyEndTime)
+}
+
+const step2Schema = step2BaseSchema.refine(dutyTimeRefine, {
+  message: 'Start and end time cannot be the same',
+  path: ['dutyEndTime'],
+})
+
+const existingStaffStep2Schema = step2BaseSchema
+  .extend({
+    shiftName: z.string().min(1, 'Shift is required'),
+  })
+  .refine(dutyTimeRefine, {
+    message: 'Start and end time cannot be the same',
+    path: ['dutyEndTime'],
+  })
 
 const step3Schema = z.object({
   basicStipend: z
@@ -168,8 +304,7 @@ const step3Schema = z.object({
     .positive('Stipend must be greater than 0'),
 })
 
-type Step1Values = z.infer<typeof step1Schema>
-type Step2Values = z.infer<typeof step2Schema>
+type Step2Values = z.infer<typeof step2BaseSchema>
 type Step3Values = z.infer<typeof step3Schema>
 
 interface QualRow {
@@ -403,12 +538,15 @@ function emptyPrevEmpRow(): PrevEmpRow {
 
 function buildStep1Payload(data: Step1Values) {
   const optionalKeys = [
-    'fatherName',
+    'fatherStatus',
     'fatherContactNumber',
+    'guardianContact',
     'phone',
     'email',
     'dateOfBirth',
+    'maritalStatus',
     'emergencyContactName',
+    'emergencyRelation',
     'emergencyContactNumber',
     'spouseName',
     'spouseContactNumber',
@@ -429,9 +567,11 @@ function buildStep1Payload(data: Step1Values) {
   const payload: Record<string, unknown> = {
     firstName: data.firstName,
     lastName: data.lastName,
-    cnic: data.cnic,
+    fatherName: data.fatherName,
     gender: data.gender,
   }
+
+  if (data.cnic) payload.cnic = data.cnic
 
   for (const key of optionalKeys) {
     const val = data[key]
@@ -439,6 +579,23 @@ function buildStep1Payload(data: Step1Values) {
   }
 
   return payload
+}
+
+function setFormErrors(
+  form: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setError: (name: any, error: { message: string }) => void
+    clearErrors: () => void
+  },
+  error: z.ZodError,
+) {
+  form.clearErrors()
+  error.issues.forEach((issue) => {
+    const path = issue.path[0]
+    if (typeof path === 'string') {
+      form.setError(path, { message: issue.message })
+    }
+  })
 }
 
 export function EmployeeCreatePage() {
@@ -458,6 +615,7 @@ export function EmployeeCreatePage() {
   const [cnicBack, setCnicBack] = useState<File | null>(null)
   const [educationalCerts, setEducationalCerts] = useState<File[]>([])
   const [medicalCerts, setMedicalCerts] = useState<File[]>([])
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [docErrors, setDocErrors] = useState<string | null>(null)
   const [qualifications, setQualifications] = useState<QualRow[]>([])
   const [previousEmployments, setPreviousEmployments] = useState<PrevEmpRow[]>(
@@ -465,17 +623,20 @@ export function EmployeeCreatePage() {
   )
 
   const form1 = useForm<Step1Values>({
-    resolver: zodResolver(step1Schema),
     defaultValues: {
       firstName: '',
       lastName: '',
       fatherName: '',
+      fatherStatus: undefined,
       fatherContactNumber: '',
+      guardianContact: '',
       cnic: '',
       dateOfBirth: '',
       phone: '',
       email: '',
+      maritalStatus: undefined,
       emergencyContactName: '',
+      emergencyRelation: '',
       emergencyContactNumber: '',
       spouseName: '',
       spouseContactNumber: '',
@@ -517,9 +678,34 @@ export function EmployeeCreatePage() {
 
   const branchId = form2.watch('currentBranchId')
   const departmentId = form2.watch('currentDepartmentId')
+  const shiftName = form2.watch('shiftName')
+  const selectedGender = form1.watch('gender')
+  const selectedFatherStatus = form1.watch('fatherStatus')
+  const selectedMaritalStatus = form1.watch('maritalStatus')
   const selectedProvince = form1.watch('province')
   const selectedPermanentProvince = form1.watch('permanentProvince')
   const selectedDistrict = form1.watch('district')
+
+  useEffect(() => {
+    if (!shiftName) return
+    const options = getStartTimeOptionsForShift(shiftName)
+    if (options.length > 0) {
+      form2.setValue('dutyStartTime', options[0].value)
+    }
+    if (shiftName === '24 Hours') {
+      form2.setValue('dutyTotalHours', 24)
+      form2.setValue('dutyEndTime', '23:59')
+    }
+  }, [shiftName, form2])
+
+  const maritalOptions = useMemo(() => {
+    if (selectedGender === 'MALE') {
+      return MARITAL_STATUS_LABELS.filter((l) => l !== 'Widow')
+    }
+    return MARITAL_STATUS_LABELS
+  }, [selectedGender])
+
+  const isExistingStaff = staffType === 'EXISTING'
 
   useEffect(() => {
     if (step >= 1 && !staffType) {
@@ -533,12 +719,16 @@ export function EmployeeCreatePage() {
         firstName: prefill.firstName ?? '',
         lastName: prefill.lastName ?? '',
         fatherName: '',
+        fatherStatus: undefined,
         fatherContactNumber: '',
+        guardianContact: '',
         cnic: prefill.cnic ?? '',
         phone: prefill.phone ?? '',
         email: prefill.email ?? '',
         dateOfBirth: '',
+        maritalStatus: undefined,
         emergencyContactName: '',
+        emergencyRelation: '',
         emergencyContactNumber: '',
         spouseName: '',
         spouseContactNumber: '',
@@ -634,6 +824,12 @@ export function EmployeeCreatePage() {
         shiftName: step2Data.shiftName || undefined,
       })
 
+      if (photoFile) {
+        const formData = new FormData()
+        formData.append('photo', photoFile)
+        await employeesApi.uploadPhoto(employee.id, formData)
+      }
+
       const uploadFile = async (
         file: File,
         documentType: DocumentType,
@@ -695,39 +891,43 @@ export function EmployeeCreatePage() {
     },
   })
 
-  const onStep1Next = form1.handleSubmit((data) => {
-    try {
-      if (!staffType) {
-        setStep(0)
-        return
-      }
-      setStepError(null)
-      setStep1Data(data)
-      setStep(2)
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to proceed to job information'
-      setStepError(message)
-      console.error('Step error:', error)
+  const onStep1Next = (e: FormEvent) => {
+    e.preventDefault()
+    if (!staffType) {
+      setStep(0)
+      return
     }
-  })
+    const schema =
+      staffType === 'EXISTING' ? existingStaffStep1Schema : newStaffStep1Schema
+    const values = form1.getValues()
+    const parsed = schema.safeParse(values)
+    if (!parsed.success) {
+      setFormErrors(form1, parsed.error)
+      return
+    }
+    setStepError(null)
+    setStep1Data(parsed.data as Step1Values)
+    setStep(2)
+  }
 
-  const onStep2Next = form2.handleSubmit((data) => {
-    try {
-      setStepError(null)
-      setStep2Data(data)
-      setStep(3)
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to proceed to stipend and documents'
-      setStepError(message)
-      console.error('Step error:', error)
+  const onStep2Next = (e: FormEvent) => {
+    e.preventDefault()
+    const schema =
+      staffType === 'EXISTING' ? existingStaffStep2Schema : step2Schema
+    const values = form2.getValues()
+    const parsed = schema.safeParse(values)
+    if (!parsed.success) {
+      setFormErrors(form2, parsed.error)
+      return
     }
-  })
+    setStepError(null)
+    setStep2Data(parsed.data)
+    setStep(3)
+  }
 
   const onStep3Next = form3.handleSubmit((data) => {
     try {
-      if (!cnicFront || !cnicBack) {
+      if (!isExistingStaff && (!cnicFront || !cnicBack)) {
         setDocErrors('CNIC front and back are both required')
         return
       }
@@ -980,28 +1180,82 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form1.control}
-                name="fatherContactNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Father Contact Number *</FormLabel>
-                    <FormControl>
-                      <PhoneInput
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {isExistingStaff && (
+                <FormField
+                  control={form1.control}
+                  name="fatherStatus"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Father Status *</FormLabel>
+                      <FormControl>
+                        <SearchableSelect
+                          options={[...FATHER_STATUS_LABELS]}
+                          value={
+                            field.value
+                              ? fatherStatusToLabel(field.value)
+                              : ''
+                          }
+                          onChange={(label) =>
+                            field.onChange(labelToFatherStatus(label))
+                          }
+                          placeholder="Select father status"
+                          error={form1.formState.errors.fatherStatus?.message}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              {(isExistingStaff
+                ? selectedFatherStatus === 'ALIVE'
+                : true) && (
+                <FormField
+                  control={form1.control}
+                  name="fatherContactNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Father Contact Number
+                        {(isExistingStaff
+                          ? selectedFatherStatus === 'ALIVE'
+                          : true) && ' *'}
+                      </FormLabel>
+                      <FormControl>
+                        <PhoneInput
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              {isExistingStaff && selectedFatherStatus === 'DECEASED' && (
+                <FormField
+                  control={form1.control}
+                  name="guardianContact"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Guardian Contact *</FormLabel>
+                      <FormControl>
+                        <PhoneInput
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={form1.control}
                 name="cnic"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>CNIC *</FormLabel>
+                    <FormLabel>CNIC{isExistingStaff ? '' : ' *'}</FormLabel>
                     <FormControl>
                       <CnicInput value={field.value ?? ''} onChange={field.onChange} />
                     </FormControl>
@@ -1070,6 +1324,21 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
+              {isExistingStaff && (
+                <FormField
+                  control={form1.control}
+                  name="emergencyRelation"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Emergency Relation *</FormLabel>
+                      <FormControl>
+                        <TextOnlyInput {...field} value={field.value ?? ''} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={form1.control}
                 name="emergencyContactNumber"
@@ -1086,12 +1355,16 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
+              {selectedMaritalStatus === 'MARRIED' && (
+                <>
               <FormField
                 control={form1.control}
                 name="spouseName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Spouse Name</FormLabel>
+                    <FormLabel>
+                      Spouse Name{isExistingStaff ? ' *' : ''}
+                    </FormLabel>
                     <FormControl>
                       <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
@@ -1104,7 +1377,9 @@ export function EmployeeCreatePage() {
                 name="spouseContactNumber"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Spouse Contact Number</FormLabel>
+                    <FormLabel>
+                      Spouse Contact Number{isExistingStaff ? ' *' : ''}
+                    </FormLabel>
                     <FormControl>
                       <PhoneInput
                         value={field.value ?? ''}
@@ -1115,6 +1390,8 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
+                </>
+              )}
               <FormField
                 control={form1.control}
                 name="bloodGroup"
@@ -1166,12 +1443,38 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={form1.control}
+                name="maritalStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Marital Status{isExistingStaff ? ' *' : ''}
+                    </FormLabel>
+                    <FormControl>
+                      <SearchableSelect
+                        options={[...maritalOptions]}
+                        value={
+                          field.value ? maritalStatusToLabel(field.value) : ''
+                        }
+                        onChange={(label) =>
+                          field.onChange(labelToMaritalStatus(label))
+                        }
+                        placeholder="Select marital status"
+                        error={form1.formState.errors.maritalStatus?.message}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <EmployeeLocationFields
                 control={form1.control as unknown as Control<FieldValues>}
                 setValue={form1.setValue as unknown as UseFormSetValue<FieldValues>}
                 province={selectedProvince ?? ''}
                 district={selectedDistrict ?? ''}
                 permanentProvince={selectedPermanentProvince ?? ''}
+                relaxedOptionalFields={isExistingStaff}
               />
             </div>
             <div className="flex justify-between">
@@ -1327,13 +1630,17 @@ export function EmployeeCreatePage() {
                 name="shiftName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Shift</FormLabel>
+                    <FormLabel>Shift{isExistingStaff ? ' *' : ''}</FormLabel>
                     <FormControl>
                       <SearchableSelect
                         options={[...SHIFT_OPTIONS]}
                         value={field.value ?? ''}
                         onChange={field.onChange}
-                        placeholder="Select shift (optional)"
+                        placeholder={
+                          isExistingStaff
+                            ? 'Select shift'
+                            : 'Select shift (optional)'
+                        }
                         error={form2.formState.errors.shiftName?.message}
                       />
                     </FormControl>
@@ -1342,6 +1649,7 @@ export function EmployeeCreatePage() {
                 )}
               />
               <DutyHoursFields
+                shiftName={shiftName ?? ''}
                 totalHours={form2.watch('dutyTotalHours') ?? ''}
                 startTime={form2.watch('dutyStartTime') ?? ''}
                 endTime={form2.watch('dutyEndTime') ?? ''}
@@ -1447,20 +1755,25 @@ export function EmployeeCreatePage() {
             <div className="space-y-6">
               <div>
                 <p className="text-sm font-medium">
-                  CNIC Documents <span className="text-destructive">*</span>
+                  CNIC Documents
+                  {!isExistingStaff && (
+                    <span className="text-destructive"> *</span>
+                  )}
                 </p>
                 <p className="text-xs text-text-secondary">
-                  Upload front and back separately
+                  {isExistingStaff
+                    ? 'Optional — upload front and back separately'
+                    : 'Upload front and back separately'}
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FileDropZone
-                  label="CNIC Front *"
+                  label={isExistingStaff ? 'CNIC Front' : 'CNIC Front *'}
                   file={cnicFront}
                   onChange={setCnicFront}
                 />
                 <FileDropZone
-                  label="CNIC Back *"
+                  label={isExistingStaff ? 'CNIC Back' : 'CNIC Back *'}
                   file={cnicBack}
                   onChange={setCnicBack}
                 />
@@ -1491,6 +1804,12 @@ export function EmployeeCreatePage() {
                 onRemove={(index) =>
                   setMedicalCerts((prev) => prev.filter((_, i) => i !== index))
                 }
+              />
+
+              <FileDropZone
+                label="Employee Photo"
+                file={photoFile}
+                onChange={setPhotoFile}
               />
             </div>
 

@@ -187,7 +187,9 @@ export interface Employee {
   firstName: string
   lastName: string
   fatherName?: string | null
-  cnic: string
+  fatherStatus?: 'ALIVE' | 'DECEASED' | null
+  guardianContact?: string | null
+  cnic?: string | null
   phone?: string | null
   email?: string | null
   dateOfBirth?: string | null
@@ -196,6 +198,8 @@ export interface Employee {
   fatherContactNumber?: string | null
   emergencyContactName?: string | null
   emergencyContactNumber?: string | null
+  emergencyRelation?: string | null
+  maritalStatus?: 'MARRIED' | 'UNMARRIED' | 'DIVORCED' | 'WIDOW' | null
   spouseName?: string | null
   spouseContactNumber?: string | null
   caste?: string | null
@@ -210,6 +214,7 @@ export interface Employee {
   tehsil?: string | null
   policeStation?: string | null
   bloodGroup?: string | null
+  photoUrl?: string | null
   status: EmployeeStatus
   joiningDate: string
   currentDesignation: string

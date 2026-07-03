@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -7,8 +8,11 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -23,6 +27,7 @@ import {
   UpdateEmployeeDto,
 } from './employees.dto';
 import { EmployeesService } from './employees.service';
+import { photoMulterConfig } from './photo.multer.config';
 
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -164,5 +169,24 @@ export class EmployeesController {
     @CurrentUser() user: { id: string },
   ) {
     return this.employeesService.updateBranchDuty(id, dto, user.id);
+  }
+
+  @Post(':id/photo')
+  @UseInterceptors(FileInterceptor('photo', photoMulterConfig))
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.BRANCH_MANAGER,
+  )
+  uploadPhoto(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No photo uploaded');
+    }
+    return this.employeesService.uploadPhoto(id, file);
   }
 }

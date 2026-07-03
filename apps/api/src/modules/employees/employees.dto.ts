@@ -1,7 +1,15 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { ChangeType, EmployeeStatus, Gender, StaffType } from '@prisma/client';
+import {
+  ChangeType,
+  EmployeeStatus,
+  FatherStatus,
+  Gender,
+  MaritalStatus,
+  StaffType,
+} from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsBooleanString,
   IsDateString,
   IsEmail,
   IsEnum,
@@ -31,12 +39,12 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   fatherName: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @Matches(/^\d{5}-\d{7}-\d{1}$/, {
     message: 'CNIC format: 12345-1234567-1',
   })
-  cnic: string;
+  cnic?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -82,16 +90,28 @@ export class CreateEmployeeDto {
   shiftId?: string;
 
   @IsOptional()
-  @IsIn(['Day', 'Night', '24 Hours'])
+  @IsIn(['Morning', 'Evening', 'Night', '24 Hours'])
   shiftName?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  fatherContactNumber: string;
+  fatherContactNumber?: string;
+
+  @IsOptional()
+  @IsEnum(FatherStatus)
+  fatherStatus?: FatherStatus;
+
+  @IsOptional()
+  @IsString()
+  guardianContact?: string;
 
   @IsString()
   @IsNotEmpty()
   emergencyContactName: string;
+
+  @IsOptional()
+  @IsString()
+  emergencyRelation?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -106,28 +126,32 @@ export class CreateEmployeeDto {
   spouseContactNumber?: string;
 
   @IsOptional()
+  @IsEnum(MaritalStatus)
+  maritalStatus?: MaritalStatus;
+
+  @IsOptional()
   @IsString()
   caste?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  domicile: string;
+  domicile?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  permanentAddress: string;
+  permanentAddress?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  district: string;
+  district?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  tehsil: string;
+  tehsil?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  policeStation: string;
+  policeStation?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -242,6 +266,14 @@ export class EmployeeQueryDto {
   @IsOptional()
   @IsEnum(Gender)
   gender?: Gender;
+
+  @IsOptional()
+  @IsEnum(MaritalStatus)
+  maritalStatus?: MaritalStatus;
+
+  @IsOptional()
+  @IsBooleanString()
+  widowOnly?: string;
 
   @IsOptional()
   @IsString()

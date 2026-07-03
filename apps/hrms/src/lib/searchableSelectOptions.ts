@@ -28,7 +28,39 @@ export function labelToGender(label: string): Gender {
   return (entry?.[0] ?? label) as Gender
 }
 
-export const SHIFT_NAME_OPTIONS = ['Day', 'Night', '24 Hours']
+export const SHIFT_NAME_OPTIONS = ['Morning', 'Evening', 'Night', '24 Hours']
+
+export const MARITAL_STATUS_OPTIONS = [
+  { label: 'Married', value: 'MARRIED' },
+  { label: 'Unmarried', value: 'UNMARRIED' },
+  { label: 'Divorced', value: 'DIVORCED' },
+  { label: 'Widow', value: 'WIDOW' },
+] as const
+
+export const MARITAL_STATUS_LABELS = MARITAL_STATUS_OPTIONS.map((o) => o.label)
+
+export function maritalStatusToLabel(value: string): string {
+  return MARITAL_STATUS_OPTIONS.find((o) => o.value === value)?.label ?? value
+}
+
+export function labelToMaritalStatus(label: string): string {
+  return MARITAL_STATUS_OPTIONS.find((o) => o.label === label)?.value ?? label
+}
+
+export const FATHER_STATUS_OPTIONS = [
+  { label: 'Alive', value: 'ALIVE' },
+  { label: 'Deceased', value: 'DECEASED' },
+] as const
+
+export const FATHER_STATUS_LABELS = FATHER_STATUS_OPTIONS.map((o) => o.label)
+
+export function fatherStatusToLabel(value: string): string {
+  return FATHER_STATUS_OPTIONS.find((o) => o.value === value)?.label ?? value
+}
+
+export function labelToFatherStatus(label: string): string {
+  return FATHER_STATUS_OPTIONS.find((o) => o.label === label)?.value ?? label
+}
 
 export const CHANGE_TYPE_LABELS: Record<string, string> = {
   TRANSFERRED: 'Transferred',

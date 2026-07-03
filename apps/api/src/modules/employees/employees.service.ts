@@ -7,7 +7,9 @@ import {
 import {
   ChangeType,
   EmployeeStatus,
+  FatherStatus,
   LetterType,
+  MaritalStatus,
   Prisma,
   StaffType,
   UserRole,
@@ -36,17 +38,21 @@ export class EmployeesService {
   ) {}
 
   async create(dto: CreateEmployeeDto) {
+    this.validateCreateDto(dto);
+
     await this.ensureBranchExists(dto.currentBranchId);
     await this.ensureDepartmentInBranch(
       dto.currentDepartmentId,
       dto.currentBranchId,
     );
 
-    const existingCnic = await this.prisma.employee.findUnique({
-      where: { cnic: dto.cnic },
-    });
-    if (existingCnic) {
-      throw new ConflictException('Employee with this CNIC already exists');
+    if (dto.cnic) {
+      const existingCnic = await this.prisma.employee.findUnique({
+        where: { cnic: dto.cnic },
+      });
+      if (existingCnic) {
+        throw new ConflictException('Employee with this CNIC already exists');
+      }
     }
 
     if (dto.email) {
@@ -148,24 +154,26 @@ export class EmployeesService {
 
     if (result) {
       try {
-        await this.lettersService.generate(
-          {
-            employeeId: result.id,
-            letterType: LetterType.ADVICE,
-            extraFields: {
-              adviceReason: 'Training / Joining Notification',
-              adviceDetails: `Welcome to YCDO. This letter serves as your training and joining notification. Joining Date: ${this.formatDate(result.joiningDate)}. Designation: ${result.currentDesignation}. Department: ${result.currentDepartment.name}. Branch: ${result.currentBranch.name}. Basic Stipend: PKR ${dto.basicStipend}. Working Hours: 9:00 AM - 5:00 PM. Probation Period: 3 months.`,
-              joiningDate: this.formatDate(result.joiningDate),
-              designation: result.currentDesignation,
-              department: result.currentDepartment.name,
-              branch: result.currentBranch.name,
-              basicStipend: dto.basicStipend,
-              workingHours: '9:00 AM - 5:00 PM',
-              probationPeriod: '3 months',
+        if (result.staffType !== StaffType.EXISTING) {
+          await this.lettersService.generate(
+            {
+              employeeId: result.id,
+              letterType: LetterType.ADVICE,
+              extraFields: {
+                adviceReason: 'Training / Joining Notification',
+                adviceDetails: `Welcome to YCDO. This letter serves as your training and joining notification. Joining Date: ${this.formatDate(result.joiningDate)}. Designation: ${result.currentDesignation}. Department: ${result.currentDepartment.name}. Branch: ${result.currentBranch.name}. Basic Stipend: PKR ${dto.basicStipend}. Working Hours: 9:00 AM - 5:00 PM. Probation Period: 3 months.`,
+                joiningDate: this.formatDate(result.joiningDate),
+                designation: result.currentDesignation,
+                department: result.currentDepartment.name,
+                branch: result.currentBranch.name,
+                basicStipend: dto.basicStipend,
+                workingHours: '9:00 AM - 5:00 PM',
+                probationPeriod: '3 months',
+              },
             },
-          },
-          'SYSTEM',
-        );
+            'SYSTEM',
+          );
+        }
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Unknown error';
@@ -282,6 +290,13 @@ export class EmployeesService {
 
     if (filters.gender) {
       where.gender = filters.gender;
+    }
+
+    if (filters.widowOnly === 'true') {
+      where.maritalStatus = MaritalStatus.WIDOW;
+      where.gender = 'FEMALE';
+    } else if (filters.maritalStatus) {
+      where.maritalStatus = filters.maritalStatus;
     }
 
     if (filters.designation) {
@@ -613,17 +628,25 @@ export class EmployeesService {
     }
 
     const startTime =
-      shiftName === 'Day'
+      shiftName === 'Morning'
         ? '08:00'
-        : shiftName === 'Night'
-          ? '20:00'
-          : '00:00';
+        : shiftName === 'Evening'
+          ? '14:00'
+          : shiftName === 'Night'
+            ? '20:00'
+            : shiftName === '24 Hours'
+              ? '00:00'
+              : '08:00';
     const endTime =
-      shiftName === 'Day'
-        ? '20:00'
-        : shiftName === 'Night'
-          ? '08:00'
-          : '23:59';
+      shiftName === 'Morning'
+        ? '14:00'
+        : shiftName === 'Evening'
+          ? '20:00'
+          : shiftName === 'Night'
+            ? '08:00'
+            : shiftName === '24 Hours'
+              ? '23:59'
+              : '20:00';
 
     const created = await this.prisma.shift.create({
       data: {
@@ -802,5 +825,85 @@ export class EmployeesService {
     });
 
     return updated;
+  }
+
+  async uploadPhoto(id: string, file: Express.Multer.File) {
+    await this.findOne(id);
+
+    const photoUrl = `/uploads/photos/${id}/${file.filename}`;
+
+    return this.prisma.employee.update({
+      where: { id },
+      data: { photoUrl },
+      select: {
+        id: true,
+        photoUrl: true,
+      },
+    });
+  }
+
+  private validateCreateDto(dto: CreateEmployeeDto) {
+    const isExisting = dto.staffType === StaffType.EXISTING;
+
+    if (isExisting) {
+      if (!dto.fatherStatus) {
+        throw new BadRequestException('Father status is required');
+      }
+      if (!dto.maritalStatus) {
+        throw new BadRequestException('Marital status is required');
+      }
+      if (!dto.emergencyRelation) {
+        throw new BadRequestException('Emergency relation is required');
+      }
+      if (!dto.shiftName) {
+        throw new BadRequestException('Shift is required');
+      }
+      if (
+        dto.fatherStatus === FatherStatus.ALIVE &&
+        !dto.fatherContactNumber
+      ) {
+        throw new BadRequestException('Father contact number is required');
+      }
+      if (dto.fatherStatus === FatherStatus.DECEASED && !dto.guardianContact) {
+        throw new BadRequestException('Guardian contact is required');
+      }
+      if (dto.maritalStatus === MaritalStatus.MARRIED) {
+        if (!dto.spouseName?.trim()) {
+          throw new BadRequestException('Spouse name is required');
+        }
+        if (!dto.spouseContactNumber) {
+          throw new BadRequestException('Spouse contact number is required');
+        }
+      }
+      return;
+    }
+
+    if (!dto.cnic) {
+      throw new BadRequestException('CNIC is required');
+    }
+    if (!dto.fatherContactNumber) {
+      throw new BadRequestException('Father contact number is required');
+    }
+    if (!dto.domicile) {
+      throw new BadRequestException('Domicile is required');
+    }
+    if (!dto.permanentAddress) {
+      throw new BadRequestException('Permanent address is required');
+    }
+    if (!dto.district) {
+      throw new BadRequestException('District is required');
+    }
+    if (!dto.tehsil) {
+      throw new BadRequestException('Tehsil is required');
+    }
+    if (!dto.policeStation) {
+      throw new BadRequestException('Police station is required');
+    }
+    if (!dto.permanentProvince) {
+      throw new BadRequestException('Permanent province is required');
+    }
+    if (!dto.permanentCity) {
+      throw new BadRequestException('Permanent city is required');
+    }
   }
 }

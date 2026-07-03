@@ -698,10 +698,15 @@ async function main() {
   }
 
   const shifts = [
-    { name: 'Morning Shift', startTime: '08:00', endTime: '14:00' },
-    { name: 'Evening Shift', startTime: '14:00', endTime: '20:00' },
-    { name: 'Night Shift', startTime: '20:00', endTime: '08:00' },
+    { name: 'Morning', startTime: '08:00', endTime: '14:00' },
+    { name: 'Evening', startTime: '14:00', endTime: '20:00' },
+    { name: 'Night', startTime: '20:00', endTime: '08:00' },
+    { name: '24 Hours', startTime: '00:00', endTime: '23:59' },
   ];
+  await prisma.shift.updateMany({
+    where: { name: 'Day' },
+    data: { name: 'Morning' },
+  });
   for (const shift of shifts) {
     const exists = await prisma.shift.findFirst({
       where: { name: shift.name, branchId: mainBranch.id },

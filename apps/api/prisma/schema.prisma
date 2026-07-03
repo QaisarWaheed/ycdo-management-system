@@ -80,7 +80,7 @@ model Employee {
   firstName           String
   lastName            String
   fatherName          String?
-  cnic                String         @unique
+  cnic                String?        @unique
   phone               String?
   email               String?        @unique
   dateOfBirth         DateTime?
@@ -143,6 +143,23 @@ model Employee {
   city                   String?
   permanentProvince      String?
   permanentCity          String?
+  maritalStatus          MaritalStatus?
+  fatherStatus           FatherStatus?
+  guardianContact        String?
+  emergencyRelation      String?
+  photoUrl               String?
+}
+
+enum MaritalStatus {
+  MARRIED
+  UNMARRIED
+  DIVORCED
+  WIDOW
+}
+
+enum FatherStatus {
+  ALIVE
+  DECEASED
 }
 
 enum Gender {

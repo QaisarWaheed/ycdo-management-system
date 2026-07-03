@@ -46,13 +46,17 @@ export function EmployeeLocationFields({
   province,
   district,
   permanentProvince,
+  relaxedOptionalFields = false,
 }: {
   control: Control<FieldValues>
   setValue: UseFormSetValue<FieldValues>
   province: string
   district: string
   permanentProvince: string
+  relaxedOptionalFields?: boolean
 }) {
+  const opt = (label: string, required = true) =>
+    relaxedOptionalFields && !required ? label : `${label} *`
   const domicile = useController({ control, name: 'domicile' })
   const provinceField = useController({ control, name: 'province' })
   const cityField = useController({ control, name: 'city' })
@@ -101,7 +105,7 @@ export function EmployeeLocationFields({
   return (
     <>
       <SearchableSelect
-        label="Domicile *"
+        label={opt('Domicile', false)}
         options={pakistanProvinces}
         value={domicile.field.value ?? ''}
         onChange={domicile.field.onChange}
@@ -140,7 +144,7 @@ export function EmployeeLocationFields({
       />
 
       <SearchableSelect
-        label="District *"
+        label={opt('District', false)}
         options={districtOptions}
         value={districtField.field.value ?? ''}
         onChange={(v) => {
@@ -155,7 +159,7 @@ export function EmployeeLocationFields({
       />
 
       <SearchableSelect
-        label="Tehsil *"
+        label={opt('Tehsil', false)}
         options={tehsilOptions}
         value={tehsilField.field.value ?? ''}
         onChange={tehsilField.field.onChange}
@@ -167,7 +171,7 @@ export function EmployeeLocationFields({
       />
 
       <SearchableSelect
-        label="Police Station *"
+        label={opt('Police Station', false)}
         options={policeOptions}
         value={policeStationField.field.value ?? ''}
         onChange={policeStationField.field.onChange}
@@ -196,7 +200,7 @@ export function EmployeeLocationFields({
       </h3>
 
       <SearchableSelect
-        label="Province *"
+        label={opt('Province', false)}
         options={pakistanProvinces}
         value={permanentProvinceField.field.value ?? ''}
         onChange={(v) => {
@@ -208,7 +212,7 @@ export function EmployeeLocationFields({
       />
 
       <SearchableSelect
-        label="City *"
+        label={opt('City', false)}
         options={permanentCityOptions}
         value={permanentCityField.field.value ?? ''}
         onChange={permanentCityField.field.onChange}
@@ -222,7 +226,7 @@ export function EmployeeLocationFields({
       />
 
       <FieldWrapper
-        label="Street Address *"
+        label={opt('Street Address', false)}
         error={permanentAddressField.fieldState.error?.message}
         className="sm:col-span-2"
       >

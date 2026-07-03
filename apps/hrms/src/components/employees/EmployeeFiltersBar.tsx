@@ -6,6 +6,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { DateInput } from '@/components/common/DateInput'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -21,6 +22,10 @@ import {
 } from '@/lib/shiftFilterUtils'
 import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import {
+  MARITAL_STATUS_LABELS,
+  labelToMaritalStatus,
+} from '@/lib/searchableSelectOptions'
 
 export const ALL_FILTER = 'ALL'
 
@@ -32,6 +37,7 @@ export type EmployeeFilterState = {
   employeeStatus: string
   district: string
   gender: string
+  maritalStatus: string
   shiftStartTime: string
   shiftId: string
   joinedFrom: string
@@ -46,6 +52,7 @@ export const EMPTY_EMPLOYEE_FILTERS: EmployeeFilterState = {
   employeeStatus: ALL_FILTER,
   district: ALL_FILTER,
   gender: ALL_FILTER,
+  maritalStatus: ALL_FILTER,
   shiftStartTime: '',
   shiftId: '',
   joinedFrom: '',
@@ -71,7 +78,19 @@ export function employeeFiltersToParams(
     status:
       filters.employeeStatus !== ALL_FILTER ? filters.employeeStatus : undefined,
     district: filters.district !== ALL_FILTER ? filters.district : undefined,
-    gender: filters.gender !== ALL_FILTER ? filters.gender : undefined,
+    gender:
+      filters.maritalStatus === 'Widow'
+        ? 'FEMALE'
+        : filters.gender !== ALL_FILTER
+          ? filters.gender
+          : undefined,
+    maritalStatus:
+      filters.maritalStatus !== ALL_FILTER &&
+      filters.maritalStatus !== 'Widow'
+        ? labelToMaritalStatus(filters.maritalStatus)
+        : undefined,
+    widowOnly:
+      filters.maritalStatus === 'Widow' ? 'true' : undefined,
     shiftIds,
     joinedFrom: filters.joinedFrom || undefined,
     joinedTo: filters.joinedTo || undefined,
@@ -324,6 +343,35 @@ export function EmployeeFiltersBar({
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-1">
+          <SearchableSelect
+            label="Marital Status"
+            options={['All', ...MARITAL_STATUS_LABELS]}
+            value={
+              filters.maritalStatus === ALL_FILTER
+                ? 'All'
+                : filters.maritalStatus
+            }
+            onChange={(label) => {
+              if (label === 'All') {
+                update({ maritalStatus: ALL_FILTER })
+                return
+              }
+              if (label === 'Widow') {
+                update({ maritalStatus: 'Widow', gender: 'FEMALE' })
+                return
+              }
+              update({ maritalStatus: label })
+            }}
+            placeholder="All"
+          />
+          {filters.maritalStatus === 'Widow' && (
+            <p className="text-xs text-text-secondary" title="Only shows female staff">
+              Only shows female staff
+            </p>
+          )}
         </div>
 
         <div className="space-y-1">

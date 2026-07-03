@@ -293,7 +293,7 @@ export function EditEmployeeDialog({
                 />
                 <div className="space-y-2">
                   <Label>CNIC</Label>
-                  <Input value={employee.cnic} disabled />
+                  <Input value={employee.cnic ?? ''} disabled />
                 </div>
                 <FormField
                   control={form.control}

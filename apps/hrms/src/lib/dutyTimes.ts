@@ -41,6 +41,31 @@ export function timeToMinutes(time: string): number {
   return h * 60 + m
 }
 
+export function getStartTimeOptionsForShift(shift: string) {
+  const all = dutyTimeOptions
+  switch (shift) {
+    case 'Morning':
+      return all.filter((t) => {
+        const h = parseInt(t.value.split(':')[0], 10)
+        return h >= 0 && h < 12
+      })
+    case 'Evening':
+      return all.filter((t) => {
+        const h = parseInt(t.value.split(':')[0], 10)
+        return h >= 12 && h < 18
+      })
+    case 'Night':
+      return all.filter((t) => {
+        const h = parseInt(t.value.split(':')[0], 10)
+        return h >= 18 && h <= 23
+      })
+    case '24 Hours':
+      return [{ label: '12:00 AM', value: '00:00' }]
+    default:
+      return all
+  }
+}
+
 export function calculateDutyEndTime(
   startTime: string,
   totalHours: number,

@@ -13,10 +13,10 @@ export class ShiftsService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateShiftDto) {
-    const allowedNames = ['Day', 'Night', '24 Hours'];
+    const allowedNames = ['Morning', 'Evening', 'Night', '24 Hours'];
     if (!allowedNames.includes(dto.name)) {
       throw new BadRequestException(
-        'Shift name must be Day, Night, or 24 Hours',
+        'Shift name must be Morning, Evening, Night, or 24 Hours',
       );
     }
 
