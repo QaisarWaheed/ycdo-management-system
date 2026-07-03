@@ -21,7 +21,7 @@ export class BranchesController {
   constructor(private branchesService: BranchesService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.IT_ADMIN)
   create(@Body() dto: CreateBranchDto) {
     return this.branchesService.create(dto);
   }

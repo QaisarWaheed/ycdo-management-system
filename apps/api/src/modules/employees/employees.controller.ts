@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -57,6 +58,7 @@ export class EmployeesController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
+    UserRole.IT_ADMIN,
   )
   findAll(@Query() query: EmployeeQueryDto) {
     return this.employeesService.findAll(query);
@@ -207,5 +209,11 @@ export class EmployeesController {
     @CurrentUser() user: { id: string },
   ) {
     return this.employeesService.updateBranchDuty(id, dto, user.id);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
+  remove(@Param('id') id: string) {
+    return this.employeesService.remove(id);
   }
 }

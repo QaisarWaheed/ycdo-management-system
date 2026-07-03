@@ -1,22 +1,24 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, ValidateIf } from 'class-validator';
 
 export class CreateBranchDto {
   @IsString()
   @IsNotEmpty()
   name: string;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsString()
-  address?: string;
+  address?: string | null;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsString()
-  phone?: string;
+  phone?: string | null;
 
-  @IsOptional()
+  @ValidateIf(
+    (_, value) => value !== null && value !== undefined && value !== '',
+  )
   @IsUUID()
-  projectId?: string;
+  projectId?: string | null;
 }
 
 export class UpdateBranchDto extends PartialType(CreateBranchDto) {}

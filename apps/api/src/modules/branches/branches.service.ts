@@ -54,7 +54,14 @@ export class BranchesService {
 
     return this.prisma.branch.update({
       where: { id },
-      data: dto,
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.address !== undefined ? { address: dto.address } : {}),
+        ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+        ...(dto.projectId !== undefined
+          ? { projectId: dto.projectId || null }
+          : {}),
+      },
     });
   }
 

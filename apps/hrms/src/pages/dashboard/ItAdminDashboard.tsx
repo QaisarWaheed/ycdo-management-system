@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
+import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
 import {
   DESIGNATION_CATEGORIES,
@@ -39,9 +40,26 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
-import type { Branch, Department } from '@/types'
+import { useDebounce } from '@/hooks/useDebounce'
+import type { Branch, Department, Employee } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
-import { PhoneInput } from '@/components/common/PhoneInput'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { PhoneInput, isValidPhone } from '@/components/common/PhoneInput'
+import { StatusBadge } from '@/components/employees/StatusBadge'
+
+function buildBranchPayload(
+  name: string,
+  address: string,
+  phone: string,
+  projectId: string,
+) {
+  return {
+    name: name.trim(),
+    address: address.trim() ? address.trim() : null,
+    phone: phone.trim() && isValidPhone(phone) ? phone.trim() : null,
+    projectId: projectId || null,
+  }
+}
 
 function BranchesTab() {
   const queryClient = useQueryClient()
@@ -83,13 +101,7 @@ function BranchesTab() {
   }
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      branchesApi.create({
-        name,
-        address: address || undefined,
-        phone: phone || undefined,
-        projectId: projectId || undefined,
-      }),
+    mutationFn: () => branchesApi.create(buildBranchPayload(name, address, phone, projectId)),
     onSuccess: () => {
       toast({ title: 'Branch created' })
       resetForm()
@@ -108,12 +120,10 @@ function BranchesTab() {
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      branchesApi.update(editBranch!.id, {
-        name,
-        address: address || undefined,
-        phone: phone || undefined,
-        projectId: projectId || undefined,
-      }),
+      branchesApi.update(
+        editBranch!.id,
+        buildBranchPayload(name, address, phone, projectId),
+      ),
     onSuccess: () => {
       toast({ title: 'Branch updated' })
       setEditBranch(null)
@@ -136,8 +146,13 @@ function BranchesTab() {
       toast({ title: 'Branch deactivated' })
       queryClient.invalidateQueries({ queryKey: ['branches'] })
     },
-    onError: () => {
-      toast({ title: 'Failed to deactivate branch', variant: 'destructive' })
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to deactivate branch',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
     },
   })
 
@@ -831,6 +846,129 @@ function DesignationForm({
   )
 }
 
+function EmployeesTab() {
+  const queryClient = useQueryClient()
+  const [search, setSearch] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
+  const debouncedSearch = useDebounce(search, 300)
+
+  const { data: employees = [], isLoading } = useQuery({
+    queryKey: ['employees', 'it-admin', debouncedSearch],
+    queryFn: () =>
+      employeesApi.getAll(
+        debouncedSearch ? { search: debouncedSearch } : undefined,
+      ),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => employeesApi.delete(id),
+    onSuccess: (data) => {
+      toast({ title: data.message ?? 'Employee deleted' })
+      setDeleteTarget(null)
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to delete employee',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <div className="space-y-4">
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+        <Input
+          placeholder="Search by name or code..."
+          className="pl-9"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Branch</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-[80px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                [...Array(4)].map((_, i) => (
+                  <TableRow key={i}>
+                    {[...Array(6)].map((__, j) => (
+                      <TableCell key={j}>
+                        <Skeleton className="h-5 w-full" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : employees.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-text-secondary">
+                    No employees found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                employees.map((emp) => (
+                  <TableRow key={emp.id}>
+                    <TableCell className="font-mono text-sm">
+                      {emp.employeeCode}
+                    </TableCell>
+                    <TableCell className="font-medium">{emp.fullName}</TableCell>
+                    <TableCell>{formatBranchLabel(emp.currentBranch)}</TableCell>
+                    <TableCell>{emp.currentDepartment?.name ?? '—'}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={emp.status} />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => setDeleteTarget(emp)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Employee"
+        description={
+          deleteTarget
+            ? `Permanently delete ${deleteTarget.employeeCode} — ${deleteTarget.fullName}? This removes all attendance, leave, payroll, and portal access records. This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Permanently"
+        confirmVariant="destructive"
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  )
+}
+
 export function ItAdminDashboard() {
   return (
     <div className="space-y-6">
@@ -844,6 +982,7 @@ export function ItAdminDashboard() {
               <TabsTrigger value="departments">Departments</TabsTrigger>
               <TabsTrigger value="designations">Designations</TabsTrigger>
               <TabsTrigger value="branches">Branches</TabsTrigger>
+              <TabsTrigger value="employees">Employees</TabsTrigger>
             </TabsList>
             <TabsContent value="departments" className="mt-4">
               <DepartmentsTab />
@@ -853,6 +992,9 @@ export function ItAdminDashboard() {
             </TabsContent>
             <TabsContent value="branches" className="mt-4">
               <BranchesTab />
+            </TabsContent>
+            <TabsContent value="employees" className="mt-4">
+              <EmployeesTab />
             </TabsContent>
           </Tabs>
         </CardContent>

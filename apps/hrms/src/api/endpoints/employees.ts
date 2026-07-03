@@ -50,4 +50,6 @@ export const employeesApi = {
     api.get<unknown, WorkingHoursSummary>(`/employees/${id}/working-hours`),
   updateBranchDuty: (id: string, data: Record<string, unknown>) =>
     api.patch(`/employees/${id}/branch-duty`, data),
+  delete: (id: string) =>
+    api.delete<unknown, { success: boolean; message: string }>(`/employees/${id}`),
 }

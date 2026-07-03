@@ -924,4 +924,147 @@ export class EmployeesService {
       (params.healthDeduction || 0)
     );
   }
+
+  async remove(id: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id },
+      select: { id: true, fullName: true, employeeCode: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${id} not found`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const leaveIds = (
+        await tx.leaveRecord.findMany({
+          where: { employeeId: id },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+
+      if (leaveIds.length > 0) {
+        await tx.leaveApproval.deleteMany({
+          where: { leaveId: { in: leaveIds } },
+        });
+        await tx.relieverRequest.deleteMany({
+          where: { leaveRecordId: { in: leaveIds } },
+        });
+      }
+
+      await tx.relieverRequest.deleteMany({
+        where: {
+          OR: [{ requestedById: id }, { relieverId: id }],
+        },
+      });
+
+      await tx.leaveRecord.deleteMany({ where: { employeeId: id } });
+
+      const letterIds = (
+        await tx.letter.findMany({
+          where: { employeeId: id },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+
+      if (letterIds.length > 0) {
+        await tx.allegationAcknowledgement.deleteMany({
+          where: { letterId: { in: letterIds } },
+        });
+        await tx.letterReply.deleteMany({
+          where: { letterId: { in: letterIds } },
+        });
+      }
+
+      await tx.letterReply.deleteMany({ where: { employeeId: id } });
+      await tx.allegationAcknowledgement.deleteMany({
+        where: { employeeId: id },
+      });
+      await tx.letter.deleteMany({ where: { employeeId: id } });
+
+      const disciplinaryIds = (
+        await tx.disciplinaryAction.findMany({
+          where: { employeeId: id },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+
+      if (disciplinaryIds.length > 0) {
+        await tx.inquiry.deleteMany({
+          where: { disciplinaryActionId: { in: disciplinaryIds } },
+        });
+      }
+
+      await tx.disciplinaryAction.deleteMany({ where: { employeeId: id } });
+
+      const stipendIds = (
+        await tx.stipendRecord.findMany({
+          where: { employeeId: id },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+
+      const payrollIds =
+        stipendIds.length > 0
+          ? (
+              await tx.payrollEntry.findMany({
+                where: { stipendRecordId: { in: stipendIds } },
+                select: { id: true },
+              })
+            ).map((row) => row.id)
+          : [];
+
+      if (payrollIds.length > 0) {
+        await tx.payrollDeduction.deleteMany({
+          where: { payrollEntryId: { in: payrollIds } },
+        });
+        await tx.allowance.deleteMany({
+          where: { payrollEntryId: { in: payrollIds } },
+        });
+        await tx.stipendReceipt.deleteMany({
+          where: { payrollEntryId: { in: payrollIds } },
+        });
+        await tx.payrollEntry.deleteMany({
+          where: { id: { in: payrollIds } },
+        });
+      }
+
+      await tx.stipendReceipt.deleteMany({ where: { employeeId: id } });
+      await tx.stipendRecord.deleteMany({ where: { employeeId: id } });
+      await tx.portalAttendance.deleteMany({ where: { employeeId: id } });
+      await tx.advanceLoanRequest.deleteMany({ where: { employeeId: id } });
+      await tx.incentive.deleteMany({ where: { employeeId: id } });
+      await tx.relieverSession.deleteMany({ where: { employeeId: id } });
+      await tx.notification.deleteMany({ where: { employeeId: id } });
+      await tx.attendanceLog.deleteMany({ where: { employeeId: id } });
+      await tx.employeeDocument.deleteMany({ where: { employeeId: id } });
+      await tx.academicQualification.deleteMany({ where: { employeeId: id } });
+      await tx.previousEmployment.deleteMany({ where: { employeeId: id } });
+      await tx.branchChangeRequest.deleteMany({ where: { employeeId: id } });
+      await tx.employmentHistory.deleteMany({ where: { employeeId: id } });
+
+      const user = await tx.user.findUnique({
+        where: { employeeId: id },
+        select: { id: true },
+      });
+
+      if (user) {
+        await tx.leaveApproval.deleteMany({ where: { actionBy: user.id } });
+        await tx.notificationBroadcast.deleteMany({
+          where: { createdById: user.id },
+        });
+        await tx.incentive.deleteMany({ where: { addedBy: user.id } });
+        await tx.auditLog.deleteMany({ where: { userId: user.id } });
+        await tx.userPassword.deleteMany({ where: { userId: user.id } });
+        await tx.user.delete({ where: { id: user.id } });
+      }
+
+      await tx.employee.delete({ where: { id } });
+    });
+
+    return {
+      success: true,
+      message: `Employee ${employee.employeeCode} (${employee.fullName}) deleted permanently`,
+    };
+  }
 }
