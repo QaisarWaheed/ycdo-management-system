@@ -84,7 +84,7 @@ export class StipendReceiptsService {
       where: { id: dto.receiptId },
       include: {
         employee: {
-          select: { firstName: true, lastName: true },
+          select: { fullName: true },
         },
       },
     });
@@ -142,7 +142,7 @@ export class StipendReceiptsService {
             data: {
               employeeId: hr.employeeId!,
               type: 'STIPEND_REJECTED',
-              message: `${receipt.employee.firstName} ${receipt.employee.lastName} rejected stipend receipt for ${receipt.month}/${receipt.year}. Reason: ${dto.rejectionReason}`,
+              message: `${receipt.employee.fullName} rejected stipend receipt for ${receipt.month}/${receipt.year}. Reason: ${dto.rejectionReason}`,
             },
           });
         }
@@ -168,8 +168,7 @@ export class StipendReceiptsService {
       include: {
         employee: {
           select: {
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
             currentBranch: { select: { name: true, address: true } },
           },
@@ -178,7 +177,7 @@ export class StipendReceiptsService {
       orderBy: [
         { year: 'desc' },
         { month: 'desc' },
-        { employee: { firstName: 'asc' } },
+        { employee: { fullName: 'asc' } },
       ],
     });
   }

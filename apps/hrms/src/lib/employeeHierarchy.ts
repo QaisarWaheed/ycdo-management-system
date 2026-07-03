@@ -129,12 +129,12 @@ export function getHierarchyPriority(designation: string): number {
 }
 
 export function sortEmployeesByHierarchy<
-  T extends { currentDesignation: string; lastName: string },
+  T extends { currentDesignation: string; fullName: string },
 >(employees: T[]): T[] {
   return [...employees].sort((a, b) => {
     const aPriority = getHierarchyPriority(a.currentDesignation);
     const bPriority = getHierarchyPriority(b.currentDesignation);
     if (aPriority !== bPriority) return aPriority - bPriority;
-    return a.lastName.localeCompare(b.lastName);
+    return a.fullName.localeCompare(b.fullName);
   });
 }

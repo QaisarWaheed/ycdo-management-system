@@ -483,7 +483,7 @@ function RequestsTab() {
                     <div>
                       <p className="font-medium">
                         {req.employee
-                          ? `${req.employee.firstName} ${req.employee.lastName}`
+                          ? `${req.employee.fullName}`
                           : '—'}
                       </p>
                       <p className="font-mono text-xs text-text-secondary">

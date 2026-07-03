@@ -324,7 +324,7 @@ export class AttendanceService {
       where: { id },
       include: {
         employee: {
-          select: { firstName: true, lastName: true, employeeCode: true },
+          select: { fullName: true, employeeCode: true },
         },
         branch: { select: { name: true, address: true } },
       },
@@ -383,7 +383,7 @@ export class AttendanceService {
         data,
         include: {
           employee: {
-            select: { firstName: true, lastName: true, employeeCode: true },
+            select: { fullName: true, employeeCode: true },
           },
           branch: { select: { name: true, address: true } },
         },
@@ -505,8 +505,7 @@ export class AttendanceService {
       include: {
         employee: {
           select: {
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
             dutyStartTime: true,
             shift: { select: { startTime: true } },
@@ -543,7 +542,7 @@ export class AttendanceService {
       where,
       include: {
         employee: {
-          select: { firstName: true, lastName: true, employeeCode: true },
+          select: { fullName: true, employeeCode: true },
         },
         branch: { select: { name: true, address: true } },
       },

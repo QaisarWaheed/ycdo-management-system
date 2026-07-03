@@ -81,7 +81,7 @@ export function DeptInchargeDashboard({
                 <TableRow key={leave.id}>
                   <TableCell>
                     {leave.employee
-                      ? `${leave.employee.firstName} ${leave.employee.lastName}`
+                      ? `${leave.employee.fullName}`
                       : '—'}
                   </TableCell>
                   <TableCell>

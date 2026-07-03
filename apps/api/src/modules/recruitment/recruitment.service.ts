@@ -157,8 +157,7 @@ export class RecruitmentService {
     }
 
     const nameParts = application.fullName.trim().split(/\s+/);
-    const firstName = nameParts[0] ?? application.fullName;
-    const lastName = nameParts.slice(1).join(' ') || firstName;
+    const fullName = application.fullName.trim() || nameParts.join(' ');
     const employeeCode = await generateEmployeeCode(this.prisma);
     const joiningDate = new Date();
     const cnic =
@@ -196,8 +195,7 @@ export class RecruitmentService {
 
       const employee = await tx.employee.create({
         data: {
-          firstName,
-          lastName,
+          fullName,
           cnic,
           gender: Gender.MALE,
           email: application.email,
@@ -270,12 +268,10 @@ export class RecruitmentService {
     }
 
     const nameParts = application.fullName.trim().split(/\s+/);
-    const firstName = nameParts[0] ?? application.fullName;
-    const lastName = nameParts.slice(1).join(' ') || firstName;
+    const fullName = application.fullName.trim() || nameParts.join(' ');
 
     const employeeData = {
-      firstName,
-      lastName,
+      fullName: application.fullName,
       email: application.email,
       phone: application.phone,
       cnic: application.cnic,

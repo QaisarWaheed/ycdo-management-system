@@ -49,7 +49,7 @@ export function EmployeeSearchSelect({
   useEffect(() => {
     if (value && !selectedLabel) {
       employeesApi.getOne(value).then((emp: Employee) => {
-        setSelectedLabel(`${emp.employeeCode} — ${emp.firstName} ${emp.lastName}`)
+        setSelectedLabel(`${emp.employeeCode} — ${emp.fullName}`)
       }).catch(() => {})
     }
   }, [value, selectedLabel])
@@ -69,7 +69,7 @@ export function EmployeeSearchSelect({
 
   const handleSelect = (emp: Employee) => {
     onChange(emp.id, emp)
-    setSelectedLabel(`${emp.employeeCode} — ${emp.firstName} ${emp.lastName}`)
+    setSelectedLabel(`${emp.employeeCode} — ${emp.fullName}`)
     setSearch('')
     setOpen(false)
   }
@@ -116,7 +116,7 @@ export function EmployeeSearchSelect({
                 <span className="font-mono text-xs text-text-secondary">
                   {emp.employeeCode}
                 </span>{' '}
-                — {emp.firstName} {emp.lastName}
+                — {emp.fullName}
               </button>
             ))
           )}

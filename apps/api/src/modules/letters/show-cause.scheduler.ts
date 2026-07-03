@@ -62,7 +62,7 @@ export class ShowCauseScheduler {
             await tx.notification.create({
               data: {
                 employeeId: hr.employeeId,
-                message: `Show cause auto-escalated for ${letter.employee.firstName} ${letter.employee.lastName}. Employee suspended.`,
+                message: `Show cause auto-escalated for ${letter.employee.fullName}. Employee suspended.`,
                 type: 'SHOW_CAUSE_ESCALATED',
               },
             });

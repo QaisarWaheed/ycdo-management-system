@@ -256,9 +256,7 @@ function DailyLogTab({
                     {log.employee?.employeeCode ?? '—'}
                   </TableCell>
                   <TableCell className="font-medium">
-                    {log.employee
-                      ? `${log.employee.firstName} ${log.employee.lastName}`
-                      : '—'}
+                    {log.employee?.fullName ?? '—'}
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {formatBranchLabel(log.branch)}
@@ -736,7 +734,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
           <TableCell>
             <div>
               <p className="font-medium">
-                {emp.firstName} {emp.lastName}
+                {emp.fullName}
               </p>
               <p className="font-mono text-xs text-text-secondary">
                 {emp.employeeCode}
@@ -764,7 +762,7 @@ function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
         <TableCell>
           <div>
             <p className="font-medium">
-              {emp.firstName} {emp.lastName}
+              {emp.fullName}
             </p>
             <p className="font-mono text-xs text-text-secondary">
               {emp.employeeCode}
@@ -1207,7 +1205,7 @@ function RelieverSessionsTab() {
                   </TableCell>
                   <TableCell>
                     {session.employee
-                      ? `${session.employee.firstName} ${session.employee.lastName}`
+                      ? session.employee.fullName
                       : '—'}
                   </TableCell>
                   <TableCell>{formatBranchLabel(session.branch)}</TableCell>

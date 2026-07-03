@@ -275,7 +275,7 @@ function LetterRepliesDialog({
                 <div className="flex items-center justify-between">
                   <p className="font-medium">
                     {reply.employee
-                      ? `${reply.employee.firstName} ${reply.employee.lastName}`
+                      ? `${reply.employee.fullName}`
                       : 'Employee'}
                     {reply.employee?.employeeCode && (
                       <span className="ml-2 font-mono text-xs text-text-secondary">
@@ -699,7 +699,7 @@ export function LettersPage() {
                     <div>
                       <p className="font-medium">
                         {letter.employee
-                          ? `${letter.employee.firstName} ${letter.employee.lastName}`
+                          ? `${letter.employee.fullName}`
                           : '—'}
                       </p>
                       <p className="font-mono text-xs text-text-secondary">

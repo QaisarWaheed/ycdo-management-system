@@ -67,7 +67,7 @@ export function EmployeesListPage() {
     [debouncedSearch, employeeFilters, shifts],
   )
 
-  const { data: employees = [], isLoading } = useQuery({
+  const { data: employees = [], isLoading, isError } = useQuery({
     queryKey: ['employees', filters],
     queryFn: () => employeesApi.getAll(filters),
   })
@@ -156,6 +156,19 @@ export function EmployeesListPage() {
                   ))}
                 </TableRow>
               ))
+            ) : isError ? (
+              <TableRow>
+                <TableCell colSpan={8} className="h-48 text-center">
+                  <div className="flex flex-col items-center gap-2 text-red-600">
+                    <Users className="h-10 w-10 opacity-40" />
+                    <p>Failed to load employees</p>
+                    <p className="max-w-md text-sm text-text-secondary">
+                      The server could not return employee records. Redeploy the
+                      API and ensure pending database migrations are applied.
+                    </p>
+                  </div>
+                </TableCell>
+              </TableRow>
             ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="h-48 text-center">
@@ -178,7 +191,7 @@ export function EmployeesListPage() {
                       to={`/employees/${emp.id}`}
                       className="font-semibold text-primary hover:underline"
                     >
-                      {emp.firstName} {emp.lastName}
+                      {emp.fullName}
                     </Link>
                   </TableCell>
                   <TableCell className="text-text-secondary">

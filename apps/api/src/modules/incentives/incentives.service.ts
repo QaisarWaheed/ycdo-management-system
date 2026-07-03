@@ -133,8 +133,7 @@ export class IncentivesService {
       include: {
         employee: {
           select: {
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
             currentBranch: { select: { name: true, address: true } },
           },

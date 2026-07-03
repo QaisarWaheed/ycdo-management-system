@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { splitFullName } from '@/lib/employeeDisplayName'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 export function ProfilePage() {
@@ -26,8 +27,9 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (employee) {
-      setFirstName(employee.firstName)
-      setLastName(employee.lastName)
+      const { firstName, lastName } = splitFullName(employee.fullName)
+      setFirstName(firstName)
+      setLastName(lastName)
       setPhone(employee.phone ?? '')
     }
   }, [employee])
@@ -35,8 +37,7 @@ export function ProfilePage() {
   const updateMutation = useMutation({
     mutationFn: () =>
       employeesApi.update(user!.employeeId!, {
-        firstName,
-        lastName,
+        fullName: `${firstName} ${lastName}`.trim(),
         phone: phone || undefined,
       }),
     onSuccess: () => {
@@ -53,9 +54,7 @@ export function ProfilePage() {
     },
   })
 
-  const displayName = employee
-    ? `${employee.firstName} ${employee.lastName}`
-    : user?.email ?? 'User'
+  const displayName = employee?.fullName ?? user?.email ?? 'User'
 
   return (
     <div className="space-y-6">
@@ -65,8 +64,16 @@ export function ProfilePage() {
         <Card className="lg:col-span-1">
           <CardContent className="flex flex-col items-center space-y-4 p-6 text-center">
             <EmployeeAvatar
-              firstName={employee?.firstName ?? user?.email?.[0] ?? 'U'}
-              lastName={employee?.lastName ?? ''}
+              firstName={
+                employee?.fullName
+                  ? splitFullName(employee.fullName).firstName
+                  : (user?.email?.[0] ?? 'U')
+              }
+              lastName={
+                employee?.fullName
+                  ? splitFullName(employee.fullName).lastName
+                  : ''
+              }
               size="lg"
             />
             <div>

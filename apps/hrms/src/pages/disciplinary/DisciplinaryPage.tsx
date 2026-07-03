@@ -619,7 +619,7 @@ function ActionsTab({
                       <div>
                         <p className="font-medium">
                           {action.employee
-                            ? `${action.employee.firstName} ${action.employee.lastName}`
+                            ? `${action.employee.fullName}`
                             : '—'}
                         </p>
                         <p className="font-mono text-xs text-text-secondary">
@@ -834,7 +834,7 @@ function InquiriesTab({
                   <TableRow key={inquiry.id}>
                     <TableCell>
                       {action.employee
-                        ? `${action.employee.firstName} ${action.employee.lastName}`
+                        ? `${action.employee.fullName}`
                         : '—'}
                     </TableCell>
                     <TableCell>

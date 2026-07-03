@@ -369,10 +369,18 @@ export class EmployeesService {
 
     const employees = await this.prisma.employee.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        employeeCode: true,
+        fullName: true,
+        currentDesignation: true,
+        status: true,
+        joiningDate: true,
         currentBranch: { select: { name: true, address: true } },
         currentDepartment: { select: { name: true } },
-        shift: { select: { id: true, name: true, startTime: true, endTime: true } },
+        shift: {
+          select: { id: true, name: true, startTime: true, endTime: true },
+        },
       },
     });
 
@@ -380,7 +388,7 @@ export class EmployeesService {
       const aPriority = getHierarchyPriority(a.currentDesignation);
       const bPriority = getHierarchyPriority(b.currentDesignation);
       if (aPriority !== bPriority) return aPriority - bPriority;
-      return a.fullName.localeCompare(b.fullName);
+      return (a.fullName ?? '').localeCompare(b.fullName ?? '');
     });
   }
 

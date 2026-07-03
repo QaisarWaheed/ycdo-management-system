@@ -114,8 +114,7 @@ export interface RelieverSession {
   totalMinutes: number
   date: string
   employee?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
   }
   branch?: { name: string; address?: string | null }
@@ -146,8 +145,7 @@ export interface LetterReply {
   replyText: string
   repliedAt: string
   employee?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
   }
 }
@@ -286,8 +284,7 @@ export interface BranchChangeRequest {
   notes?: string | null
   createdAt: string
   employee?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
     currentBranch?: { name: string; address?: string | null }
   }
@@ -310,8 +307,7 @@ export interface AllegationAcknowledgement {
   createdAt: string
   employee?: {
     id: string
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
   }
   letter?: {
@@ -362,8 +358,7 @@ export interface Letter {
   requiresAcknowledgement?: boolean
   acknowledgement?: AllegationAcknowledgement | null
   employee?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
   }
 }
@@ -420,13 +415,11 @@ export interface RelieverRequest {
   notes?: string | null
   createdAt: string
   reliever?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
   }
   requestedBy?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
   }
 }
@@ -448,8 +441,7 @@ export interface LeaveRecord {
   relieverRequest?: RelieverRequest | null
   approvals?: LeaveApproval[]
   employee?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
     currentBranchId?: string
     currentDepartmentId?: string
@@ -482,8 +474,7 @@ export interface AttendanceLog {
   source?: string
   note?: string | null
   employee?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
     currentDepartmentId?: string
     dutyStartTime?: string | null
@@ -530,8 +521,7 @@ export interface PayrollEntry {
   stipendRecord?: {
     employee?: {
       id: string
-      firstName: string
-      lastName: string
+      fullName: string
       employeeCode: string
       currentBranch?: { id: string; name: string; address?: string | null }
       currentDepartment?: { id: string; name: string }
@@ -571,8 +561,7 @@ export interface StipendReceipt {
   generatedAt: string
   deadlineAt: string
   employee?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
     currentBranch?: { name: string; address?: string | null }
   }
@@ -588,8 +577,7 @@ export interface Incentive {
   year: number
   createdAt: string
   employee?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
     currentBranch?: { name: string; address?: string | null }
   }
@@ -631,8 +619,7 @@ export interface DisciplinaryAction {
   status: string
   issuedAt: string
   employee?: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
   }
   inquiry?: Inquiry | null

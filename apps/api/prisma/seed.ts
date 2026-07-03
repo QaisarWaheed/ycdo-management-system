@@ -114,8 +114,7 @@ const hospitalDepartments = [
 
 const seedEmployees = [
   {
-    firstName: 'Ahmed',
-    lastName: 'Khan',
+    fullName: 'Ahmed Khan',
     email: 'ahmed.khan@ycdo.org',
     cnic: '36302-1234567-1',
     gender: Gender.MALE,
@@ -126,8 +125,7 @@ const seedEmployees = [
     employeeCode: 'YCDO-2024-0001',
   },
   {
-    firstName: 'Sara',
-    lastName: 'Ali',
+    fullName: 'Sara Ali',
     email: 'sara.ali@ycdo.org',
     cnic: '36302-7654321-2',
     gender: Gender.FEMALE,
@@ -140,8 +138,7 @@ const seedEmployees = [
 ];
 
 type MockEmployeeSeed = {
-  firstName: string;
-  lastName: string;
+  fullName: string;
   cnic: string;
   gender: Gender;
   phone: string;
@@ -164,8 +161,7 @@ type MockEmployeeSeed = {
 
 const mockEmployees: MockEmployeeSeed[] = [
   {
-    firstName: 'Muhammad',
-    lastName: 'Usman',
+    fullName: 'Muhammad Usman',
     cnic: '36302-1111111-1',
     gender: Gender.MALE,
     phone: '03001111111',
@@ -186,8 +182,7 @@ const mockEmployees: MockEmployeeSeed[] = [
     },
   },
   {
-    firstName: 'Ayesha',
-    lastName: 'Malik',
+    fullName: 'Ayesha Malik',
     cnic: '36302-2222222-2',
     gender: Gender.FEMALE,
     phone: '03002222222',
@@ -208,8 +203,7 @@ const mockEmployees: MockEmployeeSeed[] = [
     },
   },
   {
-    firstName: 'Hassan',
-    lastName: 'Raza',
+    fullName: 'Hassan Raza',
     cnic: '36302-3333333-3',
     gender: Gender.MALE,
     phone: '03003333333',
@@ -230,8 +224,7 @@ const mockEmployees: MockEmployeeSeed[] = [
     },
   },
   {
-    firstName: 'Fatima',
-    lastName: 'Zahra',
+    fullName: 'Fatima Zahra',
     cnic: '36302-4444444-4',
     gender: Gender.FEMALE,
     phone: '03004444444',
@@ -252,8 +245,7 @@ const mockEmployees: MockEmployeeSeed[] = [
     },
   },
   {
-    firstName: 'Bilal',
-    lastName: 'Ahmed',
+    fullName: 'Bilal Ahmed',
     cnic: '36302-5555555-5',
     gender: Gender.MALE,
     phone: '03005555555',
@@ -273,8 +265,7 @@ const mockEmployees: MockEmployeeSeed[] = [
     },
   },
   {
-    firstName: 'Zainab',
-    lastName: 'Hussain',
+    fullName: 'Zainab Hussain',
     cnic: '36302-6666666-6',
     gender: Gender.FEMALE,
     phone: '03006666666',
@@ -295,8 +286,7 @@ const mockEmployees: MockEmployeeSeed[] = [
     },
   },
   {
-    firstName: 'Omar',
-    lastName: 'Farooq',
+    fullName: 'Omar Farooq',
     cnic: '36302-7777777-7',
     gender: Gender.MALE,
     phone: '03007777777',
@@ -316,8 +306,7 @@ const mockEmployees: MockEmployeeSeed[] = [
     },
   },
   {
-    firstName: 'Sana',
-    lastName: 'Tariq',
+    fullName: 'Sana Tariq',
     cnic: '36302-8888888-8',
     gender: Gender.FEMALE,
     phone: '03008888888',
@@ -337,8 +326,7 @@ const mockEmployees: MockEmployeeSeed[] = [
     },
   },
   {
-    firstName: 'Tariq',
-    lastName: 'Mehmood',
+    fullName: 'Tariq Mehmood',
     cnic: '36302-9999999-9',
     gender: Gender.MALE,
     phone: '03009999999',
@@ -359,8 +347,7 @@ const mockEmployees: MockEmployeeSeed[] = [
     },
   },
   {
-    firstName: 'Nadia',
-    lastName: 'Iqbal',
+    fullName: 'Nadia Iqbal',
     cnic: '36302-0000001-0',
     gender: Gender.FEMALE,
     phone: '03010000001',
@@ -657,8 +644,7 @@ async function main() {
       employee = await prisma.employee.create({
         data: {
           employeeCode: emp.employeeCode,
-          firstName: emp.firstName,
-          lastName: emp.lastName,
+          fullName: emp.fullName,
           email: emp.email,
           cnic: emp.cnic,
           gender: emp.gender,
@@ -772,8 +758,7 @@ async function main() {
       const newEmployee = await prisma.employee.create({
         data: {
           employeeCode: code,
-          firstName: employee.firstName,
-          lastName: employee.lastName,
+          fullName: employee.fullName,
           cnic: employee.cnic,
           gender: employee.gender,
           phone: employee.phone,
@@ -820,14 +805,13 @@ async function main() {
       await ensureEmployeePortalUser(newEmployee.id, employee.email, code);
 
       console.log(
-        `Created employee: ${employee.firstName} ${employee.lastName} (${code})`,
+        `Created employee: ${employee.fullName} (${code})`,
       );
     } else {
       const updated = await prisma.employee.update({
         where: { id: existingEmp.id },
         data: {
-          firstName: employee.firstName,
-          lastName: employee.lastName,
+          fullName: employee.fullName,
           gender: employee.gender,
           phone: employee.phone,
           email: employee.email,
@@ -891,12 +875,9 @@ async function main() {
         updated.employeeCode,
       );
 
-      if (
-        existingEmp.firstName !== employee.firstName ||
-        existingEmp.lastName !== employee.lastName
-      ) {
+      if (existingEmp.fullName !== employee.fullName) {
         console.log(
-          `Updated employee: ${employee.firstName} ${employee.lastName} (${updated.employeeCode})`,
+          `Updated employee: ${employee.fullName} (${updated.employeeCode})`,
         );
       }
     }

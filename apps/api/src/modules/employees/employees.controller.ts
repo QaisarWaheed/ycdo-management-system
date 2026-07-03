@@ -56,6 +56,7 @@ export class EmployeesController {
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.PAYROLL_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
   )

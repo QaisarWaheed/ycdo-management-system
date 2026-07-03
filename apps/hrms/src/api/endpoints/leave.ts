@@ -6,7 +6,7 @@ export interface TodayRelieverRow {
     name: string
     code: string
     designation: string
-    lastName: string
+    fullName: string
     branch: string | null
     department: string | null
   }

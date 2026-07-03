@@ -27,4 +27,4 @@ RUN mkdir -p uploads/documents uploads/letters
 
 ENV NODE_ENV=production
 EXPOSE 3000
-CMD ["node", "dist/src/main"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main"]

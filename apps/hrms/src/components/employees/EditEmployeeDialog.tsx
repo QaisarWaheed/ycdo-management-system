@@ -38,6 +38,7 @@ import {
   genderToLabel,
   labelToGender,
 } from '@/lib/searchableSelectOptions'
+import { splitFullName } from '@/lib/employeeDisplayName'
 import type { Employee } from '@/types'
 
 const BLOOD_GROUPS = BLOOD_GROUP_OPTIONS
@@ -86,8 +87,7 @@ function toDateInput(value?: string | null) {
 
 function buildPayload(data: EditFormValues): Record<string, unknown> {
   const payload: Record<string, unknown> = {
-    firstName: data.firstName,
-    lastName: data.lastName,
+    fullName: `${data.firstName} ${data.lastName}`.trim(),
     gender: data.gender,
   }
 
@@ -127,9 +127,10 @@ function buildPayload(data: EditFormValues): Record<string, unknown> {
 }
 
 function employeeToFormValues(employee: Employee): EditFormValues {
+  const { firstName, lastName } = splitFullName(employee.fullName)
   return {
-    firstName: employee.firstName,
-    lastName: employee.lastName,
+    firstName,
+    lastName,
     fatherName: employee.fatherName ?? '',
     dateOfBirth: toDateInput(employee.dateOfBirth),
     phone: employee.phone ?? '',

@@ -21,7 +21,7 @@ export class LetterRepliesService {
       where: { id: dto.letterId },
       include: {
         employee: {
-          select: { firstName: true, lastName: true },
+          select: { fullName: true },
         },
       },
     });
@@ -68,7 +68,7 @@ export class LetterRepliesService {
         where: { role: UserRole.HR_MANAGER, isActive: true },
       });
 
-      const employeeName = `${letter.employee.firstName} ${letter.employee.lastName}`;
+      const employeeName = letter.employee.fullName;
 
       for (const hr of hrManagers) {
         if (hr.employeeId) {
@@ -100,8 +100,7 @@ export class LetterRepliesService {
       include: {
         employee: {
           select: {
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
           },
         },

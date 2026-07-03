@@ -195,7 +195,7 @@ function useReports(): ReportDef[] {
           )
           return employees.map((e) => ({
             employeeCode: e.employeeCode,
-            name: `${e.firstName} ${e.lastName}`,
+            name: e.fullName,
             designation: e.currentDesignation,
             branch: formatBranchLabel(e.currentBranch),
             department: e.currentDepartment?.name ?? '—',
@@ -247,7 +247,7 @@ function useReports(): ReportDef[] {
           )
           return employees.map((e) => ({
             employeeCode: e.employeeCode,
-            name: `${e.firstName} ${e.lastName}`,
+            name: e.fullName,
             designation: e.currentDesignation,
             branch: formatBranchLabel(e.currentBranch),
             joiningDate: e.joiningDate
@@ -276,7 +276,7 @@ function useReports(): ReportDef[] {
           )
           return employees.map((e) => ({
             employeeCode: e.employeeCode,
-            name: `${e.firstName} ${e.lastName}`,
+            name: e.fullName,
             designation: e.currentDesignation,
             branch: formatBranchLabel(e.currentBranch),
             joiningDate: e.joiningDate
@@ -319,7 +319,7 @@ function useReports(): ReportDef[] {
           return result.map((l) => ({
             employeeCode: l.employee?.employeeCode ?? '—',
             name: l.employee
-              ? `${l.employee.firstName} ${l.employee.lastName}`
+              ? l.employee.fullName
               : '—',
             branch: formatBranchLabel(l.branch),
             status: l.status,
@@ -360,7 +360,7 @@ function useReports(): ReportDef[] {
             const summary = await attendanceApi.getSummary(emp.id, month, year)
             rows.push({
               employeeCode: emp.employeeCode,
-              name: `${emp.firstName} ${emp.lastName}`,
+              name: emp.fullName,
               present: summary.present,
               absent: summary.absent,
               late: summary.late,
@@ -408,7 +408,7 @@ function useReports(): ReportDef[] {
               grouped[id] = {
                 code: log.employee?.employeeCode ?? '—',
                 name: log.employee
-                  ? `${log.employee.firstName} ${log.employee.lastName}`
+                  ? log.employee.fullName
                   : '—',
                 count: 0,
                 minutes: 0,
@@ -455,7 +455,7 @@ function useReports(): ReportDef[] {
             date: format(new Date(l.date), 'dd/MM/yyyy'),
             employeeCode: l.employee?.employeeCode ?? '—',
             name: l.employee
-              ? `${l.employee.firstName} ${l.employee.lastName}`
+              ? l.employee.fullName
               : '—',
             branch: formatBranchLabel(l.branch),
             status: l.status,
@@ -493,7 +493,7 @@ function useReports(): ReportDef[] {
           return leaves.map((l) => ({
             employeeCode: l.employee?.employeeCode ?? '—',
             name: l.employee
-              ? `${l.employee.firstName} ${l.employee.lastName}`
+              ? l.employee.fullName
               : '—',
             startDate: format(new Date(l.startDate), 'dd/MM/yyyy'),
             endDate: format(new Date(l.endDate), 'dd/MM/yyyy'),
@@ -535,7 +535,7 @@ function useReports(): ReportDef[] {
           return requests.map((r) => ({
             employeeCode: r.employee?.employeeCode ?? '—',
             name: r.employee
-              ? `${r.employee.firstName} ${r.employee.lastName}`
+              ? r.employee.fullName
               : '—',
             district: r.district,
             purpose: r.purpose,
@@ -635,7 +635,7 @@ function useReports(): ReportDef[] {
           )
           return employees.map((e) => ({
             employeeCode: e.employeeCode,
-            name: `${e.firstName} ${e.lastName}`,
+            name: e.fullName,
             designation: e.currentDesignation,
             branch: formatBranchLabel(e.currentBranch),
             status: e.status,

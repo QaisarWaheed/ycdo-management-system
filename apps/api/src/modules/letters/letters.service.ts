@@ -46,7 +46,7 @@ export class LettersService {
     const letterData: LetterData = {
       refNumber,
       date: this.formatDate(new Date()),
-      employeeName: `${employee.firstName} ${employee.lastName}`,
+      employeeName: employee.fullName,
       employeeCode: employee.employeeCode,
       designation: employee.currentDesignation,
       department: employee.currentDepartment.name,
@@ -147,7 +147,7 @@ export class LettersService {
       where,
       include: {
         employee: {
-          select: { firstName: true, lastName: true, employeeCode: true },
+          select: { fullName: true, employeeCode: true },
         },
         acknowledgement: true,
         replies: {
@@ -165,8 +165,7 @@ export class LettersService {
         employee: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
             currentDesignation: true,
           },

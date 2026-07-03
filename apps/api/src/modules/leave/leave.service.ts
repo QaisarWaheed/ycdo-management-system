@@ -166,7 +166,7 @@ export class LeaveService {
       );
     }
 
-    const employeeName = `${employee.firstName} ${employee.lastName}`;
+    const employeeName = employee.fullName;
 
     const leave = await this.prisma.$transaction(async (tx) => {
       const record = await tx.leaveRecord.create({
@@ -252,7 +252,7 @@ export class LeaveService {
       throw new BadRequestException('Leave is not pending Branch Manager approval');
     }
 
-    const employeeName = `${leave.employee.firstName} ${leave.employee.lastName}`;
+    const employeeName = leave.employee.fullName;
 
     return this.prisma.$transaction(async (tx) => {
       await tx.leaveApproval.create({
@@ -344,7 +344,7 @@ export class LeaveService {
       );
     }
 
-    const employeeName = `${leave.employee.firstName} ${leave.employee.lastName}`;
+    const employeeName = leave.employee.fullName;
 
     return this.prisma.$transaction(async (tx) => {
       await tx.leaveApproval.create({
@@ -506,8 +506,7 @@ export class LeaveService {
         employee: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
             currentBranchId: true,
             currentDepartmentId: true,
@@ -525,8 +524,7 @@ export class LeaveService {
           include: {
             reliever: {
               select: {
-                firstName: true,
-                lastName: true,
+                fullName: true,
                 employeeCode: true,
               },
             },
@@ -701,8 +699,7 @@ export class LeaveService {
       include: {
         requestedBy: {
           select: {
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
           },
         },
@@ -727,8 +724,7 @@ export class LeaveService {
 
     if (search?.trim()) {
       where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
+        { fullName: { contains: search, mode: 'insensitive' } },
         { employeeCode: { contains: search, mode: 'insensitive' } },
       ];
     }
@@ -738,8 +734,7 @@ export class LeaveService {
       select: {
         id: true,
         employeeCode: true,
-        firstName: true,
-        lastName: true,
+        fullName: true,
         currentDesignation: true,
         shift: {
           select: { id: true, name: true, startTime: true, endTime: true },
@@ -752,7 +747,7 @@ export class LeaveService {
         const aPriority = getHierarchyPriority(a.currentDesignation);
         const bPriority = getHierarchyPriority(b.currentDesignation);
         if (aPriority !== bPriority) return aPriority - bPriority;
-        return a.lastName.localeCompare(b.lastName);
+        return a.fullName.localeCompare(b.fullName);
       })
       .slice(0, 20);
   }
@@ -764,8 +759,7 @@ export class LeaveService {
         employee: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
             currentBranchId: true,
             currentDepartmentId: true,
@@ -915,7 +909,7 @@ export class LeaveService {
 
     this.assertShiftCompatible(leaveRecord.employee, reliever);
 
-    const requesterName = `${leaveRecord.employee.firstName} ${leaveRecord.employee.lastName}`;
+    const requesterName = leaveRecord.employee.fullName;
 
     const requestedById = onBehalf ? leaveRecord.employeeId : requesterId;
 
@@ -978,8 +972,8 @@ export class LeaveService {
       );
     }
 
-    const employeeName = `${relieverRequest.requestedBy.firstName} ${relieverRequest.requestedBy.lastName}`;
-    const relieverName = `${relieverRequest.reliever.firstName} ${relieverRequest.reliever.lastName}`;
+    const employeeName = relieverRequest.requestedBy.fullName;
+    const relieverName = relieverRequest.reliever.fullName;
 
     return this.prisma.$transaction(async (tx) => {
       if (dto.accept) {
@@ -1066,7 +1060,7 @@ export class LeaveService {
 
     this.assertShiftCompatible(leaveRecord.employee, reliever);
 
-    const employeeName = `${leaveRecord.employee.firstName} ${leaveRecord.employee.lastName}`;
+    const employeeName = leaveRecord.employee.fullName;
 
     return this.prisma.$transaction(async (tx) => {
       if (leaveRecord.relieverRequest) {
@@ -1112,7 +1106,7 @@ export class LeaveService {
 
       await this.notifyHrOperations(
         tx,
-        `${employeeName} has an HR-assigned reliever (${reliever.firstName} ${reliever.lastName}). Awaiting final HR Operations approval.`,
+        `${employeeName} has an HR-assigned reliever (${reliever.fullName}). Awaiting final HR Operations approval.`,
         'HR_RELIEVER_ASSIGNED',
       );
 
@@ -1157,8 +1151,7 @@ export class LeaveService {
       include: {
         employee: {
           select: {
-            firstName: true,
-            lastName: true,
+            fullName: true,
             employeeCode: true,
             currentDesignation: true,
             currentBranch: { select: { name: true, address: true } },
@@ -1169,8 +1162,7 @@ export class LeaveService {
           include: {
             reliever: {
               select: {
-                firstName: true,
-                lastName: true,
+                fullName: true,
                 employeeCode: true,
                 currentBranch: { select: { name: true, address: true } },
                 currentDepartment: { select: { name: true } },
@@ -1186,21 +1178,21 @@ export class LeaveService {
       const aPriority = getHierarchyPriority(a.employee.currentDesignation);
       const bPriority = getHierarchyPriority(b.employee.currentDesignation);
       if (aPriority !== bPriority) return aPriority - bPriority;
-      return a.employee.lastName.localeCompare(b.employee.lastName);
+      return a.employee.fullName.localeCompare(b.employee.fullName);
     });
 
     return leaves.map((leave) => ({
       employee: {
-        name: `${leave.employee.firstName} ${leave.employee.lastName}`,
+        name: leave.employee.fullName,
         code: leave.employee.employeeCode,
         designation: leave.employee.currentDesignation,
-        lastName: leave.employee.lastName,
+        fullName: leave.employee.fullName,
         branch: formatBranchLabel(leave.employee.currentBranch),
         department: leave.employee.currentDepartment?.name ?? null,
       },
       reliever: leave.relieverRequest
         ? {
-            name: `${leave.relieverRequest.reliever.firstName} ${leave.relieverRequest.reliever.lastName}`,
+            name: leave.relieverRequest.reliever.fullName,
             code: leave.relieverRequest.reliever.employeeCode,
             branch: formatBranchLabel(
               leave.relieverRequest.reliever.currentBranch,
@@ -1403,8 +1395,7 @@ export class LeaveService {
     return {
       employee: {
         select: {
-          firstName: true,
-          lastName: true,
+          fullName: true,
           employeeCode: true,
           currentBranchId: true,
           currentDepartmentId: true,
@@ -1422,8 +1413,7 @@ export class LeaveService {
         include: {
           reliever: {
             select: {
-              firstName: true,
-              lastName: true,
+              fullName: true,
               employeeCode: true,
             },
           },
