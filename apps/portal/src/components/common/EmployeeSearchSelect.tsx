@@ -11,8 +11,7 @@ import { cn } from '@/lib/utils'
 export interface RelieverCandidate {
   id: string
   employeeCode: string
-  firstName: string
-  lastName: string
+  fullName: string
   shift?: {
     id: string
     name: string
@@ -59,9 +58,7 @@ export function EmployeeSearchSelect({
       leaveApi.getRelieverCandidates().then((list: RelieverCandidate[]) => {
         const emp = list.find((e) => e.id === value)
         if (emp) {
-          setSelectedLabel(
-            `${emp.employeeCode} — ${emp.firstName} ${emp.lastName}`,
-          )
+          setSelectedLabel(`${emp.employeeCode} — ${emp.fullName}`)
         }
       }).catch(() => {})
     }
@@ -82,7 +79,7 @@ export function EmployeeSearchSelect({
 
   const handleSelect = (emp: RelieverCandidate) => {
     onChange(emp.id, emp)
-    setSelectedLabel(`${emp.employeeCode} — ${emp.firstName} ${emp.lastName}`)
+    setSelectedLabel(`${emp.employeeCode} — ${emp.fullName}`)
     setSearch('')
     setOpen(false)
   }
@@ -120,7 +117,7 @@ export function EmployeeSearchSelect({
                 onClick={() => handleSelect(emp)}
               >
                 <span className="font-medium">
-                  {emp.employeeCode} — {emp.firstName} {emp.lastName}
+                  {emp.employeeCode} — {emp.fullName}
                 </span>
                 {emp.shift && (
                   <span className="text-xs text-text-secondary">

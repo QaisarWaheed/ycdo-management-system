@@ -5,6 +5,7 @@ import {
   FileText,
   Home,
   MapPin,
+  Palmtree,
   Receipt,
   User,
   Wallet,
@@ -17,7 +18,8 @@ import { cn } from '@/lib/utils'
 const navItems = [
   { to: '/dashboard', label: 'Home', icon: Home },
   { to: '/attendance', label: 'Attendance', icon: Calendar },
-  { to: '/leave', label: 'Leave', icon: Wallet },
+  { to: '/leave', label: 'Leave', icon: Palmtree },
+  { to: '/advance-loan', label: 'Advance & Loan', icon: Wallet },
   { to: '/payroll', label: 'Payroll', icon: Receipt },
   { to: '/branch-change-request', label: 'Branch Change', icon: MapPin },
   { to: '/letters', label: 'Letters', icon: FileText, showAckBadge: true },

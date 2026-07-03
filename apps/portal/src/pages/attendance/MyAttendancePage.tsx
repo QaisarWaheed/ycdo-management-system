@@ -26,6 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
 import { calcHoursWorked, formatDuration } from '@/lib/helpers'
+import { formatDateTimeTime } from '@/lib/timeFormat'
 import type { AttendanceLog, RelieverSession } from '@/types'
 
 function AttendanceStatusBadge({ status }: { status: string }) {
@@ -278,14 +279,10 @@ export function MyAttendancePage() {
                         {format(new Date(log.date), 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell>
-                        {log.checkIn
-                          ? format(new Date(log.checkIn), 'HH:mm')
-                          : '—'}
+                        {formatDateTimeTime(log.checkIn)}
                       </TableCell>
                       <TableCell>
-                        {log.checkOut
-                          ? format(new Date(log.checkOut), 'HH:mm')
-                          : '—'}
+                        {formatDateTimeTime(log.checkOut)}
                       </TableCell>
                       <TableCell>
                         {calcHoursWorked(log.checkIn, log.checkOut)}
@@ -350,11 +347,11 @@ export function MyAttendancePage() {
                         {format(new Date(session.date), 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell>
-                        {format(new Date(session.checkIn), 'HH:mm')}
+                        {formatDateTimeTime(session.checkIn)}
                       </TableCell>
                       <TableCell>
                         {session.checkOut
-                          ? format(new Date(session.checkOut), 'HH:mm')
+                          ? formatDateTimeTime(session.checkOut)
                           : 'Active'}
                       </TableCell>
                       <TableCell>

@@ -2,7 +2,6 @@ import { PartialType } from '@nestjs/mapped-types';
 import {
   ChangeType,
   EmployeeStatus,
-  FatherStatus,
   Gender,
   MaritalStatus,
   StaffType,
@@ -29,11 +28,7 @@ import {
 export class CreateEmployeeDto {
   @IsString()
   @IsNotEmpty()
-  firstName: string;
-
-  @IsString()
-  @IsNotEmpty()
-  lastName: string;
+  fullName: string;
 
   @IsString()
   @IsNotEmpty()
@@ -98,8 +93,8 @@ export class CreateEmployeeDto {
   fatherContactNumber?: string;
 
   @IsOptional()
-  @IsEnum(FatherStatus)
-  fatherStatus?: FatherStatus;
+  @IsIn(['ALIVE', 'DECEASED'])
+  fatherStatus?: string;
 
   @IsOptional()
   @IsString()
@@ -162,6 +157,54 @@ export class CreateEmployeeDto {
   @IsPositive()
   @IsNotEmpty()
   basicStipend: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  allowances?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  reward?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  progressReward?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  fuelAllowance?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  loanDeduction?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  advanceDeduction?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  fineDeduction?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  healthDeduction?: number;
 
   @IsOptional()
   @IsEnum(StaffType)
@@ -321,4 +364,23 @@ export class UpdateBranchDutyDto {
   @Min(1)
   @Max(24)
   dutyTotalHours?: number;
+}
+
+export class ActiveShiftQueryDto {
+  @IsDateString()
+  @IsNotEmpty()
+  date: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
+  time: string;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
 }

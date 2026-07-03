@@ -24,7 +24,7 @@ export class AcknowledgementsService {
       include: {
         acknowledgement: true,
         employee: {
-          select: { firstName: true, lastName: true },
+          select: { fullName: true },
         },
       },
     });
@@ -50,7 +50,7 @@ export class AcknowledgementsService {
     }
 
     const refNumber = this.extractRefNumber(letter.fileUrl);
-    const employeeName = `${letter.employee.firstName} ${letter.employee.lastName}`;
+    const employeeName = letter.employee.fullName;
 
     return this.prisma.$transaction(async (tx) => {
       const acknowledgement = await tx.allegationAcknowledgement.create({
@@ -125,8 +125,7 @@ export class AcknowledgementsService {
           employee: {
             select: {
               id: true,
-              firstName: true,
-              lastName: true,
+              fullName: true,
               employeeCode: true,
             },
           },

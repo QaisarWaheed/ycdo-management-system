@@ -886,7 +886,7 @@ export function EmployeeProfilePage() {
         <div className="print-grid mb-6">
           <div className="print-field">
             <div className="print-label">Full Name</div>
-            {employee.firstName} {employee.lastName}
+            {employee.fullName}
           </div>
           <div className="print-field">
             <div className="print-label">CNIC</div>
@@ -1000,8 +1000,12 @@ export function EmployeeProfilePage() {
       <Card>
         <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
           <EmployeeAvatar
-            firstName={employee.firstName}
-            lastName={employee.lastName}
+            firstName={employee.fullName.split(' ')[0] ?? employee.fullName}
+            lastName={
+              employee.fullName.split(' ').slice(1).join(' ') ||
+              employee.fullName.split(' ')[0] ||
+              ''
+            }
             photoUrl={photoSrc}
             size="lg"
             onPhotoClick={
@@ -1012,7 +1016,7 @@ export function EmployeeProfilePage() {
           />
           <div>
             <h1 className="text-xl font-bold">
-              {employee.firstName} {employee.lastName}
+              {employee.fullName}
             </h1>
             <Badge variant="outline" className="mt-2 font-mono">
               {employee.employeeCode}
@@ -2086,7 +2090,7 @@ export function EmployeeProfilePage() {
         <ResetPasswordDialog
           open={resetPasswordOpen}
           onOpenChange={setResetPasswordOpen}
-          employeeName={`${employee.firstName} ${employee.lastName}`}
+          employeeName={employee.fullName}
           userId={employee.user.id}
         />
       )}

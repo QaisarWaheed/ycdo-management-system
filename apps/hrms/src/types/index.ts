@@ -184,8 +184,7 @@ export interface Department {
 export interface Employee {
   id: string
   employeeCode: string
-  firstName: string
-  lastName: string
+  fullName: string
   fatherName?: string | null
   fatherStatus?: 'ALIVE' | 'DECEASED' | null
   guardianContact?: string | null

@@ -348,7 +348,7 @@ export function MyLettersPage() {
   const pendingCount = pendingAcks.length
 
   const employeeName = employee
-    ? `${employee.firstName} ${employee.lastName}`
+    ? employee.fullName
     : user?.email ?? 'Employee'
 
   const handleDownload = async (letter: Letter) => {

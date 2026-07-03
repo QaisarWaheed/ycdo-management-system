@@ -565,8 +565,7 @@ function buildStep1Payload(data: Step1Values) {
   ] as const
 
   const payload: Record<string, unknown> = {
-    firstName: data.firstName,
-    lastName: data.lastName,
+    fullName: `${data.firstName} ${data.lastName}`.trim(),
     fatherName: data.fatherName,
     gender: data.gender,
   }
