@@ -13,6 +13,7 @@ import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { designationsApi } from '@/api/endpoints/designations'
 import { DateInput } from '@/components/common/DateInput'
+import { PhoneInput } from '@/components/common/PhoneInput'
 import { CnicInput } from '@/components/common/CnicInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
@@ -38,7 +39,8 @@ import {
   fatherStatusToLabel,
 } from '@/lib/searchableSelectOptions'
 import { getStartTimeOptionsForShift } from '@/lib/dutyTimes'
-import { PhoneInput } from '@/components/common/PhoneInput'
+import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
+import { DEFAULT_STIPEND_VALUES } from '@/lib/stipendUtils'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
 import { Button } from '@/components/ui/button'
 import {
@@ -298,10 +300,20 @@ const existingStaffStep2Schema = step2BaseSchema
     path: ['dutyEndTime'],
   })
 
+const stipendFieldSchema = z.number().min(0)
+
 const step3Schema = z.object({
   basicStipend: z
     .number({ error: 'Basic stipend is required' })
     .positive('Stipend must be greater than 0'),
+  allowances: stipendFieldSchema,
+  reward: stipendFieldSchema,
+  progressReward: stipendFieldSchema,
+  fuelAllowance: stipendFieldSchema,
+  loanDeduction: stipendFieldSchema,
+  advanceDeduction: stipendFieldSchema,
+  fineDeduction: stipendFieldSchema,
+  healthDeduction: stipendFieldSchema,
 })
 
 type Step2Values = z.infer<typeof step2BaseSchema>
@@ -672,8 +684,10 @@ export function EmployeeCreatePage() {
 
   const form3 = useForm<Step3Values>({
     resolver: zodResolver(step3Schema),
-    defaultValues: { basicStipend: 0 },
+    defaultValues: { ...DEFAULT_STIPEND_VALUES },
   })
+
+  const step3Watch = form3.watch
 
   const branchId = form2.watch('currentBranchId')
   const departmentId = form2.watch('currentDepartmentId')
@@ -1718,37 +1732,10 @@ export function EmployeeCreatePage() {
         <Form {...form3}>
           <form onSubmit={onStep3Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Stipend & Documents</h2>
-            <FormField
+
+            <StipendPackageFields
               control={form3.control}
-              name="basicStipend"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Basic Stipend *</FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-text-secondary">
-                        PKR
-                      </span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="1"
-                        className="pl-12"
-                        value={field.value || ''}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          if (val === '') {
-                            field.onChange(0)
-                            return
-                          }
-                          field.onChange(parseInt(val, 10))
-                        }}
-                      />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              watch={step3Watch}
             />
 
             <div className="space-y-6">

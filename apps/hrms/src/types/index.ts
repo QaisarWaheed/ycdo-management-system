@@ -332,6 +332,15 @@ export interface EmploymentHistory {
 export interface StipendRecord {
   id: string
   basicStipend: number | string
+  allowances?: number | string | null
+  reward?: number | string | null
+  progressReward?: number | string | null
+  fuelAllowance?: number | string | null
+  loanDeduction?: number | string | null
+  advanceDeduction?: number | string | null
+  fineDeduction?: number | string | null
+  healthDeduction?: number | string | null
+  lumpsumTotal?: number | string | null
   effectiveFrom: string
   effectiveTo?: string | null
 }
@@ -518,7 +527,7 @@ export interface PayrollEntry {
   deductions?: PayrollDeduction[]
   allowances?: PayrollAllowance[]
   totalRelieverHours?: number
-  stipendRecord?: {
+  stipendRecord?: StipendRecord & {
     employee?: {
       id: string
       fullName: string

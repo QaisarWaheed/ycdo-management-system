@@ -1,4 +1,8 @@
 import {
+  calculateLumpsumTotal,
+  stipendRecordToPackage,
+} from '../../common/stipend.util';
+import {
   BadRequestException,
   Injectable,
   NotFoundException,
@@ -58,10 +62,20 @@ export class PayrollService {
       return existing;
     }
 
-    const basicStipend =
-      dto.basicStipend ?? Number(activeStipendRecord.basicStipend);
-    const totalAllowances = dto.totalAllowances ?? 0;
-    const netStipend = basicStipend + totalAllowances;
+    const pkg = stipendRecordToPackage(activeStipendRecord);
+    const basicStipend = dto.basicStipend ?? pkg.basicStipend;
+    const totalAllowances =
+      dto.totalAllowances ??
+      (pkg.allowances || 0) +
+        (pkg.reward || 0) +
+        (pkg.progressReward || 0) +
+        (pkg.fuelAllowance || 0);
+    const fixedDeductions =
+      (pkg.loanDeduction || 0) +
+      (pkg.advanceDeduction || 0) +
+      (pkg.fineDeduction || 0) +
+      (pkg.healthDeduction || 0);
+    const netStipend = pkg.lumpsumTotal;
 
     return this.prisma.payrollEntry.create({
       data: {
@@ -70,7 +84,7 @@ export class PayrollService {
         year: dto.year,
         basicStipend,
         totalAllowances,
-        totalDeductions: 0,
+        totalDeductions: fixedDeductions,
         netStipend,
         status: PayrollStatus.PENDING,
       },
@@ -423,6 +437,17 @@ export class PayrollService {
 
     const effectiveFrom = new Date(dto.effectiveFrom);
     const previousSalary = Number(activeStipendRecord.basicStipend);
+    const lumpsumTotal = calculateLumpsumTotal({
+      basicStipend: dto.basicStipend,
+      allowances: dto.allowances,
+      reward: dto.reward,
+      progressReward: dto.progressReward,
+      fuelAllowance: dto.fuelAllowance,
+      loanDeduction: dto.loanDeduction,
+      advanceDeduction: dto.advanceDeduction,
+      fineDeduction: dto.fineDeduction,
+      healthDeduction: dto.healthDeduction,
+    });
 
     return this.prisma.$transaction(async (tx) => {
       await tx.stipendRecord.update({
@@ -433,7 +458,16 @@ export class PayrollService {
       const newRecord = await tx.stipendRecord.create({
         data: {
           employeeId: dto.employeeId,
-          basicStipend: dto.newBasicStipend,
+          basicStipend: dto.basicStipend,
+          allowances: dto.allowances ?? 0,
+          reward: dto.reward ?? 0,
+          progressReward: dto.progressReward ?? 0,
+          fuelAllowance: dto.fuelAllowance ?? 0,
+          loanDeduction: dto.loanDeduction ?? 0,
+          advanceDeduction: dto.advanceDeduction ?? 0,
+          fineDeduction: dto.fineDeduction ?? 0,
+          healthDeduction: dto.healthDeduction ?? 0,
+          lumpsumTotal,
           effectiveFrom,
         },
       });
@@ -442,7 +476,7 @@ export class PayrollService {
         data: {
           employeeId: dto.employeeId,
           type: 'SALARY_INCREMENT',
-          message: `Your stipend has been updated to PKR ${dto.newBasicStipend} effective ${effectiveFrom.toISOString().split('T')[0]}`,
+          message: `Your stipend package has been updated to PKR ${lumpsumTotal} (lumpsum) effective ${effectiveFrom.toISOString().split('T')[0]}`,
         },
       });
 
@@ -454,7 +488,8 @@ export class PayrollService {
           entityId: newRecord.id,
           changes: {
             previousSalary,
-            newStipend: dto.newBasicStipend,
+            newBasicStipend: dto.basicStipend,
+            lumpsumTotal,
             reason: dto.reason,
           },
         },

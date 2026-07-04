@@ -11,7 +11,15 @@ export interface CreatePayrollEntryPayload {
 
 export interface StipendIncrementPayload {
   employeeId: string
-  newBasicStipend: number
+  basicStipend: number
+  allowances?: number
+  reward?: number
+  progressReward?: number
+  fuelAllowance?: number
+  loanDeduction?: number
+  advanceDeduction?: number
+  fineDeduction?: number
+  healthDeduction?: number
   effectiveFrom: string
   reason: string
 }

@@ -187,7 +187,7 @@ export class SeparationService {
       await this.payrollService.salaryIncrement(
         {
           employeeId: dto.employeeId,
-          newBasicStipend: dto.newBasicStipend,
+          basicStipend: dto.newBasicStipend,
           effectiveFrom: dto.effectiveDate,
           reason: dto.reason || 'Promotion',
         },
