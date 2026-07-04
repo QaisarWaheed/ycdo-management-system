@@ -3,6 +3,20 @@ export function parseTimeToMinutes(time: string): number {
   return hours * 60 + (minutes ?? 0);
 }
 
+const PK_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+export function toPakistanDateOnly(date: Date): Date {
+  const pkDate = new Date(date.getTime() + PK_OFFSET_MS);
+  return new Date(
+    Date.UTC(pkDate.getUTCFullYear(), pkDate.getUTCMonth(), pkDate.getUTCDate()),
+  );
+}
+
+export function toPakistanMinutesOfDay(date: Date): number {
+  const pkDate = new Date(date.getTime() + PK_OFFSET_MS);
+  return pkDate.getUTCHours() * 60 + pkDate.getUTCMinutes();
+}
+
 export function computeLateMinutesFromCheckIn(
   checkIn: Date,
   dutyStartTime: string,

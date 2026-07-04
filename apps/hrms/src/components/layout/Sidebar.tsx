@@ -138,8 +138,7 @@ export function Sidebar() {
           }
         >
           <EmployeeAvatar
-            firstName={emailName.charAt(0)}
-            lastName={emailName.charAt(1) ?? ''}
+            fullName={emailName}
             size="sm"
           />
           <div className="min-w-0 flex-1">

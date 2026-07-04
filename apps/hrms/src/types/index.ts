@@ -721,8 +721,7 @@ export const APPLICATION_STATUSES: ApplicationStatus[] = [
 ]
 
 export interface EmployeePrefill {
-  firstName?: string
-  lastName?: string
+  fullName?: string
   email?: string
   phone?: string
   cnic?: string

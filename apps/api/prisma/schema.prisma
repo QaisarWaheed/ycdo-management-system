@@ -43,6 +43,17 @@ model Branch {
   shifts            Shift[]
   relieverSessions  RelieverSession[]
   location          BranchLocation?
+  biometricDevices  BiometricDevice[]
+}
+
+model BiometricDevice {
+  id        String   @id @default(uuid())
+  deviceId  String   @unique
+  branchId  String
+  label     String?
+  createdAt DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
 }
 
 model Shift {

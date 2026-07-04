@@ -113,8 +113,7 @@ const STAFF_TYPE_OPTIONS: {
 ]
 
 const newStaffStep1Schema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
+  fullName: z.string().min(1, 'Full name is required'),
   fatherName: z.string().min(1, 'Father name is required'),
   fatherStatus: z.enum(['ALIVE', 'DECEASED']).optional(),
   fatherContactNumber: phoneRequired,
@@ -151,8 +150,7 @@ const newStaffStep1Schema = z.object({
 
 const existingStaffStep1Schema = z
   .object({
-    firstName: z.string().min(1, 'First name is required'),
-    lastName: z.string().min(1, 'Last name is required'),
+    fullName: z.string().min(1, 'Full name is required'),
     fatherName: z.string().min(1, 'Father name is required'),
     fatherStatus: z.enum(['ALIVE', 'DECEASED'], {
       message: 'Father status is required',
@@ -227,8 +225,7 @@ const existingStaffStep1Schema = z
 
 
 const step1FormSchema = z.object({
-  firstName: z.string(),
-  lastName: z.string(),
+  fullName: z.string(),
   fatherName: z.string(),
   fatherStatus: z.enum(['ALIVE', 'DECEASED']).optional(),
   fatherContactNumber: z.string().optional(),
@@ -577,7 +574,7 @@ function buildStep1Payload(data: Step1Values) {
   ] as const
 
   const payload: Record<string, unknown> = {
-    fullName: `${data.firstName} ${data.lastName}`.trim(),
+    fullName: data.fullName.trim(),
     fatherName: data.fatherName,
     gender: data.gender,
   }
@@ -635,8 +632,7 @@ export function EmployeeCreatePage() {
 
   const form1 = useForm<Step1Values>({
     defaultValues: {
-      firstName: '',
-      lastName: '',
+      fullName: '',
       fatherName: '',
       fatherStatus: undefined,
       fatherContactNumber: '',
@@ -729,8 +725,7 @@ export function EmployeeCreatePage() {
   useEffect(() => {
     if (prefill) {
       form1.reset({
-        firstName: prefill.firstName ?? '',
-        lastName: prefill.lastName ?? '',
+        fullName: prefill.fullName ?? '',
         fatherName: '',
         fatherStatus: undefined,
         fatherContactNumber: '',
@@ -1156,23 +1151,10 @@ export function EmployeeCreatePage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
                 control={form1.control}
-                name="firstName"
+                name="fullName"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>First Name *</FormLabel>
-                    <FormControl>
-                      <TextOnlyInput {...field} value={field.value ?? ''} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Last Name *</FormLabel>
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>Full Name *</FormLabel>
                     <FormControl>
                       <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
