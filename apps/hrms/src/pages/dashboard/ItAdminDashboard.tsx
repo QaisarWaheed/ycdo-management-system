@@ -43,6 +43,7 @@ import type { Branch, Department, Project, ProjectType, Shift } from '@/types'
 import { PROJECT_TYPE_LABELS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { ItAdminEmployeesTab } from '@/components/dashboard/ItAdminEmployeesTab'
+import { SystemLoginsTab } from '@/components/dashboard/SystemLoginsTab'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { locationValuesApi } from '@/api/endpoints/locationValues'
@@ -1955,6 +1956,7 @@ export function ItAdminDashboard() {
               <TabsTrigger value="departments">Departments</TabsTrigger>
               <TabsTrigger value="designations">Designations</TabsTrigger>
               <TabsTrigger value="employees">Employees</TabsTrigger>
+              <TabsTrigger value="system-logins">System Logins</TabsTrigger>
             </TabsList>
             <TabsContent value="projects" className="mt-4">
               <ProjectsTab />
@@ -1967,6 +1969,9 @@ export function ItAdminDashboard() {
             </TabsContent>
             <TabsContent value="employees" className="mt-4">
               <ItAdminEmployeesTab />
+            </TabsContent>
+            <TabsContent value="system-logins" className="mt-4">
+              <SystemLoginsTab />
             </TabsContent>
             <TabsContent value="branches" className="mt-4">
               <BranchesTab />

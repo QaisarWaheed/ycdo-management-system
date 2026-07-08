@@ -9,11 +9,31 @@ export interface UserPasswordRecord {
   user: {
     email: string
     role: string
+    isActive?: boolean
+    branchId?: string | null
+    branch?: {
+      id: string
+      name: string
+      address?: string | null
+      projectId?: string | null
+      project?: { id: string; name: string } | null
+    } | null
   }
 }
 
 export const userPasswordsApi = {
-  getAll: () => api.get<unknown, UserPasswordRecord[]>('/user-passwords'),
+  getAll: (params?: {
+    systemOnly?: boolean
+    branchId?: string
+    projectId?: string
+  }) =>
+    api.get<unknown, UserPasswordRecord[]>('/user-passwords', {
+      params: {
+        ...(params?.systemOnly ? { systemOnly: 'true' } : {}),
+        ...(params?.branchId ? { branchId: params.branchId } : {}),
+        ...(params?.projectId ? { projectId: params.projectId } : {}),
+      },
+    }),
   resetPassword: (userId: string, newPassword: string) =>
     api.patch(`/user-passwords/${userId}`, { newPassword }),
 }

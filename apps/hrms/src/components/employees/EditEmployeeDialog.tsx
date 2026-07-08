@@ -82,13 +82,24 @@ function toDateInput(value?: string | null) {
   return value.slice(0, 10)
 }
 
-function buildPayload(data: EditFormValues): Record<string, unknown> {
+function buildPayload(
+  data: EditFormValues,
+  mode: 'personal' | 'job',
+): Record<string, unknown> {
+  if (mode === 'job') {
+    const payload: Record<string, unknown> = {}
+    if (data.joiningDate) payload.joiningDate = data.joiningDate
+    if (data.currentDesignation) payload.currentDesignation = data.currentDesignation
+    if (data.biometricId) payload.biometricId = data.biometricId
+    return payload
+  }
+
   const payload: Record<string, unknown> = {
     fullName: data.fullName.trim(),
     gender: data.gender,
   }
 
-  const optionalKeys = [
+  const personalKeys = [
     'fatherName',
     'dateOfBirth',
     'phone',
@@ -110,12 +121,9 @@ function buildPayload(data: EditFormValues): Record<string, unknown> {
     'emergencyContactNumber',
     'spouseName',
     'spouseContactNumber',
-    'biometricId',
-    'joiningDate',
-    'currentDesignation',
   ] as const
 
-  for (const key of optionalKeys) {
+  for (const key of personalKeys) {
     const val = data[key]
     if (val) payload[key] = val
   }
@@ -159,11 +167,13 @@ export function EditEmployeeDialog({
   open,
   onOpenChange,
   onSuccess,
+  mode = 'personal',
 }: {
   employee: Employee
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  mode?: 'personal' | 'job'
 }) {
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
@@ -216,9 +226,14 @@ export function EditEmployeeDialog({
 
   const mutation = useMutation({
     mutationFn: (data: EditFormValues) =>
-      employeesApi.update(employee.id, buildPayload(data)),
+      employeesApi.update(employee.id, buildPayload(data, mode)),
     onSuccess: () => {
-      toast({ title: 'Employee details updated' })
+      toast({
+        title:
+          mode === 'job'
+            ? 'Job information updated'
+            : 'Personal information updated',
+      })
       onSuccess()
       onOpenChange(false)
     },
@@ -236,7 +251,9 @@ export function EditEmployeeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit Employee Details</DialogTitle>
+          <DialogTitle>
+            {mode === 'job' ? 'Edit Job Information' : 'Edit Personal Information'}
+          </DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -244,6 +261,8 @@ export function EditEmployeeDialog({
             onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
             className="space-y-6"
           >
+            {mode === 'personal' && (
+            <>
             <div className="space-y-3">
               <p className="text-sm font-semibold text-text-secondary">
                 Basic Information
@@ -465,7 +484,10 @@ export function EditEmployeeDialog({
                 />
               </div>
             </div>
+            </>
+            )}
 
+            {mode === 'job' && (
             <div className="space-y-3">
               <p className="text-sm font-semibold text-text-secondary">
                 Job Information
@@ -534,6 +556,7 @@ export function EditEmployeeDialog({
                 Duty.
               </p>
             </div>
+            )}
 
             <DialogFooter>
               <Button

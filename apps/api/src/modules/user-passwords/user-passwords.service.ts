@@ -1,14 +1,36 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UpdateUserPasswordDto } from './user-passwords.dto';
+import { UpdateUserPasswordDto, UserPasswordsQueryDto } from './user-passwords.dto';
 
 @Injectable()
 export class UserPasswordsService {
   constructor(private prisma: PrismaService) {}
 
-  findAll() {
+  findAll(query: UserPasswordsQueryDto = {}) {
+    const where: Prisma.UserPasswordWhereInput = {};
+
+    if (query.systemOnly === 'true') {
+      where.user = {
+        employeeId: null,
+        role: UserRole.ADMIN_MANAGER,
+        ...(query.branchId ? { branchId: query.branchId } : {}),
+        ...(query.projectId
+          ? { branch: { projectId: query.projectId } }
+          : {}),
+      };
+    } else if (query.branchId || query.projectId) {
+      where.user = {
+        ...(query.branchId ? { branchId: query.branchId } : {}),
+        ...(query.projectId
+          ? { branch: { projectId: query.projectId } }
+          : {}),
+      };
+    }
+
     return this.prisma.userPassword.findMany({
+      where,
       select: {
         id: true,
         userId: true,
@@ -19,10 +41,24 @@ export class UserPasswordsService {
           select: {
             email: true,
             role: true,
+            isActive: true,
+            branchId: true,
+            branch: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                projectId: true,
+                project: { select: { id: true, name: true } },
+              },
+            },
           },
         },
       },
-      orderBy: [{ user: { role: 'asc' } }, { user: { email: 'asc' } }],
+      orderBy: [
+        { user: { branch: { name: 'asc' } } },
+        { user: { email: 'asc' } },
+      ],
     });
   }
 

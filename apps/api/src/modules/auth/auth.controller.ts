@@ -44,7 +44,7 @@ export class AuthController {
 
   @Patch('reset-password')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   resetPassword(
     @Body() dto: ResetPasswordDto,
     @CurrentUser() user: { id: string },

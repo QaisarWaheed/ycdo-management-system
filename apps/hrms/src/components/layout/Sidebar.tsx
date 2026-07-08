@@ -8,7 +8,6 @@ import {
   Clock,
   FileText,
   Gift,
-  Key,
   LayoutDashboard,
   LogOut,
   MapPin,
@@ -152,22 +151,6 @@ export function Sidebar() {
             {user?.role?.replace(/_/g, ' ')}
           </p>
         </div>
-        {(user?.role === 'SUPER_ADMIN' || user?.role === 'HR_ADMIN_MANAGER') && (
-          <NavLink
-            to="/admin/user-passwords"
-            className={({ isActive }) =>
-              cn(
-                'mb-3 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-white text-primary'
-                  : 'text-white/90 hover:bg-primary-light',
-              )
-            }
-          >
-            <Key className="h-5 w-5" />
-            User Passwords
-          </NavLink>
-        )}
         <Button
           variant="outline"
           className="w-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"

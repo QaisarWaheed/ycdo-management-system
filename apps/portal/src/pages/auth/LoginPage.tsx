@@ -6,6 +6,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { authApi } from '@/api/endpoints/auth'
 import { useAuth } from '@/hooks/useAuth'
+import { isPortalAllowedRole } from '@/lib/portalRoles'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,15 +50,15 @@ export function LoginPage() {
     setError('')
     try {
       const response = await authApi.login(data.email, data.password)
-      if (response.user.role !== 'EMPLOYEE') {
-        setError('This portal is for employees only. Please use the HRMS login.')
+      if (!isPortalAllowedRole(response.user.role)) {
+        setError('Access denied. Use HRMS for system access.')
         return
       }
       login(response.access_token, response.user)
       navigate('/dashboard')
     } catch (err) {
-      if (err instanceof Error && err.message === 'EMPLOYEE_ONLY') {
-        setError('This portal is for employees only.')
+      if (err instanceof Error && err.message === 'PORTAL_ACCESS_DENIED') {
+        setError('Access denied. Use HRMS for system access.')
         return
       }
       setError('Invalid email or password')

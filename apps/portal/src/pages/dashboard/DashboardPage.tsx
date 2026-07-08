@@ -16,6 +16,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
 import { notificationsApi } from '@/api/endpoints/notifications'
 import { PortalCheckInWidget } from '@/components/attendance/PortalCheckInWidget'
+import { AdminManagerPortalDashboard } from '@/pages/dashboard/AdminManagerPortalDashboard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -65,6 +66,11 @@ function StatCard({
 
 export function DashboardPage() {
   const { user } = useAuth()
+
+  if (user?.role === 'ADMIN_MANAGER') {
+    return <AdminManagerPortalDashboard />
+  }
+
   const employeeId = user?.employeeId ?? ''
   const now = new Date()
   const month = now.getMonth() + 1

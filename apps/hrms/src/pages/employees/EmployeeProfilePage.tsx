@@ -6,6 +6,8 @@ import {
   ChevronRight,
   Clock,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   Fingerprint,
   Loader2,
@@ -82,11 +84,12 @@ import type {
   StipendRecord,
 } from '@/types'
 
-const HR_EMPLOYEE_EDIT_ROLES = [
+const IT_PROFILE_ROLES = ['SUPER_ADMIN', 'IT_ADMIN'] as const
+const HR_JOB_ROLES = [
   'SUPER_ADMIN',
   'HR_MANAGER',
   'HR_ADMIN_MANAGER',
-  'ADMIN_OFFICER',
+  'HR_OPERATIONS_MANAGER',
 ] as const
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://187.127.115.103:3000'
@@ -138,12 +141,14 @@ function QualificationSection({
   title,
   qualifications,
   isLoading,
+  canEdit = true,
 }: {
   employeeId: string
   qualType: QualType
   title: string
   qualifications: AcademicQualification[]
   isLoading: boolean
+  canEdit?: boolean
 }) {
   const queryClient = useQueryClient()
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -282,7 +287,7 @@ function QualificationSection({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-lg">{title}</CardTitle>
-        {!adding && (
+        {canEdit && !adding && (
           <Button
             variant="outline"
             size="sm"
@@ -338,6 +343,7 @@ function QualificationSection({
                       <TableCell>{qual.obtainedMarks ?? '—'}</TableCell>
                       <TableCell>{qual.divisionGrade ?? '—'}</TableCell>
                       <TableCell>
+                        {canEdit ? (
                         <div className="flex gap-1">
                           <Button
                             variant="ghost"
@@ -355,11 +361,14 @@ function QualificationSection({
                             <Trash2 className="h-4 w-4 text-red-600" />
                           </Button>
                         </div>
+                        ) : (
+                          '—'
+                        )}
                       </TableCell>
                     </TableRow>
                   ),
               )}
-              {adding &&
+              {canEdit && adding &&
                 renderFormRow(
                   newForm,
                   setNewForm,
@@ -630,7 +639,9 @@ export function EmployeeProfilePage() {
   const [statusOpen, setStatusOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
   const [branchDutyOpen, setBranchDutyOpen] = useState(false)
-  const [editDetailsOpen, setEditDetailsOpen] = useState(false)
+  const [editPersonalOpen, setEditPersonalOpen] = useState(false)
+  const [editJobOpen, setEditJobOpen] = useState(false)
+  const [showCredentialPassword, setShowCredentialPassword] = useState(false)
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
   const [prevEmpOpen, setPrevEmpOpen] = useState(false)
   const [incentiveOpen, setIncentiveOpen] = useState(false)
@@ -834,14 +845,20 @@ export function EmployeeProfilePage() {
   const documents = (employee.documents ?? []) as EmployeeDocument[]
   const overtimeHours = ((attendanceSummary?.overtimeMinutes ?? 0) / 60).toFixed(1)
 
-  const canEditEmployee =
+  const canEditPersonal =
     !!user?.role &&
-    HR_EMPLOYEE_EDIT_ROLES.includes(
-      user.role as (typeof HR_EMPLOYEE_EDIT_ROLES)[number],
-    )
+    IT_PROFILE_ROLES.includes(user.role as (typeof IT_PROFILE_ROLES)[number])
+
+  const canEditJob =
+    !!user?.role &&
+    HR_JOB_ROLES.includes(user.role as (typeof HR_JOB_ROLES)[number])
+
+  const canManageCredentials =
+    !!user?.role &&
+    IT_PROFILE_ROLES.includes(user.role as (typeof IT_PROFILE_ROLES)[number])
 
   const canEditBranchDuty =
-    canEditEmployee && user?.employeeId !== employee.id
+    canEditJob && user?.employeeId !== employee.id
 
   const hasPersonalInfo =
     employee.bloodGroup ||
@@ -1016,7 +1033,7 @@ export function EmployeeProfilePage() {
             photoUrl={photoSrc}
             size="lg"
             onPhotoClick={
-              canEditEmployee
+              canEditPersonal
                 ? () => photoInputRef.current?.click()
                 : undefined
             }
@@ -1077,7 +1094,70 @@ export function EmployeeProfilePage() {
             </p>
           </div>
           <div className="flex w-full flex-col gap-2">
-            {canEditEmployee && (
+            {canManageCredentials && employee.user && (
+              <Card className="w-full text-left">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Credentials</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <p>
+                    <span className="text-text-secondary">Portal Email: </span>
+                    {employee.user.email}
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <span className="text-text-secondary">Password: </span>
+                    <span className="font-mono">
+                      {showCredentialPassword
+                        ? employee.user.passwordRecord?.plainText ?? '—'
+                        : '••••••••'}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() =>
+                        setShowCredentialPassword((v) => !v)
+                      }
+                    >
+                      {showCredentialPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </p>
+                  <p>
+                    <span className="text-text-secondary">Role: </span>
+                    <Badge variant="outline">
+                      {employee.user.role.replace(/_/g, ' ')}
+                    </Badge>
+                  </p>
+                  <p>
+                    <span className="text-text-secondary">Status: </span>
+                    <Badge
+                      variant="outline"
+                      className={
+                        employee.user.isActive
+                          ? 'bg-green-50 text-green-800'
+                          : 'bg-red-50 text-red-800'
+                      }
+                    >
+                      {employee.user.isActive ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setResetPasswordOpen(true)}
+                  >
+                    Reset Password
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+            {(canEditPersonal || canEditJob) && (
               <Button
                 variant="outline"
                 className="w-full no-print"
@@ -1087,37 +1167,53 @@ export function EmployeeProfilePage() {
                 Print Profile
               </Button>
             )}
-            {canEditEmployee && (
+            {canEditPersonal && (
               <Button
                 variant="outline"
                 className="w-full"
-                onClick={() => setEditDetailsOpen(true)}
+                onClick={() => setEditPersonalOpen(true)}
               >
                 <Pencil className="mr-2 h-4 w-4" />
-                Edit Details
+                Edit Personal Info
               </Button>
             )}
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setLetterOpen(true)}
-            >
-              Generate Letter
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setStatusOpen(true)}
-            >
-              Change Status
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setTransferOpen(true)}
-            >
-              Transfer
-            </Button>
+            {canEditJob && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setEditJobOpen(true)}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit Job Info
+              </Button>
+            )}
+            {canEditJob && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setLetterOpen(true)}
+              >
+                Generate Letter
+              </Button>
+            )}
+            {canEditJob && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setStatusOpen(true)}
+              >
+                Change Status
+              </Button>
+            )}
+            {canEditJob && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setTransferOpen(true)}
+              >
+                Transfer
+              </Button>
+            )}
             {canEditBranchDuty && (
               <Button
                 variant="outline"
@@ -1125,15 +1221,6 @@ export function EmployeeProfilePage() {
                 onClick={() => setBranchDutyOpen(true)}
               >
                 Edit Branch & Duty
-              </Button>
-            )}
-            {user?.role === 'SUPER_ADMIN' && employee.user?.id && (
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => setResetPasswordOpen(true)}
-              >
-                Reset Password
               </Button>
             )}
           </div>
@@ -1155,42 +1242,14 @@ export function EmployeeProfilePage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          {employee.user?.role === 'ADMIN_MANAGER' && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Login Credentials</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <p>
-                  <span className="text-text-secondary">Email: </span>
-                  {employee.user.email}
-                </p>
-                <p>
-                  <span className="text-text-secondary">Password: </span>
-                  <span className="font-mono">
-                    {employee.user.passwordRecord?.plainText ?? '—'}
-                  </span>
-                </p>
-                <p>
-                  <span className="text-text-secondary">Branch: </span>
-                  {employee.user.branch?.name ??
-                    formatBranchLabel(employee.currentBranch)}
-                </p>
-                <p>
-                  <span className="text-text-secondary">Role: </span>
-                  Admin Manager
-                </p>
-              </CardContent>
-            </Card>
-          )}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-lg">Personal Info</CardTitle>
-              {canEditEmployee && (
+              {canEditPersonal && (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setEditDetailsOpen(true)}
+                  onClick={() => setEditPersonalOpen(true)}
                 >
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit
@@ -1574,6 +1633,7 @@ export function EmployeeProfilePage() {
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">
+          {canEditPersonal && (
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
               <Label>Document Type</Label>
@@ -1623,6 +1683,7 @@ export function EmployeeProfilePage() {
               Upload Document
             </Button>
           </div>
+          )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {documents.length === 0 ? (
@@ -1652,6 +1713,7 @@ export function EmployeeProfilePage() {
                           Download
                         </a>
                       </Button>
+                      {canEditPersonal && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -1660,6 +1722,7 @@ export function EmployeeProfilePage() {
                       >
                         <Trash2 className="h-3 w-3 text-red-600" />
                       </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1860,6 +1923,7 @@ export function EmployeeProfilePage() {
             title="Academic Qualifications"
             qualifications={qualifications as AcademicQualification[]}
             isLoading={loadingQualifications}
+            canEdit={canEditPersonal}
           />
           <QualificationSection
             employeeId={id}
@@ -1867,10 +1931,12 @@ export function EmployeeProfilePage() {
             title="Job-Relevant Qualifications"
             qualifications={qualifications as AcademicQualification[]}
             isLoading={loadingQualifications}
+            canEdit={canEditPersonal}
           />
         </TabsContent>
 
         <TabsContent value="previous-employment" className="space-y-4">
+          {canEditPersonal && (
           <Button
             className="bg-primary hover:bg-primary-dark"
             onClick={() => setPrevEmpOpen(true)}
@@ -1878,6 +1944,7 @@ export function EmployeeProfilePage() {
             <Plus className="mr-2 h-4 w-4" />
             Add Previous Employment
           </Button>
+          )}
 
           <Card>
             <CardContent className="p-0">
@@ -1947,6 +2014,7 @@ export function EmployeeProfilePage() {
                                 {emp.totalExperience ?? '—'}
                               </TableCell>
                               <TableCell>
+                                {canEditPersonal ? (
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -1957,6 +2025,9 @@ export function EmployeeProfilePage() {
                                 >
                                   <Trash2 className="h-4 w-4 text-red-600" />
                                 </Button>
+                                ) : (
+                                  '—'
+                                )}
                               </TableCell>
                             </TableRow>
                             {expandedPrevEmpId === emp.id && (
@@ -2118,18 +2189,31 @@ export function EmployeeProfilePage() {
           queryClient.invalidateQueries({ queryKey: ['employee', id] })
         }}
       />
-      {editDetailsOpen && (
+      {editPersonalOpen && (
         <EditEmployeeDialog
           employee={employee}
-          open={editDetailsOpen}
-          onOpenChange={setEditDetailsOpen}
+          mode="personal"
+          open={editPersonalOpen}
+          onOpenChange={setEditPersonalOpen}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['employee', id] })
             queryClient.invalidateQueries({ queryKey: ['employees'] })
           }}
         />
       )}
-      {employee.user?.id && (
+      {editJobOpen && (
+        <EditEmployeeDialog
+          employee={employee}
+          mode="job"
+          open={editJobOpen}
+          onOpenChange={setEditJobOpen}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['employee', id] })
+            queryClient.invalidateQueries({ queryKey: ['employees'] })
+          }}
+        />
+      )}
+      {canManageCredentials && employee.user?.id && (
         <ResetPasswordDialog
           open={resetPasswordOpen}
           onOpenChange={setResetPasswordOpen}

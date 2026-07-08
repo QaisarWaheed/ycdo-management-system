@@ -17,8 +17,7 @@ export interface IncomingRelieverRequest {
   requestedAt: string
   status: string
   requestedBy: {
-    firstName: string
-    lastName: string
+    fullName: string
     employeeCode: string
   }
   leaveRecord: {

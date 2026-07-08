@@ -72,7 +72,7 @@ export function PortalHeader() {
     ? employee.fullName
         .trim()
         .split(/\s+/)
-        .map((part) => part[0])
+        .map((part: string) => part[0])
         .slice(0, 2)
         .join('')
         .toUpperCase()

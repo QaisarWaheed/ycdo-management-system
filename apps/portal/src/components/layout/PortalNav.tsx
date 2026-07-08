@@ -13,6 +13,7 @@ import {
 import { acknowledgementsApi } from '@/api/endpoints/acknowledgements'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/useAuth'
+import { isEmployeePortalRole } from '@/lib/portalRoles'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -30,6 +31,10 @@ export function PortalNav() {
   const { pathname } = useLocation()
   const { user } = useAuth()
 
+  const visibleNavItems = isEmployeePortalRole(user?.role)
+    ? navItems
+    : navItems.filter((item) => item.to === '/dashboard')
+
   const { data: pendingAcks = [] } = useQuery({
     queryKey: ['pending-acknowledgements'],
     queryFn: () => acknowledgementsApi.getPending(),
@@ -43,7 +48,7 @@ export function PortalNav() {
       {/* Desktop horizontal nav */}
       <nav className="hidden border-b border-border bg-white md:block print:hidden">
         <div className="mx-auto flex max-w-6xl items-center gap-1 px-4">
-          {navItems.map(({ to, label, icon: Icon, showAckBadge }) => {
+          {visibleNavItems.map(({ to, label, icon: Icon, showAckBadge }) => {
             const active = pathname === to
             return (
               <Link
@@ -72,7 +77,7 @@ export function PortalNav() {
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-white md:hidden print:hidden">
         <div className="flex items-stretch justify-around">
-          {navItems.map(({ to, label, icon: Icon, showAckBadge }) => {
+          {visibleNavItems.map(({ to, label, icon: Icon, showAckBadge }) => {
             const active = pathname === to
             return (
               <Link
