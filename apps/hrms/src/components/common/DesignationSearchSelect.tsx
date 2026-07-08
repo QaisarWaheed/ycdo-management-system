@@ -21,6 +21,8 @@ interface DesignationSearchSelectProps {
   error?: boolean
   className?: string
   categories?: string[]
+  /** @deprecated Use `departments` — filters by stored department name */
+  departments?: string[]
   disabled?: boolean
   helperText?: string
 }
@@ -32,6 +34,7 @@ export function DesignationSearchSelect({
   error,
   className,
   categories,
+  departments,
   disabled = false,
   helperText,
 }: DesignationSearchSelectProps) {
@@ -40,10 +43,12 @@ export function DesignationSearchSelect({
   const containerRef = useRef<HTMLDivElement>(null)
   const debouncedSearch = useDebounce(search, 300)
 
+  const departmentFilter = departments ?? categories
+
   const designationParams = useMemo(() => {
-    if (!categories?.length) return undefined
-    return { categories: categories.join(',') }
-  }, [categories])
+    if (!departmentFilter?.length) return undefined
+    return { categories: departmentFilter.join(',') }
+  }, [departmentFilter])
 
   const { data: designations = [], isLoading } = useQuery({
     queryKey: ['designations', designationParams],
@@ -98,10 +103,10 @@ export function DesignationSearchSelect({
           ) : grouped.length === 0 ? (
             <p className="p-3 text-sm text-text-secondary">No designations found</p>
           ) : (
-            grouped.map(([category, items]) => (
-              <div key={category}>
+            grouped.map(([departmentName, items]) => (
+              <div key={departmentName}>
                 <p className="sticky top-0 bg-muted px-3 py-1.5 text-xs font-semibold uppercase text-text-secondary">
-                  {category}
+                  {departmentName}
                 </p>
                 {items.map((d) => (
                   <button

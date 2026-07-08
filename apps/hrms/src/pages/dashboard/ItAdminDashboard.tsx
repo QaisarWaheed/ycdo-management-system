@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Copy, Pencil, Plus, Trash2 } from 'lucide-react'
@@ -6,7 +6,6 @@ import { branchesApi, type BranchDuplicateGroup } from '@/api/endpoints/branches
 import { departmentsApi } from '@/api/endpoints/departments'
 import { projectsApi } from '@/api/endpoints/projects'
 import {
-  DESIGNATION_CATEGORIES,
   designationsApi,
   type Designation,
 } from '@/api/endpoints/designations'
@@ -43,6 +42,11 @@ import { toast } from '@/hooks/use-toast'
 import type { Branch, Department, Project, ProjectType, Shift } from '@/types'
 import { PROJECT_TYPE_LABELS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import {
+  getUniqueDepartmentNames,
+  normalizeDepartmentKey,
+  resolveCanonicalDepartmentName,
+} from '@/lib/uniqueDepartmentNames'
 import { ItAdminEmployeesTab } from '@/components/dashboard/ItAdminEmployeesTab'
 import {
   DepartmentEmployeesDialog,
@@ -764,25 +768,59 @@ function DesignationsTab() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editItem, setEditItem] = useState<Designation | null>(null)
   const [title, setTitle] = useState('')
-  const [category, setCategory] = useState<string>(DESIGNATION_CATEGORIES[0])
-  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [department, setDepartment] = useState('')
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all')
   const [employeesDesignation, setEmployeesDesignation] =
     useState<Designation | null>(null)
 
-  const { data: designations = [], isLoading } = useQuery({
-    queryKey: ['designations', categoryFilter],
-    queryFn: () =>
-      categoryFilter === 'all'
-        ? designationsApi.getAll()
-        : designationsApi.getAll({ category: categoryFilter }),
+  const { data: allDepartments = [] } = useQuery({
+    queryKey: ['departments', 'all'],
+    queryFn: () => departmentsApi.getAll(),
   })
 
+  const departmentNames = useMemo(
+    () => getUniqueDepartmentNames(allDepartments.map((d) => d.name)),
+    [allDepartments],
+  )
+
+  const { data: designations = [], isLoading } = useQuery({
+    queryKey: ['designations', departmentFilter],
+    queryFn: () =>
+      departmentFilter === 'all'
+        ? designationsApi.getAll()
+        : designationsApi.getAll({ category: departmentFilter }),
+  })
+
+  const filterOptions = useMemo(() => {
+    const knownKeys = new Set(departmentNames.map(normalizeDepartmentKey))
+    const legacy = designations
+      .map((d) => d.category.trim())
+      .filter(
+        (name) => name && !knownKeys.has(normalizeDepartmentKey(name)),
+      )
+
+    return getUniqueDepartmentNames([...departmentNames, ...legacy])
+  }, [departmentNames, designations])
+
+  const formDepartmentOptions = useMemo(() => {
+    if (
+      department &&
+      !departmentNames.some(
+        (name) =>
+          normalizeDepartmentKey(name) === normalizeDepartmentKey(department),
+      )
+    ) {
+      return getUniqueDepartmentNames([department, ...departmentNames])
+    }
+    return departmentNames
+  }, [department, departmentNames])
+
   const createMutation = useMutation({
-    mutationFn: () => designationsApi.create({ title, category }),
+    mutationFn: () => designationsApi.create({ title, category: department }),
     onSuccess: () => {
       toast({ title: 'Designation created' })
       setTitle('')
-      setCategory(DESIGNATION_CATEGORIES[0])
+      setDepartment(departmentNames[0] ?? '')
       setCreateOpen(false)
       queryClient.invalidateQueries({ queryKey: ['designations'] })
     },
@@ -798,7 +836,7 @@ function DesignationsTab() {
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      designationsApi.update(editItem!.id, { title, category }),
+      designationsApi.update(editItem!.id, { title, category: department }),
     onSuccess: () => {
       toast({ title: 'Designation updated' })
       setEditItem(null)
@@ -838,26 +876,33 @@ function DesignationsTab() {
   const openEdit = (item: Designation) => {
     setEditItem(item)
     setTitle(item.title)
-    setCategory(item.category)
+    setDepartment(
+      resolveCanonicalDepartmentName(item.category, departmentNames),
+    )
+  }
+
+  const openCreate = () => {
+    setDepartment(departmentNames[0] ?? '')
+    setCreateOpen(true)
   }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
-          <Label>Filter by Category</Label>
+          <Label>Filter by Department</Label>
           <Select
-            value={categoryFilter}
-            onValueChange={(v) => setCategoryFilter(v)}
+            value={departmentFilter}
+            onValueChange={(v) => setDepartmentFilter(v)}
           >
             <SelectTrigger className="w-[240px]">
-              <SelectValue placeholder="All categories" />
+              <SelectValue placeholder="All departments" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {DESIGNATION_CATEGORIES.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
+              <SelectItem value="all">All Departments</SelectItem>
+              {filterOptions.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -865,7 +910,8 @@ function DesignationsTab() {
         </div>
         <Button
           className="bg-primary hover:bg-primary-dark"
-          onClick={() => setCreateOpen(true)}
+          onClick={openCreate}
+          disabled={departmentNames.length === 0}
         >
           <Plus className="mr-2 h-4 w-4" />
           Add Designation
@@ -878,7 +924,7 @@ function DesignationsTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Title</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead>Department</TableHead>
                 <TableHead>Employees</TableHead>
                 <TableHead>Active</TableHead>
                 <TableHead className="w-[140px]">Actions</TableHead>
@@ -909,7 +955,12 @@ function DesignationsTab() {
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.title}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{item.category}</Badge>
+                      <Badge variant="outline">
+                        {resolveCanonicalDepartmentName(
+                          item.category,
+                          departmentNames,
+                        )}
+                      </Badge>
                     </TableCell>
                     <TableCell className="p-0">
                       <button
@@ -979,14 +1030,15 @@ function DesignationsTab() {
           </DialogHeader>
           <DesignationForm
             title={title}
-            category={category}
+            department={department}
+            departments={formDepartmentOptions}
             onTitleChange={setTitle}
-            onCategoryChange={setCategory}
+            onDepartmentChange={setDepartment}
           />
           <DialogFooter>
             <Button
               className="bg-primary hover:bg-primary-dark"
-              disabled={!title || createMutation.isPending}
+              disabled={!title || !department || createMutation.isPending}
               onClick={() => createMutation.mutate()}
             >
               {createMutation.isPending ? 'Creating...' : 'Create'}
@@ -1010,14 +1062,15 @@ function DesignationsTab() {
           </DialogHeader>
           <DesignationForm
             title={title}
-            category={category}
+            department={department}
+            departments={formDepartmentOptions}
             onTitleChange={setTitle}
-            onCategoryChange={setCategory}
+            onDepartmentChange={setDepartment}
           />
           <DialogFooter>
             <Button
               className="bg-primary hover:bg-primary-dark"
-              disabled={!title || updateMutation.isPending}
+              disabled={!title || !department || updateMutation.isPending}
               onClick={() => updateMutation.mutate()}
             >
               {updateMutation.isPending ? 'Saving...' : 'Save'}
@@ -1031,14 +1084,16 @@ function DesignationsTab() {
 
 function DesignationForm({
   title,
-  category,
+  department,
+  departments,
   onTitleChange,
-  onCategoryChange,
+  onDepartmentChange,
 }: {
   title: string
-  category: string
+  department: string
+  departments: string[]
   onTitleChange: (value: string) => void
-  onCategoryChange: (value: string) => void
+  onDepartmentChange: (value: string) => void
 }) {
   return (
     <div className="space-y-4">
@@ -1051,19 +1106,25 @@ function DesignationForm({
         />
       </div>
       <div className="space-y-2">
-        <Label>Category</Label>
-        <Select value={category} onValueChange={onCategoryChange}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {DESIGNATION_CATEGORIES.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Label>Department</Label>
+        {departments.length === 0 ? (
+          <p className="text-sm text-text-secondary">
+            Add departments under the Departments tab first.
+          </p>
+        ) : (
+          <Select value={department} onValueChange={onDepartmentChange}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select department" />
+            </SelectTrigger>
+            <SelectContent>
+              {departments.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
     </div>
   )

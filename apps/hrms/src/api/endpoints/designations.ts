@@ -13,21 +13,6 @@ export interface DesignationQueryParams {
   categories?: string
 }
 
-export const DESIGNATION_CATEGORIES = [
-  'Management',
-  'Admin',
-  'Medical',
-  'Nursing',
-  'Allied Health',
-  'HR',
-  'Finance',
-  'IT',
-  'Kitchen',
-  'VTI',
-  'Support',
-  'Other',
-] as const
-
 export const designationsApi = {
   getAll: (params?: DesignationQueryParams) =>
     api.get<unknown, Designation[]>('/designations', { params }),

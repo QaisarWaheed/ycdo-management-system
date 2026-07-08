@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EmployeeStatus } from '@prisma/client';
+import { EmployeeStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateDesignationDto,
@@ -12,16 +12,23 @@ export class DesignationsService {
   constructor(private prisma: PrismaService) {}
 
   findAll(query?: DesignationQueryDto) {
-    const where: { isActive?: boolean; isDeleted?: boolean; category?: { in: string[] } } =
-      {
-        isActive: true,
-        isDeleted: false,
+    const where: Prisma.DesignationWhereInput = {
+      isActive: true,
+      isDeleted: false,
     };
 
     if (query?.categories) {
-      where.category = { in: query.categories.split(',').map((c) => c.trim()) };
+      const categories = query.categories
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (categories.length > 0) {
+        where.OR = categories.map((category) => ({
+          category: { equals: category, mode: 'insensitive' },
+        }));
+      }
     } else if (query?.category) {
-      where.category = { in: [query.category] };
+      where.category = { equals: query.category, mode: 'insensitive' };
     }
 
     return this.prisma.designation.findMany({
