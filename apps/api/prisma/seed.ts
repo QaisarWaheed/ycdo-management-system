@@ -984,17 +984,20 @@ async function main() {
   });
 
   if (branchManagerUser) {
-    await prisma.auditLog.deleteMany({
-      where: { userId: branchManagerUser.id },
-    });
-    if (branchManagerUser.employeeId) {
-      await prisma.notification.deleteMany({
-        where: { employeeId: branchManagerUser.employeeId },
-      });
+    const userId = branchManagerUser.id;
+    const empId = branchManagerUser.employeeId;
+
+    await prisma.auditLog.deleteMany({ where: { userId } });
+    await prisma.leaveApproval.deleteMany({ where: { actionBy: userId } });
+    await prisma.userPassword.deleteMany({ where: { userId } });
+    await prisma.incentive.deleteMany({ where: { addedBy: userId } });
+
+    if (empId) {
+      await prisma.notification.deleteMany({ where: { employeeId: empId } });
     }
-    await prisma.user.delete({
-      where: { id: branchManagerUser.id },
-    });
+
+    await prisma.user.delete({ where: { id: userId } });
+    console.log('Removed branch.manager@ycdo.org');
   }
 
   const roleAccounts = [
