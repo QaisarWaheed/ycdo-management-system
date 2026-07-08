@@ -1,33 +1,15 @@
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, Plus } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Building2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { branchesApi } from '@/api/endpoints/branches'
-import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
-import { shiftsApi } from '@/api/endpoints/shifts'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   Sheet,
   SheetContent,
@@ -44,7 +26,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { toast } from '@/hooks/use-toast'
 import type { BranchDetail, Project, ProjectType } from '@/types'
 import { PROJECT_TYPE_LABELS } from '@/types'
 
@@ -66,185 +47,6 @@ function projectTypeBadge(type: string) {
   return styles[type] ?? 'bg-gray-100 text-gray-700'
 }
 
-function AddShiftDialog({
-  branchId,
-  open,
-  onOpenChange,
-  onSuccess,
-}: {
-  branchId: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onSuccess: () => void
-}) {
-  const [name, setName] = useState('')
-  const [startTime, setStartTime] = useState('')
-  const [endTime, setEndTime] = useState('')
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      shiftsApi.create({ branchId, name, startTime, endTime }),
-    onSuccess: () => {
-      toast({ title: 'Shift created' })
-      setName('')
-      setStartTime('')
-      setEndTime('')
-      onOpenChange(false)
-      onSuccess()
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Failed to create shift',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-  })
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add Shift</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Shift Name</Label>
-            <Input
-              placeholder="Morning Shift"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Start Time (HH:MM)</Label>
-              <Input
-                placeholder="09:00"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>End Time (HH:MM)</Label>
-              <Input
-                placeholder="17:00"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button
-            className="bg-primary hover:bg-primary-dark"
-            disabled={!name || !startTime || !endTime || mutation.isPending}
-            onClick={() => mutation.mutate()}
-          >
-            {mutation.isPending ? 'Creating...' : 'Create Shift'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function AddBranchDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const queryClient = useQueryClient()
-  const [name, setName] = useState('')
-  const [projectId, setProjectId] = useState('')
-  const [address, setAddress] = useState('')
-  const [phone, setPhone] = useState('')
-
-  const { data: projects = [] } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsApi.getAll(),
-  })
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      branchesApi.create({
-        name,
-        projectId: projectId || undefined,
-        address: address || undefined,
-        phone: phone || undefined,
-      }),
-    onSuccess: () => {
-      toast({ title: 'Branch created' })
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-      queryClient.invalidateQueries({ queryKey: ['branches'] })
-      setName('')
-      setProjectId('')
-      setAddress('')
-      setPhone('')
-      onOpenChange(false)
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Failed to create branch',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-  })
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add Branch</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Branch Name *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Project</Label>
-            <Select value={projectId} onValueChange={setProjectId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select project" />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Address</Label>
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Phone</Label>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button
-            className="bg-primary hover:bg-primary-dark"
-            disabled={!name || mutation.isPending}
-            onClick={() => mutation.mutate()}
-          >
-            {mutation.isPending ? 'Creating...' : 'Create Branch'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 function BranchDetailSheet({
   branchId,
   open,
@@ -255,12 +57,8 @@ function BranchDetailSheet({
   onOpenChange: (open: boolean) => void
 }) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const [addShiftOpen, setAddShiftOpen] = useState(false)
-  const [addingDept, setAddingDept] = useState(false)
-  const [deptName, setDeptName] = useState('')
 
-  const { data: branch, isLoading, refetch } = useQuery({
+  const { data: branch, isLoading } = useQuery({
     queryKey: ['branch-detail', branchId],
     queryFn: () => branchesApi.getOne(branchId!),
     enabled: !!branchId && open,
@@ -272,66 +70,50 @@ function BranchDetailSheet({
     enabled: !!branchId && open,
   })
 
-  const addDeptMutation = useMutation({
-    mutationFn: () =>
-      departmentsApi.create({ name: deptName, branchId: branchId! }),
-    onSuccess: () => {
-      toast({ title: 'Department added' })
-      setDeptName('')
-      setAddingDept(false)
-      refetch()
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Failed to add department',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-  })
-
   const detail = branch as BranchDetail | undefined
 
   return (
-    <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              {isLoading ? (
-                <Skeleton className="h-6 w-48" />
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            {isLoading ? (
+              <Skeleton className="h-6 w-48" />
+            ) : (
+              <>
+                {formatBranchLabel(detail, '')}
+                {detail?.project && (
+                  <Badge
+                    variant="outline"
+                    className={projectTypeBadge(detail.project.type ?? '')}
+                  >
+                    {detail.project.name}
+                  </Badge>
+                )}
+              </>
+            )}
+          </SheetTitle>
+        </SheetHeader>
+
+        {isLoading ? (
+          <div className="mt-6 space-y-4">
+            <Skeleton className="h-32 w-full" />
+          </div>
+        ) : detail ? (
+          <Tabs defaultValue="departments" className="mt-6">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="departments">Departments</TabsTrigger>
+              <TabsTrigger value="shifts">Shifts</TabsTrigger>
+              <TabsTrigger value="employees">Employees</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="departments" className="space-y-4">
+              {(detail.departments ?? []).length === 0 ? (
+                <p className="text-sm text-text-secondary">
+                  No departments configured
+                </p>
               ) : (
-                <>
-                  {formatBranchLabel(detail, '')}
-                  {detail?.project && (
-                    <Badge
-                      variant="outline"
-                      className={projectTypeBadge(detail.project.type ?? '')}
-                    >
-                      {detail.project.name}
-                    </Badge>
-                  )}
-                </>
-              )}
-            </SheetTitle>
-          </SheetHeader>
-
-          {isLoading ? (
-            <div className="mt-6 space-y-4">
-              <Skeleton className="h-32 w-full" />
-            </div>
-          ) : detail ? (
-            <Tabs defaultValue="departments" className="mt-6">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="departments">Departments</TabsTrigger>
-                <TabsTrigger value="shifts">Shifts</TabsTrigger>
-                <TabsTrigger value="employees">Employees</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="departments" className="space-y-4">
-                {(detail.departments ?? []).map((dept) => (
+                (detail.departments ?? []).map((dept) => (
                   <div
                     key={dept.id}
                     className="flex items-center justify-between rounded-lg border border-border p-3"
@@ -341,147 +123,91 @@ function BranchDetailSheet({
                       {dept._count?.employees ?? 0} employees
                     </span>
                   </div>
-                ))}
+                ))
+              )}
+            </TabsContent>
 
-                {addingDept ? (
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Department name"
-                      value={deptName}
-                      onChange={(e) => setDeptName(e.target.value)}
-                    />
-                    <Button
-                      size="sm"
-                      disabled={!deptName || addDeptMutation.isPending}
-                      onClick={() => addDeptMutation.mutate()}
-                    >
-                      Save
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setAddingDept(false)
-                        setDeptName('')
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAddingDept(true)}
-                  >
-                    <Plus className="mr-1 h-4 w-4" />
-                    Add Department
-                  </Button>
-                )}
-              </TabsContent>
-
-              <TabsContent value="shifts" className="space-y-4">
-                <Table>
-                  <TableHeader>
+            <TabsContent value="shifts" className="space-y-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Start</TableHead>
+                    <TableHead>End</TableHead>
+                    <TableHead>Employees</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(detail.shifts ?? []).length === 0 ? (
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Start</TableHead>
-                      <TableHead>End</TableHead>
-                      <TableHead>Employees</TableHead>
+                      <TableCell colSpan={4} className="text-text-secondary">
+                        No shifts configured
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(detail.shifts ?? []).length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-text-secondary">
-                          No shifts configured
+                  ) : (
+                    (detail.shifts ?? []).map((shift) => (
+                      <TableRow key={shift.id}>
+                        <TableCell className="font-medium">
+                          {shift.name}
                         </TableCell>
+                        <TableCell>{shift.startTime}</TableCell>
+                        <TableCell>{shift.endTime}</TableCell>
+                        <TableCell>{shift._count?.employees ?? 0}</TableCell>
                       </TableRow>
-                    ) : (
-                      (detail.shifts ?? []).map((shift) => (
-                        <TableRow key={shift.id}>
-                          <TableCell className="font-medium">
-                            {shift.name}
-                          </TableCell>
-                          <TableCell>{shift.startTime}</TableCell>
-                          <TableCell>{shift.endTime}</TableCell>
-                          <TableCell>{shift._count?.employees ?? 0}</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TabsContent>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setAddShiftOpen(true)}
-                >
-                  <Plus className="mr-1 h-4 w-4" />
-                  Add Shift
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="employees" className="space-y-4">
-                <Table>
-                  <TableHeader>
+            <TabsContent value="employees" className="space-y-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Designation</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {employees.slice(0, 10).map((emp) => (
+                    <TableRow key={emp.id}>
+                      <TableCell className="font-mono text-xs">
+                        {emp.employeeCode}
+                      </TableCell>
+                      <TableCell>{emp.fullName}</TableCell>
+                      <TableCell>{emp.currentDesignation}</TableCell>
+                      <TableCell>
+                        <StatusBadge status={emp.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {employees.length === 0 && (
                     <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Designation</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableCell colSpan={4} className="text-text-secondary">
+                        No employees in this branch
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {employees.slice(0, 10).map((emp) => (
-                      <TableRow key={emp.id}>
-                        <TableCell className="font-mono text-xs">
-                          {emp.employeeCode}
-                        </TableCell>
-                        <TableCell>
-                          {emp.fullName}
-                        </TableCell>
-                        <TableCell>{emp.currentDesignation}</TableCell>
-                        <TableCell>
-                          <StatusBadge status={emp.status} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {employees.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-text-secondary">
-                          No employees in this branch
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                  )}
+                </TableBody>
+              </Table>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    onOpenChange(false)
-                    navigate(`/employees?branchId=${branchId}`)
-                  }}
-                >
-                  View All
-                </Button>
-              </TabsContent>
-            </Tabs>
-          ) : null}
-        </SheetContent>
-      </Sheet>
-
-      {branchId && (
-        <AddShiftDialog
-          branchId={branchId}
-          open={addShiftOpen}
-          onOpenChange={setAddShiftOpen}
-          onSuccess={() => refetch()}
-        />
-      )}
-    </>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false)
+                  navigate(`/employees?branchId=${branchId}`)
+                }}
+              >
+                View All
+              </Button>
+            </TabsContent>
+          </Tabs>
+        ) : null}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -561,7 +287,6 @@ function ProjectSection({ project }: { project: Project }) {
 
 export function BranchesPage() {
   const [activeTab, setActiveTab] = useState('all')
-  const [addBranchOpen, setAddBranchOpen] = useState(false)
 
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects'],
@@ -576,20 +301,11 @@ export function BranchesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Building2 className="h-7 w-7 text-primary" />
-          <h1 className="text-2xl font-bold text-text-primary">
-            Branches & Projects
-          </h1>
-        </div>
-        <Button
-          className="bg-primary hover:bg-primary-dark"
-          onClick={() => setAddBranchOpen(true)}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add Branch
-        </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Building2 className="h-7 w-7 text-primary" />
+        <h1 className="text-2xl font-bold text-text-primary">
+          Branches & Projects
+        </h1>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -622,8 +338,6 @@ export function BranchesPage() {
           </TabsContent>
         ))}
       </Tabs>
-
-      <AddBranchDialog open={addBranchOpen} onOpenChange={setAddBranchOpen} />
     </div>
   )
 }

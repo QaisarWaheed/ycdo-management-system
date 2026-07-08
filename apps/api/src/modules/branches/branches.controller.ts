@@ -22,7 +22,7 @@ export class BranchesController {
   constructor(private branchesService: BranchesService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   create(@Body() dto: CreateBranchDto) {
     return this.branchesService.create(dto);
   }
@@ -43,7 +43,7 @@ export class BranchesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.IT_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   update(@Param('id') id: string, @Body() dto: UpdateBranchDto) {
     return this.branchesService.update(id, dto);
   }

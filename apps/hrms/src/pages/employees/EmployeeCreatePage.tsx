@@ -20,11 +20,7 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
-import {
-  createDepartmentInline,
-  createDesignationInline,
-  findDepartmentByName,
-} from '@/lib/inlineMasterData'
+import { findDepartmentByName } from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
   BLOOD_GROUP_OPTIONS,
@@ -1578,34 +1574,6 @@ export function EmployeeCreatePage() {
                             form2.setValue('currentDesignation', '')
                           }
                         }}
-                        allowNew
-                        onNewValue={async (name) => {
-                          if (!branchId) {
-                            toast({
-                              title: 'Select a branch first',
-                              variant: 'destructive',
-                            })
-                            return
-                          }
-                          const existing = findDepartmentByName(
-                            departments,
-                            name,
-                          )
-                          if (existing) {
-                            field.onChange(existing.id)
-                            form2.setValue('currentDesignation', '')
-                            return
-                          }
-                          const created = await createDepartmentInline(
-                            queryClient,
-                            branchId,
-                            name,
-                          )
-                          if (created) {
-                            field.onChange(created.id)
-                            form2.setValue('currentDesignation', '')
-                          }
-                        }}
                         placeholder="Select department"
                         disabled={!branchId}
                         error={form2.formState.errors.currentDepartmentId?.message}
@@ -1626,27 +1594,6 @@ export function EmployeeCreatePage() {
                         options={designationOptions}
                         value={field.value ?? ''}
                         onChange={field.onChange}
-                        allowNew
-                        onNewValue={async (title) => {
-                          const dept = departments.find(
-                            (d) => d.id === departmentId,
-                          )
-                          if (!dept) {
-                            toast({
-                              title: 'Select a department first',
-                              variant: 'destructive',
-                            })
-                            return
-                          }
-                          const created = await createDesignationInline(
-                            queryClient,
-                            dept.name,
-                            title,
-                          )
-                          if (created) {
-                            field.onChange(created)
-                          }
-                        }}
                         placeholder="Select designation"
                         disabled={!departmentId}
                         error={form2.formState.errors.currentDesignation?.message}

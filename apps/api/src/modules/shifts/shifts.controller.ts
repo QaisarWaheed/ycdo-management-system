@@ -37,19 +37,19 @@ export class ShiftsController {
   }
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   create(@Body() dto: CreateShiftDto) {
     return this.shiftsService.create(dto);
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   update(@Param('id') id: string, @Body() dto: UpdateShiftDto) {
     return this.shiftsService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   deactivate(@Param('id') id: string) {
     return this.shiftsService.deactivate(id);
   }

@@ -16,7 +16,6 @@ import {
   pakistanProvinces,
   punjabTehsils,
 } from '@/lib/pakistanData'
-import { saveLocationValue } from '@/lib/saveLocationValue'
 
 function FieldWrapper({
   label,
@@ -137,8 +136,6 @@ export function EmployeeLocationFields({
         value={cityField.field.value ?? ''}
         onChange={cityField.field.onChange}
         disabled={!province}
-        allowNew
-        onNewValue={(v) => saveLocationValue('city', v, province)}
         placeholder={province ? 'Select city' : 'Select province first'}
         error={cityField.fieldState.error?.message}
       />
@@ -152,8 +149,6 @@ export function EmployeeLocationFields({
           setValue('tehsil', '')
         }}
         disabled={!province}
-        allowNew
-        onNewValue={(v) => saveLocationValue('district', v, province)}
         placeholder={province ? 'Select district' : 'Select province first'}
         error={districtField.fieldState.error?.message}
       />
@@ -164,8 +159,6 @@ export function EmployeeLocationFields({
         value={tehsilField.field.value ?? ''}
         onChange={tehsilField.field.onChange}
         disabled={!district}
-        allowNew
-        onNewValue={(v) => saveLocationValue('tehsil', v, province, undefined)}
         placeholder={district ? 'Select tehsil' : 'Select district first'}
         error={tehsilField.fieldState.error?.message}
       />
@@ -175,9 +168,7 @@ export function EmployeeLocationFields({
         options={policeOptions}
         value={policeStationField.field.value ?? ''}
         onChange={policeStationField.field.onChange}
-        allowNew
-        onNewValue={(v) => saveLocationValue('police_station', v)}
-        placeholder="Select or add police station"
+        placeholder="Select police station"
         error={policeStationField.fieldState.error?.message}
       />
 
@@ -217,8 +208,6 @@ export function EmployeeLocationFields({
         value={permanentCityField.field.value ?? ''}
         onChange={permanentCityField.field.onChange}
         disabled={!permanentProvince}
-        allowNew
-        onNewValue={(v) => saveLocationValue('city', v, permanentProvince)}
         placeholder={
           permanentProvince ? 'Select city' : 'Select province first'
         }

@@ -31,19 +31,19 @@ export class ProjectsController {
   }
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   create(@Body() dto: CreateProjectDto) {
     return this.projectsService.create(dto);
   }
 
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   update(@Param('id') id: string, @Body() dto: UpdateProjectDto) {
     return this.projectsService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   deactivate(@Param('id') id: string) {
     return this.projectsService.deactivate(id);
   }

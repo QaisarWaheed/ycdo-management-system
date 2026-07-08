@@ -25,11 +25,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
-import {
-  createDepartmentInline,
-  createDesignationInline,
-  findDepartmentByName,
-} from '@/lib/inlineMasterData'
+import { findDepartmentByName } from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
   CHANGE_TYPE_OPTIONS,
@@ -171,31 +167,6 @@ export function TransferDialog({
                 setDesignation('')
               }
             }}
-            allowNew
-            onNewValue={async (name) => {
-              if (!branchId) {
-                toast({
-                  title: 'Select a branch first',
-                  variant: 'destructive',
-                })
-                return
-              }
-              const existing = findDepartmentByName(departments, name)
-              if (existing) {
-                setDepartmentId(existing.id)
-                setDesignation('')
-                return
-              }
-              const created = await createDepartmentInline(
-                queryClient,
-                branchId,
-                name,
-              )
-              if (created) {
-                setDepartmentId(created.id)
-                setDesignation('')
-              }
-            }}
             placeholder="Select department"
             disabled={!branchId}
           />
@@ -205,24 +176,6 @@ export function TransferDialog({
             options={designationOptions}
             value={designation}
             onChange={setDesignation}
-            allowNew
-            onNewValue={async (title) => {
-              if (!selectedDepartment) {
-                toast({
-                  title: 'Select a department first',
-                  variant: 'destructive',
-                })
-                return
-              }
-              const created = await createDesignationInline(
-                queryClient,
-                selectedDepartment.name,
-                title,
-              )
-              if (created) {
-                setDesignation(created)
-              }
-            }}
             placeholder="Select designation"
             disabled={!departmentId}
           />

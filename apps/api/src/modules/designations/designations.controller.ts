@@ -33,12 +33,7 @@ export class DesignationsController {
   }
 
   @Post()
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.HR_MANAGER,
-    UserRole.HR_ADMIN_MANAGER,
-    UserRole.IT_ADMIN,
-  )
+  @Roles(...IT_ADMIN_ROLES)
   create(@Body() dto: CreateDesignationDto) {
     return this.designationsService.create(dto);
   }
