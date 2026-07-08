@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { format } from 'date-fns'
 import { Copy, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { branchesApi, type BranchDuplicateGroup } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
+import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
 import {
   DESIGNATION_CATEGORIES,
@@ -39,16 +42,115 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
-import type { Branch, Department, Project, ProjectType, Shift } from '@/types'
+import type { Branch, Department, Employee, Project, ProjectType, Shift } from '@/types'
 import { PROJECT_TYPE_LABELS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { ItAdminEmployeesTab } from '@/components/dashboard/ItAdminEmployeesTab'
 import { SystemLoginsTab } from '@/components/dashboard/SystemLoginsTab'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { locationValuesApi } from '@/api/endpoints/locationValues'
 import { biometricDevicesApi, type BiometricDevice } from '@/api/endpoints/biometricDevices'
-import { format } from 'date-fns'
+
+type DepartmentWithCount = Department & {
+  branch?: { name: string; address?: string | null }
+  _count?: { employees: number }
+}
+
+function DepartmentEmployeesDialog({
+  department,
+  open,
+  onOpenChange,
+}: {
+  department: DepartmentWithCount | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { data: employees = [], isLoading } = useQuery({
+    queryKey: ['department-employees', department?.id],
+    queryFn: () =>
+      employeesApi.getAll({ departmentId: department!.id }),
+    enabled: open && !!department?.id,
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{department?.name} — Employees</DialogTitle>
+          {department?.branch && (
+            <p className="text-sm text-text-secondary">
+              {formatBranchLabel(department.branch)}
+            </p>
+          )}
+        </DialogHeader>
+
+        <div className="rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Designation</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Joined</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                [...Array(4)].map((_, i) => (
+                  <TableRow key={i}>
+                    {[...Array(5)].map((__, j) => (
+                      <TableCell key={j}>
+                        <Skeleton className="h-5 w-full" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : employees.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="py-8 text-center text-text-secondary"
+                  >
+                    No employees in this department
+                  </TableCell>
+                </TableRow>
+              ) : (
+                (employees as Employee[]).map((emp) => (
+                  <TableRow key={emp.id}>
+                    <TableCell className="font-mono text-sm">
+                      {emp.employeeCode}
+                    </TableCell>
+                    <TableCell>
+                      <Link
+                        to={`/employees/${emp.id}`}
+                        className="font-medium text-primary hover:underline"
+                        onClick={() => onOpenChange(false)}
+                      >
+                        {emp.fullName}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{emp.currentDesignation ?? '—'}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={emp.status} />
+                    </TableCell>
+                    <TableCell>
+                      {emp.joiningDate
+                        ? format(new Date(emp.joiningDate), 'dd/MM/yyyy')
+                        : '—'}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function BranchesTab() {
   const queryClient = useQueryClient()
@@ -474,6 +576,9 @@ function DepartmentsTab() {
   const [branchFilter, setBranchFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [editDept, setEditDept] = useState<Department | null>(null)
+  const [employeesDept, setEmployeesDept] = useState<DepartmentWithCount | null>(
+    null,
+  )
   const [name, setName] = useState('')
   const [branchId, setBranchId] = useState('')
 
@@ -610,14 +715,26 @@ function DepartmentsTab() {
                   </TableCell>
                 </TableRow>
               ) : (
-                (departments as (Department & {
-                  branch?: { name: string }
-                  _count?: { employees: number }
-                })[]).map((dept) => (
+                (departments as DepartmentWithCount[]).map((dept) => {
+                  const employeesCount = dept._count?.employees ?? 0
+
+                  return (
                   <TableRow key={dept.id}>
                     <TableCell className="font-medium">{dept.name}</TableCell>
                     <TableCell>{formatBranchLabel(dept.branch)}</TableCell>
-                    <TableCell>{dept._count?.employees ?? 0}</TableCell>
+                    <TableCell>
+                      {employeesCount > 0 ? (
+                        <button
+                          type="button"
+                          className="font-medium text-primary hover:underline"
+                          onClick={() => setEmployeesDept(dept)}
+                        >
+                          {employeesCount}
+                        </button>
+                      ) : (
+                        employeesCount
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button
@@ -647,12 +764,19 @@ function DepartmentsTab() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
+                  )
+                })
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <DepartmentEmployeesDialog
+        department={employeesDept}
+        open={!!employeesDept}
+        onOpenChange={(open) => !open && setEmployeesDept(null)}
+      />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
