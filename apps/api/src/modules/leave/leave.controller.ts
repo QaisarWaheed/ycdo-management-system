@@ -33,7 +33,7 @@ const LEAVE_READ_ROLES = [
   UserRole.HR_MANAGER,
   UserRole.HR_ADMIN_MANAGER,
   UserRole.HR_OPERATIONS_MANAGER,
-  UserRole.BRANCH_MANAGER,
+  UserRole.ADMIN_MANAGER,
   UserRole.ADMIN_OFFICER,
   UserRole.CHAIRMAN,
   UserRole.FOUNDER,
@@ -49,7 +49,7 @@ export class LeaveController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.EMPLOYEE,
   )
   apply(@Body() dto: ApplyLeaveDto) {
@@ -74,11 +74,18 @@ export class LeaveController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.SUPER_ADMIN,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  getTodayRelievers() {
-    return this.leaveService.getTodayRelievers();
+  getTodayRelievers(
+    @Query('branchId') branchId: string | undefined,
+    @CurrentUser() user: { role: UserRole; branchId?: string | null },
+  ) {
+    const scopedBranchId =
+      user.role === UserRole.ADMIN_MANAGER && user.branchId
+        ? user.branchId
+        : branchId;
+    return this.leaveService.getTodayRelievers(scopedBranchId);
   }
 
   @Get('incoming-reliever-requests')
@@ -99,7 +106,7 @@ export class LeaveController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
   getRelieverCandidates(@Query('search') search?: string) {
@@ -135,18 +142,26 @@ export class LeaveController {
   @Roles(...LEAVE_READ_ROLES)
   findAll(
     @Query() query: LeaveQueryDto,
-    @CurrentUser() user: { role: UserRole; employeeId?: string | null },
+    @CurrentUser()
+    user: {
+      role: UserRole;
+      employeeId?: string | null;
+      branchId?: string | null;
+    },
   ) {
     if (user.role === UserRole.EMPLOYEE) {
       if (!user.employeeId) {
         throw new ForbiddenException('Employee profile required');
       }
-      return this.leaveService.findAll({
-        ...query,
-        employeeId: user.employeeId,
-      });
+      return this.leaveService.findAll(
+        {
+          ...query,
+          employeeId: user.employeeId,
+        },
+        user,
+      );
     }
-    return this.leaveService.findAll(query);
+    return this.leaveService.findAll(query, user);
   }
 
   @Patch('reliever/:requestId/respond')
@@ -173,7 +188,7 @@ export class LeaveController {
   }
 
   @Patch(':id/branch-approve')
-  @Roles(UserRole.BRANCH_MANAGER, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.ADMIN_MANAGER, UserRole.SUPER_ADMIN)
   branchApprove(
     @Param('id') id: string,
     @Body() dto: ApproveLeaveDto,
@@ -214,7 +229,7 @@ export class LeaveController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
   )
   updateStatus(
     @Param('id') id: string,
@@ -231,7 +246,7 @@ export class LeaveController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
   requestReliever(
@@ -276,7 +291,7 @@ export class LeaveController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.EMPLOYEE,
   )
   cancel(

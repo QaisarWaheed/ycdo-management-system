@@ -67,8 +67,10 @@ export const leaveApi = {
       params: { year },
     }),
   cancel: (id: string) => api.delete(`/leave/${id}`),
-  getTodayRelievers: () =>
-    api.get<unknown, TodayRelieverRow[]>('/leave/today-relievers'),
+  getTodayRelievers: (branchId?: string) =>
+    api.get<unknown, TodayRelieverRow[]>('/leave/today-relievers', {
+      params: branchId ? { branchId } : {},
+    }),
   getRelieverCandidates: (search?: string) =>
     api.get<unknown, Employee[]>('/leave/reliever-candidates', {
       params: search ? { search } : {},

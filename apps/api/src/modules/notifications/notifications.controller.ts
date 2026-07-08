@@ -19,7 +19,7 @@ import { NotificationsService } from './notifications.service';
 const ALL_ROLES = [
   UserRole.SUPER_ADMIN,
   UserRole.HR_MANAGER,
-  UserRole.BRANCH_MANAGER,
+  UserRole.ADMIN_MANAGER,
   UserRole.ADMIN_OFFICER,
   UserRole.HR_OPERATIONS_MANAGER,
   UserRole.EMPLOYEE,

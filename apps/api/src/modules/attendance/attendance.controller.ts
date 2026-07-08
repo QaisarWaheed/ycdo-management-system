@@ -54,7 +54,7 @@ export class AttendanceController {
 
   @Post('manual')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.BRANCH_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
   markManual(
     @Body() dto: ManualAttendanceDto,
     @CurrentUser() user: { id: string; role: UserRole },
@@ -80,7 +80,7 @@ export class AttendanceController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
   )
   updateAttendance(
     @Param('id') id: string,
@@ -108,7 +108,7 @@ export class AttendanceController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
   findAllRelieverSessions(@Query() query: RelieverSessionsQueryDto) {
@@ -120,7 +120,7 @@ export class AttendanceController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
   )
@@ -148,7 +148,7 @@ export class AttendanceController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
   )
@@ -176,7 +176,7 @@ export class AttendanceController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
     UserRole.CHAIRMAN,
@@ -186,18 +186,26 @@ export class AttendanceController {
   )
   findAll(
     @Query() query: AttendanceQueryDto,
-    @CurrentUser() user: { role: UserRole; employeeId?: string | null },
+    @CurrentUser()
+    user: {
+      role: UserRole;
+      employeeId?: string | null;
+      branchId?: string | null;
+    },
   ) {
     if (user.role === UserRole.EMPLOYEE) {
       if (!user.employeeId) {
         throw new ForbiddenException('Employee profile required');
       }
-      return this.attendanceService.findAll({
-        ...query,
-        employeeId: user.employeeId,
-      });
+      return this.attendanceService.findAll(
+        {
+          ...query,
+          employeeId: user.employeeId,
+        },
+        user,
+      );
     }
-    return this.attendanceService.findAll(query);
+    return this.attendanceService.findAll(query, user);
   }
 
   @Post('mark-absentees')

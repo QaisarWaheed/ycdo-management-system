@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
 import { DashboardErrorBoundary } from '@/components/common/DashboardErrorBoundary'
-import { BranchManagerDashboard } from '@/pages/dashboard/BranchManagerDashboard'
+import { AdminManagerDashboard } from '@/pages/dashboard/AdminManagerDashboard'
 import { DeptInchargeDashboard } from '@/pages/dashboard/DeptInchargeDashboard'
 import { ExecutiveDashboard } from '@/pages/dashboard/ExecutiveDashboard'
 import { HrOperationsDashboard } from '@/pages/dashboard/HrOperationsDashboard'
@@ -161,11 +161,11 @@ export function DashboardPage() {
 }
 
 function DashboardContent({ role }: { role?: string }) {
-  if (role === 'BRANCH_MANAGER') {
+  if (role === 'ADMIN_MANAGER') {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
-        <BranchManagerDashboard />
+        <AdminManagerDashboard />
       </div>
     )
   }

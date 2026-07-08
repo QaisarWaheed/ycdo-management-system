@@ -979,8 +979,11 @@ async function main() {
     });
   }
 
+  await prisma.user.deleteMany({
+    where: { email: 'branch.manager@ycdo.org' },
+  });
+
   const roleAccounts = [
-    { email: 'branch.manager@ycdo.org', password: 'BranchM@123', role: UserRole.BRANCH_MANAGER },
     { email: 'dept.incharge@ycdo.org', password: 'DeptIn@123', role: UserRole.ADMIN_OFFICER },
     { email: 'hr.operations@ycdo.org', password: 'HROps@123', role: UserRole.HR_OPERATIONS_MANAGER },
     { email: 'hr.admin@ycdo.org', password: 'HRAdmin@123', role: UserRole.HR_ADMIN_MANAGER },

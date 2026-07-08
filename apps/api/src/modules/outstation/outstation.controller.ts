@@ -57,7 +57,7 @@ export class OutstationController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.EMPLOYEE,
   )
   findAll(

@@ -24,6 +24,10 @@ export interface EmployeeStats {
 export const employeesApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, Employee[]>('/employees', { params }),
+  getCount: (params?: Record<string, unknown>) =>
+    api.get<unknown, { count: number }>('/employees', {
+      params: { ...params, count: 'true' },
+    }),
   getStats: () => api.get<unknown, EmployeeStats>('/employees/stats'),
   getFilterOptions: () =>
     api.get<unknown, { designations: string[]; districts: string[] }>(

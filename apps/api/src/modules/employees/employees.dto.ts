@@ -243,6 +243,11 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsString()
   permanentCity?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['ADMIN_MANAGER'])
+  userRole?: string;
 }
 
 export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {}
@@ -350,6 +355,10 @@ export class EmployeeQueryDto {
   @IsOptional()
   @IsDateString()
   joinedTo?: string;
+
+  @IsOptional()
+  @IsBooleanString()
+  count?: string;
 }
 
 export class UpdateBranchDutyDto {

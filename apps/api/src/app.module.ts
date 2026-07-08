@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import * as path from 'path';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AcknowledgementsModule } from './modules/acknowledgements/acknowledgements.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -41,6 +42,7 @@ import { PrismaModule } from './prisma/prisma.module';
       serveRoot: '/uploads',
     }),
     PrismaModule,
+    AuditLogsModule,
     AuthModule,
     BranchesModule,
     BiometricDevicesModule,

@@ -45,6 +45,7 @@ model Branch {
   relieverSessions  RelieverSession[]
   location          BranchLocation?
   biometricDevices  BiometricDevice[]
+  adminUsers        User[]
 }
 
 model BiometricDevice {
@@ -639,11 +640,13 @@ model User {
   email      String    @unique
   password   String
   role       UserRole
+  branchId   String?
   isActive   Boolean   @default(true)
   createdAt  DateTime  @default(now())
   lastLogin  DateTime?
 
   employee   Employee?               @relation(fields: [employeeId], references: [id])
+  branch     Branch?                 @relation(fields: [branchId], references: [id])
   auditLogs  AuditLog[]
   broadcasts NotificationBroadcast[]
   incentivesAdded Incentive[]
@@ -694,7 +697,7 @@ enum UserRole {
   HR_ADMIN_MANAGER
   ADMIN_OFFICER
   HR_MANAGER
-  BRANCH_MANAGER
+  ADMIN_MANAGER
   DEPARTMENT_HEAD
   PAYROLL_OFFICER
   EMPLOYEE
@@ -734,7 +737,7 @@ enum BroadcastTarget {
   HR_ADMIN_MANAGER
   ADMIN_OFFICER
   HR_MANAGER
-  BRANCH_MANAGER
+  ADMIN_MANAGER
   EMPLOYEE
 }
 

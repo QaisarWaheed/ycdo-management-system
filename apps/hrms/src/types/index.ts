@@ -3,6 +3,7 @@ export interface User {
   email: string
   role: string
   employeeId?: string | null
+  branchId?: string | null
 }
 
 export interface AuthLoginResponse {
@@ -238,6 +239,9 @@ export interface Employee {
     email: string
     role: string
     isActive: boolean
+    branchId?: string | null
+    branch?: { name: string; address?: string | null } | null
+    passwordRecord?: { plainText: string } | null
   } | null
 }
 

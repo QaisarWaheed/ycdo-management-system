@@ -79,7 +79,7 @@ export class StipendReceiptsController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
   )
   findAll(@Query() query: StipendReceiptQueryDto) {
     return this.stipendReceiptsService.findAll(query.month, query.year);

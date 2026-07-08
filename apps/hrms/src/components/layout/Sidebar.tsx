@@ -49,7 +49,7 @@ function navItemsForRole(role?: string) {
     return allNavItems.filter((item) => item.to !== '/broadcasts')
   }
 
-  if (role === 'BRANCH_MANAGER' || role === 'ADMIN_OFFICER') {
+  if (role === 'ADMIN_MANAGER' || role === 'ADMIN_OFFICER') {
     return allNavItems.filter((item) =>
       ['/dashboard', '/employees', '/attendance', '/leave'].includes(item.to),
     )

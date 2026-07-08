@@ -1155,6 +1155,34 @@ export function EmployeeProfilePage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {employee.user?.role === 'ADMIN_MANAGER' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Login Credentials</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p>
+                  <span className="text-text-secondary">Email: </span>
+                  {employee.user.email}
+                </p>
+                <p>
+                  <span className="text-text-secondary">Password: </span>
+                  <span className="font-mono">
+                    {employee.user.passwordRecord?.plainText ?? '—'}
+                  </span>
+                </p>
+                <p>
+                  <span className="text-text-secondary">Branch: </span>
+                  {employee.user.branch?.name ??
+                    formatBranchLabel(employee.currentBranch)}
+                </p>
+                <p>
+                  <span className="text-text-secondary">Role: </span>
+                  Admin Manager
+                </p>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-lg">Personal Info</CardTitle>

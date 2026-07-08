@@ -41,6 +41,7 @@ import {
 } from './shift-time.util';
 import { haversineMeters } from './geo.helper';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
+import { enforceBranchScope } from '../../common/branch-scope.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
 
@@ -318,7 +319,7 @@ export class AttendanceService {
       await tx.auditLog.create({
         data: {
           userId: actingUser.id,
-          action: 'MANUAL_ATTENDANCE',
+          action: 'ATTENDANCE_MARKED',
           entity: 'AttendanceLog',
           entityId: attendanceLog.id,
         },
@@ -556,7 +557,12 @@ export class AttendanceService {
     return Object.keys(employeeWhere).length > 0 ? employeeWhere : undefined;
   }
 
-  async findAll(query: AttendanceQueryDto) {
+  async findAll(
+    query: AttendanceQueryDto,
+    actingUser?: { role: UserRole | string; branchId?: string | null },
+  ) {
+    enforceBranchScope(query, actingUser);
+
     const where: Prisma.AttendanceLogWhereInput = {};
 
     if (query.employeeId) {

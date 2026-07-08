@@ -42,17 +42,20 @@ export class EmployeesController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
   )
-  create(@Body() dto: CreateEmployeeDto) {
-    return this.employeesService.create(dto);
+  create(
+    @Body() dto: CreateEmployeeDto,
+    @CurrentUser() user: { id: string; role: UserRole; branchId?: string | null },
+  ) {
+    return this.employeesService.create(dto, user);
   }
 
   @Get()
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
@@ -60,15 +63,19 @@ export class EmployeesController {
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
   )
-  findAll(@Query() query: EmployeeQueryDto) {
-    return this.employeesService.findAll(query);
+  findAll(
+    @Query() query: EmployeeQueryDto,
+    @CurrentUser()
+    user: { id: string; role: UserRole; branchId?: string | null },
+  ) {
+    return this.employeesService.findAll(query, user);
   }
 
   @Get('stats')
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
@@ -84,7 +91,7 @@ export class EmployeesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
   getFilterOptions() {
@@ -97,7 +104,7 @@ export class EmployeesController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
   findActiveShift(@Query() query: ActiveShiftQueryDto) {
@@ -114,7 +121,7 @@ export class EmployeesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
   )
@@ -134,7 +141,7 @@ export class EmployeesController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
@@ -156,7 +163,7 @@ export class EmployeesController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.EMPLOYEE,
   )
   update(
@@ -210,7 +217,7 @@ export class EmployeesController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
   )
   uploadPhoto(
     @Param('id') id: string,

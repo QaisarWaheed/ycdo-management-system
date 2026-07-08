@@ -20,6 +20,7 @@ import { LettersService } from '../letters/letters.service';
 import { parseTimeToMinutes } from '../attendance/attendance-late.util';
 import { generateEmployeeCode } from './employee-code.helper';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
+import { enforceBranchScope } from '../../common/branch-scope.util';
 import {
   ActiveShiftQueryDto,
   ChangeStatusDto,
@@ -32,6 +33,12 @@ import {
 
 export type EmployeeFilters = EmployeeQueryDto;
 
+type ActingUser = {
+  id: string;
+  role: UserRole | string;
+  branchId?: string | null;
+};
+
 @Injectable()
 export class EmployeesService {
   constructor(
@@ -39,7 +46,7 @@ export class EmployeesService {
     private lettersService: LettersService,
   ) {}
 
-  async create(dto: CreateEmployeeDto) {
+  async create(dto: CreateEmployeeDto, actingUser?: ActingUser) {
     this.validateCreateDto(dto);
 
     await this.ensureBranchExists(dto.currentBranchId);
@@ -174,6 +181,9 @@ export class EmployeesService {
         employeeId: created.id,
         employeeCode,
         email: loginEmail,
+        designation: dto.currentDesignation,
+        branchId: dto.currentBranchId,
+        userRole: dto.userRole,
       });
 
       return created;
@@ -187,6 +197,18 @@ export class EmployeesService {
         shift: true,
       },
     });
+
+    if (result && actingUser) {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'EMPLOYEE_CREATED',
+          entity: 'Employee',
+          entityId: result.id,
+          changes: { fullName: result.fullName },
+        },
+      });
+    }
 
     if (result) {
       try {
@@ -264,17 +286,37 @@ export class EmployeesService {
     return { created };
   }
 
+  private isAdminManagerRole(
+    designation: string,
+    userRole?: string,
+  ): boolean {
+    if (userRole === 'ADMIN_MANAGER') return true;
+    return designation === 'Admin Manager';
+  }
+
   private async createUserForEmployee(
     tx: Prisma.TransactionClient,
-    params: { employeeId: string; employeeCode: string; email: string },
+    params: {
+      employeeId: string;
+      employeeCode: string;
+      email: string;
+      designation?: string;
+      branchId?: string;
+      userRole?: string;
+    },
   ) {
     const hashedPassword = await bcrypt.hash(params.employeeCode, 10);
+    const isAdminManager = this.isAdminManagerRole(
+      params.designation ?? '',
+      params.userRole,
+    );
 
     const newUser = await tx.user.create({
       data: {
         email: params.email,
         password: hashedPassword,
-        role: UserRole.EMPLOYEE,
+        role: isAdminManager ? UserRole.ADMIN_MANAGER : UserRole.EMPLOYEE,
+        branchId: isAdminManager ? params.branchId : undefined,
         isActive: true,
         employeeId: params.employeeId,
       },
@@ -296,7 +338,9 @@ export class EmployeesService {
     return `${day}/${month}/${year}`;
   }
 
-  async findAll(filters: EmployeeFilters) {
+  async findAll(filters: EmployeeFilters, actingUser?: ActingUser) {
+    enforceBranchScope(filters, actingUser);
+
     const where: Prisma.EmployeeWhereInput = {};
     const andConditions: Prisma.EmployeeWhereInput[] = [];
 
@@ -394,6 +438,11 @@ export class EmployeesService {
 
     if (andConditions.length > 0) {
       where.AND = andConditions;
+    }
+
+    if (filters.count === 'true') {
+      const count = await this.prisma.employee.count({ where });
+      return { count };
     }
 
     const employees = await this.prisma.employee.findMany({
@@ -538,7 +587,15 @@ export class EmployeesService {
           orderBy: { createdAt: 'desc' },
         },
         user: {
-          select: { id: true, email: true, role: true, isActive: true },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            isActive: true,
+            branchId: true,
+            branch: { select: { name: true, address: true } },
+            passwordRecord: { select: { plainText: true } },
+          },
         },
       },
     });

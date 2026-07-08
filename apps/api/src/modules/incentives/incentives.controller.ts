@@ -43,7 +43,7 @@ export class IncentivesController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
   )
   findAll(@Query() query: IncentiveQueryDto) {
     return this.incentivesService.findAll(query);
@@ -58,7 +58,7 @@ export class IncentivesController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.EMPLOYEE,
   )
   findByEmployee(@Param('employeeId') employeeId: string) {

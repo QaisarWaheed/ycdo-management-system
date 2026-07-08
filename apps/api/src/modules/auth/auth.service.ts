@@ -52,6 +52,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       employeeId: user.employeeId,
+      branchId: user.branchId,
     };
 
     return {
@@ -61,6 +62,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         employeeId: user.employeeId,
+        branchId: user.branchId,
       },
     };
   }

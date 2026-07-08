@@ -54,7 +54,7 @@ export class AdvanceLoanController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
   findByEmployee(@Param('employeeId') employeeId: string) {

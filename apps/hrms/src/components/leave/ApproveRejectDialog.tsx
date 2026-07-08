@@ -16,7 +16,7 @@ import { toast } from '@/hooks/use-toast'
 import type { LeaveRecord } from '@/types'
 
 export type ApprovalRole =
-  | 'BRANCH_MANAGER'
+  | 'ADMIN_MANAGER'
   | 'ADMIN_OFFICER'
   | 'HR_OPERATIONS_MANAGER'
   | 'SUPER_ADMIN'
@@ -41,7 +41,7 @@ export function ApproveRejectDialog({
     mutationFn: () => {
       if (!leave) throw new Error('No leave selected')
       const payload = { action, notes: notes || undefined }
-      if (role === 'BRANCH_MANAGER' || (role === 'SUPER_ADMIN' && leave.status === 'PENDING')) {
+      if (role === 'ADMIN_MANAGER' || (role === 'SUPER_ADMIN' && leave.status === 'PENDING')) {
         return leaveApi.branchApprove(leave.id, payload)
       }
       if (
@@ -165,8 +165,8 @@ export function canApproveLeave(
 ): ApprovalRole | null {
   if (!role || !leave) return null
   if (role === 'SUPER_ADMIN') return 'SUPER_ADMIN'
-  if (role === 'BRANCH_MANAGER' && leave.status === 'PENDING') {
-    return 'BRANCH_MANAGER'
+  if (role === 'ADMIN_MANAGER' && leave.status === 'PENDING') {
+    return 'ADMIN_MANAGER'
   }
   if (role === 'ADMIN_OFFICER' && leave.status === 'BRANCH_APPROVED') {
     return 'ADMIN_OFFICER'

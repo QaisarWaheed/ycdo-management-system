@@ -33,7 +33,7 @@ export class DocumentsController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
   )
   upload(
     @Param('id') id: string,
@@ -51,7 +51,7 @@ export class DocumentsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
-    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
   )

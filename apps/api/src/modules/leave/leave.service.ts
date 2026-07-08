@@ -19,6 +19,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { enforceBranchScope } from '../../common/branch-scope.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import {
   ApplyLeaveDto,
@@ -238,7 +239,7 @@ export class LeaveService {
     actingUser: ActingUser,
   ) {
     if (
-      actingUser.role !== UserRole.BRANCH_MANAGER &&
+      actingUser.role !== UserRole.ADMIN_MANAGER &&
       actingUser.role !== UserRole.SUPER_ADMIN
     ) {
       throw new ForbiddenException(
@@ -540,7 +541,12 @@ export class LeaveService {
     return leave;
   }
 
-  findAll(query: LeaveQueryDto) {
+  findAll(
+    query: LeaveQueryDto,
+    actingUser?: { role: UserRole | string; branchId?: string | null },
+  ) {
+    enforceBranchScope(query, actingUser);
+
     const year = query.year ?? new Date().getFullYear();
     const where: Prisma.LeaveRecordWhereInput = {
       startDate: {
@@ -574,7 +580,7 @@ export class LeaveService {
 
     if (query.pendingForRole) {
       switch (query.pendingForRole) {
-        case UserRole.BRANCH_MANAGER:
+        case UserRole.ADMIN_MANAGER:
           where.status = LeaveStatus.PENDING;
           where.currentStage = LeaveApprovalStage.BRANCH_MANAGER;
           break;
@@ -822,7 +828,7 @@ export class LeaveService {
     const hrRoles: UserRole[] = [
       UserRole.SUPER_ADMIN,
       UserRole.HR_MANAGER,
-      UserRole.BRANCH_MANAGER,
+      UserRole.ADMIN_MANAGER,
     ];
 
     if (
@@ -1131,7 +1137,7 @@ export class LeaveService {
     });
   }
 
-  async getTodayRelievers() {
+  async getTodayRelievers(branchId?: string) {
     const today = this.toDateOnly(new Date());
 
     const leaves = await this.prisma.leaveRecord.findMany({
@@ -1139,6 +1145,9 @@ export class LeaveService {
         status: LeaveStatus.APPROVED,
         startDate: { lte: today },
         endDate: { gte: today },
+        ...(branchId
+          ? { employee: { currentBranchId: branchId } }
+          : {}),
         relieverRequest: {
           status: {
             in: [
@@ -1444,7 +1453,7 @@ export class LeaveService {
     await this.notifyUsersByRoleInBranch(
       tx,
       branchId,
-      [UserRole.BRANCH_MANAGER],
+      [UserRole.ADMIN_MANAGER],
       message,
       type,
     );
