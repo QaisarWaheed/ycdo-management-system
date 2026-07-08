@@ -16,7 +16,7 @@ export class CreateBranchDto {
   phone?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   projectId?: string;
 }
 
@@ -24,7 +24,7 @@ export class UpdateBranchDto extends PartialType(CreateBranchDto) {}
 
 export class BranchQueryDto {
   @IsOptional()
-  @IsUUID()
+  @IsString()
   projectId?: string;
 
   @IsOptional()

@@ -105,7 +105,7 @@ export class AttendanceQueryDto {
   year?: number;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   projectId?: string;
 
   @IsOptional()
@@ -209,7 +209,7 @@ export class RelieverSessionsQueryDto {
   endDate?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   projectId?: string;
 
   @IsOptional()

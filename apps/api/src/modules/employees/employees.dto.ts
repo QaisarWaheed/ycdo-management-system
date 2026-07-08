@@ -292,7 +292,7 @@ export class EmployeeQueryDto {
   departmentId?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   projectId?: string;
 
   @IsOptional()
