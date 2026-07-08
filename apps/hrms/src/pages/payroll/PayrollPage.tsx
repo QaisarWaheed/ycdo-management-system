@@ -15,6 +15,8 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { PKRInput } from '@/components/common/PKRInput'
+import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
+import { calculateLumpsumTotal, DEFAULT_STIPEND_VALUES } from '@/lib/stipendUtils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -348,6 +350,64 @@ function PayrollDetailDialog({
         <DialogHeader>
           <DialogTitle>Payroll Detail</DialogTitle>
         </DialogHeader>
+
+        {data.stipendRecord && (
+          <div className="space-y-3 rounded-lg border border-border bg-surface p-4 text-sm">
+            <p className="font-semibold">Stipend Package</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <span className="text-text-secondary">Basic Stipend</span>
+              <span className="text-right">{formatPKR(data.stipendRecord.basicStipend)}</span>
+              <span className="text-text-secondary">Allowances</span>
+              <span className="text-right">{formatPKR(data.stipendRecord.allowances ?? 0)}</span>
+              <span className="text-text-secondary">Reward</span>
+              <span className="text-right">{formatPKR(data.stipendRecord.reward ?? 0)}</span>
+              <span className="text-text-secondary">Reward on Progress</span>
+              <span className="text-right">{formatPKR(data.stipendRecord.progressReward ?? 0)}</span>
+              <span className="text-text-secondary">Petrol (Fuel)</span>
+              <span className="text-right">{formatPKR(data.stipendRecord.fuelAllowance ?? 0)}</span>
+            </div>
+            <div className="border-t border-border pt-2">
+              <p className="mb-1 font-medium text-text-secondary">Fixed Deductions</p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                <span className="text-text-secondary">Loan</span>
+                <span className="text-right text-red-600">
+                  {formatPKR(data.stipendRecord.loanDeduction ?? 0)}
+                </span>
+                <span className="text-text-secondary">Advance</span>
+                <span className="text-right text-red-600">
+                  {formatPKR(data.stipendRecord.advanceDeduction ?? 0)}
+                </span>
+                <span className="text-text-secondary">Fine</span>
+                <span className="text-right text-red-600">
+                  {formatPKR(data.stipendRecord.fineDeduction ?? 0)}
+                </span>
+                <span className="text-text-secondary">Health</span>
+                <span className="text-right text-red-600">
+                  {formatPKR(data.stipendRecord.healthDeduction ?? 0)}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
+              <span>Lumpsum Total</span>
+              <span className="text-primary">
+                {formatPKR(
+                  data.stipendRecord.lumpsumTotal ??
+                    calculateLumpsumTotal({
+                      basicStipend: Number(data.stipendRecord.basicStipend) || 0,
+                      allowances: Number(data.stipendRecord.allowances) || 0,
+                      reward: Number(data.stipendRecord.reward) || 0,
+                      progressReward: Number(data.stipendRecord.progressReward) || 0,
+                      fuelAllowance: Number(data.stipendRecord.fuelAllowance) || 0,
+                      loanDeduction: Number(data.stipendRecord.loanDeduction) || 0,
+                      advanceDeduction: Number(data.stipendRecord.advanceDeduction) || 0,
+                      fineDeduction: Number(data.stipendRecord.fineDeduction) || 0,
+                      healthDeduction: Number(data.stipendRecord.healthDeduction) || 0,
+                    }),
+                )}
+              </span>
+            </div>
+          </div>
+        )}
 
         <Tabs value={detailTab} onValueChange={setDetailTab}>
           <TabsList className="grid w-full grid-cols-2">
@@ -755,9 +815,19 @@ function MonthlyPayrollTab() {
   )
 }
 
+const stipendFieldSchema = z.number().min(0)
+
 const incrementSchema = z.object({
   employeeId: z.string().min(1, 'Employee is required'),
-  newBasicStipend: z.number().positive('Stipend must be greater than 0'),
+  basicStipend: z.number().positive('Stipend must be greater than 0'),
+  allowances: stipendFieldSchema,
+  reward: stipendFieldSchema,
+  progressReward: stipendFieldSchema,
+  fuelAllowance: stipendFieldSchema,
+  loanDeduction: stipendFieldSchema,
+  advanceDeduction: stipendFieldSchema,
+  fineDeduction: stipendFieldSchema,
+  healthDeduction: stipendFieldSchema,
   effectiveFrom: z.string().min(1, 'Effective date is required'),
   reason: z.string().min(1, 'Reason is required'),
 })
@@ -765,33 +835,64 @@ const incrementSchema = z.object({
 type IncrementFormValues = z.infer<typeof incrementSchema>
 
 function StipendIncrementTab() {
-  const [currentStipend, setCurrentStipend] = useState<number | null>(null)
+  const [currentLumpsum, setCurrentLumpsum] = useState<number | null>(null)
 
   const form = useForm<IncrementFormValues>({
     resolver: zodResolver(incrementSchema),
     defaultValues: {
       employeeId: '',
-      newBasicStipend: 0,
+      ...DEFAULT_STIPEND_VALUES,
       effectiveFrom: '',
       reason: '',
     },
   })
 
-  const newStipend = form.watch('newBasicStipend')
+  const watched = form.watch([
+    'basicStipend',
+    'allowances',
+    'reward',
+    'progressReward',
+    'fuelAllowance',
+    'loanDeduction',
+    'advanceDeduction',
+    'fineDeduction',
+    'healthDeduction',
+  ])
+
+  const newLumpsum = useMemo(
+    () =>
+      calculateLumpsumTotal({
+        basicStipend: Number(watched[0]) || 0,
+        allowances: Number(watched[1]) || 0,
+        reward: Number(watched[2]) || 0,
+        progressReward: Number(watched[3]) || 0,
+        fuelAllowance: Number(watched[4]) || 0,
+        loanDeduction: Number(watched[5]) || 0,
+        advanceDeduction: Number(watched[6]) || 0,
+        fineDeduction: Number(watched[7]) || 0,
+        healthDeduction: Number(watched[8]) || 0,
+      }),
+    [watched],
+  )
 
   const incrementPreview = useMemo(() => {
-    if (!currentStipend || !newStipend || newStipend <= currentStipend) return null
-    const diff = newStipend - currentStipend
-    const pct = ((diff / currentStipend) * 100).toFixed(1)
+    if (currentLumpsum == null || newLumpsum <= currentLumpsum) return null
+    const diff = newLumpsum - currentLumpsum
+    const pct = currentLumpsum > 0 ? ((diff / currentLumpsum) * 100).toFixed(1) : '—'
     return { diff, pct }
-  }, [currentStipend, newStipend])
+  }, [currentLumpsum, newLumpsum])
 
   const mutation = useMutation({
     mutationFn: (values: IncrementFormValues) => payrollApi.increment(values),
     onSuccess: () => {
-      toast({ title: 'Stipend updated successfully' })
-      form.reset()
-      setCurrentStipend(null)
+      toast({ title: 'Stipend package updated successfully' })
+      form.reset({
+        employeeId: '',
+        ...DEFAULT_STIPEND_VALUES,
+        effectiveFrom: '',
+        reason: '',
+      })
+      setCurrentLumpsum(null)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -808,9 +909,36 @@ function StipendIncrementTab() {
     if (id) {
       const employee = await employeesApi.getOne(id)
       const stipend = employee.stipendRecords?.[0]
-      setCurrentStipend(stipend ? Number(stipend.basicStipend) : null)
+      if (stipend) {
+        form.setValue('basicStipend', Number(stipend.basicStipend) || 0)
+        form.setValue('allowances', Number(stipend.allowances) || 0)
+        form.setValue('reward', Number(stipend.reward) || 0)
+        form.setValue('progressReward', Number(stipend.progressReward) || 0)
+        form.setValue('fuelAllowance', Number(stipend.fuelAllowance) || 0)
+        form.setValue('loanDeduction', Number(stipend.loanDeduction) || 0)
+        form.setValue('advanceDeduction', Number(stipend.advanceDeduction) || 0)
+        form.setValue('fineDeduction', Number(stipend.fineDeduction) || 0)
+        form.setValue('healthDeduction', Number(stipend.healthDeduction) || 0)
+        setCurrentLumpsum(
+          stipend.lumpsumTotal != null
+            ? Number(stipend.lumpsumTotal)
+            : calculateLumpsumTotal({
+                basicStipend: Number(stipend.basicStipend) || 0,
+                allowances: Number(stipend.allowances) || 0,
+                reward: Number(stipend.reward) || 0,
+                progressReward: Number(stipend.progressReward) || 0,
+                fuelAllowance: Number(stipend.fuelAllowance) || 0,
+                loanDeduction: Number(stipend.loanDeduction) || 0,
+                advanceDeduction: Number(stipend.advanceDeduction) || 0,
+                fineDeduction: Number(stipend.fineDeduction) || 0,
+                healthDeduction: Number(stipend.healthDeduction) || 0,
+              }),
+        )
+      } else {
+        setCurrentLumpsum(null)
+      }
     } else {
-      setCurrentStipend(null)
+      setCurrentLumpsum(null)
     }
   }
 
@@ -818,7 +946,7 @@ function StipendIncrementTab() {
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
-        className="mx-auto max-w-lg space-y-4"
+        className="mx-auto max-w-2xl space-y-4"
       >
         <FormField
           control={form.control}
@@ -834,30 +962,18 @@ function StipendIncrementTab() {
           )}
         />
 
-        {currentStipend !== null && (
+        {currentLumpsum !== null && (
           <div className="rounded-lg border border-border bg-surface p-3">
-            <Label className="text-text-secondary">Current Stipend</Label>
-            <p className="text-lg font-semibold">{formatPKR(currentStipend)}</p>
+            <Label className="text-text-secondary">Current Lumpsum Total</Label>
+            <p className="text-lg font-semibold">{formatPKR(currentLumpsum)}</p>
           </div>
         )}
 
-        <FormField
-          control={form.control}
-          name="newBasicStipend"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>New Basic Stipend</FormLabel>
-              <FormControl>
-                <PKRInput value={field.value} onChange={field.onChange} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <StipendPackageFields control={form.control} watch={form.watch} />
 
         {incrementPreview && (
           <p className="text-sm text-accent-dark">
-            Increment: {formatPKR(incrementPreview.diff)} (
+            Package increase: {formatPKR(incrementPreview.diff)} (
             {incrementPreview.pct}%)
           </p>
         )}
@@ -901,7 +1017,7 @@ function StipendIncrementTab() {
           className="w-full bg-primary hover:bg-primary-dark"
           disabled={mutation.isPending}
         >
-          {mutation.isPending ? 'Updating...' : 'Submit Increment'}
+          {mutation.isPending ? 'Updating...' : 'Submit Stipend Update'}
         </Button>
       </form>
     </Form>

@@ -23,6 +23,12 @@ import {
   RelieverSessionsQueryDto,
   UpdateAttendanceDto,
 } from './attendance.dto';
+import {
+  computeBiometricLateMinutes,
+  computeBiometricOvertimeMinutes,
+  determineBiometricCheckInStatus,
+  toPakistanDateOnly,
+} from './attendance-biometric.util';
 import { applyDisciplineRules } from './discipline.helper';
 import {
   computeLateMinutesFromCheckIn,
@@ -56,8 +62,15 @@ export class AttendanceService {
       throw new BadRequestException('Employee is not active');
     }
 
+    const device = dto.deviceId
+      ? await this.prisma.biometricDevice.findUnique({
+          where: { deviceId: dto.deviceId },
+        })
+      : null;
+
+    const branchId = device?.branchId ?? employee.currentBranchId;
     const checkTime = new Date(dto.timestamp);
-    const dateOnly = this.toDateOnly(checkTime);
+    const dateOnly = toPakistanDateOnly(checkTime);
 
     const openRelieverSession = await this.prisma.relieverSession.findFirst({
       where: {
@@ -93,9 +106,11 @@ export class AttendanceService {
     });
 
     if (!existing) {
-      let { status, lateMinutes } = this.determineCheckInStatus(
-        checkTime,
-        employee.shift,
+      const lateMinutes = computeBiometricLateMinutes(checkTime, employee);
+      let status = determineBiometricCheckInStatus(
+        lateMinutes,
+        employee,
+        0,
       );
 
       const log = await this.prisma.$transaction(async (tx) => {
@@ -114,7 +129,7 @@ export class AttendanceService {
         const created = await tx.attendanceLog.create({
           data: {
             employeeId: employee.id,
-            branchId: employee.currentBranchId,
+            branchId,
             date: dateOnly,
             checkIn: checkTime,
             status,
@@ -130,16 +145,32 @@ export class AttendanceService {
     }
 
     if (!existing.checkOut) {
-      const overtimeMinutes = this.calculateOvertimeMinutes(
-        checkTime,
-        employee.shift,
+      const sessionMinutes = Math.round(
+        (checkTime.getTime() - existing.checkIn!.getTime()) / 60000,
       );
+      const overtimeMinutes = computeBiometricOvertimeMinutes(
+        existing.checkIn!,
+        checkTime,
+        employee,
+      );
+
+      const lateMinutes = existing.lateMinutes ?? 0;
+      let status = existing.status;
+      const derivedStatus = determineBiometricCheckInStatus(
+        lateMinutes,
+        employee,
+        sessionMinutes,
+      );
+      if (derivedStatus === AttendanceStatus.HALF_DAY) {
+        status = AttendanceStatus.HALF_DAY;
+      }
 
       return this.prisma.attendanceLog.update({
         where: { id: existing.id },
         data: {
           checkOut: checkTime,
           overtimeMinutes,
+          status,
         },
       });
     }
@@ -147,7 +178,7 @@ export class AttendanceService {
     const relieverSession = await this.prisma.relieverSession.create({
       data: {
         employeeId: employee.id,
-        branchId: employee.currentBranchId,
+        branchId,
         date: dateOnly,
         checkIn: checkTime,
       },

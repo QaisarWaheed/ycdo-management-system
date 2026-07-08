@@ -1,14 +1,3 @@
-/** Split fullName into first/last for forms that still use two fields. */
-export function splitFullName(fullName: string): {
-  firstName: string
-  lastName: string
-} {
-  const parts = fullName.trim().split(/\s+/)
-  if (parts.length === 0) return { firstName: '', lastName: '' }
-  if (parts.length === 1) return { firstName: parts[0]!, lastName: '' }
-  return { firstName: parts[0]!, lastName: parts.slice(1).join(' ') }
-}
-
 export function getEmployeeDisplayName(
   employee:
     | { fullName?: string | null; firstName?: string; lastName?: string }

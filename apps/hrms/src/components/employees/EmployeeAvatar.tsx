@@ -1,10 +1,10 @@
 import { Camera } from 'lucide-react'
 import { useState } from 'react'
+import { getEmployeeInitials } from '@/lib/employeeDisplayName'
 import { cn } from '@/lib/utils'
 
 interface EmployeeAvatarProps {
-  firstName: string
-  lastName: string
+  fullName: string
   photoUrl?: string | null
   size?: 'sm' | 'md' | 'lg'
   className?: string
@@ -18,23 +18,23 @@ const sizeClasses = {
 }
 
 export function EmployeeAvatar({
-  firstName,
-  lastName,
+  fullName,
   photoUrl,
   size = 'md',
   className,
   onPhotoClick,
 }: EmployeeAvatarProps) {
   const [imgError, setImgError] = useState(false)
-  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
+  const initials = getEmployeeInitials({ fullName })
   const showPhoto = photoUrl && !imgError
+  const displayName = fullName.trim() || 'Employee'
 
   return (
     <div className={cn('relative inline-flex', className)}>
       {showPhoto ? (
         <img
           src={photoUrl}
-          alt={`${firstName} ${lastName}`}
+          alt={displayName}
           className={cn(
             'rounded-full object-cover',
             sizeClasses[size],

@@ -9,14 +9,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
-import { splitFullName } from '@/lib/employeeDisplayName'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 export function ProfilePage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
+  const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
 
   const { data: employee } = useQuery({
@@ -27,9 +25,7 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (employee) {
-      const { firstName, lastName } = splitFullName(employee.fullName)
-      setFirstName(firstName)
-      setLastName(lastName)
+      setFullName(employee.fullName ?? '')
       setPhone(employee.phone ?? '')
     }
   }, [employee])
@@ -37,7 +33,7 @@ export function ProfilePage() {
   const updateMutation = useMutation({
     mutationFn: () =>
       employeesApi.update(user!.employeeId!, {
-        fullName: `${firstName} ${lastName}`.trim(),
+        fullName: fullName.trim(),
         phone: phone || undefined,
       }),
     onSuccess: () => {
@@ -64,16 +60,7 @@ export function ProfilePage() {
         <Card className="lg:col-span-1">
           <CardContent className="flex flex-col items-center space-y-4 p-6 text-center">
             <EmployeeAvatar
-              firstName={
-                employee?.fullName
-                  ? splitFullName(employee.fullName).firstName
-                  : (user?.email?.[0] ?? 'U')
-              }
-              lastName={
-                employee?.fullName
-                  ? splitFullName(employee.fullName).lastName
-                  : ''
-              }
+              fullName={employee?.fullName ?? user?.email ?? 'User'}
               size="lg"
             />
             <div>
@@ -97,18 +84,11 @@ export function ProfilePage() {
             {user?.employeeId ? (
               <>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>First Name</Label>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Full Name</Label>
                     <Input
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Last Name</Label>
-                    <Input
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">

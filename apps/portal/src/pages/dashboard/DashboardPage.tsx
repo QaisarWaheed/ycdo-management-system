@@ -8,6 +8,7 @@ import {
   FileText,
   Palmtree,
   Receipt,
+  Wallet,
 } from 'lucide-react'
 import { acknowledgementsApi } from '@/api/endpoints/acknowledgements'
 import { attendanceApi } from '@/api/endpoints/attendance'
@@ -149,6 +150,7 @@ export function DashboardPage() {
     { to: '/leave', label: 'Apply Leave', icon: Palmtree },
     { to: '/attendance', label: 'My Attendance', icon: Clock },
     { to: '/payroll', label: 'View Payslips', icon: Receipt },
+    { to: '/advance-loan', label: 'Advance & Loan', icon: Wallet },
     { to: '/letters', label: 'My Letters', icon: FileText },
   ]
 

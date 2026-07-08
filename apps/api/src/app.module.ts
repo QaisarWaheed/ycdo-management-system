@@ -6,6 +6,7 @@ import * as path from 'path';
 import { AcknowledgementsModule } from './modules/acknowledgements/acknowledgements.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BiometricDevicesModule } from './modules/biometric-devices/biometric-devices.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { BroadcastsModule } from './modules/broadcasts/broadcasts.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
@@ -42,6 +43,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     AuthModule,
     BranchesModule,
+    BiometricDevicesModule,
     DepartmentsModule,
     DesignationsModule,
     EmployeesModule,

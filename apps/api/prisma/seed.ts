@@ -997,6 +997,22 @@ async function main() {
     }
   }
 
+  const centralHospital = await prisma.branch.findFirst({
+    where: { name: { contains: 'Central Hospital' } },
+  });
+
+  if (centralHospital) {
+    await prisma.biometricDevice.upsert({
+      where: { deviceId: 'YCDO-CENTRAL-HOSPITAL' },
+      update: {},
+      create: {
+        deviceId: 'YCDO-CENTRAL-HOSPITAL',
+        branchId: centralHospital.id,
+        label: 'YCDO Central Hospital Main Entrance',
+      },
+    });
+  }
+
   const branchCount = await prisma.branch.count();
 
   const branchOrder = [

@@ -1000,12 +1000,7 @@ export function EmployeeProfilePage() {
       <Card>
         <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
           <EmployeeAvatar
-            firstName={employee.fullName.split(' ')[0] ?? employee.fullName}
-            lastName={
-              employee.fullName.split(' ').slice(1).join(' ') ||
-              employee.fullName.split(' ')[0] ||
-              ''
-            }
+            fullName={employee.fullName}
             photoUrl={photoSrc}
             size="lg"
             onPhotoClick={

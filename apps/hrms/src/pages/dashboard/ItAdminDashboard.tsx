@@ -42,6 +42,8 @@ import { toast } from '@/hooks/use-toast'
 import type { Branch, Department } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { PhoneInput } from '@/components/common/PhoneInput'
+import { biometricDevicesApi, type BiometricDevice } from '@/api/endpoints/biometricDevices'
+import { format } from 'date-fns'
 
 function BranchesTab() {
   const queryClient = useQueryClient()
@@ -831,6 +833,268 @@ function DesignationForm({
   )
 }
 
+function DevicesTab() {
+  const queryClient = useQueryClient()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editDevice, setEditDevice] = useState<BiometricDevice | null>(null)
+  const [deviceId, setDeviceId] = useState('')
+  const [branchId, setBranchId] = useState('')
+  const [label, setLabel] = useState('')
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => branchesApi.getAll(),
+  })
+
+  const { data: devices = [], isLoading } = useQuery({
+    queryKey: ['biometric-devices'],
+    queryFn: () => biometricDevicesApi.getAll(),
+  })
+
+  const resetForm = () => {
+    setDeviceId('')
+    setBranchId('')
+    setLabel('')
+  }
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      biometricDevicesApi.create({
+        deviceId: deviceId.trim(),
+        branchId,
+        label: label.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast({ title: 'Device added' })
+      resetForm()
+      setCreateOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['biometric-devices'] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to add device',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      biometricDevicesApi.update(editDevice!.id, {
+        deviceId: deviceId.trim(),
+        branchId,
+        label: label.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast({ title: 'Device updated' })
+      setEditDevice(null)
+      resetForm()
+      queryClient.invalidateQueries({ queryKey: ['biometric-devices'] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to update device',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => biometricDevicesApi.remove(id),
+    onSuccess: () => {
+      toast({ title: 'Device deleted' })
+      queryClient.invalidateQueries({ queryKey: ['biometric-devices'] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to delete device',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const openEdit = (device: BiometricDevice) => {
+    setEditDevice(device)
+    setDeviceId(device.deviceId)
+    setBranchId(device.branchId)
+    setLabel(device.label ?? '')
+  }
+
+  const deviceForm = (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Device ID</Label>
+        <Input
+          value={deviceId}
+          onChange={(e) => setDeviceId(e.target.value)}
+          placeholder="e.g. YCDO-CENTRAL-HOSPITAL"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Branch</Label>
+        <Select value={branchId || 'none'} onValueChange={(v) => setBranchId(v === 'none' ? '' : v)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select branch" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Select branch</SelectItem>
+            {branches.map((b) => (
+              <SelectItem key={b.id} value={b.id}>
+                {formatBranchLabel(b)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Label (optional)</Label>
+        <Input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="e.g. Main Entrance"
+        />
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button
+          className="bg-primary hover:bg-primary-dark"
+          onClick={() => setCreateOpen(true)}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Add Device
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Device ID</TableHead>
+                <TableHead>Branch</TableHead>
+                <TableHead>Label</TableHead>
+                <TableHead>Added On</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                [...Array(3)].map((_, i) => (
+                  <TableRow key={i}>
+                    {[...Array(5)].map((__, j) => (
+                      <TableCell key={j}>
+                        <Skeleton className="h-5 w-full" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : devices.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-text-secondary">
+                    No biometric devices registered
+                  </TableCell>
+                </TableRow>
+              ) : (
+                devices.map((device) => (
+                  <TableRow key={device.id}>
+                    <TableCell className="font-mono text-sm">{device.deviceId}</TableCell>
+                    <TableCell>{device.branch?.name ?? '—'}</TableCell>
+                    <TableCell>{device.label ?? '—'}</TableCell>
+                    <TableCell>
+                      {format(new Date(device.createdAt), 'dd MMM yyyy')}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => openEdit(device)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Delete device "${device.deviceId}"? This cannot be undone.`,
+                              )
+                            ) {
+                              deleteMutation.mutate(device.id)
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Biometric Device</DialogTitle>
+          </DialogHeader>
+          {deviceForm}
+          <DialogFooter>
+            <Button
+              className="bg-primary hover:bg-primary-dark"
+              disabled={!deviceId.trim() || !branchId || createMutation.isPending}
+              onClick={() => createMutation.mutate()}
+            >
+              {createMutation.isPending ? 'Adding...' : 'Add Device'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!editDevice}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditDevice(null)
+            resetForm()
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Biometric Device</DialogTitle>
+          </DialogHeader>
+          {deviceForm}
+          <DialogFooter>
+            <Button
+              className="bg-primary hover:bg-primary-dark"
+              disabled={!deviceId.trim() || !branchId || updateMutation.isPending}
+              onClick={() => updateMutation.mutate()}
+            >
+              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 export function ItAdminDashboard() {
   return (
     <div className="space-y-6">
@@ -844,6 +1108,7 @@ export function ItAdminDashboard() {
               <TabsTrigger value="departments">Departments</TabsTrigger>
               <TabsTrigger value="designations">Designations</TabsTrigger>
               <TabsTrigger value="branches">Branches</TabsTrigger>
+              <TabsTrigger value="devices">Devices</TabsTrigger>
             </TabsList>
             <TabsContent value="departments" className="mt-4">
               <DepartmentsTab />
@@ -853,6 +1118,9 @@ export function ItAdminDashboard() {
             </TabsContent>
             <TabsContent value="branches" className="mt-4">
               <BranchesTab />
+            </TabsContent>
+            <TabsContent value="devices" className="mt-4">
+              <DevicesTab />
             </TabsContent>
           </Tabs>
         </CardContent>
