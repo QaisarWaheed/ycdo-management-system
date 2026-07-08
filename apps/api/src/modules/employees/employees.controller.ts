@@ -62,6 +62,7 @@ export class EmployeesController {
     UserRole.PAYROLL_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
+    UserRole.IT_ADMIN,
   )
   findAll(
     @Query() query: EmployeeQueryDto,
@@ -82,6 +83,7 @@ export class EmployeesController {
     UserRole.PAYROLL_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
+    UserRole.IT_ADMIN,
   )
   getStats() {
     return this.employeesService.getStats();
@@ -93,6 +95,9 @@ export class EmployeesController {
     UserRole.HR_MANAGER,
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.IT_ADMIN,
   )
   getFilterOptions() {
     return this.employeesService.getFilterOptions();
@@ -149,6 +154,7 @@ export class EmployeesController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
+    UserRole.IT_ADMIN,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
     UserRole.EMPLOYEE,
@@ -171,6 +177,7 @@ export class EmployeesController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
     UserRole.EMPLOYEE,
   )
   update(
@@ -225,6 +232,7 @@ export class EmployeesController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
   uploadPhoto(
     @Param('id') id: string,

@@ -61,6 +61,62 @@ async function findBranchByName(branchName: string) {
   });
 }
 
+async function seedBranchSystemAccounts() {
+  const branchAccounts = [
+    { email: 'ycdocentralhospital@ycdo.org', branchName: 'YCDO Central Hospital' },
+    { email: 'ycdocentralhospitalconsultant@ycdo.org', branchName: 'YCDO Central Hospital Consultant Floor' },
+    { email: 'ycdohospitalhasanabad@ycdo.org', branchName: 'YCDO Hospital Hassan Abad' },
+    { email: 'idreesmemorialhospital@ycdo.org', branchName: 'Idrees Memorial YCDO Hospital' },
+    { email: 'ycdohospitalhasanparwana@ycdo.org', branchName: 'YCDO Hospital Hassan Parwana' },
+    { email: 'ycdohospitalsurajkund@ycdo.org', branchName: 'YCDO Hospital Suraj Kund' },
+    { email: 'ycdobranchexecutive1@ycdo.org', branchName: 'YCDO Executive Hospital-I' },
+    { email: 'ycdobranchexecutive1consultant@ycdo.org', branchName: 'YCDO Executive-I Consultant Floor' },
+    { email: 'ycdobranchexecutive2@ycdo.org', branchName: 'YCDO Executive Hospital-II Mother & Child Care' },
+    { email: 'ycdohospitaljummawala@ycdo.org', branchName: 'YCDO Hospital Jumma Wala' },
+    { email: 'ycdohospitalbilawalpur@ycdo.org', branchName: 'YCDO Hospital Bilawal Pur' },
+    { email: 'ycdohospitalpuldhram@ycdo.org', branchName: 'YCDO Hospital Pul Dhram Pura' },
+    { email: 'allahdadmemorialhospital@ycdo.org', branchName: 'Allah Dad Memorial YCDO Hospital' },
+    { email: 'ycdobranchdiagnostic@ycdo.org', branchName: 'YCDO Diagnostic Centre' },
+    { email: 'ycdodrh@ycdo.org', branchName: 'Police & YCDO Drug Rehabilitation Hospital' },
+    { email: 'ycdohospitalbudhla@ycdo.org', branchName: 'YCDO Hospital Budhla Santt' },
+    { email: 'ycdohospitalsikandarabad@ycdo.org', branchName: 'YCDO Hospital Sikandar Abad' },
+    { email: 'ycdobranchghnhospital@ycdo.org', branchName: 'YCDO Ghazi National Hospital E-III' },
+    { email: 'ycdobranchexecutive4@ycdo.org', branchName: 'YCDO AR Executive-IV Hospital' },
+    { email: 'ycdobranchexecutive5drh@ycdo.org', branchName: 'YCDO Executive-V Drug Rehabilitation Hospital' },
+    { email: 'ycdobranchallergy@ycdo.org', branchName: 'YCDO Islamabad Allergy Vaccination Centre' },
+    { email: 'ycdoheadoffice@ycdo.org', branchName: 'YCDO Head Office' },
+    { email: 'ycdokitchenmasoomshah@ycdo.org', branchName: 'YCDO Kitchen Masoom Shah' },
+    { email: 'ycdokitchenghantagar@ycdo.org', branchName: 'YCDO Kitchen Ghanta Ghar' },
+    { email: 'ycdokitchenqasimpur@ycdo.org', branchName: 'YCDO Kitchen Qasim Pur' },
+    { email: 'ycdokitchengaziabad@ycdo.org', branchName: 'YCDO Kitchen Ghazi Abad' },
+    { email: 'ycdorashan@ycdo.org', branchName: 'YCDO Rashan Department' },
+    { email: 'ycdovtiqasimpur@ycdo.org', branchName: 'YCDO VTI For Women Qasim Pur' },
+    { email: 'ycdovtibastimaook@ycdo.org', branchName: 'YCDO VTI For Women Basti Malook' },
+    { email: 'ycdosoftwarehouse@ycdo.org', branchName: 'Software House HQ' },
+  ];
+
+  const plainPassword = 'YCDO@2026';
+
+  for (const account of branchAccounts) {
+    const branch = await findBranchByName(account.branchName);
+
+    if (!branch) {
+      console.log(`Branch not found: ${account.branchName}`);
+      continue;
+    }
+
+    await ensureUserAccount(
+      account.email,
+      plainPassword,
+      UserRole.ADMIN_MANAGER,
+      null,
+      branch.id,
+    );
+
+    console.log(`Branch account: ${account.email} → ${branch.name}`);
+  }
+}
+
 type BranchSeed = { name: string; address: string; phone: string };
 
 const hospitalRunningBranches: BranchSeed[] = [
@@ -541,6 +597,16 @@ async function seedLocationDistricts() {
 }
 
 async function main() {
+  const FORCE_RESEED = process.env.FORCE_RESEED === 'true';
+  const isFirstRun = (await prisma.branch.count()) === 0;
+
+  if (!isFirstRun && !FORCE_RESEED) {
+    console.log('Database already seeded. Skipping...');
+    console.log('Set FORCE_RESEED=true to re-run seed.');
+    await seedBranchSystemAccounts();
+    return;
+  }
+
   await seedLocationDistricts();
 
   await ensureUserAccount(
@@ -1027,76 +1093,7 @@ async function main() {
     await ensureUserAccount(account.email, account.password, account.role, null);
   }
 
-  const branchAccounts = [
-    { email: 'ycdocentralhospital@ycdo.org', branchName: 'YCDO Central Hospital' },
-    { email: 'ycdocentralhospitalconsultant@ycdo.org', branchName: 'YCDO Central Hospital Consultant Floor' },
-    { email: 'ycdohospitalhasanabad@ycdo.org', branchName: 'YCDO Hospital Hassan Abad' },
-    { email: 'idreesmemorialhospital@ycdo.org', branchName: 'Idrees Memorial YCDO Hospital' },
-    { email: 'ycdohospitalhasanparwana@ycdo.org', branchName: 'YCDO Hospital Hassan Parwana' },
-    { email: 'ycdohospitalsurajkund@ycdo.org', branchName: 'YCDO Hospital Suraj Kund' },
-    { email: 'ycdobranchexecutive1@ycdo.org', branchName: 'YCDO Executive Hospital-I' },
-    { email: 'ycdobranchexecutive1consultant@ycdo.org', branchName: 'YCDO Executive-I Consultant Floor' },
-    { email: 'ycdobranchexecutive2@ycdo.org', branchName: 'YCDO Executive Hospital-II Mother & Child Care' },
-    { email: 'ycdohospitaljummawala@ycdo.org', branchName: 'YCDO Hospital Jumma Wala' },
-    { email: 'ycdohospitalbilawalpur@ycdo.org', branchName: 'YCDO Hospital Bilawal Pur' },
-    { email: 'ycdohospitalpuldhram@ycdo.org', branchName: 'YCDO Hospital Pul Dhram Pura' },
-    { email: 'allahdadmemorialhospital@ycdo.org', branchName: 'Allah Dad Memorial YCDO Hospital' },
-    { email: 'ycdobranchdiagnostic@ycdo.org', branchName: 'YCDO Diagnostic Centre' },
-    { email: 'ycdodrh@ycdo.org', branchName: 'Police & YCDO Drug Rehabilitation Hospital' },
-    { email: 'ycdohospitalbudhla@ycdo.org', branchName: 'YCDO Hospital Budhla Santt' },
-    { email: 'ycdohospitalsikandarabad@ycdo.org', branchName: 'YCDO Hospital Sikandar Abad' },
-    { email: 'ycdobranchghnhospital@ycdo.org', branchName: 'YCDO Ghazi National Hospital E-III' },
-    { email: 'ycdobranchexecutive4@ycdo.org', branchName: 'YCDO AR Executive-IV Hospital' },
-    { email: 'ycdobranchexecutive5drh@ycdo.org', branchName: 'YCDO Executive-V Drug Rehabilitation Hospital' },
-    { email: 'ycdobranchallergy@ycdo.org', branchName: 'YCDO Islamabad Allergy Vaccination Centre' },
-    { email: 'ycdoheadoffice@ycdo.org', branchName: 'YCDO Head Office' },
-    { email: 'ycdokitchenmasoomshah@ycdo.org', branchName: 'YCDO Kitchen Masoom Shah' },
-    { email: 'ycdokitchenghantagar@ycdo.org', branchName: 'YCDO Kitchen Ghanta Ghar' },
-    { email: 'ycdokitchenqasimpur@ycdo.org', branchName: 'YCDO Kitchen Qasim Pur' },
-    { email: 'ycdokitchengaziabad@ycdo.org', branchName: 'YCDO Kitchen Ghazi Abad' },
-    { email: 'ycdorashan@ycdo.org', branchName: 'YCDO Rashan Department' },
-    { email: 'ycdovtiqasimpur@ycdo.org', branchName: 'YCDO VTI For Women Qasim Pur' },
-    { email: 'ycdovtibastimaook@ycdo.org', branchName: 'YCDO VTI For Women Basti Malook' },
-    { email: 'ycdosoftwarehouse@ycdo.org', branchName: 'Software House HQ' },
-  ];
-
-  const defaultPassword = await bcrypt.hash('YCDO@2026', 10);
-
-  for (const account of branchAccounts) {
-    const branch = await findBranchByName(account.branchName);
-
-    if (!branch) {
-      console.log(`Branch not found: ${account.branchName}`);
-      continue;
-    }
-
-    const user = await prisma.user.upsert({
-      where: { email: account.email },
-      update: {
-        branchId: branch.id,
-        role: UserRole.ADMIN_MANAGER,
-        password: defaultPassword,
-        isActive: true,
-        employeeId: null,
-      },
-      create: {
-        email: account.email,
-        password: defaultPassword,
-        role: UserRole.ADMIN_MANAGER,
-        isActive: true,
-        employeeId: null,
-        branchId: branch.id,
-      },
-    });
-
-    await prisma.userPassword.upsert({
-      where: { userId: user.id },
-      update: { plainText: 'YCDO@2026' },
-      create: { userId: user.id, plainText: 'YCDO@2026' },
-    });
-
-    console.log(`Created: ${account.email} → ${branch.name}`);
-  }
+  await seedBranchSystemAccounts();
 
   const branchLocations = [
     { name: 'YCDO Central Hospital', lat: 30.2014, lng: 71.495, radius: 200 },

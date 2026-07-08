@@ -29,6 +29,7 @@ export class QualificationsController {
     UserRole.HR_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
   create(@Body() dto: CreateQualificationDto) {
     return this.qualificationsService.create(dto);
@@ -45,6 +46,7 @@ export class QualificationsController {
     UserRole.HR_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
   update(@Param('id') id: string, @Body() dto: UpdateQualificationDto) {
     return this.qualificationsService.update(id, dto);
@@ -55,6 +57,7 @@ export class QualificationsController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
   delete(@Param('id') id: string) {
     return this.qualificationsService.delete(id);

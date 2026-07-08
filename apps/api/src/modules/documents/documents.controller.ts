@@ -34,6 +34,7 @@ export class DocumentsController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
   upload(
     @Param('id') id: string,
@@ -51,8 +52,11 @@ export class DocumentsController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
+    UserRole.IT_ADMIN,
     UserRole.EMPLOYEE,
   )
   findAll(
@@ -66,7 +70,7 @@ export class DocumentsController {
   }
 
   @Delete(':documentId')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.IT_ADMIN)
   delete(@Param('documentId') documentId: string) {
     return this.documentsService.delete(documentId);
   }

@@ -63,7 +63,10 @@ export class LettersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
     UserRole.EMPLOYEE,
   )
   async getPdf(@Param('id') id: string, @Res() res: Response) {
@@ -79,7 +82,10 @@ export class LettersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
     UserRole.EMPLOYEE,
   )
   findOne(@Param('id') id: string) {

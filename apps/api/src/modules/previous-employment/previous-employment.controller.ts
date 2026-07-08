@@ -29,6 +29,7 @@ export class PreviousEmploymentController {
     UserRole.HR_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
   create(@Body() dto: CreatePreviousEmploymentDto) {
     return this.previousEmploymentService.create(dto);
@@ -45,6 +46,7 @@ export class PreviousEmploymentController {
     UserRole.HR_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
   update(@Param('id') id: string, @Body() dto: UpdatePreviousEmploymentDto) {
     return this.previousEmploymentService.update(id, dto);
@@ -55,6 +57,7 @@ export class PreviousEmploymentController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
   delete(@Param('id') id: string) {
     return this.previousEmploymentService.delete(id);

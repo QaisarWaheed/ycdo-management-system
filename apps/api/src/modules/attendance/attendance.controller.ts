@@ -185,6 +185,7 @@ export class AttendanceController {
     UserRole.FOUNDER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.IT_ADMIN,
   )
   findAll(
     @Query() query: AttendanceQueryDto,

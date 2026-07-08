@@ -59,6 +59,7 @@ export class IncentivesController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
     UserRole.EMPLOYEE,
   )
   findByEmployee(@Param('employeeId') employeeId: string) {

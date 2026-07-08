@@ -35,6 +35,7 @@ const LEAVE_READ_ROLES = [
   UserRole.HR_OPERATIONS_MANAGER,
   UserRole.ADMIN_MANAGER,
   UserRole.ADMIN_OFFICER,
+  UserRole.IT_ADMIN,
   UserRole.CHAIRMAN,
   UserRole.FOUNDER,
   UserRole.EMPLOYEE,
