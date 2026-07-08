@@ -25,14 +25,17 @@ export const dutyTimeOptions = [
   { label: '11:00 PM', value: '23:00' },
 ]
 
+import { to12Hour } from '@/lib/timeFormat'
+
 export function formatDutyDisplay(
   start?: string | null,
   end?: string | null,
 ): string {
   if (!start || !end) return 'Not assigned'
   const startLabel =
-    dutyTimeOptions.find((o) => o.value === start)?.label ?? start
-  const endLabel = dutyTimeOptions.find((o) => o.value === end)?.label ?? end
+    dutyTimeOptions.find((o) => o.value === start)?.label ?? to12Hour(start)
+  const endLabel =
+    dutyTimeOptions.find((o) => o.value === end)?.label ?? to12Hour(end)
   return `${startLabel} - ${endLabel}`
 }
 

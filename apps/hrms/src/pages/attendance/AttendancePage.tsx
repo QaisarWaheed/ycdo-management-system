@@ -1,18 +1,17 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
-import { branchesApi } from '@/api/endpoints/branches'
-import { departmentsApi } from '@/api/endpoints/departments'
-import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { DateInput } from '@/components/common/DateInput'
-import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
-import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
+import {
+  CheckInManualTab,
+  CheckOutManualTab,
+} from '@/components/attendance/ManualAttendanceTabs'
 import {
   EMPTY_EMPLOYEE_FILTERS,
   EmployeeFiltersBar,
@@ -23,13 +22,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -40,37 +32,24 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
-import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
-import {
-  calcLateMinutes,
-  calcOvertimeMinutes,
-  combineDateAndTime,
-  getEmployeeDutyStartTime,
-  getLogLateMinutes,
-  showsTimeFields,
-  statusFromLateMinutes,
-} from '@/lib/attendanceUtils'
-import { ShiftFilterDropdowns } from '@/components/employees/ShiftFilterDropdowns'
-import {
-  ALL_SHIFTS_AT_START,
-  resolveShiftIds,
-} from '@/lib/shiftFilterUtils'
-import {
-  enumValueToLabel,
-  labelToEnumValue,
-} from '@/lib/searchableSelectOptions'
+import { getLogLateMinutes } from '@/lib/attendanceUtils'
+import { formatDateTimeTime } from '@/lib/timeFormat'
 import { cn } from '@/lib/utils'
-import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import {
   ATTENDANCE_STATUSES,
   type AttendanceLog,
   type AttendanceStatus,
-  type Employee,
   type RelieverSession,
 } from '@/types'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 const ALL = 'ALL'
 
@@ -92,11 +71,6 @@ function AttendanceStatusBadge({ status }: { status: string }) {
       {status.replace(/_/g, ' ')}
     </Badge>
   )
-}
-
-function formatTime(value?: string | null) {
-  if (!value) return '—'
-  return format(new Date(value), 'HH:mm')
 }
 
 function formatDuration(minutes: number) {
@@ -234,6 +208,8 @@ function DailyLogTab({
             <TableRow>
               <TableHead>Code</TableHead>
               <TableHead>Employee Name</TableHead>
+              <TableHead>Department</TableHead>
+              <TableHead>Designation</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Check In</TableHead>
@@ -249,7 +225,7 @@ function DailyLogTab({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(11)].map((__, j) => (
+                  {[...Array(13)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -258,7 +234,7 @@ function DailyLogTab({
               ))
             ) : attendanceLogs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={13} className="h-32 text-center text-text-secondary">
                   No attendance records for this date
                 </TableCell>
               </TableRow>
@@ -272,6 +248,12 @@ function DailyLogTab({
                   </TableCell>
                   <TableCell className="font-medium">
                     {log.employee?.fullName ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    {log.employee?.currentDepartment?.name ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    {log.employee?.currentDesignation ?? '—'}
                   </TableCell>
                   <TableCell>
                     {log.employee?.phone ? (
@@ -289,10 +271,10 @@ function DailyLogTab({
                     {formatBranchLabel(log.branch)}
                   </TableCell>
                   <TableCell className="text-text-secondary">
-                    {formatTime(log.checkIn)}
+                    {formatDateTimeTime(log.checkIn)}
                   </TableCell>
                   <TableCell className="text-text-secondary">
-                    {formatTime(log.checkOut)}
+                    {formatDateTimeTime(log.checkOut)}
                   </TableCell>
                   <TableCell>
                     <AttendanceStatusBadge status={log.status} />
@@ -375,766 +357,6 @@ function DailyLogTab({
           queryClient.invalidateQueries({ queryKey: ['attendance'] })
         }}
       />
-    </div>
-  )
-}
-
-function SingleManualTab() {
-  const queryClient = useQueryClient()
-  const { user } = useAuth()
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN'
-  const today = format(new Date(), 'yyyy-MM-dd')
-
-  const [employeeId, setEmployeeId] = useState('')
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
-    null,
-  )
-  const [date, setDate] = useState(today)
-  const [status, setStatus] = useState<AttendanceStatus>('PRESENT')
-  const [checkIn, setCheckIn] = useState('')
-  const [checkOut, setCheckOut] = useState('')
-  const [overtimeMinutes, setOvertimeMinutes] = useState<number | ''>('')
-  const [note, setNote] = useState('')
-
-  const { data: existingAttendance = [] } = useQuery({
-    queryKey: ['attendance', date, 'manual-exclude'],
-    queryFn: () =>
-      attendanceApi.getAll({
-        startDate: date,
-        endDate: date,
-        limit: 1000,
-      }),
-    enabled: !!date,
-  })
-
-  const attendedEmployeeIds = useMemo(
-    () =>
-      (existingAttendance as AttendanceLog[])
-        .map((a) => a.employeeId)
-        .filter(Boolean) as string[],
-    [existingAttendance],
-  )
-
-  useEffect(() => {
-    if (employeeId && attendedEmployeeIds.includes(employeeId)) {
-      setEmployeeId('')
-      setSelectedEmployee(null)
-    }
-  }, [date, attendedEmployeeIds, employeeId])
-
-  const { data: employeeDetail } = useQuery({
-    queryKey: ['employee', employeeId],
-    queryFn: () => employeesApi.getOne(employeeId),
-    enabled: !!employeeId,
-  })
-
-  const shift = employeeDetail?.shift ?? selectedEmployee?.shift
-
-  const dutyStartTime = employeeDetail
-    ? getEmployeeDutyStartTime(employeeDetail)
-    : selectedEmployee
-      ? getEmployeeDutyStartTime(selectedEmployee)
-      : ''
-
-  const calculatedLate = useMemo(() => {
-    if (!checkIn || !dutyStartTime) return 0
-    return calcLateMinutes(checkIn, dutyStartTime)
-  }, [checkIn, dutyStartTime])
-
-  useEffect(() => {
-    if (checkIn && dutyStartTime) {
-      setStatus(statusFromLateMinutes(calculatedLate))
-    }
-  }, [checkIn, dutyStartTime, calculatedLate])
-
-  const calculatedOvertime = useMemo(() => {
-    if (!checkOut || !shift?.endTime) return 0
-    return calcOvertimeMinutes(checkOut, shift.endTime)
-  }, [checkOut, shift?.endTime])
-
-  const saveMutation = useMutation({
-    mutationFn: () => {
-      if (!employeeId) throw new Error('Employee required')
-      return attendanceApi.markManual({
-        employeeId,
-        date,
-        status,
-        checkIn:
-          checkIn && showsTimeFields(status)
-            ? combineDateAndTime(date, checkIn)
-            : undefined,
-        checkOut:
-          checkOut && showsTimeFields(status)
-            ? combineDateAndTime(date, checkOut)
-            : undefined,
-        lateMinutes: calculatedLate,
-        overtimeMinutes:
-          isSuperAdmin && overtimeMinutes !== ''
-            ? Number(overtimeMinutes)
-            : calculatedOvertime,
-        note: note || undefined,
-      })
-    },
-    onSuccess: () => {
-      toast({ title: 'Attendance saved successfully' })
-      queryClient.invalidateQueries({ queryKey: ['attendance'] })
-      setEmployeeId('')
-      setSelectedEmployee(null)
-      setStatus('PRESENT')
-      setCheckIn('')
-      setCheckOut('')
-      setOvertimeMinutes('')
-      setNote('')
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Failed to save attendance',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-  })
-
-  return (
-    <div className="mx-auto max-w-xl space-y-6 rounded-lg border border-border bg-white p-6">
-      <h2 className="text-lg font-semibold">Mark Manual Attendance</h2>
-
-      <EmployeeSearchSelect
-        label="Employee *"
-        value={employeeId}
-        excludeIds={attendedEmployeeIds}
-        onChange={(id, emp) => {
-          setEmployeeId(id)
-          setSelectedEmployee(emp ?? null)
-        }}
-      />
-
-      {attendedEmployeeIds.length > 0 && (
-        <p className="text-sm text-gray-500">
-          {attendedEmployeeIds.length} employees already have attendance marked
-          for this date
-        </p>
-      )}
-
-      {selectedEmployee && (
-        <p className="text-sm text-text-secondary">
-          Shift:{' '}
-          {shift
-            ? `${shift.name} (${shift.startTime} - ${shift.endTime})`
-            : 'Not assigned'}
-        </p>
-      )}
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="space-y-1">
-          <Label>Date *</Label>
-          <DateInput value={date} onChange={setDate} />
-        </div>
-        <div className="space-y-1">
-          <Label>Status *</Label>
-          <SearchableSelect
-            options={ATTENDANCE_STATUSES.map(enumValueToLabel)}
-            value={enumValueToLabel(status)}
-            onChange={(label) =>
-              setStatus(
-                labelToEnumValue(label, ATTENDANCE_STATUSES) as AttendanceStatus,
-              )
-            }
-            placeholder="Select status"
-          />
-        </div>
-      </div>
-
-      {showsTimeFields(status) && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label>Check In Time</Label>
-            <Input
-              type="time"
-              value={checkIn}
-              onChange={(e) => setCheckIn(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Check Out Time</Label>
-            <Input
-              type="time"
-              value={checkOut}
-              onChange={(e) => setCheckOut(e.target.value)}
-            />
-          </div>
-        </div>
-      )}
-
-      {showsTimeFields(status) && (
-        <div className="space-y-1">
-          <Label>Late Minutes</Label>
-          <Input
-            type="number"
-            readOnly
-            value={calculatedLate}
-            className="bg-muted"
-          />
-          {calculatedLate > 0 && (
-            <p className="text-sm text-amber-600">
-              {calculatedLate > 60
-                ? 'More than 1 hour late — marked as Half Day'
-                : `${calculatedLate} minutes late`}
-            </p>
-          )}
-          {calculatedLate === 0 && checkIn && dutyStartTime && (
-            <p className="text-sm text-green-600">On time</p>
-          )}
-        </div>
-      )}
-
-      {showsTimeFields(status) && (
-        <div className="space-y-1">
-          <Label>Overtime (minutes)</Label>
-          <Input
-            type="number"
-            min={0}
-            value={isSuperAdmin ? overtimeMinutes : calculatedOvertime}
-            disabled={!isSuperAdmin}
-            title={
-              !isSuperAdmin ? 'Overtime must be approved by Admin' : undefined
-            }
-            onChange={(e) =>
-              setOvertimeMinutes(
-                e.target.value === '' ? '' : Number(e.target.value),
-              )
-            }
-            className={cn(!isSuperAdmin && 'bg-muted')}
-          />
-          {!isSuperAdmin && calculatedOvertime > 0 && (
-            <p className="text-xs text-text-secondary">
-              Calculated: {calculatedOvertime} min — Overtime must be approved
-              by Admin
-            </p>
-          )}
-          {isSuperAdmin && calculatedOvertime > 0 && (
-            <p className="text-xs text-text-secondary">
-              Auto-calculated: {calculatedOvertime} min
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="space-y-1">
-        <Label>Note</Label>
-        <Textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Optional note..."
-        />
-      </div>
-
-      <Button
-        className="bg-primary hover:bg-primary-dark"
-        disabled={!employeeId || saveMutation.isPending}
-        onClick={() => saveMutation.mutate()}
-      >
-        {saveMutation.isPending ? 'Saving...' : 'Save Attendance'}
-      </Button>
-    </div>
-  )
-}
-
-type BulkRowState = {
-  status: AttendanceStatus | null
-  checkIn: string
-  checkOut: string
-  note: string
-}
-
-function BulkManualTab({ onSuccess }: { onSuccess: () => void }) {
-  const queryClient = useQueryClient()
-  const today = format(new Date(), 'yyyy-MM-dd')
-
-  const [branchId, setBranchId] = useState('')
-  const [departmentId, setDepartmentId] = useState('')
-  const [shiftStartTime, setShiftStartTime] = useState('')
-  const [shiftId, setShiftId] = useState('')
-  const [date, setDate] = useState(today)
-  const [loaded, setLoaded] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [progress, setProgress] = useState('')
-  const [rows, setRows] = useState<Record<string, BulkRowState>>({})
-  const [showAlreadyMarked, setShowAlreadyMarked] = useState(false)
-
-  const BULK_STATUSES: { value: AttendanceStatus; label: string }[] = [
-    { value: 'PRESENT', label: 'Present' },
-    { value: 'ABSENT', label: 'Absent' },
-    { value: 'LATE', label: 'Late' },
-    { value: 'ON_LEAVE', label: 'Leave' },
-    { value: 'HALF_DAY', label: 'Short Leave' },
-  ]
-
-  const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn: () => branchesApi.getAll(),
-  })
-
-  const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId || 'all'],
-    queryFn: () =>
-      departmentsApi.getAll(branchId ? { branchId } : undefined),
-  })
-
-  const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', branchId || 'all'],
-    queryFn: () => shiftsApi.getAll(branchId || undefined),
-  })
-
-  const shiftIdsParam = resolveShiftIds(shiftStartTime, shiftId, shifts)
-
-  const { data: employees = [], refetch: refetchEmployees } = useQuery({
-    queryKey: [
-      'bulk-attendance-employees',
-      branchId,
-      departmentId,
-      shiftStartTime,
-      shiftId,
-    ],
-    queryFn: () =>
-      employeesApi.getAll({
-        branchId,
-        departmentId: departmentId || undefined,
-        shiftIds: shiftIdsParam,
-        status: 'ACTIVE',
-      }),
-    enabled: false,
-  })
-
-  const { data: existingLogs = [] } = useQuery({
-    queryKey: ['attendance-bulk', date, branchId],
-    queryFn: () =>
-      attendanceApi.getAll({
-        startDate: date,
-        endDate: date,
-        branchId,
-      }),
-    enabled: loaded && !!branchId,
-  })
-
-  const logByEmployee = useMemo(() => {
-    const map = new Map<string, AttendanceLog>()
-    for (const log of existingLogs as AttendanceLog[]) {
-      if (log.employeeId) map.set(log.employeeId, log)
-    }
-    return map
-  }, [existingLogs])
-
-  const sortedEmployees = useMemo(
-    () => sortEmployeesByHierarchy(employees),
-    [employees],
-  )
-
-  const { notAttendedEmployees, attendedEmployees } = useMemo(() => {
-    const notAttended: Employee[] = []
-    const attended: Employee[] = []
-    for (const emp of sortedEmployees) {
-      if (logByEmployee.has(emp.id)) {
-        attended.push(emp)
-      } else {
-        notAttended.push(emp)
-      }
-    }
-    return {
-      notAttendedEmployees: notAttended,
-      attendedEmployees: attended,
-    }
-  }, [sortedEmployees, logByEmployee])
-
-  const renderBulkEmployeeRow = (emp: Employee, editable: boolean) => {
-    const log = logByEmployee.get(emp.id)
-    const row = rows[emp.id]
-    const showTimes = row?.status && showsTimeFields(row.status)
-    const dutyStart = getEmployeeDutyStartTime(emp)
-    const rowLate =
-      row?.checkIn && dutyStart ? calcLateMinutes(row.checkIn, dutyStart) : 0
-
-    if (!editable) {
-      return (
-        <TableRow key={emp.id}>
-          <TableCell>
-            <div>
-              <p className="font-medium">
-                {emp.fullName}
-              </p>
-              <p className="font-mono text-xs text-text-secondary">
-                {emp.employeeCode}
-              </p>
-            </div>
-          </TableCell>
-          <TableCell className="text-sm text-text-secondary">
-            {emp.shift
-              ? `${emp.shift.name} (${emp.shift.startTime} - ${emp.shift.endTime})`
-              : '—'}
-          </TableCell>
-          <TableCell>
-            {log ? (
-              <AttendanceStatusBadge status={log.status} />
-            ) : (
-              <span className="text-text-secondary">—</span>
-            )}
-          </TableCell>
-        </TableRow>
-      )
-    }
-
-    return (
-      <TableRow key={emp.id}>
-        <TableCell>
-          <div>
-            <p className="font-medium">
-              {emp.fullName}
-            </p>
-            <p className="font-mono text-xs text-text-secondary">
-              {emp.employeeCode}
-            </p>
-            <p className="text-xs text-text-secondary">
-              {emp.currentDesignation}
-            </p>
-          </div>
-        </TableCell>
-        <TableCell className="text-sm text-text-secondary">
-          {emp.shift
-            ? `${emp.shift.name} (${emp.shift.startTime} - ${emp.shift.endTime})`
-            : '—'}
-        </TableCell>
-        <TableCell>
-          {log ? (
-            <AttendanceStatusBadge status={log.status} />
-          ) : (
-            <span className="text-text-secondary">—</span>
-          )}
-        </TableCell>
-        <TableCell>
-          <div className="flex flex-wrap gap-1">
-            {BULK_STATUSES.map((s) => (
-              <Button
-                key={s.value}
-                size="sm"
-                variant={row?.status === s.value ? 'default' : 'outline'}
-                className={cn(
-                  row?.status === s.value && 'bg-primary hover:bg-primary-dark',
-                )}
-                onClick={() => updateRow(emp.id, { status: s.value })}
-              >
-                {s.label}
-              </Button>
-            ))}
-          </div>
-        </TableCell>
-        <TableCell>
-          <Input
-            type="time"
-            className="w-[120px]"
-            disabled={!showTimes}
-            value={row?.checkIn ?? ''}
-            onChange={(e) => {
-              const checkIn = e.target.value
-              const late =
-                checkIn && dutyStart ? calcLateMinutes(checkIn, dutyStart) : 0
-              updateRow(emp.id, {
-                checkIn,
-                status: checkIn
-                  ? statusFromLateMinutes(late)
-                  : (row?.status ?? null),
-              })
-            }}
-          />
-          {showTimes && rowLate > 0 && (
-            <p className="mt-1 text-xs text-amber-600">
-              {rowLate > 60 ? 'More than 1 hour late' : `${rowLate} min late`}
-            </p>
-          )}
-          {showTimes && rowLate === 0 && row?.checkIn && dutyStart && (
-            <p className="mt-1 text-xs text-green-600">On time</p>
-          )}
-        </TableCell>
-        <TableCell>
-          <Input
-            type="time"
-            className="w-[120px]"
-            disabled={!showTimes}
-            value={row?.checkOut ?? ''}
-            onChange={(e) => updateRow(emp.id, { checkOut: e.target.value })}
-          />
-        </TableCell>
-        <TableCell>
-          <Input
-            className="min-w-[140px]"
-            placeholder="Note"
-            value={row?.note ?? ''}
-            onChange={(e) => updateRow(emp.id, { note: e.target.value })}
-          />
-        </TableCell>
-      </TableRow>
-    )
-  }
-
-  const handleLoad = async () => {
-    if (!branchId) {
-      toast({
-        title: 'Branch required',
-        description: 'Please select a branch',
-        variant: 'destructive',
-      })
-      return
-    }
-    await refetchEmployees()
-    setRows({})
-    setLoaded(true)
-  }
-
-  const updateRow = (
-    employeeId: string,
-    patch: Partial<BulkRowState>,
-  ) => {
-    setRows((prev) => ({
-      ...prev,
-      [employeeId]: {
-        status: prev[employeeId]?.status ?? null,
-        checkIn: prev[employeeId]?.checkIn ?? '',
-        checkOut: prev[employeeId]?.checkOut ?? '',
-        note: prev[employeeId]?.note ?? '',
-        ...patch,
-      },
-    }))
-  }
-
-  const handleSaveAll = async () => {
-    const toSave = Object.entries(rows).filter(([, v]) => v.status !== null)
-    if (toSave.length === 0) {
-      toast({
-        title: 'Nothing to save',
-        description: 'Select attendance status for at least one employee',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    setSaving(true)
-    let saved = 0
-
-    for (const [employeeId, row] of toSave) {
-      setProgress(`Saving ${saved + 1}/${toSave.length}...`)
-      const emp = employees.find((e) => e.id === employeeId)
-      const dutyStart = getEmployeeDutyStartTime(emp ?? {})
-      const status = row.status!
-      const lateMinutes =
-        row.checkIn && dutyStart
-          ? calcLateMinutes(row.checkIn, dutyStart)
-          : 0
-      const overtimeMinutes =
-        row.checkOut && emp?.shift?.endTime
-          ? calcOvertimeMinutes(row.checkOut, emp.shift.endTime)
-          : 0
-
-      await attendanceApi.markManual({
-        employeeId,
-        date,
-        status,
-        checkIn:
-          row.checkIn && showsTimeFields(status)
-            ? combineDateAndTime(date, row.checkIn)
-            : undefined,
-        checkOut:
-          row.checkOut && showsTimeFields(status)
-            ? combineDateAndTime(date, row.checkOut)
-            : undefined,
-        lateMinutes,
-        overtimeMinutes,
-        note: row.note || undefined,
-      })
-      saved++
-    }
-
-    setSaving(false)
-    setProgress('')
-    toast({ title: `Attendance saved for ${saved} employees` })
-    queryClient.invalidateQueries({ queryKey: ['attendance'] })
-    setRows({})
-    onSuccess()
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-white p-4">
-        <div className="space-y-1">
-          <Label>Branch *</Label>
-          <Select
-            value={branchId}
-            onValueChange={(v) => {
-              setBranchId(v)
-              setDepartmentId('')
-              setShiftStartTime('')
-              setShiftId('')
-              setLoaded(false)
-            }}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select branch" />
-            </SelectTrigger>
-            <SelectContent>
-              {branches.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {formatBranchLabel(b)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1">
-          <Label>Department</Label>
-          <Select
-            value={departmentId || 'all'}
-            onValueChange={(v) => {
-              setDepartmentId(v === 'all' ? '' : v)
-              setLoaded(false)
-            }}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="All" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departments.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <ShiftFilterDropdowns
-          shifts={shifts}
-          shiftStartTime={shiftStartTime}
-          shiftId={shiftId}
-          triggerClassName="w-[180px]"
-          onShiftStartTimeChange={(startTime) => {
-            setShiftStartTime(startTime)
-            setShiftId(startTime ? ALL_SHIFTS_AT_START : '')
-            setLoaded(false)
-          }}
-          onShiftIdChange={(id) => {
-            setShiftId(id)
-            setLoaded(false)
-          }}
-        />
-
-        <div className="space-y-1">
-          <Label>Date</Label>
-          <DateInput
-            className="w-[160px]"
-            value={date}
-            onChange={(value) => {
-              setDate(value)
-              setLoaded(false)
-            }}
-          />
-        </div>
-
-        <Button
-          className="bg-primary hover:bg-primary-dark"
-          onClick={handleLoad}
-          disabled={!branchId}
-        >
-          Load Employees
-        </Button>
-      </div>
-
-      {loaded && (
-        <>
-          <div className="overflow-x-auto rounded-lg border border-border bg-white">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Shift</TableHead>
-                  <TableHead>Current</TableHead>
-                  <TableHead>Mark As</TableHead>
-                  <TableHead>Check In</TableHead>
-                  <TableHead>Check Out</TableHead>
-                  <TableHead>Note</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedEmployees.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-text-secondary">
-                      No employees found
-                    </TableCell>
-                  </TableRow>
-                ) : notAttendedEmployees.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-text-secondary">
-                      All employees already have attendance marked for this date
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  notAttendedEmployees.map((emp) =>
-                    renderBulkEmployeeRow(emp, true),
-                  )
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {attendedEmployees.length > 0 && (
-            <div className="rounded-lg border border-border bg-white">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium hover:bg-muted/50"
-                onClick={() => setShowAlreadyMarked((v) => !v)}
-              >
-                {showAlreadyMarked ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                Already marked ({attendedEmployees.length})
-              </button>
-              {showAlreadyMarked && (
-                <div className="overflow-x-auto border-t border-border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Employee</TableHead>
-                        <TableHead>Shift</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {attendedEmployees.map((emp) =>
-                        renderBulkEmployeeRow(emp, false),
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex items-center gap-4">
-            <Button
-              className="bg-primary hover:bg-primary-dark"
-              disabled={saving}
-              onClick={handleSaveAll}
-            >
-              {saving ? 'Saving...' : 'Save All'}
-            </Button>
-            {progress && (
-              <span className="text-sm text-text-secondary">{progress}</span>
-            )}
-          </div>
-        </>
-      )}
     </div>
   )
 }
@@ -1236,8 +458,8 @@ function RelieverSessionsTab() {
                       : '—'}
                   </TableCell>
                   <TableCell>{formatBranchLabel(session.branch)}</TableCell>
-                  <TableCell>{formatTime(session.checkIn)}</TableCell>
-                  <TableCell>{formatTime(session.checkOut)}</TableCell>
+                  <TableCell>{formatDateTimeTime(session.checkIn)}</TableCell>
+                  <TableCell>{formatDateTimeTime(session.checkOut)}</TableCell>
                   <TableCell>
                     {session.checkOut
                       ? formatDuration(session.totalMinutes)
@@ -1312,22 +534,16 @@ export function AttendancePage() {
         </TabsContent>
 
         <TabsContent value="manual" className="mt-4 space-y-4">
-          <Tabs defaultValue="single">
+          <Tabs defaultValue="checkin">
             <TabsList>
-              <TabsTrigger value="single">Single Entry</TabsTrigger>
-              <TabsTrigger value="bulk">Bulk Mark</TabsTrigger>
+              <TabsTrigger value="checkin">CheckIn</TabsTrigger>
+              <TabsTrigger value="checkout">CheckOut</TabsTrigger>
             </TabsList>
-            <TabsContent value="single" className="mt-4">
-              <SingleManualTab />
+            <TabsContent value="checkin" className="mt-4">
+              <CheckInManualTab />
             </TabsContent>
-            <TabsContent value="bulk" className="mt-4">
-              <BulkManualTab
-                onSuccess={() => {
-                  const next = new URLSearchParams(searchParams)
-                  next.delete('tab')
-                  setSearchParams(next, { replace: true })
-                }}
-              />
+            <TabsContent value="checkout" className="mt-4">
+              <CheckOutManualTab />
             </TabsContent>
           </Tabs>
         </TabsContent>

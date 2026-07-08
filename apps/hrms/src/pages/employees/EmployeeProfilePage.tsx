@@ -25,6 +25,7 @@ import { lettersApi } from '@/api/endpoints/letters'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { incentivesApi } from '@/api/endpoints/incentives'
+import { EmployeePayrollTab } from '@/components/employees/EmployeePayrollTab'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
@@ -66,6 +67,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
+import { formatDateTimeTime } from '@/lib/timeFormat'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { maritalStatusToLabel } from '@/lib/searchableSelectOptions'
 import type {
@@ -1142,6 +1144,7 @@ export function EmployeeProfilePage() {
         <TabsList className="flex h-auto flex-wrap gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
+          <TabsTrigger value="payroll">Payroll</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="leave">Leave</TabsTrigger>
           <TabsTrigger value="letters">Letters</TabsTrigger>
@@ -1514,12 +1517,12 @@ export function EmployeeProfilePage() {
                           </TableCell>
                           <TableCell>
                             {log.checkIn
-                              ? format(new Date(log.checkIn), 'HH:mm')
+                              ? formatDateTimeTime(log.checkIn)
                               : '—'}
                           </TableCell>
                           <TableCell>
                             {log.checkOut
-                              ? format(new Date(log.checkOut), 'HH:mm')
+                              ? formatDateTimeTime(log.checkOut)
                               : '—'}
                           </TableCell>
                           <TableCell>{log.status}</TableCell>
@@ -1533,6 +1536,13 @@ export function EmployeeProfilePage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="payroll" className="space-y-4">
+          <EmployeePayrollTab
+            employeeId={id}
+            stipendRecords={(employee.stipendRecords ?? []) as StipendRecord[]}
+          />
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">

@@ -1,0 +1,191 @@
+import { useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Search, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { employeesApi } from '@/api/endpoints/employees'
+import { shiftsApi } from '@/api/endpoints/shifts'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import {
+  EMPTY_EMPLOYEE_FILTERS,
+  EmployeeFiltersBar,
+  employeeFiltersToParams,
+} from '@/components/employees/EmployeeFiltersBar'
+import { StatusBadge } from '@/components/employees/StatusBadge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
+import { useDebounce } from '@/hooks/useDebounce'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
+import type { Employee } from '@/types'
+
+export function ItAdminEmployeesTab() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN'
+
+  const [search, setSearch] = useState('')
+  const [employeeFilters, setEmployeeFilters] =
+    useState(EMPTY_EMPLOYEE_FILTERS)
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
+
+  const debouncedSearch = useDebounce(search, 400)
+
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts', employeeFilters.branchId || 'all'],
+    queryFn: () =>
+      shiftsApi.getAll(employeeFilters.branchId || undefined),
+  })
+
+  const filters = useMemo(
+    () => ({
+      ...employeeFiltersToParams(employeeFilters, shifts),
+      search: debouncedSearch || undefined,
+    }),
+    [employeeFilters, shifts, debouncedSearch],
+  )
+
+  const { data: employees = [], isLoading } = useQuery({
+    queryKey: ['it-admin-employees', filters],
+    queryFn: () => employeesApi.getAll(filters),
+  })
+
+  const sortedEmployees = useMemo(
+    () => sortEmployeesByHierarchy(employees),
+    [employees],
+  )
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => employeesApi.delete(id),
+    onSuccess: (result) => {
+      toast({ title: result.message })
+      queryClient.invalidateQueries({ queryKey: ['it-admin-employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      setDeleteTarget(null)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to delete employee',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <div className="space-y-4">
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+        <Input
+          placeholder="Search by name or employee code..."
+          className="pl-9"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      <EmployeeFiltersBar
+        filters={employeeFilters}
+        onChange={setEmployeeFilters}
+        showSpecificShift={false}
+      />
+
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Code</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Branch</TableHead>
+              <TableHead>Dept</TableHead>
+              <TableHead>Designation</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              [...Array(5)].map((_, i) => (
+                <TableRow key={i}>
+                  {[...Array(7)].map((__, j) => (
+                    <TableCell key={j}>
+                      <Skeleton className="h-5 w-full" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : sortedEmployees.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-text-secondary">
+                  No employees found
+                </TableCell>
+              </TableRow>
+            ) : (
+              sortedEmployees.map((emp) => (
+                <TableRow key={emp.id}>
+                  <TableCell className="font-mono text-sm">
+                    {emp.employeeCode}
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      to={`/employees/${emp.id}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {emp.fullName}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{formatBranchLabel(emp.currentBranch)}</TableCell>
+                  <TableCell>{emp.currentDepartment?.name ?? '—'}</TableCell>
+                  <TableCell>{emp.currentDesignation ?? '—'}</TableCell>
+                  <TableCell>
+                    <StatusBadge status={emp.status} />
+                  </TableCell>
+                  <TableCell>
+                    {isSuperAdmin && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => setDeleteTarget(emp)}
+                      >
+                        <Trash2 className="mr-1 h-4 w-4" />
+                        Delete
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Employee"
+        description={
+          deleteTarget
+            ? `Permanently delete ${deleteTarget.fullName}? This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete Permanently"
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
+        }}
+        onCancel={() => setDeleteTarget(null)}
+        loading={deleteMutation.isPending}
+      />
+    </div>
+  )
+}

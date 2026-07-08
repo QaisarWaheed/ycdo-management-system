@@ -489,8 +489,9 @@ export interface AttendanceLog {
     phone?: string | null
     currentDesignation?: string | null
     currentDepartmentId?: string | null
+    currentDepartment?: { name: string } | null
     dutyStartTime?: string | null
-    shift?: { startTime?: string } | null
+    shift?: { name?: string; startTime?: string; endTime?: string } | null
   }
   branch?: { name: string; address?: string | null }
 }

@@ -1,12 +1,10 @@
 import type { Shift } from '@/types'
+import { to12Hour } from '@/lib/timeFormat'
 
 export const ALL_SHIFTS_AT_START = '__all_at_start__'
 
 export function formatShiftTime(time: string): string {
-  const [h, m] = time.split(':').map(Number)
-  const period = h < 12 ? 'AM' : 'PM'
-  const hour = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return `${hour}:${String(m).padStart(2, '0')} ${period}`
+  return to12Hour(time)
 }
 
 /** @deprecated Use formatShiftTime */

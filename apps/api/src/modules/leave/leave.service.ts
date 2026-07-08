@@ -19,7 +19,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { getHierarchyPriority } from '../employees/employee-hierarchy';
+import { getHierarchyPriority } from '../../common/hierarchy.util';
 import {
   ApplyLeaveDto,
   ApproveLeaveDto,

@@ -36,7 +36,7 @@ import {
   resolveDutyStartTime,
 } from './attendance-late.util';
 import { haversineMeters } from './geo.helper';
-import { getHierarchyPriority } from '../employees/employee-hierarchy';
+import { getHierarchyPriority } from '../../common/hierarchy.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
 
@@ -567,10 +567,13 @@ export class AttendanceService {
             employeeCode: true,
             phone: true,
             currentDesignation: true,
+            currentDepartmentId: true,
             dutyStartTime: true,
             currentBranch: { select: { name: true, address: true } },
             currentDepartment: { select: { name: true } },
-            shift: { select: { startTime: true } },
+            shift: {
+              select: { name: true, startTime: true, endTime: true },
+            },
           },
         },
         branch: { select: { name: true, address: true } },

@@ -48,6 +48,19 @@ export class AdvanceLoanController {
     return this.advanceLoanService.findMy(user.employeeId);
   }
 
+  @Get('employee/:employeeId')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  findByEmployee(@Param('employeeId') employeeId: string) {
+    return this.advanceLoanService.findByEmployee(employeeId);
+  }
+
   @Get()
   @Roles(
     UserRole.SUPER_ADMIN,

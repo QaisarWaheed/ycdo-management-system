@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
+import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -29,16 +30,13 @@ import {
   enumValueToLabel,
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
+import { formatDateTimeTime } from '@/lib/timeFormat'
 import { ATTENDANCE_STATUSES, type AttendanceLog, type AttendanceStatus } from '@/types'
 
 function isoToTimeInput(value?: string | null): string {
   if (!value) return ''
-  return format(new Date(value), 'HH:mm')
-}
-
-function formatDisplayTime(value?: string | null) {
-  if (!value) return '—'
-  return format(new Date(value), 'HH:mm')
+  const d = new Date(value)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 type UpdateAttendanceDialogProps = {
@@ -157,11 +155,11 @@ export function UpdateAttendanceDialog({
             </div>
             <p>
               <span className="text-text-secondary">Current Check In: </span>
-              {formatDisplayTime(log.checkIn)}
+              {formatDateTimeTime(log.checkIn)}
             </p>
             <p>
               <span className="text-text-secondary">Current Check Out: </span>
-              {formatDisplayTime(log.checkOut)}
+              {formatDateTimeTime(log.checkOut)}
             </p>
           </div>
 
@@ -183,19 +181,11 @@ export function UpdateAttendanceDialog({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Check In</Label>
-                <Input
-                  type="time"
-                  value={checkIn}
-                  onChange={(e) => setCheckIn(e.target.value)}
-                />
+                <TimeInput12Hour value={checkIn} onChange={setCheckIn} />
               </div>
               <div className="space-y-2">
                 <Label>Check Out</Label>
-                <Input
-                  type="time"
-                  value={checkOut}
-                  onChange={(e) => setCheckOut(e.target.value)}
-                />
+                <TimeInput12Hour value={checkOut} onChange={setCheckOut} />
               </div>
             </div>
           )}

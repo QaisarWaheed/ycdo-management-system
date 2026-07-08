@@ -52,6 +52,7 @@ function StatCard({
   error,
   iconBg,
   to,
+  alertWhenPositive,
 }: {
   label: string
   value: number
@@ -61,6 +62,7 @@ function StatCard({
   error?: boolean
   iconBg: string
   to: string
+  alertWhenPositive?: boolean
 }) {
   const navigate = useNavigate()
 
@@ -68,7 +70,10 @@ function StatCard({
 
   return (
     <Card
-      className="relative cursor-pointer border-border shadow-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md"
+      className={cn(
+        'relative cursor-pointer border-border shadow-sm transition-all duration-200 hover:scale-[1.02] hover:shadow-md',
+        alertWhenPositive && value > 0 && 'border-red-300 bg-red-50/50',
+      )}
       role="button"
       tabIndex={0}
       onClick={() => navigate(to)}
@@ -94,9 +99,11 @@ function StatCard({
                 'text-3xl font-bold',
                 error
                   ? 'text-text-secondary'
-                  : value === 0
-                    ? 'text-text-secondary'
-                    : 'text-text-primary',
+                  : alertWhenPositive && value > 0
+                    ? 'text-red-600'
+                    : value === 0
+                      ? 'text-text-secondary'
+                      : 'text-text-primary',
               )}
             >
               {displayValue}
@@ -269,6 +276,9 @@ function AdminDashboard() {
   const attendanceLogs = (attendance ?? []) as AttendanceLog[]
   const presentToday = attendanceLogs.filter((l) => l.status === 'PRESENT').length
   const absentToday = attendanceLogs.filter((l) => l.status === 'ABSENT').length
+  const uninformedAbsentToday = attendanceLogs.filter(
+    (l) => l.status === 'UNINFORMED_ABSENT',
+  ).length
   const lateToday = attendanceLogs.filter((l) => l.status === 'LATE').length
   const onLeaveToday = attendanceLogs.filter((l) => l.status === 'ON_LEAVE').length
 
@@ -307,6 +317,17 @@ function AdminDashboard() {
           iconBg="bg-red-100 text-red-600"
           subtitle="Marked absent"
           to="/attendance?date=today&status=ABSENT"
+        />
+        <StatCard
+          label="Uninformed Absent"
+          value={uninformedAbsentToday}
+          icon={UserX}
+          loading={loadingAttendance}
+          error={errorAttendance}
+          iconBg="bg-red-100 text-red-600"
+          subtitle="No prior notice"
+          to="/attendance?date=today&status=UNINFORMED_ABSENT"
+          alertWhenPositive
         />
         <StatCard
           label="Late Staff Today"

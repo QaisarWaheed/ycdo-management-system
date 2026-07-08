@@ -103,13 +103,21 @@ export class ShiftAbsentScheduler {
     for (const log of absentLogs) {
       if (!log.employee.shift) continue;
 
-      const [shiftH, shiftM] = log.employee.shift.startTime
-        .split(':')
-        .map(Number);
-      const shiftStartMinutes = shiftH * 60 + shiftM;
-      const minutesSinceShiftStart = currentMinutes - shiftStartMinutes;
+      if (log.employee.shift.name === '24 Hours') {
+        const currentHour = now.getHours();
+        const currentMin = now.getMinutes();
+        if (currentHour < 23 || (currentHour === 23 && currentMin < 45)) {
+          continue;
+        }
+      } else {
+        const [shiftH, shiftM] = log.employee.shift.startTime
+          .split(':')
+          .map(Number);
+        const shiftStartMinutes = shiftH * 60 + shiftM;
+        const minutesSinceShiftStart = currentMinutes - shiftStartMinutes;
 
-      if (minutesSinceShiftStart < 180) continue;
+        if (minutesSinceShiftStart < 180) continue;
+      }
 
       await this.prisma.$transaction(async (tx) => {
         await tx.attendanceLog.update({

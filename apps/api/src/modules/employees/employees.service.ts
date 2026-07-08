@@ -19,7 +19,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LettersService } from '../letters/letters.service';
 import { parseTimeToMinutes } from '../attendance/attendance-late.util';
 import { generateEmployeeCode } from './employee-code.helper';
-import { getHierarchyPriority } from './employee-hierarchy';
+import { getHierarchyPriority } from '../../common/hierarchy.util';
 import {
   ActiveShiftQueryDto,
   ChangeStatusDto,

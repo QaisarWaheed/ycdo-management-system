@@ -53,4 +53,14 @@ export const employeesApi = {
     api.get<unknown, WorkingHoursSummary>(`/employees/${id}/working-hours`),
   updateBranchDuty: (id: string, data: Record<string, unknown>) =>
     api.patch(`/employees/${id}/branch-duty`, data),
+  getActiveShift: (params: {
+    date: string
+    time: string
+    branchId?: string
+    departmentId?: string
+  }) => api.get<unknown, Employee[]>('/employees/active-shift', { params }),
+  delete: (id: string) =>
+    api.delete<unknown, { success: boolean; message: string }>(
+      `/employees/${id}`,
+    ),
 }

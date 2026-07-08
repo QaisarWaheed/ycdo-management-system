@@ -97,6 +97,10 @@ export class AdvanceLoanService {
     });
   }
 
+  findByEmployee(employeeId: string) {
+    return this.findMy(employeeId);
+  }
+
   async approve(id: string, actingUserId: string) {
     const request = await this.prisma.advanceLoanRequest.findUnique({
       where: { id },
