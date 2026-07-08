@@ -573,10 +573,10 @@ async function main() {
   });
 
   const softwareHouse = await prisma.project.upsert({
-    where: { id: 'project-software' },
-    update: {},
+    where: { id: 'project-software-house' },
+    update: { name: 'YCDO Software House' },
     create: {
-      id: 'project-software',
+      id: 'project-software-house',
       name: 'YCDO Software House',
       type: ProjectType.SOFTWARE_HOUSE,
     },
@@ -590,8 +590,14 @@ async function main() {
   await seedProjectBranches(kitchenBranches, kitchen.id, false);
   await seedProjectBranches(vtiBranches, vti.id, false);
 
+  // Move all "Software House" branches to the unified Software House project.
+  await prisma.branch.updateMany({
+    where: { name: { contains: 'Software House' } },
+    data: { projectId: softwareHouse.id },
+  });
+
   const swBranch = await prisma.branch.findFirst({
-    where: { name: 'Software House HQ' },
+    where: { name: { contains: 'Software House HQ' } },
   });
 
   if (!swBranch) {
@@ -605,18 +611,30 @@ async function main() {
     });
   }
 
-  const softwareBranch =
-    swBranch ??
-    (await prisma.branch.findFirst({
-      where: { name: 'Software House HQ' },
-    }));
+  const softwareBranch = swBranch ?? (await prisma.branch.findFirst({ where: { name: { contains: 'Software House HQ' } } }));
 
   if (softwareBranch) {
-    await ensureDepartments(softwareBranch.id, [
-      'Media House',
-      'Social Media',
-      'IT Team',
-    ]);
+    const swDepts = ['Media House', 'Social Media', 'IT Team'];
+    for (const name of swDepts) {
+      const existing = await prisma.department.findFirst({
+        where: { name, branchId: softwareBranch.id },
+      });
+
+      if (!existing) {
+        await prisma.department.create({
+          data: {
+            name,
+            branchId: softwareBranch.id,
+            sortOrder: swDepts.indexOf(name) + 1,
+          },
+        });
+      } else if (existing.sortOrder !== swDepts.indexOf(name) + 1) {
+        await prisma.department.update({
+          where: { id: existing.id },
+          data: { sortOrder: swDepts.indexOf(name) + 1, isDeleted: false, isActive: true },
+        });
+      }
+    }
   }
 
   const mainBranch = await prisma.branch.findFirst({

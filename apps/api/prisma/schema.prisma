@@ -78,6 +78,7 @@ model Department {
   branchId  String
   branch    Branch   @relation(fields: [branchId], references: [id])
   isActive  Boolean  @default(true)
+  isDeleted Boolean  @default(false)
   sortOrder Int      @default(999)
   createdAt DateTime @default(now())
 
@@ -101,15 +102,15 @@ model Employee {
   joiningDate         DateTime
   status              EmployeeStatus @default(ACTIVE)
   currentBranchId     String
-  currentDepartmentId String
-  currentDesignation  String
+  currentDepartmentId String?
+  currentDesignation  String?
   biometricId         String?        @unique
   shiftId             String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
   currentBranch     Branch     @relation(fields: [currentBranchId], references: [id])
-  currentDepartment Department @relation(fields: [currentDepartmentId], references: [id])
+  currentDepartment Department? @relation(fields: [currentDepartmentId], references: [id])
   shift             Shift?     @relation(fields: [shiftId], references: [id])
 
   employmentHistory   EmploymentHistory[]
@@ -215,6 +216,7 @@ model Designation {
   title     String   @unique
   category  String
   isActive  Boolean  @default(true)
+  isDeleted Boolean  @default(false)
   sortOrder Int      @default(999)
   createdAt DateTime @default(now())
 }

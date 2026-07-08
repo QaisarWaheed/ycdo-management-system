@@ -37,7 +37,7 @@ interface TransferDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   employeeId: string
-  currentDesignation?: string
+  currentDesignation?: string | null
 }
 
 export function TransferDialog({
@@ -49,13 +49,13 @@ export function TransferDialog({
   const queryClient = useQueryClient()
   const [branchId, setBranchId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
-  const [designation, setDesignation] = useState(currentDesignation)
+  const [designation, setDesignation] = useState(currentDesignation ?? '')
   const [changeType, setChangeType] = useState('TRANSFERRED')
   const [changeReason, setChangeReason] = useState('')
   const [effectiveDate, setEffectiveDate] = useState('')
 
   useEffect(() => {
-    if (open) setDesignation(currentDesignation)
+    if (open) setDesignation(currentDesignation ?? '')
   }, [open, currentDesignation])
 
   const { data: branches = [] } = useQuery({

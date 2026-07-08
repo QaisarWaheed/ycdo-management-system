@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateDesignationDto {
   @IsString()
@@ -8,6 +8,10 @@ export class CreateDesignationDto {
   @IsString()
   @IsNotEmpty()
   category: string;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
 }
 
 export class UpdateDesignationDto {
@@ -18,6 +22,10 @@ export class UpdateDesignationDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
 
   @IsOptional()
   @IsBoolean()

@@ -324,6 +324,10 @@ export class EmployeeQueryDto {
   widowOnly?: string;
 
   @IsOptional()
+  @IsBooleanString()
+  unassigned?: string;
+
+  @IsOptional()
   @IsString()
   designation?: string;
 

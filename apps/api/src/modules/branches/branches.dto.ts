@@ -1,6 +1,13 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { ProjectType } from '@prisma/client';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsBooleanString,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 
 export class CreateBranchDto {
   @IsString()
@@ -30,4 +37,8 @@ export class BranchQueryDto {
   @IsOptional()
   @IsEnum(ProjectType)
   project?: ProjectType;
+
+  @IsOptional()
+  @IsBooleanString()
+  groupByName?: string;
 }

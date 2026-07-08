@@ -1,6 +1,6 @@
 import { Component, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
@@ -606,7 +606,6 @@ function setFormErrors(
 
 export function EmployeeCreatePage() {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const location = useLocation()
   const prefill = (location.state as { prefill?: EmployeePrefill } | null)
     ?.prefill

@@ -64,6 +64,8 @@ export function EmployeesListPage() {
     queryFn: () => employeesApi.getStats(),
   })
 
+  const unassignedCount = stats?.unassigned ?? 0
+
   const statusCounts = useMemo(() => {
     const map: Record<string, number> = {}
     stats?.byStatus.forEach((row) => {
@@ -117,6 +119,25 @@ export function EmployeesListPage() {
         </Button>
       </div>
 
+      {unassignedCount > 0 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+          <p className="font-medium">
+            ⚠️ {unassignedCount} employees have no department or designation assigned.
+          </p>
+          <button
+            type="button"
+            className="text-left font-medium text-amber-900 underline hover:text-amber-950 sm:text-right"
+            onClick={() => {
+              setSearch('')
+              setEmployeeFilters({ ...EMPTY_EMPLOYEE_FILTERS, employeeStatus: 'UNASSIGNED' })
+              setPage(0)
+            }}
+          >
+            Click here to filter and assign them.
+          </button>
+        </div>
+      )}
+
       <div className="space-y-4 rounded-lg border border-border bg-white p-4">
         <div className="relative min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
@@ -136,6 +157,7 @@ export function EmployeesListPage() {
           onChange={handleFiltersChange}
           showSpecificShift={false}
           statusCounts={statusCounts}
+          unassignedCount={unassignedCount}
         />
 
         <div className="flex justify-end">
@@ -214,7 +236,7 @@ export function EmployeesListPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="text-text-secondary">
-                    {emp.currentDesignation}
+                    {emp.currentDesignation ?? '—'}
                   </TableCell>
                   <TableCell>
                     <div>

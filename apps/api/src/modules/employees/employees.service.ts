@@ -298,6 +298,7 @@ export class EmployeesService {
 
   async findAll(filters: EmployeeFilters) {
     const where: Prisma.EmployeeWhereInput = {};
+    const andConditions: Prisma.EmployeeWhereInput[] = [];
 
     if (filters.branchId) {
       where.currentBranchId = filters.branchId;
@@ -345,6 +346,12 @@ export class EmployeesService {
       where.maritalStatus = filters.maritalStatus;
     }
 
+    if (filters.unassigned === 'true') {
+      andConditions.push({
+        OR: [{ currentDepartmentId: null }, { currentDesignation: null }],
+      });
+    }
+
     if (filters.designation) {
       where.currentDesignation = {
         equals: filters.designation,
@@ -364,11 +371,15 @@ export class EmployeesService {
     }
 
     if (filters.search) {
-      where.OR = [
-        { fullName: { contains: filters.search, mode: 'insensitive' } },
-        { employeeCode: { contains: filters.search, mode: 'insensitive' } },
-        { cnic: { contains: filters.search, mode: 'insensitive' } },
-      ];
+      andConditions.push({
+        OR: [
+          { fullName: { contains: filters.search, mode: 'insensitive' } },
+          {
+            employeeCode: { contains: filters.search, mode: 'insensitive' },
+          },
+          { cnic: { contains: filters.search, mode: 'insensitive' } },
+        ],
+      });
     }
 
     if (filters.joinedFrom || filters.joinedTo) {
@@ -379,6 +390,10 @@ export class EmployeesService {
       if (filters.joinedTo) {
         where.joiningDate.lte = new Date(filters.joinedTo);
       }
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     const employees = await this.prisma.employee.findMany({
@@ -422,6 +437,12 @@ export class EmployeesService {
       _count: { _all: true },
     });
 
+    const unassigned = await this.prisma.employee.count({
+      where: {
+        OR: [{ currentDepartmentId: null }, { currentDesignation: null }],
+      },
+    });
+
     const employees = await this.prisma.employee.findMany({
       select: {
         currentBranch: {
@@ -454,6 +475,7 @@ export class EmployeesService {
 
     return {
       total,
+      unassigned,
       byStatus: byStatus.map((row) => ({
         status: row.status,
         count: row._count._all,
@@ -480,7 +502,9 @@ export class EmployeesService {
     ]);
 
     return {
-      designations: designationRows.map((row) => row.currentDesignation),
+      designations: designationRows
+        .map((row) => row.currentDesignation)
+        .filter((value): value is string => !!value),
       districts: districtRows
         .map((row) => row.district)
         .filter((value): value is string => !!value),
@@ -789,7 +813,7 @@ export class EmployeesService {
     branchId: string,
   ) {
     const department = await this.prisma.department.findFirst({
-      where: { id: departmentId, branchId, isActive: true },
+      where: { id: departmentId, branchId, isActive: true, isDeleted: false },
     });
 
     if (!department) {

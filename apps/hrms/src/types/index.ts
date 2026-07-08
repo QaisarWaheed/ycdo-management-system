@@ -215,12 +215,12 @@ export interface Employee {
   photoUrl?: string | null
   status: EmployeeStatus
   joiningDate: string
-  currentDesignation: string
+  currentDesignation: string | null
   currentBranchId?: string
-  currentDepartmentId?: string
+  currentDepartmentId?: string | null
   biometricId?: string | null
   currentBranch?: Branch
-  currentDepartment?: Department
+  currentDepartment?: Department | null
   shift?: Shift | null
   shiftId?: string | null
   dutyStartTime?: string | null
@@ -487,8 +487,8 @@ export interface AttendanceLog {
     fullName: string
     employeeCode: string
     phone?: string | null
-    currentDesignation?: string
-    currentDepartmentId?: string
+    currentDesignation?: string | null
+    currentDepartmentId?: string | null
     dutyStartTime?: string | null
     shift?: { startTime?: string } | null
   }
@@ -728,7 +728,7 @@ export interface EmployeePrefill {
   email?: string
   phone?: string
   cnic?: string
-  currentDesignation?: string
+  currentDesignation?: string | null
   branchId?: string
 }
 

@@ -1,5 +1,5 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateDepartmentDto {
   @IsString()
@@ -8,6 +8,10 @@ export class CreateDepartmentDto {
 
   @IsUUID()
   branchId: string;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
 }
 
 export class UpdateDepartmentDto extends PartialType(CreateDepartmentDto) {}

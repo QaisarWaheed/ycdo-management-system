@@ -12,4 +12,8 @@ export class CreateProjectDto {
   type: ProjectType;
 }
 
-export class UpdateProjectDto extends PartialType(CreateProjectDto) {}
+export class UpdateProjectDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+}

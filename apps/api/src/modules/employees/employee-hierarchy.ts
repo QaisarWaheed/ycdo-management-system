@@ -114,7 +114,9 @@ const hierarchyOrder: Record<string, number> = {
   Sweeper: 21,
 };
 
-export function getHierarchyPriority(designation: string): number {
+export function getHierarchyPriority(designation: string | null | undefined): number {
+  if (!designation) return 99;
+
   if (hierarchyOrder[designation] !== undefined) {
     return hierarchyOrder[designation];
   }
@@ -129,7 +131,7 @@ export function getHierarchyPriority(designation: string): number {
 }
 
 export function sortByEmployeeHierarchy<
-  T extends { currentDesignation: string; fullName: string },
+  T extends { currentDesignation: string | null; fullName: string },
 >(items: T[]): T[] {
   return [...items].sort((a, b) => {
     const aPriority = getHierarchyPriority(a.currentDesignation);

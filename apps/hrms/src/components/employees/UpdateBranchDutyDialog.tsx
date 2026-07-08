@@ -157,6 +157,11 @@ export function UpdateBranchDutyDialog({
             }}
             placeholder="Select department"
             disabled={!branchId}
+            error={
+              employee.currentDepartmentId == null && !departmentId
+                ? 'Department is required'
+                : undefined
+            }
           />
 
           <DutyHoursFields

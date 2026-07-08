@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { EmployeeStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BranchQueryDto, CreateBranchDto, UpdateBranchDto } from './branches.dto';
 
@@ -22,7 +23,9 @@ export class BranchesService {
       where.project = { type: query.project };
     }
 
-    return this.prisma.branch.findMany({
+    const shouldGroupByName = query?.groupByName === 'true';
+
+    const branchesQuery = this.prisma.branch.findMany({
       where,
       include: {
         project: { select: { name: true } },
@@ -32,13 +35,35 @@ export class BranchesService {
       },
       orderBy: { sortOrder: 'asc' },
     });
+
+    if (!shouldGroupByName) {
+      return branchesQuery;
+    }
+
+    return branchesQuery.then((branches) => {
+      const groups = new Map<string, typeof branches[number][]>();
+
+      for (const b of branches) {
+        const key = b.name;
+        const current = groups.get(key) ?? [];
+        current.push(b);
+        groups.set(key, current);
+      }
+
+      return [...groups.entries()]
+        .filter(([, arr]) => arr.length > 1)
+        .map(([name, branches]) => ({ name, branches }));
+    });
   }
 
   findByProject(projectId: string) {
     return this.prisma.branch.findMany({
       where: { projectId, isActive: true },
       include: {
-        departments: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
+        departments: {
+          where: { isActive: true, isDeleted: false },
+          orderBy: { sortOrder: 'asc' },
+        },
         shifts: { where: { isActive: true }, orderBy: { startTime: 'asc' } },
       },
       orderBy: { sortOrder: 'asc' },
@@ -50,7 +75,7 @@ export class BranchesService {
       where: { id },
       include: {
         project: true,
-        departments: true,
+        departments: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } },
         shifts: { where: { isActive: true }, orderBy: { startTime: 'asc' } },
       },
     });
@@ -73,6 +98,38 @@ export class BranchesService {
 
   async deactivate(id: string) {
     await this.findOne(id);
+
+    const assignedEmployees = await this.prisma.employee.count({
+      where: { currentBranchId: id },
+    });
+
+    if (assignedEmployees > 0) {
+      throw new BadRequestException(
+        'Cannot delete branch with assigned employees.\nReassign employees first.',
+      );
+    }
+
+    const departments = await this.prisma.department.findMany({
+      where: { branchId: id, isDeleted: false },
+      select: { id: true },
+    });
+
+    if (departments.length > 0) {
+      const deptIds = departments.map((d) => d.id);
+
+      await this.prisma.employee.updateMany({
+        where: {
+          currentDepartmentId: { in: deptIds },
+          status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        },
+        data: { currentDepartmentId: null },
+      });
+
+      await this.prisma.department.updateMany({
+        where: { id: { in: deptIds } },
+        data: { isDeleted: true, isActive: false },
+      });
+    }
 
     return this.prisma.branch.update({
       where: { id },

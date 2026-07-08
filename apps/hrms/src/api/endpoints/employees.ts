@@ -18,6 +18,7 @@ export interface EmployeeStats {
   total: number
   byStatus: { status: string; count: number }[]
   byProject: { project: string; projectId: string | null; count: number }[]
+  unassigned: number
 }
 
 export const employeesApi = {

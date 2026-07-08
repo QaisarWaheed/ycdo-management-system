@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProjectDto, UpdateProjectDto } from './projects.dto';
 
@@ -17,14 +17,8 @@ export class ProjectsService {
 
   findAll() {
     return this.prisma.project.findMany({
-      include: {
-        _count: { select: { branches: true } },
-        branches: {
-          include: {
-            _count: { select: { employees: true } },
-          },
-        },
-      },
+      where: { isActive: true },
+      include: { _count: { select: { branches: true } } },
       orderBy: { type: 'asc' },
     });
   }
@@ -57,6 +51,16 @@ export class ProjectsService {
 
   async deactivate(id: string) {
     await this.findOne(id);
+
+    const linkedBranches = await this.prisma.branch.count({
+      where: { projectId: id, isActive: true },
+    });
+
+    if (linkedBranches > 0) {
+      throw new BadRequestException(
+        'Cannot delete project with linked branches.',
+      );
+    }
 
     return this.prisma.project.update({
       where: { id },

@@ -150,7 +150,7 @@ function employeeToFormValues(employee: Employee): EditFormValues {
     spouseContactNumber: employee.spouseContactNumber ?? '',
     biometricId: employee.biometricId ?? '',
     joiningDate: toDateInput(employee.joiningDate),
-    currentDesignation: employee.currentDesignation,
+    currentDesignation: employee.currentDesignation ?? '',
   }
 }
 
@@ -169,6 +169,8 @@ export function EditEmployeeDialog({
     resolver: zodResolver(editSchema),
     defaultValues: employeeToFormValues(employee),
   })
+
+  const watchedDesignation = form.watch('currentDesignation')
 
   const selectedProvince = form.watch('province')
   const selectedPermanentProvince = form.watch('permanentProvince')
@@ -481,7 +483,13 @@ export function EditEmployeeDialog({
                           value={field.value ?? ''}
                           onChange={field.onChange}
                           placeholder="Select designation"
-                          error={form.formState.errors.currentDesignation?.message}
+                          error={
+                            form.formState.errors.currentDesignation?.message ||
+                            (employee.currentDesignation == null &&
+                            !watchedDesignation
+                              ? 'Designation is required'
+                              : undefined)
+                          }
                         />
                       </FormControl>
                       <FormMessage />

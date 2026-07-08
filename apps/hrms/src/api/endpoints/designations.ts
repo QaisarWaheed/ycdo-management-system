@@ -5,6 +5,7 @@ export interface Designation {
   title: string
   category: string
   isActive: boolean
+  employees?: number
 }
 
 export interface DesignationQueryParams {

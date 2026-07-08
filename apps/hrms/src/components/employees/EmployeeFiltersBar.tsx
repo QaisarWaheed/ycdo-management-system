@@ -78,8 +78,13 @@ export function employeeFiltersToParams(
     departmentId: filters.departmentId || undefined,
     designation:
       filters.designation !== ALL_FILTER ? filters.designation : undefined,
+    unassigned:
+      filters.employeeStatus === 'UNASSIGNED' ? 'true' : undefined,
     status:
-      filters.employeeStatus !== ALL_FILTER ? filters.employeeStatus : undefined,
+      filters.employeeStatus !== ALL_FILTER &&
+      filters.employeeStatus !== 'UNASSIGNED'
+        ? filters.employeeStatus
+        : undefined,
     district: filters.district !== ALL_FILTER ? filters.district : undefined,
     gender:
       filters.maritalStatus === 'Widow'
@@ -125,6 +130,7 @@ type EmployeeFiltersBarProps = {
   onChange: (filters: EmployeeFilterState) => void
   showSpecificShift?: boolean
   statusCounts?: Record<string, number>
+  unassignedCount?: number
   className?: string
 }
 
@@ -133,6 +139,7 @@ export function EmployeeFiltersBar({
   onChange,
   showSpecificShift = true,
   statusCounts,
+  unassignedCount,
   className,
 }: EmployeeFiltersBarProps) {
   const { data: projects = [] } = useQuery({
@@ -304,6 +311,12 @@ export function EmployeeFiltersBar({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_FILTER}>All Statuses</SelectItem>
+              <SelectItem value="UNASSIGNED">
+                <span className="inline-flex items-center gap-2 rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                  Needs Assignment
+                </span>
+                {unassignedCount != null ? ` (${unassignedCount})` : ''}
+              </SelectItem>
               {EMPLOYEE_STATUSES.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s.replace(/_/g, ' ')}

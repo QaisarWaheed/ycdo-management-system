@@ -816,6 +816,9 @@ export function EmployeeProfilePage() {
     )
   }
 
+  const needsJobAssignment =
+    employee.currentDepartmentId == null || employee.currentDesignation == null
+
   const history = (employee.employmentHistory ?? []) as EmploymentHistory[]
   const stipends = (employee.stipendRecords ?? []) as StipendRecord[]
   const latestStipend = stipends[0]
@@ -868,6 +871,13 @@ export function EmployeeProfilePage() {
           e.target.value = ''
         }}
       />
+
+      {needsJobAssignment && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          ⚠️ This employee needs department/designation assignment. Please
+          update their job information.
+        </div>
+      )}
 
       <div className="print-only hidden">
         <div className="print-header">
@@ -953,7 +963,7 @@ export function EmployeeProfilePage() {
         <div className="print-grid mb-6">
           <div className="print-field">
             <div className="print-label">Designation</div>
-            {employee.currentDesignation}
+            {employee.currentDesignation ?? '—'}
           </div>
           <div className="print-field">
             <div className="print-label">Department</div>
@@ -1021,7 +1031,7 @@ export function EmployeeProfilePage() {
               <span>Biometric ID: {employee.biometricId ?? 'Not assigned'}</span>
             </p>
           </div>
-          <p className="text-text-secondary">{employee.currentDesignation}</p>
+          <p className="text-text-secondary">{employee.currentDesignation ?? '—'}</p>
           <p className="text-sm">
             <span className="font-medium">
               {employee.currentDepartment?.name ?? '—'}

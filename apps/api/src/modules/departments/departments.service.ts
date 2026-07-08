@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { EmployeeStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateDepartmentDto,
@@ -23,7 +24,10 @@ export class DepartmentsService {
   }
 
   findAll(query?: DepartmentQueryDto) {
-    const where: Prisma.DepartmentWhereInput = { isActive: true };
+    const where: Prisma.DepartmentWhereInput = {
+      isActive: true,
+      isDeleted: false,
+    };
 
     if (query?.branchId) {
       where.branchId = query.branchId;
@@ -40,8 +44,8 @@ export class DepartmentsService {
   }
 
   async findOne(id: string) {
-    const department = await this.prisma.department.findUnique({
-      where: { id },
+    const department = await this.prisma.department.findFirst({
+      where: { id, isDeleted: false },
       include: { branch: true },
     });
 
@@ -69,12 +73,38 @@ export class DepartmentsService {
   }
 
   async deactivate(id: string) {
-    await this.findOne(id);
-
-    return this.prisma.department.update({
-      where: { id },
-      data: { isActive: false },
+    const department = await this.prisma.department.findFirst({
+      where: { id, isDeleted: false },
     });
+
+    if (!department) {
+      throw new NotFoundException(`Department with id ${id} not found`);
+    }
+
+    // Only unassign currently active/appointed employees.
+    const affectedEmployees = await this.prisma.employee.count({
+      where: {
+        currentDepartmentId: id,
+        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+      },
+    });
+
+    if (affectedEmployees > 0) {
+      await this.prisma.employee.updateMany({
+        where: {
+          currentDepartmentId: id,
+          status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        },
+        data: { currentDepartmentId: null },
+      });
+    }
+
+    await this.prisma.department.update({
+      where: { id },
+      data: { isDeleted: true, isActive: false },
+    });
+
+    return { message: 'Deleted', affectedEmployees };
   }
 
   private async ensureBranchExists(branchId: string) {

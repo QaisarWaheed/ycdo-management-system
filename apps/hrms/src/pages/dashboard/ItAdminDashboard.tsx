@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { branchesApi } from '@/api/endpoints/branches'
+import { Copy, Pencil, Plus, Trash2 } from 'lucide-react'
+import { branchesApi, type BranchDuplicateGroup } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { projectsApi } from '@/api/endpoints/projects'
 import {
@@ -52,6 +52,7 @@ function BranchesTab() {
   const queryClient = useQueryClient()
   const [projectFilter, setProjectFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false)
   const [editBranch, setEditBranch] = useState<Branch | null>(null)
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
@@ -71,6 +72,16 @@ function BranchesTab() {
   const { data: departments = [] } = useQuery({
     queryKey: ['departments', 'all'],
     queryFn: () => departmentsApi.getAll(),
+  })
+
+  const {
+    data: duplicateGroups = [],
+    isLoading: duplicatesLoading,
+    refetch: refetchDuplicates,
+  } = useQuery({
+    queryKey: ['branches', 'duplicates'],
+    queryFn: () => branchesApi.getDuplicateGroups(),
+    enabled: duplicatesOpen,
   })
 
   const filteredBranches = projectFilter
@@ -140,11 +151,28 @@ function BranchesTab() {
     onSuccess: () => {
       toast({ title: 'Branch deactivated' })
       queryClient.invalidateQueries({ queryKey: ['branches'] })
+      queryClient.invalidateQueries({ queryKey: ['branches', 'duplicates'] })
     },
     onError: () => {
       toast({ title: 'Failed to deactivate branch', variant: 'destructive' })
     },
   })
+
+  const handleDeleteBranch = (branch: Branch) => {
+    const employeesCount = branch._count?.employees ?? 0
+    if (employeesCount > 0) {
+      toast({
+        title: 'Cannot delete branch',
+        description: 'Reassign employees first before deleting this branch.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (window.confirm(`Delete branch "${branch.name}"?`)) {
+      deactivateMutation.mutate(branch.id)
+    }
+  }
 
   const openEdit = (branch: Branch) => {
     setEditBranch(branch)
@@ -209,13 +237,25 @@ function BranchesTab() {
             </SelectContent>
           </Select>
         </div>
-        <Button
-          className="bg-primary hover:bg-primary-dark"
-          onClick={() => setCreateOpen(true)}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add Branch
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDuplicatesOpen(true)
+              void refetchDuplicates()
+            }}
+          >
+            <Copy className="mr-2 h-4 w-4" />
+            Find Duplicates
+          </Button>
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Branch
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -273,15 +313,7 @@ function BranchesTab() {
                           size="sm"
                           variant="ghost"
                           className="text-red-600 hover:text-red-700"
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                'Deactivate this branch? Employees will remain but branch will be hidden.',
-                              )
-                            ) {
-                              deactivateMutation.mutate(branch.id)
-                            }
-                          }}
+                          onClick={() => handleDeleteBranch(branch)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -336,6 +368,99 @@ function BranchesTab() {
               {updateMutation.isPending ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={duplicatesOpen} onOpenChange={setDuplicatesOpen}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Duplicate Branches</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-text-secondary">
+            Branches with the same name are grouped below. Keep one branch per
+            group and delete the duplicates. Branches with assigned employees
+            cannot be deleted.
+          </p>
+          {duplicatesLoading ? (
+            <div className="space-y-3 py-4">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </div>
+          ) : duplicateGroups.length === 0 ? (
+            <p className="py-6 text-center text-text-secondary">
+              No duplicate branch names found.
+            </p>
+          ) : (
+            <div className="space-y-6 py-2">
+              {duplicateGroups.map((group: BranchDuplicateGroup) => (
+                <Card key={group.name}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">
+                      {group.name}{' '}
+                      <Badge variant="secondary" className="ml-2">
+                        {group.branches.length} copies
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Project</TableHead>
+                          <TableHead>Address</TableHead>
+                          <TableHead>Employees</TableHead>
+                          <TableHead>Departments</TableHead>
+                          <TableHead className="w-[100px]">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {group.branches.map((branch) => {
+                          const employeesCount = branch._count?.employees ?? 0
+                          const departmentsCount =
+                            branch._count?.departments ??
+                            deptCountByBranch(branch.id)
+
+                          return (
+                            <TableRow key={branch.id}>
+                              <TableCell>
+                                {projects.find((p) => p.id === branch.projectId)
+                                  ?.name ??
+                                  branch.project?.name ??
+                                  '—'}
+                              </TableCell>
+                              <TableCell>{branch.address ?? '—'}</TableCell>
+                              <TableCell>{employeesCount}</TableCell>
+                              <TableCell>{departmentsCount}</TableCell>
+                              <TableCell>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-red-600 hover:text-red-700"
+                                  disabled={
+                                    employeesCount > 0 ||
+                                    deactivateMutation.isPending
+                                  }
+                                  title={
+                                    employeesCount > 0
+                                      ? 'Reassign employees before deleting'
+                                      : 'Delete duplicate branch'
+                                  }
+                                  onClick={() => handleDeleteBranch(branch)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
@@ -400,8 +525,17 @@ function DepartmentsTab() {
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => departmentsApi.deactivate(id),
-    onSuccess: () => {
-      toast({ title: 'Department deactivated' })
+    onSuccess: (data) => {
+      const affectedEmployees = (data as any)?.affectedEmployees as
+        | number
+        | undefined
+      toast({
+        title: 'Department deleted',
+        description:
+          affectedEmployees != null
+            ? `${affectedEmployees} employees will be unassigned`
+            : undefined,
+      })
       queryClient.invalidateQueries({ queryKey: ['departments'] })
     },
     onError: () => {
@@ -496,9 +630,10 @@ function DepartmentsTab() {
                           variant="ghost"
                           className="text-red-600 hover:text-red-700"
                           onClick={() => {
+                            const employeesCount = dept._count?.employees ?? 0
                             if (
                               window.confirm(
-                                `Deactivate department "${dept.name}"?`,
+                                `${employeesCount} employees will be unassigned. Delete "${dept.name}"?`,
                               )
                             ) {
                               deactivateMutation.mutate(dept.id)
@@ -597,10 +732,14 @@ function DesignationsTab() {
   const [editItem, setEditItem] = useState<Designation | null>(null)
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<string>(DESIGNATION_CATEGORIES[0])
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
 
   const { data: designations = [], isLoading } = useQuery({
-    queryKey: ['designations'],
-    queryFn: () => designationsApi.getAll(),
+    queryKey: ['designations', categoryFilter],
+    queryFn: () =>
+      categoryFilter === 'all'
+        ? designationsApi.getAll()
+        : designationsApi.getAll({ category: categoryFilter }),
   })
 
   const createMutation = useMutation({
@@ -643,8 +782,17 @@ function DesignationsTab() {
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => designationsApi.deactivate(id),
-    onSuccess: () => {
-      toast({ title: 'Designation deactivated' })
+    onSuccess: (data) => {
+      const affectedEmployees = (data as any)?.affectedEmployees as
+        | number
+        | undefined
+      toast({
+        title: 'Designation deleted',
+        description:
+          affectedEmployees != null
+            ? `${affectedEmployees} employees will lose this designation`
+            : undefined,
+      })
       queryClient.invalidateQueries({ queryKey: ['designations'] })
     },
     onError: () => {
@@ -660,7 +808,26 @@ function DesignationsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1">
+          <Label>Filter by Category</Label>
+          <Select
+            value={categoryFilter}
+            onValueChange={(v) => setCategoryFilter(v)}
+          >
+            <SelectTrigger className="w-[240px]">
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {DESIGNATION_CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Button
           className="bg-primary hover:bg-primary-dark"
           onClick={() => setCreateOpen(true)}
@@ -677,6 +844,8 @@ function DesignationsTab() {
               <TableRow>
                 <TableHead>Title</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Employees</TableHead>
+                <TableHead>Active</TableHead>
                 <TableHead className="w-[140px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -704,6 +873,12 @@ function DesignationsTab() {
                     <TableCell>
                       <Badge variant="outline">{item.category}</Badge>
                     </TableCell>
+                    <TableCell>{item.employees ?? 0}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {item.isActive ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button
@@ -718,9 +893,10 @@ function DesignationsTab() {
                           variant="ghost"
                           className="text-red-600 hover:text-red-700"
                           onClick={() => {
+                            const employeesCount = item.employees ?? 0
                             if (
                               window.confirm(
-                                `Deactivate designation "${item.title}"?`,
+                                `${employeesCount} employees will lose this designation. Delete "${item.title}"?`,
                               )
                             ) {
                               deactivateMutation.mutate(item.id)
@@ -1003,9 +1179,20 @@ function ProjectsTab() {
                           variant="ghost"
                           className="text-red-600 hover:text-red-700"
                           onClick={() => {
+                            const linkedBranches = project._count?.branches ?? 0
+                            if (linkedBranches > 0) {
+                              toast({
+                                title: 'Cannot delete project',
+                                description:
+                                  'Remove/deactivate all linked branches first.',
+                                variant: 'destructive',
+                              })
+                              return
+                            }
+
                             if (
                               window.confirm(
-                                `Deactivate project "${project.name}"?`,
+                                `Delete project "${project.name}"?`,
                               )
                             ) {
                               deactivateMutation.mutate(project.id)
@@ -1766,9 +1953,6 @@ export function ItAdminDashboard() {
               <TabsTrigger value="branches">Branches</TabsTrigger>
               <TabsTrigger value="departments">Departments</TabsTrigger>
               <TabsTrigger value="designations">Designations</TabsTrigger>
-              <TabsTrigger value="shifts">Shifts</TabsTrigger>
-              <TabsTrigger value="locations">Locations</TabsTrigger>
-              <TabsTrigger value="devices">Devices</TabsTrigger>
             </TabsList>
             <TabsContent value="projects" className="mt-4">
               <ProjectsTab />
@@ -1782,6 +1966,7 @@ export function ItAdminDashboard() {
             <TabsContent value="branches" className="mt-4">
               <BranchesTab />
             </TabsContent>
+            {/* Kept for build-time usage; there are no visible tab triggers for these sections. */}
             <TabsContent value="shifts" className="mt-4">
               <ShiftsTab />
             </TabsContent>
