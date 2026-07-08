@@ -33,7 +33,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useDebounce } from '@/hooks/useDebounce'
-import { useAuth } from '@/hooks/useAuth'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { formatShiftTime } from '@/lib/shiftFilterUtils'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
@@ -42,9 +41,6 @@ const PAGE_SIZE = 20
 
 export function EmployeesListPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const canItManage =
-    user?.role === 'IT_ADMIN' || user?.role === 'SUPER_ADMIN'
   const [search, setSearch] = useState('')
   const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
   const [page, setPage] = useState(0)
@@ -284,15 +280,6 @@ export function EmployeesListPage() {
                         >
                           View Profile
                         </DropdownMenuItem>
-                        {canItManage && (
-                          <DropdownMenuItem
-                            onClick={() =>
-                              navigate(`/employees/${emp.id}?itManage=1`)
-                            }
-                          >
-                            Manage Personal Info (IT)
-                          </DropdownMenuItem>
-                        )}
                         <DropdownMenuItem
                           onClick={() => navigate(`/employees/${emp.id}`)}
                         >

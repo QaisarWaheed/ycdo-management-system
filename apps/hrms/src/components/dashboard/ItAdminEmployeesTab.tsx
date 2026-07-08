@@ -164,7 +164,7 @@ export function ItAdminEmployeesTab() {
                             variant="outline"
                             asChild
                           >
-                            <Link to={`/employees/${emp.id}?itManage=1`}>
+                            <Link to={`/employees/${emp.id}`}>
                               Manage
                             </Link>
                           </Button>

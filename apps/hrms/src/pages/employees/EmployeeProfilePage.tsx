@@ -15,7 +15,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -523,7 +523,6 @@ function AddPreviousEmploymentDialog({
 
 export function EmployeeProfilePage() {
   const { id = '' } = useParams()
-  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -753,19 +752,22 @@ export function EmployeeProfilePage() {
   const documents = (employee.documents ?? []) as EmployeeDocument[]
   const overtimeHours = ((attendanceSummary?.overtimeMinutes ?? 0) / 60).toFixed(1)
 
-  const itManageMode =
-    searchParams.get('itManage') === '1' &&
+  const isItTeam =
     !!user?.role &&
     IT_PROFILE_ROLES.includes(user.role as (typeof IT_PROFILE_ROLES)[number])
 
-  const canManagePersonalData = itManageMode
-
-  const canEditJob =
+  const isHrTeam =
     !!user?.role &&
     HR_JOB_ROLES.includes(user.role as (typeof HR_JOB_ROLES)[number])
 
+  const canManagePersonalData = isItTeam
+
+  const canEditJobInfo = isHrTeam || user?.role === 'IT_ADMIN'
+
+  const canHrJobActions = isHrTeam
+
   const canEditBranchDuty =
-    canEditJob && user?.employeeId !== employee.id
+    canHrJobActions && user?.employeeId !== employee.id
 
   const hasPersonalInfo =
     employee.bloodGroup ||
@@ -798,10 +800,10 @@ export function EmployeeProfilePage() {
         }}
       />
 
-      {itManageMode && (
+      {isItTeam && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 no-print">
-          IT manage mode — you can edit personal information, documents, and
-          qualifications for this employee.
+          IT access — you can edit personal information, job information,
+          documents, and qualifications for this employee.
         </div>
       )}
 
@@ -1008,7 +1010,7 @@ export function EmployeeProfilePage() {
             </p>
           </div>
           <div className="flex w-full flex-col gap-2">
-            {(canManagePersonalData || canEditJob) && (
+            {(canManagePersonalData || canEditJobInfo) && (
               <Button
                 variant="outline"
                 className="w-full no-print"
@@ -1028,7 +1030,7 @@ export function EmployeeProfilePage() {
                 Edit Personal Info
               </Button>
             )}
-            {canEditJob && (
+            {canEditJobInfo && (
               <Button
                 variant="outline"
                 className="w-full"
@@ -1038,7 +1040,7 @@ export function EmployeeProfilePage() {
                 Edit Job Info
               </Button>
             )}
-            {canEditJob && (
+            {canHrJobActions && (
               <Button
                 variant="outline"
                 className="w-full"
@@ -1047,7 +1049,7 @@ export function EmployeeProfilePage() {
                 Generate Letter
               </Button>
             )}
-            {canEditJob && (
+            {canHrJobActions && (
               <Button
                 variant="outline"
                 className="w-full"
@@ -1056,7 +1058,7 @@ export function EmployeeProfilePage() {
                 Change Status
               </Button>
             )}
-            {canEditJob && (
+            {canHrJobActions && (
               <Button
                 variant="outline"
                 className="w-full"
