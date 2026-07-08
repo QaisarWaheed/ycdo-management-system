@@ -89,3 +89,49 @@ export function statusFromLateMinutes(
   if (lateMinutes > 0) return 'LATE'
   return 'PRESENT'
 }
+
+const PK_OFFSET_MS = 5 * 60 * 60 * 1000
+const OVERNIGHT_SHIFT_START = 18 * 60
+
+export const ATTENDANCE_GRACE_MINUTES = 15
+
+function toPakistanMinutesOfDay(date: Date): number {
+  const pkDate = new Date(date.getTime() + PK_OFFSET_MS)
+  return pkDate.getUTCHours() * 60 + pkDate.getUTCMinutes()
+}
+
+function minutesSinceShiftStart(
+  currentMinutes: number,
+  shiftStartMinutes: number,
+): number {
+  if (shiftStartMinutes >= OVERNIGHT_SHIFT_START) {
+    if (currentMinutes >= shiftStartMinutes) {
+      return currentMinutes - shiftStartMinutes
+    }
+    return 1440 - shiftStartMinutes + currentMinutes
+  }
+  return currentMinutes - shiftStartMinutes
+}
+
+export function isWithinGrace(
+  shiftStart: string,
+  graceMins = ATTENDANCE_GRACE_MINUTES,
+): boolean {
+  if (!shiftStart) return false
+  const shiftStartMins = parseTimeToMinutes(shiftStart)
+  const nowMins = toPakistanMinutesOfDay(new Date())
+  const minutesSince = minutesSinceShiftStart(nowMins, shiftStartMins)
+  return minutesSince >= 0 && minutesSince <= graceMins
+}
+
+export function graceMinutesRemaining(
+  shiftStart: string,
+  graceMins = ATTENDANCE_GRACE_MINUTES,
+): number {
+  if (!shiftStart) return 0
+  const shiftStartMins = parseTimeToMinutes(shiftStart)
+  const nowMins = toPakistanMinutesOfDay(new Date())
+  const minutesSince = minutesSinceShiftStart(nowMins, shiftStartMins)
+  if (minutesSince < 0) return graceMins
+  return Math.max(0, graceMins - minutesSince)
+}

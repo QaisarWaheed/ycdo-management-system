@@ -27,14 +27,18 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import {
   calcLateMinutes,
   combineDateAndTime,
   getEmployeeDutyStartTime,
+  graceMinutesRemaining,
+  isWithinGrace,
   statusFromLateMinutes,
 } from '@/lib/attendanceUtils'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
+import { cn } from '@/lib/utils'
 import {
   ALL_SHIFTS_AT_START,
   formatShiftOptionLabel,
@@ -162,7 +166,15 @@ function ManualAttendanceFilters({
 
 export function CheckInManualTab() {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const isAdminManager = user?.role === 'ADMIN_MANAGER'
   const today = format(new Date(), 'yyyy-MM-dd')
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   const [branchId, setBranchId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
@@ -251,6 +263,13 @@ export function CheckInManualTab() {
 
   return (
     <div className="space-y-4">
+      {isAdminManager && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          You can only mark attendance during the 15-minute grace period after
+          shift start. Contact HR for late attendance marking.
+        </div>
+      )}
+
       <p className="text-sm text-text-secondary">
         Employees on an active shift who have not checked in today. Refreshes
         every 60 seconds.
@@ -303,8 +322,23 @@ export function CheckInManualTab() {
                 </TableCell>
               </TableRow>
             ) : (
-              employees.map((emp) => (
-                <TableRow key={emp.id}>
+              employees.map((emp) => {
+                const dutyStart =
+                  getEmployeeDutyStartTime(emp) || '08:00'
+                const withinGrace =
+                  !isAdminManager || isWithinGrace(dutyStart)
+                const graceRemaining = graceMinutesRemaining(dutyStart)
+
+                return (
+                <TableRow
+                  key={emp.id}
+                  className={cn(
+                    isAdminManager &&
+                      (withinGrace
+                        ? 'bg-green-50/60'
+                        : 'bg-muted/40 opacity-60'),
+                  )}
+                >
                   <TableCell className="font-medium">{emp.fullName}</TableCell>
                   <TableCell className="font-mono text-sm">
                     {emp.employeeCode}
@@ -314,6 +348,12 @@ export function CheckInManualTab() {
                     {emp.shift
                       ? formatShiftOptionLabel(emp.shift)
                       : '—'}
+                    {isAdminManager && withinGrace && (
+                      <p className="mt-1 text-xs font-medium text-green-700">
+                        Grace ends in {graceRemaining} minute
+                        {graceRemaining === 1 ? '' : 's'}
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell>
                     <TimeInput12Hour
@@ -321,20 +361,30 @@ export function CheckInManualTab() {
                       onChange={(v) =>
                         setCheckInTimes((prev) => ({ ...prev, [emp.id]: v }))
                       }
+                      disabled={isAdminManager && !withinGrace}
                     />
                   </TableCell>
                   <TableCell>
                     <Button
                       size="sm"
                       className="bg-primary hover:bg-primary-dark"
-                      disabled={markingId === emp.id}
+                      disabled={
+                        markingId === emp.id ||
+                        (isAdminManager && !withinGrace)
+                      }
+                      title={
+                        isAdminManager && !withinGrace
+                          ? 'Grace period ended. Contact HR.'
+                          : undefined
+                      }
                       onClick={() => handleMarkCheckIn(emp)}
                     >
                       {markingId === emp.id ? 'Saving...' : 'Mark CheckIn'}
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))
+                )
+              })
             )}
           </TableBody>
         </Table>

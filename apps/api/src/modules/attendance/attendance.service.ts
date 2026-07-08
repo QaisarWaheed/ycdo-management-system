@@ -37,6 +37,7 @@ import {
 } from './attendance-late.util';
 import {
   calculateLateMinutesFromCheckIn,
+  isWithinAttendanceMarkingGrace,
   statusFromLateMinutes,
 } from './shift-time.util';
 import { haversineMeters } from './geo.helper';
@@ -213,6 +214,17 @@ export class AttendanceService {
       employee.status !== EmployeeStatus.APPOINTED
     ) {
       throw new BadRequestException('Employee is not active');
+    }
+
+    if (actingUser.role === UserRole.ADMIN_MANAGER) {
+      const dutyStart =
+        resolveDutyStartTime(employee) ?? '08:00';
+      if (!isWithinAttendanceMarkingGrace(new Date(), dutyStart)) {
+        throw new ForbiddenException(
+          'Attendance can only be marked within the grace period. ' +
+            'Please contact HR to mark attendance after grace time.',
+        );
+      }
     }
 
     const dateOnly = this.toDateOnly(new Date(dto.date));

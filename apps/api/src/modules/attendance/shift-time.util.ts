@@ -63,4 +63,32 @@ export function calculateLateMinutesFromCheckIn(
   return late > 0 ? late : 0;
 }
 
+export const ATTENDANCE_MARKING_GRACE_MINUTES = 15;
+export const DEFAULT_DUTY_START = '08:00';
+
+export function isWithinAttendanceMarkingGrace(
+  now: Date,
+  dutyStartTime: string | null | undefined,
+  graceMinutes = ATTENDANCE_MARKING_GRACE_MINUTES,
+): boolean {
+  const dutyStart = dutyStartTime?.trim() || DEFAULT_DUTY_START;
+  const nowMinutes = toPakistanMinutesOfDay(now);
+  const shiftStartMinutes = parseTimeToMinutes(dutyStart);
+  const minutesSince = minutesSinceShiftStart(nowMinutes, shiftStartMinutes);
+  return minutesSince >= 0 && minutesSince <= graceMinutes;
+}
+
+export function attendanceGraceMinutesRemaining(
+  now: Date,
+  dutyStartTime: string | null | undefined,
+  graceMinutes = ATTENDANCE_MARKING_GRACE_MINUTES,
+): number {
+  const dutyStart = dutyStartTime?.trim() || DEFAULT_DUTY_START;
+  const nowMinutes = toPakistanMinutesOfDay(now);
+  const shiftStartMinutes = parseTimeToMinutes(dutyStart);
+  const minutesSince = minutesSinceShiftStart(nowMinutes, shiftStartMinutes);
+  if (minutesSince < 0) return graceMinutes;
+  return Math.max(0, graceMinutes - minutesSince);
+}
+
 export { toPakistanDateOnly, toPakistanMinutesOfDay, parseTimeToMinutes };
