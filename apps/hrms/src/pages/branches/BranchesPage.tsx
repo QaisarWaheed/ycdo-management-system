@@ -28,6 +28,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { to12Hour } from '@/lib/timeFormat'
+import {
+  DepartmentEmployeesDialog,
+  getDepartmentEmployeeCount,
+  type DepartmentWithEmployees,
+} from '@/components/dashboard/DepartmentEmployeesDialog'
 import type { BranchDetail, Project, ProjectType } from '@/types'
 import { PROJECT_TYPE_LABELS } from '@/types'
 
@@ -66,6 +71,8 @@ function BranchDetailSheet({
   onOpenChange: (open: boolean) => void
 }) {
   const navigate = useNavigate()
+  const [employeesDept, setEmployeesDept] =
+    useState<DepartmentWithEmployees | null>(null)
 
   const { data: branch, isLoading } = useQuery({
     queryKey: ['branch-detail', branchId],
@@ -127,17 +134,30 @@ function BranchDetailSheet({
                   No departments configured
                 </p>
               ) : (
-                (detail.departments ?? []).map((dept) => (
+                (detail.departments ?? []).map((dept) => {
+                  const count = getDepartmentEmployeeCount(
+                    dept as DepartmentWithEmployees,
+                  )
+
+                  return (
                   <div
                     key={dept.id}
                     className="flex items-center justify-between rounded-lg border border-border p-3"
                   >
                     <span className="font-medium">{dept.name}</span>
-                    <span className="text-sm text-text-secondary">
-                      {dept._count?.employees ?? 0} employees
-                    </span>
+                    <button
+                      type="button"
+                      title="View employees in this department"
+                      className="cursor-pointer text-sm font-semibold text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+                      onClick={() =>
+                        setEmployeesDept(dept as DepartmentWithEmployees)
+                      }
+                    >
+                      {count} employees
+                    </button>
                   </div>
-                ))
+                  )
+                })
               )}
             </TabsContent>
 
@@ -220,6 +240,12 @@ function BranchDetailSheet({
             </TabsContent>
           </Tabs>
         ) : null}
+
+        <DepartmentEmployeesDialog
+          department={employeesDept}
+          open={!!employeesDept}
+          onOpenChange={(isOpen) => !isOpen && setEmployeesDept(null)}
+        />
       </SheetContent>
     </Sheet>
   )

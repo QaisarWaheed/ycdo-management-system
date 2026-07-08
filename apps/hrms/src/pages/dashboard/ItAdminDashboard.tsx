@@ -2,10 +2,8 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Copy, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { branchesApi, type BranchDuplicateGroup } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
-import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
 import {
   DESIGNATION_CATEGORIES,
@@ -42,115 +40,24 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
-import type { Branch, Department, Employee, Project, ProjectType, Shift } from '@/types'
+import type { Branch, Department, Project, ProjectType, Shift } from '@/types'
 import { PROJECT_TYPE_LABELS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { ItAdminEmployeesTab } from '@/components/dashboard/ItAdminEmployeesTab'
+import {
+  DepartmentEmployeesDialog,
+  getDepartmentEmployeeCount,
+  type DepartmentWithEmployees,
+} from '@/components/dashboard/DepartmentEmployeesDialog'
+import {
+  DesignationEmployeesDialog,
+  getDesignationEmployeeCount,
+} from '@/components/dashboard/DesignationEmployeesDialog'
 import { SystemLoginsTab } from '@/components/dashboard/SystemLoginsTab'
-import { StatusBadge } from '@/components/employees/StatusBadge'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { locationValuesApi } from '@/api/endpoints/locationValues'
 import { biometricDevicesApi, type BiometricDevice } from '@/api/endpoints/biometricDevices'
-
-type DepartmentWithCount = Department & {
-  branch?: { name: string; address?: string | null }
-  _count?: { employees: number }
-}
-
-function DepartmentEmployeesDialog({
-  department,
-  open,
-  onOpenChange,
-}: {
-  department: DepartmentWithCount | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const { data: employees = [], isLoading } = useQuery({
-    queryKey: ['department-employees', department?.id],
-    queryFn: () =>
-      employeesApi.getAll({ departmentId: department!.id }),
-    enabled: open && !!department?.id,
-  })
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{department?.name} — Employees</DialogTitle>
-          {department?.branch && (
-            <p className="text-sm text-text-secondary">
-              {formatBranchLabel(department.branch)}
-            </p>
-          )}
-        </DialogHeader>
-
-        <div className="rounded-lg border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Designation</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Joined</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                [...Array(4)].map((_, i) => (
-                  <TableRow key={i}>
-                    {[...Array(5)].map((__, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-5 w-full" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : employees.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="py-8 text-center text-text-secondary"
-                  >
-                    No employees in this department
-                  </TableCell>
-                </TableRow>
-              ) : (
-                (employees as Employee[]).map((emp) => (
-                  <TableRow key={emp.id}>
-                    <TableCell className="font-mono text-sm">
-                      {emp.employeeCode}
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        to={`/employees/${emp.id}`}
-                        className="font-medium text-primary hover:underline"
-                        onClick={() => onOpenChange(false)}
-                      >
-                        {emp.fullName}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{emp.currentDesignation ?? '—'}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={emp.status} />
-                    </TableCell>
-                    <TableCell>
-                      {emp.joiningDate
-                        ? format(new Date(emp.joiningDate), 'dd/MM/yyyy')
-                        : '—'}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 function BranchesTab() {
   const queryClient = useQueryClient()
@@ -576,7 +483,7 @@ function DepartmentsTab() {
   const [branchFilter, setBranchFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [editDept, setEditDept] = useState<Department | null>(null)
-  const [employeesDept, setEmployeesDept] = useState<DepartmentWithCount | null>(
+  const [employeesDept, setEmployeesDept] = useState<DepartmentWithEmployees | null>(
     null,
   )
   const [name, setName] = useState('')
@@ -715,25 +622,26 @@ function DepartmentsTab() {
                   </TableCell>
                 </TableRow>
               ) : (
-                (departments as DepartmentWithCount[]).map((dept) => {
-                  const employeesCount = dept._count?.employees ?? 0
+                (departments as DepartmentWithEmployees[]).map((dept) => {
+                  const employeesCount = getDepartmentEmployeeCount(dept)
 
                   return (
                   <TableRow key={dept.id}>
                     <TableCell className="font-medium">{dept.name}</TableCell>
                     <TableCell>{formatBranchLabel(dept.branch)}</TableCell>
-                    <TableCell>
-                      {employeesCount > 0 ? (
-                        <button
-                          type="button"
-                          className="font-medium text-primary hover:underline"
-                          onClick={() => setEmployeesDept(dept)}
-                        >
-                          {employeesCount}
-                        </button>
-                      ) : (
-                        employeesCount
-                      )}
+                    <TableCell className="p-0">
+                      <button
+                        type="button"
+                        title="View employees in this department"
+                        className="inline-flex min-h-10 w-full cursor-pointer items-center px-4 py-2 text-left font-semibold text-primary underline decoration-primary/40 underline-offset-2 transition-colors hover:bg-primary/5 hover:decoration-primary"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setEmployeesDept(dept)
+                        }}
+                      >
+                        {employeesCount}
+                      </button>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -749,7 +657,6 @@ function DepartmentsTab() {
                           variant="ghost"
                           className="text-red-600 hover:text-red-700"
                           onClick={() => {
-                            const employeesCount = dept._count?.employees ?? 0
                             if (
                               window.confirm(
                                 `${employeesCount} employees will be unassigned. Delete "${dept.name}"?`,
@@ -859,6 +766,8 @@ function DesignationsTab() {
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<string>(DESIGNATION_CATEGORIES[0])
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [employeesDesignation, setEmployeesDesignation] =
+    useState<Designation | null>(null)
 
   const { data: designations = [], isLoading } = useQuery({
     queryKey: ['designations', categoryFilter],
@@ -993,13 +902,29 @@ function DesignationsTab() {
                   </TableCell>
                 </TableRow>
               ) : (
-                (designations as Designation[]).map((item) => (
+                (designations as Designation[]).map((item) => {
+                  const employeesCount = getDesignationEmployeeCount(item)
+
+                  return (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.title}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{item.category}</Badge>
                     </TableCell>
-                    <TableCell>{item.employees ?? 0}</TableCell>
+                    <TableCell className="p-0">
+                      <button
+                        type="button"
+                        title="View employees with this designation"
+                        className="inline-flex min-h-10 w-full cursor-pointer items-center px-4 py-2 text-left font-semibold text-primary underline decoration-primary/40 underline-offset-2 transition-colors hover:bg-primary/5 hover:decoration-primary"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setEmployeesDesignation(item)
+                        }}
+                      >
+                        {employeesCount}
+                      </button>
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline">
                         {item.isActive ? 'Active' : 'Inactive'}
@@ -1019,7 +944,6 @@ function DesignationsTab() {
                           variant="ghost"
                           className="text-red-600 hover:text-red-700"
                           onClick={() => {
-                            const employeesCount = item.employees ?? 0
                             if (
                               window.confirm(
                                 `${employeesCount} employees will lose this designation. Delete "${item.title}"?`,
@@ -1034,12 +958,19 @@ function DesignationsTab() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
+                  )
+                })
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <DesignationEmployeesDialog
+        designation={employeesDesignation}
+        open={!!employeesDesignation}
+        onOpenChange={(open) => !open && setEmployeesDesignation(null)}
+      />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
