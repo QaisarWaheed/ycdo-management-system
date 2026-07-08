@@ -31,12 +31,19 @@ import {
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
 import { formatDateTimeTime } from '@/lib/timeFormat'
+import { cn } from '@/lib/utils'
 import { ATTENDANCE_STATUSES, type AttendanceLog, type AttendanceStatus } from '@/types'
 
 function isoToTimeInput(value?: string | null): string {
   if (!value) return ''
   const d = new Date(value)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+const statusStyles: Record<string, string> = {
+  PRESENT: 'bg-green-100 text-green-800 border-green-200',
+  LATE: 'bg-amber-100 text-amber-800 border-amber-200',
+  HALF_DAY: 'bg-blue-100 text-blue-800 border-blue-200',
 }
 
 type UpdateAttendanceDialogProps = {
@@ -56,6 +63,7 @@ export function UpdateAttendanceDialog({
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
 
   const [status, setStatus] = useState<AttendanceStatus>('PRESENT')
+  const [statusOverride, setStatusOverride] = useState(false)
   const [checkIn, setCheckIn] = useState('')
   const [checkOut, setCheckOut] = useState('')
   const [lateMinutes, setLateMinutes] = useState<number | ''>('')
@@ -78,6 +86,7 @@ export function UpdateAttendanceDialog({
   useEffect(() => {
     if (open && log) {
       setStatus(log.status as AttendanceStatus)
+      setStatusOverride(false)
       setCheckIn(isoToTimeInput(log.checkIn))
       setCheckOut(isoToTimeInput(log.checkOut))
       setLateMinutes(log.lateMinutes ?? 0)
@@ -87,19 +96,16 @@ export function UpdateAttendanceDialog({
   }, [open, log])
 
   useEffect(() => {
-    if (!open || !checkIn || !dutyStartTime) return
+    if (!open || !checkIn || !dutyStartTime || statusOverride) return
     const late = calcLateMinutes(checkIn, dutyStartTime)
     setLateMinutes(late)
-    if (showsTimeFields(status)) {
-      setStatus(statusFromLateMinutes(late))
-    }
-  }, [checkIn, dutyStartTime, open])
+    setStatus(statusFromLateMinutes(late))
+  }, [checkIn, dutyStartTime, open, statusOverride])
 
   const mutation = useMutation({
     mutationFn: () => {
       if (!log) throw new Error('No attendance record')
-      return attendanceApi.update(log.id, {
-        status,
+      const payload: Record<string, unknown> = {
         checkIn:
           checkIn && showsTimeFields(status)
             ? combineDateAndTime(date, checkIn)
@@ -108,13 +114,19 @@ export function UpdateAttendanceDialog({
           checkOut && showsTimeFields(status)
             ? combineDateAndTime(date, checkOut)
             : undefined,
-        lateMinutes: lateMinutes === '' ? 0 : Number(lateMinutes),
-        overtimeMinutes:
-          isSuperAdmin && overtimeMinutes !== ''
-            ? Number(overtimeMinutes)
-            : undefined,
         note: note || undefined,
-      })
+      }
+
+      if (statusOverride) {
+        payload.status = status
+        payload.lateMinutes = lateMinutes === '' ? 0 : Number(lateMinutes)
+      }
+
+      if (isSuperAdmin && overtimeMinutes !== '') {
+        payload.overtimeMinutes = Number(overtimeMinutes)
+      }
+
+      return attendanceApi.update(log.id, payload)
     },
     onSuccess: () => {
       toast({ title: 'Attendance updated' })
@@ -136,6 +148,19 @@ export function UpdateAttendanceDialog({
   const employeeName = log.employee
     ? log.employee.fullName
     : 'Employee'
+
+  const calculatedLate =
+    checkIn && dutyStartTime ? calcLateMinutes(checkIn, dutyStartTime) : 0
+  const displayStatus = statusOverride
+    ? status
+    : checkIn && dutyStartTime
+      ? statusFromLateMinutes(calculatedLate)
+      : status
+  const displayLate = statusOverride
+    ? lateMinutes === ''
+      ? 0
+      : Number(lateMinutes)
+    : calculatedLate
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -163,21 +188,7 @@ export function UpdateAttendanceDialog({
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label>Status</Label>
-            <SearchableSelect
-              options={ATTENDANCE_STATUSES.map(enumValueToLabel)}
-              value={enumValueToLabel(status)}
-              onChange={(label) =>
-                setStatus(
-                  labelToEnumValue(label, ATTENDANCE_STATUSES) as AttendanceStatus,
-                )
-              }
-              placeholder="Select status"
-            />
-          </div>
-
-          {showsTimeFields(status) && (
+          {showsTimeFields(displayStatus) && (
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Check In</Label>
@@ -190,7 +201,62 @@ export function UpdateAttendanceDialog({
             </div>
           )}
 
-          {showsTimeFields(status) && (
+          {checkIn && dutyStartTime && (
+            <div className="space-y-2">
+              <Label>Calculated Status</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className={cn(statusStyles[displayStatus] ?? '')}
+                >
+                  Status: {displayStatus.replace(/_/g, ' ')}
+                  {displayLate > 0 ? ` (${displayLate} minutes)` : ''}
+                </Badge>
+                {!statusOverride ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-sm"
+                    onClick={() => setStatusOverride(true)}
+                  >
+                    Override Status
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-sm"
+                    onClick={() => {
+                      setStatusOverride(false)
+                      const late = calcLateMinutes(checkIn, dutyStartTime)
+                      setLateMinutes(late)
+                      setStatus(statusFromLateMinutes(late))
+                    }}
+                  >
+                    Use Auto Status
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {statusOverride && (
+            <div className="space-y-2">
+              <Label>Override Status</Label>
+              <SearchableSelect
+                options={ATTENDANCE_STATUSES.map(enumValueToLabel)}
+                value={enumValueToLabel(status)}
+                onChange={(label) =>
+                  setStatus(
+                    labelToEnumValue(label, ATTENDANCE_STATUSES) as AttendanceStatus,
+                  )
+                }
+                placeholder="Select status"
+              />
+            </div>
+          )}
+
+          {statusOverride && showsTimeFields(status) && (
             <div className="space-y-2">
               <Label>Late Minutes</Label>
               <Input
@@ -206,7 +272,7 @@ export function UpdateAttendanceDialog({
             </div>
           )}
 
-          {showsTimeFields(status) && (
+          {showsTimeFields(displayStatus) && (
             <div className="space-y-2">
               <Label>Overtime (minutes)</Label>
               <Input

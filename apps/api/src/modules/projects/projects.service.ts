@@ -1,4 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  sortBranchesByHierarchy,
+  sortProjectsByType,
+} from '../../common/branch-sort.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProjectDto, UpdateProjectDto } from './projects.dto';
 
@@ -15,12 +19,30 @@ export class ProjectsService {
     };
   }
 
-  findAll() {
-    return this.prisma.project.findMany({
+  async findAll() {
+    const projects = await this.prisma.project.findMany({
       where: { isActive: true },
-      include: { _count: { select: { branches: true } } },
-      orderBy: { type: 'asc' },
+      include: {
+        _count: { select: { branches: true } },
+        branches: {
+          where: { isActive: true },
+          include: {
+            _count: {
+              select: { employees: true, departments: true, shifts: true },
+            },
+          },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
     });
+
+    return sortProjectsByType(projects).map((project) => ({
+      ...project,
+      branches: sortBranchesByHierarchy(project.branches).map((branch) => ({
+        ...branch,
+        employeeCount: branch._count.employees,
+      })),
+    }));
   }
 
   async findOne(id: string) {
@@ -28,7 +50,12 @@ export class ProjectsService {
       where: { id },
       include: {
         branches: {
-          include: { departments: true },
+          where: { isActive: true },
+          include: {
+            departments: true,
+            _count: { select: { employees: true } },
+          },
+          orderBy: { sortOrder: 'asc' },
         },
       },
     });
@@ -37,7 +64,10 @@ export class ProjectsService {
       throw new NotFoundException(`Project with id ${id} not found`);
     }
 
-    return project;
+    return {
+      ...project,
+      branches: sortBranchesByHierarchy(project.branches),
+    };
   }
 
   async update(id: string, dto: UpdateProjectDto) {

@@ -35,6 +35,10 @@ import {
   computeLateMinutesFromCheckIn,
   resolveDutyStartTime,
 } from './attendance-late.util';
+import {
+  calculateLateMinutesFromCheckIn,
+  statusFromLateMinutes,
+} from './shift-time.util';
 import { haversineMeters } from './geo.helper';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 
@@ -357,7 +361,12 @@ export class AttendanceService {
       where: { id },
       include: {
         employee: {
-          select: { fullName: true, employeeCode: true },
+          select: {
+            fullName: true,
+            employeeCode: true,
+            dutyStartTime: true,
+            shift: { select: { startTime: true } },
+          },
         },
         branch: { select: { name: true, address: true } },
       },
@@ -396,6 +405,26 @@ export class AttendanceService {
     if (dto.checkOut !== undefined) {
       data.checkOut = dto.checkOut ? new Date(dto.checkOut) : null;
     }
+
+    const effectiveCheckIn =
+      dto.checkIn !== undefined
+        ? dto.checkIn
+          ? new Date(dto.checkIn)
+          : null
+        : log.checkIn;
+
+    if (dto.status === undefined && effectiveCheckIn) {
+      const dutyStart = resolveDutyStartTime(log.employee);
+      if (dutyStart) {
+        const lateMinutes = calculateLateMinutesFromCheckIn(
+          effectiveCheckIn,
+          dutyStart,
+        );
+        data.status = statusFromLateMinutes(lateMinutes);
+        data.lateMinutes = lateMinutes;
+      }
+    }
+
     if (dto.lateMinutes !== undefined) {
       data.lateMinutes = dto.lateMinutes;
     }

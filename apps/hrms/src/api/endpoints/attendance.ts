@@ -16,6 +16,8 @@ export const attendanceApi = {
     api.patch(`/attendance/${id}/approve-overtime`, { overtimeMinutes }),
   markAbsentees: (date: string) =>
     api.post('/attendance/mark-absentees', { date }),
+  backfillAbsent: (data: { date: string; shiftName?: string }) =>
+    api.post('/attendance/backfill-absent', data),
   getTimer: (employeeId: string) =>
     api.get(`/attendance/timer/${employeeId}`),
   getRelieverSessions: (

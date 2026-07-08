@@ -155,6 +155,16 @@ export class MarkAbsenteesDto {
   date: string;
 }
 
+export class BackfillAbsentDto {
+  @IsDateString()
+  @IsNotEmpty()
+  date: string;
+
+  @IsOptional()
+  @IsString()
+  shiftName?: string;
+}
+
 export class PortalCheckDto {
   @Type(() => Number)
   @IsNumber()

@@ -17,7 +17,20 @@ export function calcLateMinutes(
   if (!checkInTime || !dutyStart) return 0
   const checkIn = parseTimeToMinutes(checkInTime)
   const dutyTotal = parseTimeToMinutes(dutyStart)
-  const lateMinutes = checkIn - dutyTotal - graceMinutes
+  const overnightStart = 18 * 60
+
+  let minutesSince: number
+  if (dutyTotal >= overnightStart) {
+    if (checkIn >= dutyTotal) {
+      minutesSince = checkIn - dutyTotal
+    } else {
+      minutesSince = 1440 - dutyTotal + checkIn
+    }
+  } else {
+    minutesSince = checkIn - dutyTotal
+  }
+
+  const lateMinutes = minutesSince - graceMinutes
   return lateMinutes > 0 ? lateMinutes : 0
 }
 

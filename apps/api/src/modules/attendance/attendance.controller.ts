@@ -20,6 +20,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import {
   ApproveOvertimeDto,
   AttendanceQueryDto,
+  BackfillAbsentDto,
   BiometricPushDto,
   ManualAttendanceDto,
   MarkAbsenteesDto,
@@ -28,11 +29,13 @@ import {
   UpdateAttendanceDto,
 } from './attendance.dto';
 import { AttendanceService } from './attendance.service';
+import { ShiftAbsentScheduler } from './shift-absent.scheduler';
 
 @Controller('attendance')
 export class AttendanceController {
   constructor(
     private attendanceService: AttendanceService,
+    private shiftAbsentScheduler: ShiftAbsentScheduler,
     private configService: ConfigService,
   ) {}
 
@@ -202,6 +205,16 @@ export class AttendanceController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
   markAbsentees(@Body() dto: MarkAbsenteesDto) {
     return this.attendanceService.markAbsentees(dto.date);
+  }
+
+  @Post('backfill-absent')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  backfillAbsent(@Body() dto: BackfillAbsentDto) {
+    return this.shiftAbsentScheduler.backfillAbsentForDate(
+      dto.date,
+      dto.shiftName,
+    );
   }
 
   @Post('portal-checkin')

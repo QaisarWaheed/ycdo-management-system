@@ -68,6 +68,8 @@ export interface ProjectBranch {
   id: string
   name: string
   address?: string | null
+  sortOrder?: number | null
+  employeeCount?: number
   _count?: { employees: number; departments?: number; shifts?: number }
 }
 

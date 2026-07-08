@@ -4,9 +4,19 @@ import {
   AttendanceSource,
   AttendanceStatus,
   EmployeeStatus,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { applyDisciplineRules } from './discipline.helper';
+import {
+  getShiftAttendanceDate,
+  minutesSinceShiftStart,
+  parseTimeToMinutes,
+  toPakistanDateOnly,
+  toPakistanMinutesOfDay,
+} from './shift-time.util';
+
+const AUTO_ABSENT_NOTE = 'Auto-marked absent at shift start';
 
 @Injectable()
 export class ShiftAbsentScheduler {
@@ -17,8 +27,8 @@ export class ShiftAbsentScheduler {
   @Cron('*/15 * * * *')
   async markShiftStartAbsent() {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const today = toPakistanDateOnly(now);
+    const nowMinutes = toPakistanMinutesOfDay(now);
 
     const recentlyStartedShifts = await this.prisma.shift.findMany({
       where: { isActive: true },
@@ -27,8 +37,7 @@ export class ShiftAbsentScheduler {
     let marked = 0;
 
     for (const shift of recentlyStartedShifts) {
-      const [shiftHour, shiftMin] = shift.startTime.split(':').map(Number);
-      const shiftStartMinutes = shiftHour * 60 + shiftMin;
+      const shiftStartMinutes = parseTimeToMinutes(shift.startTime);
 
       if (
         nowMinutes < shiftStartMinutes ||
@@ -37,37 +46,13 @@ export class ShiftAbsentScheduler {
         continue;
       }
 
-      const employees = await this.prisma.employee.findMany({
-        where: {
-          shiftId: shift.id,
-          status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
-        },
-      });
+      const attendanceDate = getShiftAttendanceDate(now, shift.startTime);
 
-      for (const employee of employees) {
-        const existing = await this.prisma.attendanceLog.findUnique({
-          where: {
-            employeeId_date: {
-              employeeId: employee.id,
-              date: today,
-            },
-          },
-        });
-
-        if (!existing) {
-          await this.prisma.attendanceLog.create({
-            data: {
-              employeeId: employee.id,
-              branchId: employee.currentBranchId,
-              date: today,
-              status: AttendanceStatus.ABSENT,
-              source: AttendanceSource.MANUAL,
-              note: 'Auto-marked absent at shift start',
-            },
-          });
-          marked++;
-        }
-      }
+      marked += await this.markAbsentForShift(
+        shift.id,
+        attendanceDate,
+        AUTO_ABSENT_NOTE,
+      );
     }
 
     if (marked > 0) {
@@ -78,16 +63,18 @@ export class ShiftAbsentScheduler {
   @Cron('*/15 * * * *')
   async markUninformedAbsent() {
     const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const currentMinutes = toPakistanMinutesOfDay(now);
+    const pkToday = toPakistanDateOnly(now);
+    const pkYesterday = new Date(pkToday);
+    pkYesterday.setUTCDate(pkYesterday.getUTCDate() - 1);
 
     const absentLogs = await this.prisma.attendanceLog.findMany({
       where: {
-        date: today,
+        date: { in: [pkToday, pkYesterday] },
         status: AttendanceStatus.ABSENT,
         checkIn: null,
         source: AttendanceSource.MANUAL,
-        note: 'Auto-marked absent at shift start',
+        note: AUTO_ABSENT_NOTE,
       },
       include: {
         employee: {
@@ -103,20 +90,27 @@ export class ShiftAbsentScheduler {
     for (const log of absentLogs) {
       if (!log.employee.shift) continue;
 
-      if (log.employee.shift.name === '24 Hours') {
-        const currentHour = now.getHours();
-        const currentMin = now.getMinutes();
+      const shift = log.employee.shift;
+      const expectedDate = getShiftAttendanceDate(now, shift.startTime);
+
+      if (log.date.getTime() !== expectedDate.getTime()) {
+        continue;
+      }
+
+      if (shift.name === '24 Hours') {
+        const currentHour = Math.floor(currentMinutes / 60);
+        const currentMin = currentMinutes % 60;
         if (currentHour < 23 || (currentHour === 23 && currentMin < 45)) {
           continue;
         }
       } else {
-        const [shiftH, shiftM] = log.employee.shift.startTime
-          .split(':')
-          .map(Number);
-        const shiftStartMinutes = shiftH * 60 + shiftM;
-        const minutesSinceShiftStart = currentMinutes - shiftStartMinutes;
+        const shiftStartMinutes = parseTimeToMinutes(shift.startTime);
+        const minutesSince = minutesSinceShiftStart(
+          currentMinutes,
+          shiftStartMinutes,
+        );
 
-        if (minutesSinceShiftStart < 180) continue;
+        if (minutesSince < 180) continue;
       }
 
       await this.prisma.$transaction(async (tx) => {
@@ -129,7 +123,7 @@ export class ShiftAbsentScheduler {
           tx,
           log.employee.id,
           AttendanceStatus.UNINFORMED_ABSENT,
-          today,
+          log.date,
         );
 
         await tx.notification.create({
@@ -150,5 +144,68 @@ export class ShiftAbsentScheduler {
         `Upgraded ${upgraded} employee(s) to uninformed absent after 3 hours`,
       );
     }
+  }
+
+  async backfillAbsentForDate(dateStr: string, shiftName?: string) {
+    const date = toPakistanDateOnly(new Date(dateStr));
+    const shiftWhere: Prisma.ShiftWhereInput = { isActive: true };
+    if (shiftName) {
+      shiftWhere.name = shiftName;
+    }
+
+    const shifts = await this.prisma.shift.findMany({ where: shiftWhere });
+    let marked = 0;
+
+    for (const shift of shifts) {
+      marked += await this.markAbsentForShift(
+        shift.id,
+        date,
+        AUTO_ABSENT_NOTE,
+      );
+    }
+
+    return { date: dateStr, shiftName: shiftName ?? null, marked };
+  }
+
+  private async markAbsentForShift(
+    shiftId: string,
+    date: Date,
+    note: string,
+  ): Promise<number> {
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        shiftId,
+        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+      },
+    });
+
+    let marked = 0;
+
+    for (const employee of employees) {
+      const existing = await this.prisma.attendanceLog.findUnique({
+        where: {
+          employeeId_date: {
+            employeeId: employee.id,
+            date,
+          },
+        },
+      });
+
+      if (!existing) {
+        await this.prisma.attendanceLog.create({
+          data: {
+            employeeId: employee.id,
+            branchId: employee.currentBranchId,
+            date,
+            status: AttendanceStatus.ABSENT,
+            source: AttendanceSource.MANUAL,
+            note,
+          },
+        });
+        marked++;
+      }
+    }
+
+    return marked;
   }
 }

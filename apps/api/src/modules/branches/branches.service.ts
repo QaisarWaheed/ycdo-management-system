@@ -1,8 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { EmployeeStatus } from '@prisma/client';
+import { sortBranchesByHierarchy } from '../../common/branch-sort.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BranchQueryDto, CreateBranchDto, UpdateBranchDto } from './branches.dto';
+
+const branchInclude = {
+  project: { select: { name: true, type: true } },
+  _count: {
+    select: { employees: true, departments: true, shifts: true },
+  },
+} as const;
 
 @Injectable()
 export class BranchesService {
@@ -12,7 +20,7 @@ export class BranchesService {
     return this.prisma.branch.create({ data: dto });
   }
 
-  findAll(query?: BranchQueryDto) {
+  async findAll(query?: BranchQueryDto) {
     const where: Prisma.BranchWhereInput = { isActive: true };
 
     if (query?.projectId) {
@@ -25,49 +33,57 @@ export class BranchesService {
 
     const shouldGroupByName = query?.groupByName === 'true';
 
-    const branchesQuery = this.prisma.branch.findMany({
+    const branches = await this.prisma.branch.findMany({
       where,
-      include: {
-        project: { select: { name: true } },
-        _count: {
-          select: { employees: true, departments: true, shifts: true },
-        },
-      },
-      orderBy: { sortOrder: 'asc' },
+      include: branchInclude,
     });
+
+    const sorted = sortBranchesByHierarchy(branches).map((branch) => ({
+      ...branch,
+      employeeCount: branch._count.employees,
+    }));
 
     if (!shouldGroupByName) {
-      return branchesQuery;
+      return sorted;
     }
 
-    return branchesQuery.then((branches) => {
-      const groups = new Map<string, typeof branches[number][]>();
+    const groups = new Map<string, typeof sorted[number][]>();
 
-      for (const b of branches) {
-        const key = b.name;
-        const current = groups.get(key) ?? [];
-        current.push(b);
-        groups.set(key, current);
-      }
+    for (const b of sorted) {
+      const key = b.name;
+      const current = groups.get(key) ?? [];
+      current.push(b);
+      groups.set(key, current);
+    }
 
-      return [...groups.entries()]
-        .filter(([, arr]) => arr.length > 1)
-        .map(([name, branches]) => ({ name, branches }));
-    });
+    return [...groups.entries()]
+      .filter(([, arr]) => arr.length > 1)
+      .map(([name, branches]) => ({ name, branches }));
   }
 
   findByProject(projectId: string) {
-    return this.prisma.branch.findMany({
-      where: { projectId, isActive: true },
-      include: {
-        departments: {
-          where: { isActive: true, isDeleted: false },
-          orderBy: { sortOrder: 'asc' },
+    return this.prisma.branch
+      .findMany({
+        where: { projectId, isActive: true },
+        include: {
+          departments: {
+            where: { isActive: true, isDeleted: false },
+            orderBy: { sortOrder: 'asc' },
+          },
+          shifts: { where: { isActive: true }, orderBy: { startTime: 'asc' } },
+          project: { select: { name: true, type: true } },
+          _count: {
+            select: { employees: true, departments: true, shifts: true },
+          },
         },
-        shifts: { where: { isActive: true }, orderBy: { startTime: 'asc' } },
-      },
-      orderBy: { sortOrder: 'asc' },
-    });
+        orderBy: { sortOrder: 'asc' },
+      })
+      .then((branches) =>
+        sortBranchesByHierarchy(branches).map((branch) => ({
+          ...branch,
+          employeeCount: branch._count.employees,
+        })),
+      );
   }
 
   async findOne(id: string) {

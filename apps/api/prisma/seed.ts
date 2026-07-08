@@ -574,13 +574,32 @@ async function main() {
 
   const softwareHouse = await prisma.project.upsert({
     where: { id: 'project-software-house' },
-    update: { name: 'YCDO Software House' },
+    update: { name: 'YCDO Software House', isActive: true },
     create: {
       id: 'project-software-house',
       name: 'YCDO Software House',
       type: ProjectType.SOFTWARE_HOUSE,
     },
   });
+
+  // Merge duplicate Software House projects (legacy seed data).
+  const duplicateSoftwareProjects = await prisma.project.findMany({
+    where: {
+      type: ProjectType.SOFTWARE_HOUSE,
+      id: { not: softwareHouse.id },
+    },
+  });
+
+  for (const duplicate of duplicateSoftwareProjects) {
+    await prisma.branch.updateMany({
+      where: { projectId: duplicate.id },
+      data: { projectId: softwareHouse.id },
+    });
+    await prisma.project.update({
+      where: { id: duplicate.id },
+      data: { isActive: false },
+    });
+  }
 
   await seedProjectBranches(
     [...hospitalRunningBranches, ...hospitalDevBranches],

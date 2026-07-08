@@ -1,12 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Building2 } from 'lucide-react'
+import { Building2, ChevronDown, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { branchesApi } from '@/api/endpoints/branches'
 import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
 import { StatusBadge } from '@/components/employees/StatusBadge'
-import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +25,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { to12Hour } from '@/lib/timeFormat'
 import type { BranchDetail, Project, ProjectType } from '@/types'
 import { PROJECT_TYPE_LABELS } from '@/types'
 
@@ -45,6 +47,13 @@ function projectTypeBadge(type: string) {
     SOFTWARE_HOUSE: 'bg-green-100 text-green-800 border-green-200',
   }
   return styles[type] ?? 'bg-gray-100 text-gray-700'
+}
+
+function branchEmployeeCount(branch: {
+  employeeCount?: number
+  _count?: { employees?: number }
+}) {
+  return branch.employeeCount ?? branch._count?.employees ?? 0
 }
 
 function BranchDetailSheet({
@@ -69,6 +78,11 @@ function BranchDetailSheet({
     queryFn: () => employeesApi.getAll({ branchId: branchId! }),
     enabled: !!branchId && open,
   })
+
+  const sortedEmployees = useMemo(
+    () => sortEmployeesByHierarchy(employees),
+    [employees],
+  )
 
   const detail = branch as BranchDetail | undefined
 
@@ -100,7 +114,7 @@ function BranchDetailSheet({
             <Skeleton className="h-32 w-full" />
           </div>
         ) : detail ? (
-          <Tabs defaultValue="departments" className="mt-6">
+          <Tabs defaultValue="employees" className="mt-6">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="departments">Departments</TabsTrigger>
               <TabsTrigger value="shifts">Shifts</TabsTrigger>
@@ -150,8 +164,8 @@ function BranchDetailSheet({
                         <TableCell className="font-medium">
                           {shift.name}
                         </TableCell>
-                        <TableCell>{shift.startTime}</TableCell>
-                        <TableCell>{shift.endTime}</TableCell>
+                        <TableCell>{to12Hour(shift.startTime)}</TableCell>
+                        <TableCell>{to12Hour(shift.endTime)}</TableCell>
                         <TableCell>{shift._count?.employees ?? 0}</TableCell>
                       </TableRow>
                     ))
@@ -171,7 +185,7 @@ function BranchDetailSheet({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employees.slice(0, 10).map((emp) => (
+                  {sortedEmployees.slice(0, 10).map((emp) => (
                     <TableRow key={emp.id}>
                       <TableCell className="font-mono text-xs">
                         {emp.employeeCode}
@@ -183,7 +197,7 @@ function BranchDetailSheet({
                       </TableCell>
                     </TableRow>
                   ))}
-                  {employees.length === 0 && (
+                  {sortedEmployees.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="text-text-secondary">
                         No employees in this branch
@@ -212,33 +226,48 @@ function BranchDetailSheet({
 }
 
 function ProjectSection({ project }: { project: Project }) {
+  const navigate = useNavigate()
+  const [expanded, setExpanded] = useState(false)
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null)
 
-  const totalEmployees =
-    project.branches?.reduce(
-      (sum, b) => sum + (b._count?.employees ?? 0),
-      0,
-    ) ?? 0
+  const branches = [...(project.branches ?? [])].sort(
+    (a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999),
+  )
+
+  const totalEmployees = branches.reduce(
+    (sum, b) => sum + branchEmployeeCount(b),
+    0,
+  )
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card
+        className="cursor-pointer transition-shadow hover:shadow-md"
+        onClick={() => setExpanded((v) => !v)}
+      >
         <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <CardTitle>{project.name}</CardTitle>
-            <Badge
-              variant="outline"
-              className={projectTypeBadge(project.type)}
-            >
-              {PROJECT_TYPE_LABELS[project.type]}
-            </Badge>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {expanded ? (
+                <ChevronDown className="h-5 w-5 text-text-secondary" />
+              ) : (
+                <ChevronRight className="h-5 w-5 text-text-secondary" />
+              )}
+              <CardTitle>{project.name}</CardTitle>
+              <Badge
+                variant="outline"
+                className={projectTypeBadge(project.type)}
+              >
+                {PROJECT_TYPE_LABELS[project.type]}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="flex gap-6 text-sm text-text-secondary">
             <span>
               <strong className="text-text-primary">
-                {project._count?.branches ?? project.branches?.length ?? 0}
+                {project._count?.branches ?? branches.length}
               </strong>{' '}
               branches
             </span>
@@ -250,31 +279,59 @@ function ProjectSection({ project }: { project: Project }) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {(project.branches ?? []).map((branch) => (
-          <Card key={branch.id} className="transition-shadow hover:shadow-md">
-            <CardContent className="space-y-3 p-5">
-              <p className="text-lg font-bold">{branch.name}</p>
-              <p className="text-sm text-text-secondary">
-                {branch.address || 'No address'}
-              </p>
-              <div className="flex flex-wrap gap-3 text-xs text-text-secondary">
-                <span>{branch._count?.departments ?? 0} departments</span>
-                <span>{branch._count?.employees ?? 0} employees</span>
-                <span>{branch._count?.shifts ?? 0} shifts</span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setSelectedBranch(branch.id)}
+      {expanded && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {branches.length === 0 ? (
+            <p className="text-sm text-text-secondary col-span-full">
+              No branches in this project
+            </p>
+          ) : (
+            branches.map((branch) => (
+              <Card
+                key={branch.id}
+                className="transition-shadow hover:shadow-md"
               >
-                View Details
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                <CardContent className="space-y-3 p-5">
+                  <p className="text-lg font-bold">{branch.name}</p>
+                  <p className="text-sm text-text-secondary">
+                    {branch.address || 'No address'}
+                  </p>
+                  <div className="flex flex-wrap gap-3 text-xs text-text-secondary">
+                    <span>
+                      {branch._count?.departments ?? 0} departments
+                    </span>
+                    <span>{branchEmployeeCount(branch)} employees</span>
+                    <span>{branch._count?.shifts ?? 0} shifts</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate(`/employees?branchId=${branch.id}`)
+                      }}
+                    >
+                      View Employees
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedBranch(branch.id)
+                      }}
+                    >
+                      Details
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
 
       <BranchDetailSheet
         branchId={selectedBranch}
