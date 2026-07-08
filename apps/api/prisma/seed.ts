@@ -979,9 +979,23 @@ async function main() {
     });
   }
 
-  await prisma.user.deleteMany({
+  const branchManagerUser = await prisma.user.findFirst({
     where: { email: 'branch.manager@ycdo.org' },
   });
+
+  if (branchManagerUser) {
+    await prisma.auditLog.deleteMany({
+      where: { userId: branchManagerUser.id },
+    });
+    if (branchManagerUser.employeeId) {
+      await prisma.notification.deleteMany({
+        where: { employeeId: branchManagerUser.employeeId },
+      });
+    }
+    await prisma.user.delete({
+      where: { id: branchManagerUser.id },
+    });
+  }
 
   const roleAccounts = [
     { email: 'dept.incharge@ycdo.org', password: 'DeptIn@123', role: UserRole.ADMIN_OFFICER },
