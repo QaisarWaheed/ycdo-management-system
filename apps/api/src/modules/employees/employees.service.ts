@@ -308,7 +308,10 @@ export class EmployeesService {
     }
 
     if (filters.projectId) {
-      where.currentBranch = { projectId: filters.projectId };
+      where.currentBranch = {
+        ...(where.currentBranch as Prisma.BranchWhereInput | undefined),
+        projectId: filters.projectId,
+      };
     }
 
     if (filters.shiftIds) {
@@ -349,6 +352,10 @@ export class EmployeesService {
       };
     }
 
+    if (filters.bloodGroup) {
+      where.bloodGroup = filters.bloodGroup;
+    }
+
     if (filters.search) {
       where.OR = [
         { fullName: { contains: filters.search, mode: 'insensitive' } },
@@ -376,7 +383,15 @@ export class EmployeesService {
         currentDesignation: true,
         status: true,
         joiningDate: true,
-        currentBranch: { select: { name: true, address: true } },
+        currentBranch: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            projectId: true,
+            project: { select: { id: true, name: true, type: true } },
+          },
+        },
         currentDepartment: { select: { name: true } },
         shift: {
           select: { id: true, name: true, startTime: true, endTime: true },
@@ -390,6 +405,56 @@ export class EmployeesService {
       if (aPriority !== bPriority) return aPriority - bPriority;
       return (a.fullName ?? '').localeCompare(b.fullName ?? '');
     });
+  }
+
+  async getStats() {
+    const total = await this.prisma.employee.count();
+
+    const byStatus = await this.prisma.employee.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+    });
+
+    const employees = await this.prisma.employee.findMany({
+      select: {
+        currentBranch: {
+          select: {
+            project: { select: { id: true, name: true, type: true } },
+          },
+        },
+      },
+    });
+
+    const projectCounts = new Map<
+      string,
+      { project: string; projectId: string | null; count: number }
+    >();
+
+    for (const employee of employees) {
+      const project = employee.currentBranch?.project;
+      const key = project?.id ?? 'unassigned';
+      const existing = projectCounts.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        projectCounts.set(key, {
+          project: project?.name ?? 'Unassigned',
+          projectId: project?.id ?? null,
+          count: 1,
+        });
+      }
+    }
+
+    return {
+      total,
+      byStatus: byStatus.map((row) => ({
+        status: row.status,
+        count: row._count._all,
+      })),
+      byProject: [...projectCounts.values()].sort((a, b) =>
+        a.project.localeCompare(b.project),
+      ),
+    };
   }
 
   async getFilterOptions() {

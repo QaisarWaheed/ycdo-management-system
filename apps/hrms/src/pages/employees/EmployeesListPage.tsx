@@ -59,6 +59,19 @@ export function EmployeesListPage() {
       shiftsApi.getAll(employeeFilters.branchId || undefined),
   })
 
+  const { data: stats } = useQuery({
+    queryKey: ['employees', 'stats'],
+    queryFn: () => employeesApi.getStats(),
+  })
+
+  const statusCounts = useMemo(() => {
+    const map: Record<string, number> = {}
+    stats?.byStatus.forEach((row) => {
+      map[row.status] = row.count
+    })
+    return map
+  }, [stats])
+
   const filters = useMemo(
     () => ({
       ...employeeFiltersToParams(employeeFilters, shifts),
@@ -122,6 +135,7 @@ export function EmployeesListPage() {
           filters={employeeFilters}
           onChange={handleFiltersChange}
           showSpecificShift={false}
+          statusCounts={statusCounts}
         />
 
         <div className="flex justify-end">
@@ -130,6 +144,11 @@ export function EmployeesListPage() {
           </Button>
         </div>
       </div>
+
+      <p className="text-sm text-text-secondary">
+        Showing {sortedEmployees.length} of {stats?.total ?? sortedEmployees.length}{' '}
+        employees
+      </p>
 
       <div className="rounded-lg border border-border bg-white">
         <Table>

@@ -135,6 +135,14 @@ export class AttendanceQueryDto {
   @IsOptional()
   @IsString()
   district?: string;
+
+  @IsOptional()
+  @IsString()
+  bloodGroup?: string;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
 }
 
 export class MarkAbsenteesDto {

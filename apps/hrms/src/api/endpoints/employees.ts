@@ -14,9 +14,16 @@ export interface WorkingHoursSummary {
   averageDailyHours: number
 }
 
+export interface EmployeeStats {
+  total: number
+  byStatus: { status: string; count: number }[]
+  byProject: { project: string; projectId: string | null; count: number }[]
+}
+
 export const employeesApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, Employee[]>('/employees', { params }),
+  getStats: () => api.get<unknown, EmployeeStats>('/employees/stats'),
   getFilterOptions: () =>
     api.get<unknown, { designations: string[]; districts: string[] }>(
       '/employees/filter-options',

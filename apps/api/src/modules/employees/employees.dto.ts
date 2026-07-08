@@ -331,6 +331,10 @@ export class EmployeeQueryDto {
   search?: string;
 
   @IsOptional()
+  @IsString()
+  bloodGroup?: string;
+
+  @IsOptional()
   @IsDateString()
   joinedFrom?: string;
 

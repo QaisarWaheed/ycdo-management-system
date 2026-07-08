@@ -64,6 +64,22 @@ export class EmployeesController {
     return this.employeesService.findAll(query);
   }
 
+  @Get('stats')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.BRANCH_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.PAYROLL_OFFICER,
+    UserRole.CHAIRMAN,
+    UserRole.FOUNDER,
+  )
+  getStats() {
+    return this.employeesService.getStats();
+  }
+
   @Get('filter-options')
   @Roles(
     UserRole.SUPER_ADMIN,

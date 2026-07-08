@@ -23,7 +23,7 @@ export class DesignationsService {
 
     return this.prisma.designation.findMany({
       where,
-      orderBy: [{ category: 'asc' }, { title: 'asc' }],
+      orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
     });
   }
 

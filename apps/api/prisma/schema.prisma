@@ -32,6 +32,7 @@ model Branch {
   address   String?
   phone     String?
   isActive  Boolean  @default(true)
+  sortOrder Int      @default(999)
   createdAt DateTime @default(now())
   projectId String?
 
@@ -66,6 +67,7 @@ model Department {
   branchId  String
   branch    Branch   @relation(fields: [branchId], references: [id])
   isActive  Boolean  @default(true)
+  sortOrder Int      @default(999)
   createdAt DateTime @default(now())
 
   employees         Employee[]
@@ -178,6 +180,7 @@ enum EmployeeStatus {
   RESIGNED
   DISMISSED
   ON_LEAVE
+  ON_REST
 }
 
 model RelieverSession {
@@ -201,6 +204,7 @@ model Designation {
   title     String   @unique
   category  String
   isActive  Boolean  @default(true)
+  sortOrder Int      @default(999)
   createdAt DateTime @default(now())
 }
 

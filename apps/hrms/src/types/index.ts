@@ -18,6 +18,7 @@ export type EmployeeStatus =
   | 'TERMINATED'
   | 'RESIGNED'
   | 'ON_LEAVE'
+  | 'ON_REST'
   | 'DISMISSED'
 
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER'
@@ -476,6 +477,8 @@ export interface AttendanceLog {
   employee?: {
     fullName: string
     employeeCode: string
+    phone?: string | null
+    currentDesignation?: string
     currentDepartmentId?: string
     dutyStartTime?: string | null
     shift?: { startTime?: string } | null
@@ -712,8 +715,7 @@ export const APPLICATION_STATUSES: ApplicationStatus[] = [
 ]
 
 export interface EmployeePrefill {
-  firstName?: string
-  lastName?: string
+  fullName?: string
   email?: string
   phone?: string
   cnic?: string
@@ -777,6 +779,7 @@ export const EMPLOYEE_STATUSES: EmployeeStatus[] = [
   'ACTIVE',
   'TRAINEE',
   'APPOINTED',
+  'ON_REST',
   'SUSPENDED',
   'TERMINATED',
   'RESIGNED',

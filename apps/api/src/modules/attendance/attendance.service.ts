@@ -29,6 +29,7 @@ import {
   resolveDutyStartTime,
 } from './attendance-late.util';
 import { haversineMeters } from './geo.helper';
+import { getHierarchyPriority } from '../employees/employee-hierarchy';
 
 const OVERTIME_GRACE_MINUTES = 60;
 
@@ -424,6 +425,8 @@ export class AttendanceService {
     gender?: Gender;
     designation?: string;
     district?: string;
+    bloodGroup?: string;
+    search?: string;
   }): Prisma.EmployeeWhereInput | undefined {
     const employeeWhere: Prisma.EmployeeWhereInput = {};
 
@@ -432,7 +435,10 @@ export class AttendanceService {
     }
 
     if (query.projectId) {
-      employeeWhere.currentBranch = { projectId: query.projectId };
+      employeeWhere.currentBranch = {
+        ...(employeeWhere.currentBranch as Prisma.BranchWhereInput | undefined),
+        projectId: query.projectId,
+      };
     }
 
     if (query.shiftIds) {
@@ -466,10 +472,22 @@ export class AttendanceService {
       };
     }
 
+    if (query.bloodGroup) {
+      employeeWhere.bloodGroup = query.bloodGroup;
+    }
+
+    if (query.search) {
+      employeeWhere.OR = [
+        { fullName: { contains: query.search, mode: 'insensitive' } },
+        { employeeCode: { contains: query.search, mode: 'insensitive' } },
+        { cnic: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+
     return Object.keys(employeeWhere).length > 0 ? employeeWhere : undefined;
   }
 
-  findAll(query: AttendanceQueryDto) {
+  async findAll(query: AttendanceQueryDto) {
     const where: Prisma.AttendanceLogWhereInput = {};
 
     if (query.employeeId) {
@@ -500,20 +518,37 @@ export class AttendanceService {
       where.employee = employeeWhere;
     }
 
-    return this.prisma.attendanceLog.findMany({
+    const logs = await this.prisma.attendanceLog.findMany({
       where,
       include: {
         employee: {
           select: {
             fullName: true,
             employeeCode: true,
+            phone: true,
+            currentDesignation: true,
             dutyStartTime: true,
+            currentBranch: { select: { name: true, address: true } },
+            currentDepartment: { select: { name: true } },
             shift: { select: { startTime: true } },
           },
         },
         branch: { select: { name: true, address: true } },
       },
       orderBy: { date: 'desc' },
+    });
+
+    return logs.sort((a, b) => {
+      const aPriority = getHierarchyPriority(
+        a.employee?.currentDesignation ?? '',
+      );
+      const bPriority = getHierarchyPriority(
+        b.employee?.currentDesignation ?? '',
+      );
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return (a.employee?.fullName ?? '').localeCompare(
+        b.employee?.fullName ?? '',
+      );
     });
   }
 

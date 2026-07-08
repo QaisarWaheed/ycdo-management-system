@@ -23,6 +23,7 @@ import {
 import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
+  BLOOD_GROUP_OPTIONS,
   MARITAL_STATUS_LABELS,
   labelToMaritalStatus,
 } from '@/lib/searchableSelectOptions'
@@ -38,6 +39,7 @@ export type EmployeeFilterState = {
   district: string
   gender: string
   maritalStatus: string
+  bloodGroup: string
   shiftStartTime: string
   shiftId: string
   joinedFrom: string
@@ -53,6 +55,7 @@ export const EMPTY_EMPLOYEE_FILTERS: EmployeeFilterState = {
   district: ALL_FILTER,
   gender: ALL_FILTER,
   maritalStatus: ALL_FILTER,
+  bloodGroup: ALL_FILTER,
   shiftStartTime: '',
   shiftId: '',
   joinedFrom: '',
@@ -91,6 +94,8 @@ export function employeeFiltersToParams(
         : undefined,
     widowOnly:
       filters.maritalStatus === 'Widow' ? 'true' : undefined,
+    bloodGroup:
+      filters.bloodGroup !== ALL_FILTER ? filters.bloodGroup : undefined,
     shiftIds,
     joinedFrom: filters.joinedFrom || undefined,
     joinedTo: filters.joinedTo || undefined,
@@ -110,6 +115,7 @@ export function employeeFiltersToAttendanceParams(
     employeeStatus: params.status,
     district: params.district,
     gender: params.gender,
+    bloodGroup: params.bloodGroup,
     shiftIds: params.shiftIds,
   }
 }
@@ -118,6 +124,7 @@ type EmployeeFiltersBarProps = {
   filters: EmployeeFilterState
   onChange: (filters: EmployeeFilterState) => void
   showSpecificShift?: boolean
+  statusCounts?: Record<string, number>
   className?: string
 }
 
@@ -125,6 +132,7 @@ export function EmployeeFiltersBar({
   filters,
   onChange,
   showSpecificShift = true,
+  statusCounts,
   className,
 }: EmployeeFiltersBarProps) {
   const { data: projects = [] } = useQuery({
@@ -299,6 +307,7 @@ export function EmployeeFiltersBar({
               {EMPLOYEE_STATUSES.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s.replace(/_/g, ' ')}
+                  {statusCounts?.[s] != null ? ` (${statusCounts[s]})` : ''}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -319,6 +328,26 @@ export function EmployeeFiltersBar({
               {(filterOptions?.districts ?? []).map((d) => (
                 <SelectItem key={d} value={d}>
                   {d}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label>Blood Group</Label>
+          <Select
+            value={filters.bloodGroup}
+            onValueChange={(v) => update({ bloodGroup: v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="All Blood Groups" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_FILTER}>All Blood Groups</SelectItem>
+              {BLOOD_GROUP_OPTIONS.map((bg) => (
+                <SelectItem key={bg} value={bg}>
+                  {bg}
                 </SelectItem>
               ))}
             </SelectContent>

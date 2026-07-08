@@ -19,6 +19,7 @@ export class BranchesService {
           select: { employees: true, departments: true, shifts: true },
         },
       },
+      orderBy: { sortOrder: 'asc' },
     });
   }
 
@@ -26,9 +27,10 @@ export class BranchesService {
     return this.prisma.branch.findMany({
       where: { projectId, isActive: true },
       include: {
-        departments: { where: { isActive: true } },
+        departments: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
         shifts: { where: { isActive: true }, orderBy: { startTime: 'asc' } },
       },
+      orderBy: { sortOrder: 'asc' },
     });
   }
 

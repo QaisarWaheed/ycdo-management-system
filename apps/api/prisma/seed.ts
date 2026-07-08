@@ -998,6 +998,117 @@ async function main() {
   }
 
   const branchCount = await prisma.branch.count();
+
+  const branchOrder = [
+    { contains: 'Masoom Shah', sortOrder: 1 },
+    { contains: 'Rangeel', sortOrder: 2 },
+    { contains: 'Ghanta Ghar', sortOrder: 3 },
+    { contains: 'Hassan Abad', sortOrder: 4 },
+    { contains: 'Hassan Parwana', sortOrder: 5 },
+    { contains: 'Choti Zeeren', sortOrder: 6 },
+    { contains: 'Ghazi National', sortOrder: 7 },
+    { contains: 'Executive Hospital-II', sortOrder: 8 },
+    { contains: 'Qasim Pur', sortOrder: 9 },
+    { contains: 'Jumma Wala', sortOrder: 10 },
+    { contains: 'Abdul Hakeem', sortOrder: 11 },
+    { contains: 'Bilawal', sortOrder: 12 },
+    { contains: 'Budhla', sortOrder: 13 },
+    { contains: 'Sikandar', sortOrder: 14 },
+    { contains: 'Taunsa', sortOrder: 15 },
+    { contains: 'Gulgasht', sortOrder: 16 },
+    { contains: 'Rasheed', sortOrder: 17 },
+    { contains: 'MPS', sortOrder: 18 },
+    { contains: 'Consultant Floor', sortOrder: 19 },
+    { contains: 'Executive-I Consultant', sortOrder: 20 },
+  ];
+
+  for (const item of branchOrder) {
+    await prisma.branch.updateMany({
+      where: { name: { contains: item.contains } },
+      data: { sortOrder: item.sortOrder },
+    });
+  }
+
+  const deptOrder = [
+    'Administration',
+    'Human Resources',
+    'Medical Staff',
+    'Reception',
+    'Pharmacy',
+    'Laboratory',
+    'Housekeeping',
+    'Emergency',
+  ];
+
+  for (let i = 0; i < deptOrder.length; i++) {
+    await prisma.department.updateMany({
+      where: { name: deptOrder[i] },
+      data: { sortOrder: i + 1 },
+    });
+  }
+
+  const designationOrder = [
+    'Admin Manager',
+    'Staff Manager',
+    'Operations Manager',
+    'Progress Officer',
+    'Central Admin Officer',
+    'Coordinator Projects',
+    'Human Resource Manager',
+    'Human Resource Staff',
+    'Doctor',
+    'Surgeon',
+    'Anaesthetics',
+    'OTA',
+    'Admin Officer',
+    'Admin Medicine',
+    'Pharmacist',
+    'Pharmacy Staff',
+    'Medicine Manager',
+    'Medicine Store Manager',
+    'Lab Admin Manager',
+    'Lab Operation Manager',
+    'Lab Store Manager',
+    'Lab Staff',
+    'Lab Technician',
+    'Nurse',
+    'Head Nurse',
+    'Nursing Assistant',
+    'Receptionist',
+    'Data Entry Operator',
+    'Accounts Officer',
+    'Finance Manager',
+    'Audit Officer',
+    'Assistant Accountant',
+    'Finance Representative',
+    'Accountant/Chief Finance Officer',
+    'Assets Manager',
+    'Biomedical Engineer',
+    'R&D Coordinator',
+    'Vocational Trainer',
+    'VTI Admin Officer',
+    'Kitchen Admin Manager',
+    'Kitchen Operation Manager',
+    'Cook',
+    'Software Engineer',
+    'IT Officer',
+    'Social Media Officer',
+    'Graphic Designer',
+    'Security Guard',
+    'Driver',
+    'Housekeeper',
+    'Helper',
+    'Sanitation Worker',
+    'Sweeper',
+  ];
+
+  for (let i = 0; i < designationOrder.length; i++) {
+    await prisma.designation.updateMany({
+      where: { title: designationOrder[i] },
+      data: { sortOrder: i + 1 },
+    });
+  }
+
   console.log(`Seed completed — ${branchCount} branches total`);
   console.log('\nEmployee portal test accounts (password = employee code):');
   for (const emp of seedEmployees) {

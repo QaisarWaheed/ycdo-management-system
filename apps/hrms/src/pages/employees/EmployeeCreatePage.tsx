@@ -111,8 +111,7 @@ const STAFF_TYPE_OPTIONS: {
 ]
 
 const newStaffStep1Schema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
+  fullName: z.string().min(1, 'Full name is required'),
   fatherName: z.string().min(1, 'Father name is required'),
   fatherStatus: z.enum(['ALIVE', 'DECEASED']).optional(),
   fatherContactNumber: phoneRequired,
@@ -149,8 +148,7 @@ const newStaffStep1Schema = z.object({
 
 const existingStaffStep1Schema = z
   .object({
-    firstName: z.string().min(1, 'First name is required'),
-    lastName: z.string().min(1, 'Last name is required'),
+    fullName: z.string().min(1, 'Full name is required'),
     fatherName: z.string().min(1, 'Father name is required'),
     fatherStatus: z.enum(['ALIVE', 'DECEASED'], {
       message: 'Father status is required',
@@ -225,8 +223,7 @@ const existingStaffStep1Schema = z
 
 
 const step1FormSchema = z.object({
-  firstName: z.string(),
-  lastName: z.string(),
+  fullName: z.string(),
   fatherName: z.string(),
   fatherStatus: z.enum(['ALIVE', 'DECEASED']).optional(),
   fatherContactNumber: z.string().optional(),
@@ -565,7 +562,7 @@ function buildStep1Payload(data: Step1Values) {
   ] as const
 
   const payload: Record<string, unknown> = {
-    fullName: `${data.firstName} ${data.lastName}`.trim(),
+    fullName: data.fullName.trim(),
     fatherName: data.fatherName,
     gender: data.gender,
   }
@@ -623,8 +620,7 @@ export function EmployeeCreatePage() {
 
   const form1 = useForm<Step1Values>({
     defaultValues: {
-      firstName: '',
-      lastName: '',
+      fullName: '',
       fatherName: '',
       fatherStatus: undefined,
       fatherContactNumber: '',
@@ -715,8 +711,7 @@ export function EmployeeCreatePage() {
   useEffect(() => {
     if (prefill) {
       form1.reset({
-        firstName: prefill.firstName ?? '',
-        lastName: prefill.lastName ?? '',
+        fullName: prefill.fullName ?? '',
         fatherName: '',
         fatherStatus: undefined,
         fatherContactNumber: '',
@@ -1142,10 +1137,10 @@ export function EmployeeCreatePage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
                 control={form1.control}
-                name="firstName"
+                name="fullName"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>First Name *</FormLabel>
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>Full Name *</FormLabel>
                     <FormControl>
                       <TextOnlyInput {...field} value={field.value ?? ''} />
                     </FormControl>
@@ -1155,12 +1150,60 @@ export function EmployeeCreatePage() {
               />
               <FormField
                 control={form1.control}
-                name="lastName"
+                name="cnic"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Last Name *</FormLabel>
+                    <FormLabel>CNIC{isExistingStaff ? '' : ' *'}</FormLabel>
                     <FormControl>
-                      <TextOnlyInput {...field} value={field.value ?? ''} />
+                      <CnicInput value={field.value ?? ''} onChange={field.onChange} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="dateOfBirth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date of Birth *</FormLabel>
+                    <FormControl>
+                      <DateInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone *</FormLabel>
+                    <FormControl>
+                      <PhoneInput
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form1.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1251,67 +1294,6 @@ export function EmployeeCreatePage() {
               )}
               <FormField
                 control={form1.control}
-                name="cnic"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>CNIC{isExistingStaff ? '' : ' *'}</FormLabel>
-                    <FormControl>
-                      <CnicInput value={field.value ?? ''} onChange={field.onChange} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="dateOfBirth"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Date of Birth *</FormLabel>
-                    <FormControl>
-                      <DateInput
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone *</FormLabel>
-                    <FormControl>
-                      <PhoneInput
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input type="email" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
                 name="emergencyContactName"
                 render={({ field }) => (
                   <FormItem>
@@ -1354,43 +1336,6 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
-              {selectedMaritalStatus === 'MARRIED' && (
-                <>
-              <FormField
-                control={form1.control}
-                name="spouseName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Spouse Name{isExistingStaff ? ' *' : ''}
-                    </FormLabel>
-                    <FormControl>
-                      <TextOnlyInput {...field} value={field.value ?? ''} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form1.control}
-                name="spouseContactNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Spouse Contact Number{isExistingStaff ? ' *' : ''}
-                    </FormLabel>
-                    <FormControl>
-                      <PhoneInput
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-                </>
-              )}
               <FormField
                 control={form1.control}
                 name="bloodGroup"
@@ -1467,6 +1412,43 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
+              {selectedMaritalStatus === 'MARRIED' && (
+                <>
+                  <FormField
+                    control={form1.control}
+                    name="spouseName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Spouse Name{isExistingStaff ? ' *' : ''}
+                        </FormLabel>
+                        <FormControl>
+                          <TextOnlyInput {...field} value={field.value ?? ''} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form1.control}
+                    name="spouseContactNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Spouse Contact Number{isExistingStaff ? ' *' : ''}
+                        </FormLabel>
+                        <FormControl>
+                          <PhoneInput
+                            value={field.value ?? ''}
+                            onChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
               <EmployeeLocationFields
                 control={form1.control as unknown as Control<FieldValues>}
                 setValue={form1.setValue as unknown as UseFormSetValue<FieldValues>}

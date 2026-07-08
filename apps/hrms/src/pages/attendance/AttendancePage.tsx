@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
@@ -43,6 +43,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { useDebounce } from '@/hooks/useDebounce'
 import {
   calcLateMinutes,
   calcOvertimeMinutes,
@@ -115,10 +116,13 @@ function DailyLogTab({
   const queryClient = useQueryClient()
   const today = format(new Date(), 'yyyy-MM-dd')
   const [date, setDate] = useState(initialDate ?? today)
+  const [search, setSearch] = useState('')
   const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
   const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [confirmAbsentees, setConfirmAbsentees] = useState(false)
   const [updateLog, setUpdateLog] = useState<AttendanceLog | null>(null)
+
+  const debouncedSearch = useDebounce(search, 400)
 
   const { data: shifts = [] } = useQuery({
     queryKey: ['shifts', employeeFilters.branchId || 'all'],
@@ -131,9 +135,10 @@ function DailyLogTab({
       startDate: date,
       endDate: date,
       status: statusFilter !== ALL ? statusFilter : undefined,
+      search: debouncedSearch || undefined,
       ...employeeFiltersToAttendanceParams(employeeFilters, shifts),
     }),
-    [date, statusFilter, employeeFilters, shifts],
+    [date, statusFilter, debouncedSearch, employeeFilters, shifts],
   )
 
   const { data: logs = [], isLoading } = useQuery({
@@ -207,7 +212,16 @@ function DailyLogTab({
         </Button>
       </div>
 
-      <div className="rounded-lg border border-border bg-white p-4">
+      <div className="rounded-lg border border-border bg-white p-4 space-y-4">
+        <div className="relative min-w-[200px] max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+          <Input
+            placeholder="Search by name or employee code..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <EmployeeFiltersBar
           filters={employeeFilters}
           onChange={setEmployeeFilters}
@@ -220,6 +234,7 @@ function DailyLogTab({
             <TableRow>
               <TableHead>Code</TableHead>
               <TableHead>Employee Name</TableHead>
+              <TableHead>Contact</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Check In</TableHead>
               <TableHead>Check Out</TableHead>
@@ -234,7 +249,7 @@ function DailyLogTab({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(10)].map((__, j) => (
+                  {[...Array(11)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -243,7 +258,7 @@ function DailyLogTab({
               ))
             ) : attendanceLogs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={11} className="h-32 text-center text-text-secondary">
                   No attendance records for this date
                 </TableCell>
               </TableRow>
@@ -257,6 +272,18 @@ function DailyLogTab({
                   </TableCell>
                   <TableCell className="font-medium">
                     {log.employee?.fullName ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    {log.employee?.phone ? (
+                      <a
+                        href={`tel:${log.employee.phone}`}
+                        className="text-sm text-blue-600 hover:underline"
+                      >
+                        {log.employee.phone}
+                      </a>
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {formatBranchLabel(log.branch)}

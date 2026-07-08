@@ -18,7 +18,7 @@ function sanitizeDateValue(val: string): string {
   const parts = val.split('-')
   if (parts[0] && parts[0].length > 4) {
     parts[0] = parts[0].slice(0, 4)
-    return parts.join('-')
+    return parts.filter(Boolean).join('-')
   }
   return val
 }
@@ -34,28 +34,12 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
       placeholder,
       error,
       className,
-      onKeyDown,
       ...props
     },
     ref,
   ) => {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       onChange(sanitizeDateValue(e.target.value))
-    }
-
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      const input = e.currentTarget
-      const val = input.value
-      if (val) {
-        const year = val.split('-')[0]
-        if (year && year.length >= 4) {
-          const cursorPos = input.selectionStart ?? 0
-          if (cursorPos <= 4 && /[0-9]/.test(e.key)) {
-            e.preventDefault()
-          }
-        }
-      }
-      onKeyDown?.(e)
     }
 
     return (
@@ -70,7 +54,6 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
           placeholder={placeholder}
           className={cn(error && 'border-destructive', className)}
           onChange={handleChange}
-          onKeyDown={handleKeyDown}
           {...props}
         />
         {error && <p className="mt-1 text-sm text-destructive">{error}</p>}

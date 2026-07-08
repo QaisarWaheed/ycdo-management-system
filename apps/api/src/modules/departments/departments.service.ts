@@ -27,6 +27,7 @@ export class DepartmentsService {
         branch: { select: { name: true, address: true } },
         _count: { select: { employees: true } },
       },
+      orderBy: { sortOrder: 'asc' },
     });
   }
 
