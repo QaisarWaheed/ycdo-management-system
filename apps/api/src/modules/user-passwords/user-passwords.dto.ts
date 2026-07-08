@@ -13,6 +13,10 @@ export class UserPasswordsQueryDto {
   systemOnly?: string;
 
   @IsOptional()
+  @IsBooleanString()
+  employeeOnly?: string;
+
+  @IsOptional()
   @IsUUID()
   branchId?: string;
 

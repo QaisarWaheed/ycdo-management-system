@@ -20,6 +20,7 @@ import { BranchesPage } from '@/pages/branches/BranchesPage'
 import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
 import { ProfilePage } from '@/pages/settings/ProfilePage'
 import { UserPasswordsPage } from '@/pages/admin/UserPasswordsPage'
+import { SystemLoginsPage } from '@/pages/admin/SystemLoginsPage'
 
 export default function App() {
   return (
@@ -156,12 +157,24 @@ export default function App() {
         }
       />
       <Route
-        path="/admin/user-passwords"
+        path="/admin/employee-passwords"
         element={
           <ProtectedRoute>
             <UserPasswordsPage />
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/admin/system-logins"
+        element={
+          <ProtectedRoute>
+            <SystemLoginsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/user-passwords"
+        element={<Navigate to="/admin/employee-passwords" replace />}
       />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

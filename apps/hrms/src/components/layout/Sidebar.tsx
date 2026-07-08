@@ -8,9 +8,11 @@ import {
   Clock,
   FileText,
   Gift,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   MapPin,
+  Monitor,
   UserPlus,
   Users,
   Wallet,
@@ -36,6 +38,11 @@ const allNavItems = [
   { to: '/branches', label: 'Branches & Projects', icon: Building2 },
 ]
 
+const itTeamNavItems = [
+  { to: '/admin/employee-passwords', label: 'Employee Logins', icon: KeyRound },
+  { to: '/admin/system-logins', label: 'System Logins', icon: Monitor },
+]
+
 function navItemsForRole(role?: string) {
   if (!role) return allNavItems
 
@@ -45,7 +52,11 @@ function navItemsForRole(role?: string) {
     'HR_ADMIN_MANAGER',
   ]
   if (fullAccess.includes(role)) {
-    return allNavItems.filter((item) => item.to !== '/broadcasts')
+    const items = allNavItems.filter((item) => item.to !== '/broadcasts')
+    if (role === 'SUPER_ADMIN') {
+      return [...items, ...itTeamNavItems]
+    }
+    return items
   }
 
   if (role === 'ADMIN_MANAGER' || role === 'ADMIN_OFFICER') {
@@ -74,9 +85,12 @@ function navItemsForRole(role?: string) {
   }
 
   if (role === 'IT_ADMIN') {
-    return allNavItems.filter((item) =>
-      ['/dashboard', '/broadcasts'].includes(item.to),
-    )
+    return [
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/employees', label: 'Employees', icon: Users },
+      ...itTeamNavItems,
+      { to: '/broadcasts', label: 'Broadcasts', icon: Bell },
+    ]
   }
 
   return allNavItems

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Search, Trash2 } from 'lucide-react'
+import { Pencil, Search, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import {
   EMPTY_EMPLOYEE_FILTERS,
   EmployeeFiltersBar,
@@ -33,11 +34,14 @@ export function ItAdminEmployeesTab() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const isSuperAdmin = user?.role === 'SUPER_ADMIN'
+  const canManagePersonal =
+    user?.role === 'IT_ADMIN' || user?.role === 'SUPER_ADMIN'
 
   const [search, setSearch] = useState('')
   const [employeeFilters, setEmployeeFilters] =
     useState(EMPTY_EMPLOYEE_FILTERS)
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
+  const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
 
   const debouncedSearch = useDebounce(search, 400)
 
@@ -152,17 +156,43 @@ export function ItAdminEmployeesTab() {
                     <StatusBadge status={emp.status} />
                   </TableCell>
                   <TableCell>
-                    {isSuperAdmin && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-red-600 hover:text-red-700"
-                        onClick={() => setDeleteTarget(emp)}
-                      >
-                        <Trash2 className="mr-1 h-4 w-4" />
-                        Delete
-                      </Button>
-                    )}
+                    <div className="flex flex-wrap gap-1">
+                      {canManagePersonal && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            asChild
+                          >
+                            <Link to={`/employees/${emp.id}?itManage=1`}>
+                              Manage
+                            </Link>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              const full = await employeesApi.getOne(emp.id)
+                              setEditEmployee(full)
+                            }}
+                          >
+                            <Pencil className="mr-1 h-4 w-4" />
+                            Edit
+                          </Button>
+                        </>
+                      )}
+                      {isSuperAdmin && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => setDeleteTarget(emp)}
+                        >
+                          <Trash2 className="mr-1 h-4 w-4" />
+                          Delete
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -186,6 +216,20 @@ export function ItAdminEmployeesTab() {
         onCancel={() => setDeleteTarget(null)}
         loading={deleteMutation.isPending}
       />
+
+      {editEmployee && (
+        <EditEmployeeDialog
+          employee={editEmployee}
+          mode="personal"
+          open={!!editEmployee}
+          onOpenChange={(open) => !open && setEditEmployee(null)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['it-admin-employees'] })
+            queryClient.invalidateQueries({ queryKey: ['employees'] })
+            setEditEmployee(null)
+          }}
+        />
+      )}
     </div>
   )
 }

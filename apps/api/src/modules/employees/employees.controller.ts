@@ -121,8 +121,14 @@ export class EmployeesController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
+    UserRole.IT_ADMIN,
+    UserRole.PAYROLL_OFFICER,
+    UserRole.CHAIRMAN,
+    UserRole.FOUNDER,
     UserRole.EMPLOYEE,
   )
   findOne(
@@ -162,6 +168,7 @@ export class EmployeesController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
     UserRole.EMPLOYEE,

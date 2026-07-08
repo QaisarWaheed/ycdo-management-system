@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { KeyRound, Pencil } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, Pencil } from 'lucide-react'
+import { branchesApi } from '@/api/endpoints/branches'
+import { projectsApi } from '@/api/endpoints/projects'
 import { userPasswordsApi, type UserPasswordRecord } from '@/api/endpoints/userPasswords'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -14,6 +17,13 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -24,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 function ResetPasswordDialog({
   record,
@@ -44,7 +55,7 @@ function ResetPasswordDialog({
       toast({ title: 'Password updated' })
       setNewPassword('')
       onOpenChange(false)
-      queryClient.invalidateQueries({ queryKey: ['user-passwords'] })
+      queryClient.invalidateQueries({ queryKey: ['employee-logins'] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -105,12 +116,41 @@ function ResetPasswordDialog({
 }
 
 export function UserPasswordsPage() {
+  const [projectId, setProjectId] = useState('')
+  const [branchId, setBranchId] = useState('')
   const [resetRecord, setResetRecord] = useState<UserPasswordRecord | null>(null)
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>(
+    {},
+  )
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsApi.getAll(),
+  })
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => branchesApi.getAll(),
+  })
+
+  const filteredBranches = useMemo(() => {
+    if (!projectId) return branches
+    return branches.filter((b) => b.projectId === projectId)
+  }, [branches, projectId])
 
   const { data: records = [], isLoading } = useQuery({
-    queryKey: ['user-passwords'],
-    queryFn: () => userPasswordsApi.getAll(),
+    queryKey: ['employee-logins', projectId, branchId],
+    queryFn: () =>
+      userPasswordsApi.getAll({
+        employeeOnly: true,
+        projectId: projectId || undefined,
+        branchId: branchId || undefined,
+      }),
   })
+
+  const togglePassword = (id: string) => {
+    setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
 
   return (
     <div className="space-y-6">
@@ -119,70 +159,150 @@ export function UserPasswordsPage() {
           <KeyRound className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">User Passwords</h1>
+          <h1 className="text-2xl font-bold text-text-primary">Employee Logins</h1>
           <p className="text-sm text-text-secondary">
-            View and reset user account passwords
+            Portal passwords for employees with user accounts
           </p>
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Password</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead className="w-[120px]">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              [...Array(5)].map((_, i) => (
-                <TableRow key={i}>
-                  {[...Array(5)].map((__, j) => (
-                    <TableCell key={j}>
-                      <Skeleton className="h-5 w-full" />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : records.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="h-32 text-center text-text-secondary">
-                  No user passwords found
-                </TableCell>
-              </TableRow>
-            ) : (
-              records.map((record) => (
-                <TableRow key={record.id}>
-                  <TableCell className="font-medium">{record.user.email}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {record.user.role.replace(/_/g, ' ')}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">{record.plainText}</TableCell>
-                  <TableCell>
-                    {format(new Date(record.updatedAt), 'dd/MM/yyyy HH:mm')}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setResetRecord(record)}
-                    >
-                      <Pencil className="mr-1 h-3.5 w-3.5" />
-                      Reset
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label>Project</Label>
+          <Select
+            value={projectId || 'all'}
+            onValueChange={(v) => {
+              setProjectId(v === 'all' ? '' : v)
+              setBranchId('')
+            }}
+          >
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="All projects" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All projects</SelectItem>
+              {projects.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>Branch</Label>
+          <Select
+            value={branchId || 'all'}
+            onValueChange={(v) => setBranchId(v === 'all' ? '' : v)}
+          >
+            <SelectTrigger className="w-[260px]">
+              <SelectValue placeholder="All branches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All branches</SelectItem>
+              {filteredBranches.map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {formatBranchLabel(b)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Employee</TableHead>
+                <TableHead>Code</TableHead>
+                <TableHead>Branch</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Password</TableHead>
+                <TableHead>Last Updated</TableHead>
+                <TableHead className="w-[120px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                [...Array(5)].map((_, i) => (
+                  <TableRow key={i}>
+                    {[...Array(8)].map((__, j) => (
+                      <TableCell key={j}>
+                        <Skeleton className="h-5 w-full" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : records.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-text-secondary">
+                    No employee login accounts found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                records.map((record) => (
+                  <TableRow key={record.id}>
+                    <TableCell className="font-medium">
+                      {record.user.employee?.fullName ?? '—'}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {record.user.employee?.employeeCode ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      {record.user.branch
+                        ? formatBranchLabel(record.user.branch)
+                        : '—'}
+                    </TableCell>
+                    <TableCell>{record.user.email}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {record.user.role.replace(/_/g, ' ')}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm">
+                          {visiblePasswords[record.id]
+                            ? record.plainText
+                            : '••••••••'}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => togglePassword(record.id)}
+                        >
+                          {visiblePasswords[record.id] ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(record.updatedAt), 'dd/MM/yyyy HH:mm')}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setResetRecord(record)}
+                      >
+                        <Pencil className="mr-1 h-3.5 w-3.5" />
+                        Reset
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       <ResetPasswordDialog
         record={resetRecord}

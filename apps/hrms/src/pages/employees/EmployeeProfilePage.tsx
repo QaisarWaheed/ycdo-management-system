@@ -6,8 +6,6 @@ import {
   ChevronRight,
   Clock,
   Download,
-  Eye,
-  EyeOff,
   FileText,
   Fingerprint,
   Loader2,
@@ -17,8 +15,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useParams } from 'react-router-dom'
-import { authApi } from '@/api/endpoints/auth'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -524,107 +521,9 @@ function AddPreviousEmploymentDialog({
   )
 }
 
-function ResetPasswordDialog({
-  open,
-  onOpenChange,
-  employeeName,
-  userId,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  employeeName: string
-  userId: string
-}) {
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-
-  const resetMutation = useMutation({
-    mutationFn: () => authApi.resetPassword({ userId, newPassword }),
-    onSuccess: () => {
-      toast({ title: 'Password reset successfully' })
-      setNewPassword('')
-      setConfirmPassword('')
-      onOpenChange(false)
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Failed to reset password',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-  })
-
-  const handleSubmit = () => {
-    if (newPassword.length < 6) {
-      toast({
-        title: 'Password too short',
-        description: 'Password must be at least 6 characters',
-        variant: 'destructive',
-      })
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      toast({
-        title: 'Passwords do not match',
-        variant: 'destructive',
-      })
-      return
-    }
-    resetMutation.mutate()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Reset Password for {employeeName}</DialogTitle>
-        </DialogHeader>
-
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          This will immediately change the employee&apos;s portal login password.
-        </div>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>New Password</Label>
-            <Input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Minimum 6 characters"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Confirm Password</Label>
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            className="bg-primary hover:bg-primary-dark"
-            disabled={resetMutation.isPending}
-            onClick={handleSubmit}
-          >
-            {resetMutation.isPending ? 'Resetting...' : 'Reset Password'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 export function EmployeeProfilePage() {
   const { id = '' } = useParams()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -641,15 +540,13 @@ export function EmployeeProfilePage() {
   const [branchDutyOpen, setBranchDutyOpen] = useState(false)
   const [editPersonalOpen, setEditPersonalOpen] = useState(false)
   const [editJobOpen, setEditJobOpen] = useState(false)
-  const [showCredentialPassword, setShowCredentialPassword] = useState(false)
-  const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
   const [prevEmpOpen, setPrevEmpOpen] = useState(false)
   const [incentiveOpen, setIncentiveOpen] = useState(false)
   const [expandedPrevEmpId, setExpandedPrevEmpId] = useState<string | null>(
     null,
   )
 
-  const { data: employee, isLoading } = useQuery({
+  const { data: employee, isLoading, isError, error } = useQuery({
     queryKey: ['employee', id],
     queryFn: () => employeesApi.getOne(id),
     enabled: !!id,
@@ -823,6 +720,17 @@ export function EmployeeProfilePage() {
     )
   }
 
+  if (isError) {
+    const status = (error as { response?: { status?: number } })?.response?.status
+    return (
+      <p className="text-text-secondary">
+        {status === 403
+          ? 'Access denied. You do not have permission to view this employee.'
+          : 'Employee not found or could not be loaded.'}
+      </p>
+    )
+  }
+
   if (!employee) {
     return (
       <p className="text-text-secondary">Employee not found.</p>
@@ -845,17 +753,16 @@ export function EmployeeProfilePage() {
   const documents = (employee.documents ?? []) as EmployeeDocument[]
   const overtimeHours = ((attendanceSummary?.overtimeMinutes ?? 0) / 60).toFixed(1)
 
-  const canEditPersonal =
+  const itManageMode =
+    searchParams.get('itManage') === '1' &&
     !!user?.role &&
     IT_PROFILE_ROLES.includes(user.role as (typeof IT_PROFILE_ROLES)[number])
+
+  const canManagePersonalData = itManageMode
 
   const canEditJob =
     !!user?.role &&
     HR_JOB_ROLES.includes(user.role as (typeof HR_JOB_ROLES)[number])
-
-  const canManageCredentials =
-    !!user?.role &&
-    IT_PROFILE_ROLES.includes(user.role as (typeof IT_PROFILE_ROLES)[number])
 
   const canEditBranchDuty =
     canEditJob && user?.employeeId !== employee.id
@@ -890,6 +797,13 @@ export function EmployeeProfilePage() {
           e.target.value = ''
         }}
       />
+
+      {itManageMode && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 no-print">
+          IT manage mode — you can edit personal information, documents, and
+          qualifications for this employee.
+        </div>
+      )}
 
       {needsJobAssignment && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -1033,7 +947,7 @@ export function EmployeeProfilePage() {
             photoUrl={photoSrc}
             size="lg"
             onPhotoClick={
-              canEditPersonal
+              canManagePersonalData
                 ? () => photoInputRef.current?.click()
                 : undefined
             }
@@ -1094,70 +1008,7 @@ export function EmployeeProfilePage() {
             </p>
           </div>
           <div className="flex w-full flex-col gap-2">
-            {canManageCredentials && employee.user && (
-              <Card className="w-full text-left">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Credentials</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <p>
-                    <span className="text-text-secondary">Portal Email: </span>
-                    {employee.user.email}
-                  </p>
-                  <p className="flex items-center gap-2">
-                    <span className="text-text-secondary">Password: </span>
-                    <span className="font-mono">
-                      {showCredentialPassword
-                        ? employee.user.passwordRecord?.plainText ?? '—'
-                        : '••••••••'}
-                    </span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0"
-                      onClick={() =>
-                        setShowCredentialPassword((v) => !v)
-                      }
-                    >
-                      {showCredentialPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </p>
-                  <p>
-                    <span className="text-text-secondary">Role: </span>
-                    <Badge variant="outline">
-                      {employee.user.role.replace(/_/g, ' ')}
-                    </Badge>
-                  </p>
-                  <p>
-                    <span className="text-text-secondary">Status: </span>
-                    <Badge
-                      variant="outline"
-                      className={
-                        employee.user.isActive
-                          ? 'bg-green-50 text-green-800'
-                          : 'bg-red-50 text-red-800'
-                      }
-                    >
-                      {employee.user.isActive ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => setResetPasswordOpen(true)}
-                  >
-                    Reset Password
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-            {(canEditPersonal || canEditJob) && (
+            {(canManagePersonalData || canEditJob) && (
               <Button
                 variant="outline"
                 className="w-full no-print"
@@ -1167,7 +1018,7 @@ export function EmployeeProfilePage() {
                 Print Profile
               </Button>
             )}
-            {canEditPersonal && (
+            {canManagePersonalData && (
               <Button
                 variant="outline"
                 className="w-full"
@@ -1245,7 +1096,7 @@ export function EmployeeProfilePage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-lg">Personal Info</CardTitle>
-              {canEditPersonal && (
+              {canManagePersonalData && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1633,7 +1484,7 @@ export function EmployeeProfilePage() {
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">
-          {canEditPersonal && (
+          {canManagePersonalData && (
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
               <Label>Document Type</Label>
@@ -1713,7 +1564,7 @@ export function EmployeeProfilePage() {
                           Download
                         </a>
                       </Button>
-                      {canEditPersonal && (
+                      {canManagePersonalData && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -1923,7 +1774,7 @@ export function EmployeeProfilePage() {
             title="Academic Qualifications"
             qualifications={qualifications as AcademicQualification[]}
             isLoading={loadingQualifications}
-            canEdit={canEditPersonal}
+            canEdit={canManagePersonalData}
           />
           <QualificationSection
             employeeId={id}
@@ -1931,12 +1782,12 @@ export function EmployeeProfilePage() {
             title="Job-Relevant Qualifications"
             qualifications={qualifications as AcademicQualification[]}
             isLoading={loadingQualifications}
-            canEdit={canEditPersonal}
+            canEdit={canManagePersonalData}
           />
         </TabsContent>
 
         <TabsContent value="previous-employment" className="space-y-4">
-          {canEditPersonal && (
+          {canManagePersonalData && (
           <Button
             className="bg-primary hover:bg-primary-dark"
             onClick={() => setPrevEmpOpen(true)}
@@ -2014,7 +1865,7 @@ export function EmployeeProfilePage() {
                                 {emp.totalExperience ?? '—'}
                               </TableCell>
                               <TableCell>
-                                {canEditPersonal ? (
+                                {canManagePersonalData ? (
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -2211,14 +2062,6 @@ export function EmployeeProfilePage() {
             queryClient.invalidateQueries({ queryKey: ['employee', id] })
             queryClient.invalidateQueries({ queryKey: ['employees'] })
           }}
-        />
-      )}
-      {canManageCredentials && employee.user?.id && (
-        <ResetPasswordDialog
-          open={resetPasswordOpen}
-          onOpenChange={setResetPasswordOpen}
-          employeeName={employee.fullName}
-          userId={employee.user.id}
         />
       )}
     </div>

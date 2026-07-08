@@ -20,6 +20,14 @@ export class UserPasswordsService {
           ? { branch: { projectId: query.projectId } }
           : {}),
       };
+    } else if (query.employeeOnly === 'true') {
+      where.user = {
+        employeeId: { not: null },
+        ...(query.branchId ? { branchId: query.branchId } : {}),
+        ...(query.projectId
+          ? { branch: { projectId: query.projectId } }
+          : {}),
+      };
     } else if (query.branchId || query.projectId) {
       where.user = {
         ...(query.branchId ? { branchId: query.branchId } : {}),
@@ -43,6 +51,13 @@ export class UserPasswordsService {
             role: true,
             isActive: true,
             branchId: true,
+            employeeId: true,
+            employee: {
+              select: {
+                fullName: true,
+                employeeCode: true,
+              },
+            },
             branch: {
               select: {
                 id: true,
