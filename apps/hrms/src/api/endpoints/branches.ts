@@ -2,7 +2,8 @@ import api from '../axios'
 import type { Branch, BranchDetail } from '@/types'
 
 export const branchesApi = {
-  getAll: () => api.get<unknown, Branch[]>('/branches'),
+  getAll: (params?: { projectId?: string; project?: string }) =>
+    api.get<unknown, Branch[]>('/branches', { params }),
   getOne: (id: string) => api.get<unknown, BranchDetail>(`/branches/${id}`),
   getByProject: (projectId: string) =>
     api.get<unknown, Branch[]>(`/branches/project/${projectId}`),

@@ -314,6 +314,13 @@ export class EmployeesService {
       };
     }
 
+    if (filters.project) {
+      where.currentBranch = {
+        ...(where.currentBranch as Prisma.BranchWhereInput | undefined),
+        project: { type: filters.project },
+      };
+    }
+
     if (filters.shiftIds) {
       const ids = filters.shiftIds.split(',').filter(Boolean);
       if (ids.length > 0) {

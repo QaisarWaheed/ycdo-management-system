@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateBranchDto, UpdateBranchDto } from './branches.dto';
+import { BranchQueryDto, CreateBranchDto, UpdateBranchDto } from './branches.dto';
 
 @Injectable()
 export class BranchesService {
@@ -10,9 +11,19 @@ export class BranchesService {
     return this.prisma.branch.create({ data: dto });
   }
 
-  findAll() {
+  findAll(query?: BranchQueryDto) {
+    const where: Prisma.BranchWhereInput = { isActive: true };
+
+    if (query?.projectId) {
+      where.projectId = query.projectId;
+    }
+
+    if (query?.project) {
+      where.project = { type: query.project };
+    }
+
     return this.prisma.branch.findMany({
-      where: { isActive: true },
+      where,
       include: {
         project: { select: { name: true } },
         _count: {

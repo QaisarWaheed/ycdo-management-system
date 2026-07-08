@@ -6,13 +6,14 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { CreateBranchDto, UpdateBranchDto } from './branches.dto';
+import { BranchQueryDto, CreateBranchDto, UpdateBranchDto } from './branches.dto';
 import { BranchesService } from './branches.service';
 
 @Controller('branches')
@@ -27,8 +28,8 @@ export class BranchesController {
   }
 
   @Get()
-  findAll() {
-    return this.branchesService.findAll();
+  findAll(@Query() query: BranchQueryDto) {
+    return this.branchesService.findAll(query);
   }
 
   @Get('project/:projectId')

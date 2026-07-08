@@ -10,6 +10,7 @@ import {
   EmployeeStatus,
   Gender,
   Prisma,
+  ProjectType,
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -449,6 +450,7 @@ export class AttendanceService {
 
   private buildEmployeeFilterWhere(query: {
     projectId?: string;
+    project?: ProjectType;
     departmentId?: string;
     shiftId?: string;
     shiftIds?: string;
@@ -469,6 +471,13 @@ export class AttendanceService {
       employeeWhere.currentBranch = {
         ...(employeeWhere.currentBranch as Prisma.BranchWhereInput | undefined),
         projectId: query.projectId,
+      };
+    }
+
+    if (query.project) {
+      employeeWhere.currentBranch = {
+        ...(employeeWhere.currentBranch as Prisma.BranchWhereInput | undefined),
+        project: { type: query.project },
       };
     }
 

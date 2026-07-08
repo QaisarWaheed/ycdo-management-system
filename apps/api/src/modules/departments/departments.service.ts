@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateDepartmentDto, UpdateDepartmentDto } from './departments.dto';
+import {
+  CreateDepartmentDto,
+  DepartmentQueryDto,
+  UpdateDepartmentDto,
+} from './departments.dto';
 
 @Injectable()
 export class DepartmentsService {
@@ -17,12 +22,15 @@ export class DepartmentsService {
     });
   }
 
-  findAll(branchId?: string) {
+  findAll(query?: DepartmentQueryDto) {
+    const where: Prisma.DepartmentWhereInput = { isActive: true };
+
+    if (query?.branchId) {
+      where.branchId = query.branchId;
+    }
+
     return this.prisma.department.findMany({
-      where: {
-        isActive: true,
-        ...(branchId ? { branchId } : {}),
-      },
+      where,
       include: {
         branch: { select: { name: true, address: true } },
         _count: { select: { employees: true } },

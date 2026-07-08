@@ -1,4 +1,4 @@
-import { AttendanceStatus, EmployeeStatus, Gender } from '@prisma/client';
+import { AttendanceStatus, EmployeeStatus, Gender, ProjectType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
@@ -107,6 +107,10 @@ export class AttendanceQueryDto {
   @IsOptional()
   @IsUUID()
   projectId?: string;
+
+  @IsOptional()
+  @IsEnum(ProjectType)
+  project?: ProjectType;
 
   @IsOptional()
   @IsUUID()

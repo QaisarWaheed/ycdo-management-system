@@ -4,6 +4,7 @@ import {
   EmployeeStatus,
   Gender,
   MaritalStatus,
+  ProjectType,
   StaffType,
 } from '@prisma/client';
 import { Type } from 'class-transformer';
@@ -293,6 +294,10 @@ export class EmployeeQueryDto {
   @IsOptional()
   @IsUUID()
   projectId?: string;
+
+  @IsOptional()
+  @IsEnum(ProjectType)
+  project?: ProjectType;
 
   @IsOptional()
   @IsUUID()

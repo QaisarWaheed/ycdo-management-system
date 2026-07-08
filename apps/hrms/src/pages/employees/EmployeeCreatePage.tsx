@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
+import { projectsApi } from '@/api/endpoints/projects'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { designationsApi } from '@/api/endpoints/designations'
@@ -52,6 +53,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -615,6 +617,7 @@ export function EmployeeCreatePage() {
 
   const [step, setStep] = useState(0)
   const [staffType, setStaffType] = useState<StaffType | null>(null)
+  const [selectedProjectId, setSelectedProjectId] = useState('')
   const [stepError, setStepError] = useState<string | null>(null)
   const [step1Data, setStep1Data] = useState<Step1Values | null>(null)
   const [step2Data, setStep2Data] = useState<Step2Values | null>(null)
@@ -768,9 +771,17 @@ export function EmployeeCreatePage() {
     }
   }, [prefill, form1, form2])
 
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsApi.getAll(),
+  })
+
   const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn: () => branchesApi.getAll(),
+    queryKey: ['branches', selectedProjectId || 'all'],
+    queryFn: () =>
+      branchesApi.getAll(
+        selectedProjectId ? { projectId: selectedProjectId } : undefined,
+      ),
   })
 
   const { data: departments = [] } = useQuery({
@@ -1491,6 +1502,31 @@ export function EmployeeCreatePage() {
           <form onSubmit={onStep2Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Job Information</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Project</Label>
+                <Select
+                  value={selectedProjectId || 'all'}
+                  onValueChange={(value) => {
+                    const nextProjectId = value === 'all' ? '' : value
+                    setSelectedProjectId(nextProjectId)
+                    form2.setValue('currentBranchId', '')
+                    form2.setValue('currentDepartmentId', '')
+                    form2.setValue('currentDesignation', '')
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Projects" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Projects</SelectItem>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <FormField
                 control={form2.control}
                 name="currentBranchId"
