@@ -14,6 +14,6 @@ export class UpdateDepartmentDto extends PartialType(CreateDepartmentDto) {}
 
 export class DepartmentQueryDto {
   @IsOptional()
-  @IsUUID()
+  @IsString()
   branchId?: string;
 }

@@ -77,7 +77,7 @@ export class AttendanceQueryDto {
   employeeId?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   branchId?: string;
 
   @IsOptional()
@@ -113,7 +113,7 @@ export class AttendanceQueryDto {
   project?: ProjectType;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   departmentId?: string;
 
   @IsOptional()
@@ -197,7 +197,7 @@ export class UpdateAttendanceDto {
 
 export class RelieverSessionsQueryDto {
   @IsOptional()
-  @IsUUID()
+  @IsString()
   branchId?: string;
 
   @IsOptional()
@@ -213,7 +213,7 @@ export class RelieverSessionsQueryDto {
   projectId?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   departmentId?: string;
 
   @IsOptional()

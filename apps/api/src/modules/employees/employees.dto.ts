@@ -284,11 +284,11 @@ export class TransferDto {
 
 export class EmployeeQueryDto {
   @IsOptional()
-  @IsUUID()
+  @IsString()
   branchId?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   departmentId?: string;
 
   @IsOptional()
@@ -386,10 +386,10 @@ export class ActiveShiftQueryDto {
   time: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   branchId?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   departmentId?: string;
 }
