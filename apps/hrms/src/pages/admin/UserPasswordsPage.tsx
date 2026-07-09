@@ -5,6 +5,9 @@ import { Eye, EyeOff, KeyRound, Pencil } from 'lucide-react'
 import { branchesApi } from '@/api/endpoints/branches'
 import { projectsApi } from '@/api/endpoints/projects'
 import { userPasswordsApi, type UserPasswordRecord } from '@/api/endpoints/userPasswords'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -34,6 +37,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 function ResetPasswordDialog({
@@ -148,6 +152,11 @@ export function UserPasswordsPage() {
       }),
   })
 
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    records,
+    [projectId, branchId],
+  )
+
   const togglePassword = (id: string) => {
     setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }))
   }
@@ -210,6 +219,8 @@ export function UserPasswordsPage() {
         </div>
       </div>
 
+      <TableRecordCount count={total} label="login account" />
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -236,17 +247,17 @@ export function UserPasswordsPage() {
                     ))}
                   </TableRow>
                 ))
-              ) : records.length === 0 ? (
+              ) : paginated.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-text-secondary">
                     No employee login accounts found
                   </TableCell>
                 </TableRow>
               ) : (
-                records.map((record) => (
+                paginated.map((record) => (
                   <TableRow key={record.id}>
-                    <TableCell className="font-medium">
-                      {record.user.employee?.fullName ?? '—'}
+                    <TableCell>
+                      <EmployeeNameLink employee={record.user.employee} />
                     </TableCell>
                     <TableCell className="font-mono text-sm">
                       {record.user.employee?.employeeCode ?? '—'}
@@ -301,6 +312,13 @@ export function UserPasswordsPage() {
               )}
             </TableBody>
           </Table>
+
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
 

@@ -7,10 +7,13 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { recruitmentApi } from '@/api/endpoints/recruitment'
 import { shiftsApi } from '@/api/endpoints/shifts'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { PKRInput } from '@/components/common/PKRInput'
 import { StatusBadge } from '@/components/employees/StatusBadge'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { withReturnTo } from '@/lib/backNavigation'
 import { Badge } from '@/components/ui/badge'
@@ -44,6 +47,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import type { Employee, JobApplication } from '@/types'
 
 function statusBadgeClass(status: string) {
@@ -369,56 +373,76 @@ function ApplicationsTab({
   onShortlist: (id: string) => void
   onReject: (id: string) => void
 }) {
-  const applied = applications.filter((a) => a.status === 'APPLIED')
+  const applied = useMemo(
+    () => applications.filter((a) => a.status === 'APPLIED'),
+    [applications],
+  )
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    applied,
+    [applications],
+  )
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Position</TableHead>
-          <TableHead>Phone</TableHead>
-          <TableHead>Email</TableHead>
-          <TableHead>Applied On</TableHead>
-          <TableHead>Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {applied.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={6} className="text-text-secondary">
-              No applications pending review
-            </TableCell>
-          </TableRow>
-        ) : (
-          applied.map((app) => (
-            <TableRow key={app.id}>
-              <TableCell className="font-medium">{app.fullName}</TableCell>
-              <TableCell>{app.position}</TableCell>
-              <TableCell>{app.phone}</TableCell>
-              <TableCell>{app.email}</TableCell>
-              <TableCell>
-                {format(parseISO(app.appliedAt), 'dd/MM/yyyy')}
-              </TableCell>
-              <TableCell>
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => onShortlist(app.id)}>
-                    Shortlist
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => onReject(app.id)}
-                  >
-                    Reject
-                  </Button>
-                </div>
-              </TableCell>
+    <>
+      <TableRecordCount count={total} label="application" />
+      <div className="rounded-lg border border-border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Position</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Applied On</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
-          ))
-        )}
-      </TableBody>
-    </Table>
+          </TableHeader>
+          <TableBody>
+            {paginated.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-text-secondary">
+                  No applications pending review
+                </TableCell>
+              </TableRow>
+            ) : (
+              paginated.map((app) => (
+                <TableRow key={app.id}>
+                  <TableCell className="font-medium">{app.fullName}</TableCell>
+                  <TableCell>{app.position}</TableCell>
+                  <TableCell>{app.phone}</TableCell>
+                  <TableCell>{app.email}</TableCell>
+                  <TableCell>
+                    {format(parseISO(app.appliedAt), 'dd/MM/yyyy')}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => onShortlist(app.id)}>
+                        Shortlist
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => onReject(app.id)}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
+      </div>
+    </>
   )
 }
 
@@ -433,73 +457,94 @@ function InterviewsTab({
   onAccept: (app: JobApplication) => void
   onReject: (id: string) => void
 }) {
-  const interviews = applications.filter(
-    (a) => a.status === 'SHORTLISTED' || a.status === 'INTERVIEW_SCHEDULED',
+  const interviews = useMemo(
+    () =>
+      applications.filter(
+        (a) => a.status === 'SHORTLISTED' || a.status === 'INTERVIEW_SCHEDULED',
+      ),
+    [applications],
+  )
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    interviews,
+    [applications],
   )
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Position</TableHead>
-          <TableHead>Phone</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Interview Date</TableHead>
-          <TableHead>Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {interviews.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={6} className="text-text-secondary">
-              No candidates in interview pipeline
-            </TableCell>
-          </TableRow>
-        ) : (
-          interviews.map((app) => (
-            <TableRow key={app.id}>
-              <TableCell className="font-medium">{app.fullName}</TableCell>
-              <TableCell>{app.position}</TableCell>
-              <TableCell>{app.phone}</TableCell>
-              <TableCell>
-                <Badge variant="outline" className={statusBadgeClass(app.status)}>
-                  {app.status.replace(/_/g, ' ')}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                {app.interviewDate
-                  ? format(parseISO(app.interviewDate), 'dd/MM/yyyy HH:mm')
-                  : '—'}
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-wrap gap-2">
-                  {app.status === 'SHORTLISTED' && (
-                    <Button size="sm" onClick={() => onSchedule(app)}>
-                      Schedule Interview
-                    </Button>
-                  )}
-                  {app.status === 'INTERVIEW_SCHEDULED' && (
-                    <>
-                      <Button size="sm" onClick={() => onAccept(app)}>
-                        Accept Candidate
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => onReject(app.id)}
-                      >
-                        Reject
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </TableCell>
+    <>
+      <TableRecordCount count={total} label="candidate" />
+      <div className="rounded-lg border border-border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Position</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Interview Date</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
-          ))
-        )}
-      </TableBody>
-    </Table>
+          </TableHeader>
+          <TableBody>
+            {paginated.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-text-secondary">
+                  No candidates in interview pipeline
+                </TableCell>
+              </TableRow>
+            ) : (
+              paginated.map((app) => (
+                <TableRow key={app.id}>
+                  <TableCell className="font-medium">{app.fullName}</TableCell>
+                  <TableCell>{app.position}</TableCell>
+                  <TableCell>{app.phone}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={statusBadgeClass(app.status)}>
+                      {app.status.replace(/_/g, ' ')}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {app.interviewDate
+                      ? format(parseISO(app.interviewDate), 'dd/MM/yyyy HH:mm')
+                      : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-2">
+                      {app.status === 'SHORTLISTED' && (
+                        <Button size="sm" onClick={() => onSchedule(app)}>
+                          Schedule Interview
+                        </Button>
+                      )}
+                      {app.status === 'INTERVIEW_SCHEDULED' && (
+                        <>
+                          <Button size="sm" onClick={() => onAccept(app)}>
+                            Accept Candidate
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => onReject(app.id)}
+                          >
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
+      </div>
+    </>
   )
 }
 
@@ -515,7 +560,15 @@ function AcceptedTab({
   const navigate = useNavigate()
   const location = useLocation()
   const returnTo = `${location.pathname}${location.search}`
-  const selected = applications.filter((a) => a.status === 'SELECTED')
+  const selected = useMemo(
+    () => applications.filter((a) => a.status === 'SELECTED'),
+    [applications],
+  )
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    selected,
+    [applications],
+  )
 
   const findEmployee = (app: JobApplication) =>
     employees.find((e) => e.email === app.email)
@@ -526,76 +579,94 @@ function AcceptedTab({
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Position</TableHead>
-          <TableHead>Employee Code</TableHead>
-          <TableHead>Branch</TableHead>
-          <TableHead>Designation</TableHead>
-          <TableHead>Stipend</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {selected.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={8} className="text-text-secondary">
-              No accepted candidates yet
-            </TableCell>
-          </TableRow>
-        ) : (
-          selected.map((app) => {
-            const emp = findEmployee(app)
-            return (
-              <TableRow key={app.id}>
-                <TableCell className="font-medium">{app.fullName}</TableCell>
-                <TableCell>{app.position}</TableCell>
-                <TableCell className="font-mono text-xs">
-                  {emp?.employeeCode ?? '—'}
-                </TableCell>
-                <TableCell>
-                  {branchName(app.selectedBranchId ?? emp?.currentBranchId)}
-                </TableCell>
-                <TableCell>
-                  {app.selectedDesignation ?? emp?.currentDesignation ?? '—'}
-                </TableCell>
-                <TableCell>
-                  {app.selectedSalary
-                    ? `PKR ${Number(app.selectedSalary).toLocaleString('en-PK')}`
-                    : '—'}
-                </TableCell>
-                <TableCell>
-                  {emp ? (
-                    <StatusBadge status={emp.status} />
-                  ) : (
-                    <Badge variant="outline">TRAINEE</Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {emp && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        navigate(
-                          `/employees/${emp.id}`,
-                          withReturnTo(returnTo),
-                        )
-                      }
-                    >
-                      View Employee Profile
-                    </Button>
-                  )}
+    <>
+      <TableRecordCount count={total} label="accepted candidate" />
+      <div className="rounded-lg border border-border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Position</TableHead>
+              <TableHead>Employee Code</TableHead>
+              <TableHead>Branch</TableHead>
+              <TableHead>Designation</TableHead>
+              <TableHead>Stipend</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginated.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-text-secondary">
+                  No accepted candidates yet
                 </TableCell>
               </TableRow>
-            )
-          })
-        )}
-      </TableBody>
-    </Table>
+            ) : (
+              paginated.map((app) => {
+                const emp = findEmployee(app)
+                return (
+                  <TableRow key={app.id}>
+                    <TableCell>
+                      {emp ? (
+                        <EmployeeNameLink employee={emp} />
+                      ) : (
+                        app.fullName
+                      )}
+                    </TableCell>
+                    <TableCell>{app.position}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {emp?.employeeCode ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      {branchName(app.selectedBranchId ?? emp?.currentBranchId)}
+                    </TableCell>
+                    <TableCell>
+                      {app.selectedDesignation ?? emp?.currentDesignation ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      {app.selectedSalary
+                        ? `PKR ${Number(app.selectedSalary).toLocaleString('en-PK')}`
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {emp ? (
+                        <StatusBadge status={emp.status} />
+                      ) : (
+                        <Badge variant="outline">TRAINEE</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {emp && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            navigate(
+                              `/employees/${emp.id}`,
+                              withReturnTo(returnTo),
+                            )
+                          }
+                        >
+                          View Employee Profile
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            )}
+          </TableBody>
+        </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
+      </div>
+    </>
   )
 }
 
@@ -719,46 +790,40 @@ export function RecruitmentPage() {
           <TabsTrigger value="accepted">Accepted</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="applications" className="mt-4">
+        <TabsContent value="applications" className="mt-4 space-y-4">
           {isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : (
-            <div className="rounded-lg border border-border bg-white">
-              <ApplicationsTab
-                applications={applications}
-                onShortlist={handleShortlist}
-                onReject={handleReject}
-              />
-            </div>
+            <ApplicationsTab
+              applications={applications}
+              onShortlist={handleShortlist}
+              onReject={handleReject}
+            />
           )}
         </TabsContent>
 
-        <TabsContent value="interviews" className="mt-4">
+        <TabsContent value="interviews" className="mt-4 space-y-4">
           {isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : (
-            <div className="rounded-lg border border-border bg-white">
-              <InterviewsTab
-                applications={applications}
-                onSchedule={setScheduleApp}
-                onAccept={setAcceptApp}
-                onReject={handleReject}
-              />
-            </div>
+            <InterviewsTab
+              applications={applications}
+              onSchedule={setScheduleApp}
+              onAccept={setAcceptApp}
+              onReject={handleReject}
+            />
           )}
         </TabsContent>
 
-        <TabsContent value="accepted" className="mt-4">
+        <TabsContent value="accepted" className="mt-4 space-y-4">
           {isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : (
-            <div className="rounded-lg border border-border bg-white">
-              <AcceptedTab
-                applications={applications}
-                employees={employees}
-                branches={branches}
-              />
-            </div>
+            <AcceptedTab
+              applications={applications}
+              employees={employees}
+              branches={branches}
+            />
           )}
         </TabsContent>
       </Tabs>

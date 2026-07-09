@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { leaveApi } from '@/api/endpoints/leave'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import {
   ApproveRejectDialog,
   canApproveLeave,
@@ -80,9 +81,7 @@ export function DeptInchargeDashboard({
               {(pendingLeaves as LeaveRecord[]).map((leave) => (
                 <TableRow key={leave.id}>
                   <TableCell>
-                    {leave.employee
-                      ? `${leave.employee.fullName}`
-                      : '—'}
+                    <EmployeeNameLink employee={leave.employee} />
                   </TableCell>
                   <TableCell>
                     {format(new Date(leave.startDate), 'dd/MM/yyyy')}

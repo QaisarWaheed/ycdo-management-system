@@ -6,6 +6,7 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import {
   ApproveRejectDialog,
   canApproveLeave,
@@ -197,9 +198,7 @@ export function BranchManagerDashboard() {
                     (pendingLeaves as LeaveRecord[]).map((leave) => (
                       <TableRow key={leave.id}>
                         <TableCell>
-                          {leave.employee
-                            ? `${leave.employee.fullName}`
-                            : '—'}
+                          <EmployeeNameLink employee={leave.employee} />
                         </TableCell>
                         <TableCell>
                           {format(new Date(leave.startDate), 'dd/MM/yyyy')}

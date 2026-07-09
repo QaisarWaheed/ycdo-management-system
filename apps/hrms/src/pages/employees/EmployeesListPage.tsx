@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { MoreHorizontal, Plus, Search, Users } from 'lucide-react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
@@ -12,6 +12,7 @@ import {
   employeeFiltersToParams,
 } from '@/components/employees/EmployeeFiltersBar'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -32,8 +33,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useDebounce } from '@/hooks/useDebounce'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { useAuth } from '@/hooks/useAuth'
+import { useDebounce } from '@/hooks/useDebounce'
+import { usePagination } from '@/hooks/usePagination'
 import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
 import {
   getEmployeeDutyEndTime,
@@ -42,8 +46,6 @@ import {
 import { formatDutyDisplay } from '@/lib/dutyTimes'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import { withReturnTo } from '@/lib/backNavigation'
-
-const PAGE_SIZE = 20
 
 export function EmployeesListPage() {
   const navigate = useNavigate()
@@ -54,7 +56,6 @@ export function EmployeesListPage() {
   const [employeeFilters, setEmployeeFilters] = useState(() =>
     createEmployeeFilters(user),
   )
-  const [page, setPage] = useState(0)
 
   const [letterDialog, setLetterDialog] = useState<string | null>(null)
   const [statusDialog, setStatusDialog] = useState<{
@@ -102,8 +103,10 @@ export function EmployeesListPage() {
     [employees],
   )
 
-  const totalPages = Math.max(1, Math.ceil(sortedEmployees.length / PAGE_SIZE))
-  const paginated = sortedEmployees.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    sortedEmployees,
+    [filters],
+  )
 
   const clearFilters = () => {
     setSearch('')
@@ -179,10 +182,11 @@ export function EmployeesListPage() {
         </div>
       </div>
 
-      <p className="text-sm text-text-secondary">
-        Showing {sortedEmployees.length} of {stats?.total ?? sortedEmployees.length}{' '}
-        employees
-      </p>
+      <TableRecordCount
+        count={total}
+        total={stats?.total}
+        label="employee"
+      />
 
       <div className="rounded-lg border border-border bg-white">
         <Table>
@@ -240,12 +244,7 @@ export function EmployeesListPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Link
-                      to={`/employees/${emp.id}`}
-                      className="font-semibold text-primary hover:underline"
-                    >
-                      {emp.fullName}
-                    </Link>
+                    <EmployeeNameLink employee={emp} className="font-semibold" />
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {emp.currentDesignation ?? '—'}
@@ -331,33 +330,12 @@ export function EmployeesListPage() {
           </TableBody>
         </Table>
 
-        {!isLoading && sortedEmployees.length > PAGE_SIZE && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3">
-            <p className="text-sm text-text-secondary">
-              Showing {page * PAGE_SIZE + 1}–
-              {Math.min((page + 1) * PAGE_SIZE, sortedEmployees.length)} of{' '}
-              {sortedEmployees.length}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === 0}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       {letterDialog && (

@@ -4,6 +4,8 @@ import { Pencil, Search, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import {
@@ -11,6 +13,7 @@ import {
   EmployeeFiltersBar,
   employeeFiltersToParams,
 } from '@/components/employees/EmployeeFiltersBar'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,6 +29,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
+import { usePagination } from '@/hooks/usePagination'
 import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import type { Employee } from '@/types'
@@ -68,6 +72,11 @@ export function ItAdminEmployeesTab() {
     [employees],
   )
 
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    sortedEmployees,
+    [filters],
+  )
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => employeesApi.delete(id),
     onSuccess: (result) => {
@@ -103,6 +112,8 @@ export function ItAdminEmployeesTab() {
           onChange={setEmployeeFilters}
         />
 
+      <TableRecordCount count={total} label="employee" />
+
       <div className="overflow-x-auto rounded-lg border border-border">
         <Table>
           <TableHeader>
@@ -127,25 +138,20 @@ export function ItAdminEmployeesTab() {
                   ))}
                 </TableRow>
               ))
-            ) : sortedEmployees.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-text-secondary">
                   No employees found
                 </TableCell>
               </TableRow>
             ) : (
-              sortedEmployees.map((emp) => (
+              paginated.map((emp) => (
                 <TableRow key={emp.id}>
                   <TableCell className="font-mono text-sm">
                     {emp.employeeCode}
                   </TableCell>
                   <TableCell>
-                    <Link
-                      to={`/employees/${emp.id}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {emp.fullName}
-                    </Link>
+                    <EmployeeNameLink employee={emp} />
                   </TableCell>
                   <TableCell>{formatBranchTableLabel(emp.currentBranch)}</TableCell>
                   <TableCell>{emp.currentDepartment?.name ?? '—'}</TableCell>
@@ -197,6 +203,13 @@ export function ItAdminEmployeesTab() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       <ConfirmDialog

@@ -9,6 +9,8 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { Navigate } from 'react-router-dom'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { auditLogsApi } from '@/api/endpoints/auditLogs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -22,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
+import { usePagination } from '@/hooks/usePagination'
 
 const ACTIVITY_TRAIL_ROLES = ['SUPER_ADMIN'] as const
 const ALL_LOGINS = 'all'
@@ -95,6 +98,11 @@ export function ActivityTrailPage() {
     refetchInterval: 60_000,
   })
 
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    activity,
+    [selectedLogin],
+  )
+
   if (!canView) {
     return <Navigate to="/dashboard" replace />
   }
@@ -112,6 +120,8 @@ export function ActivityTrailPage() {
           System-wide log of HR and admin actions across the platform.
         </p>
       </div>
+
+      <TableRecordCount count={total} label="activity record" />
 
       <Card>
         <CardHeader className="space-y-4">
@@ -160,6 +170,7 @@ export function ActivityTrailPage() {
             </p>
           )}
         </CardHeader>
+
         <CardContent>
           {loadingActivity ? (
             <div className="space-y-3">
@@ -168,49 +179,58 @@ export function ActivityTrailPage() {
               <Skeleton className="h-14 w-full" />
               <Skeleton className="h-14 w-full" />
             </div>
-          ) : activity.length === 0 ? (
+          ) : paginated.length === 0 ? (
             <p className="text-sm text-text-secondary">
               {selectedLogin === ALL_LOGINS
                 ? 'No activity recorded yet.'
                 : 'No activity found for this login.'}
             </p>
           ) : (
-            <ul className="divide-y divide-border">
-              {activity.map((item) => {
-                const Icon = activityIcon(item.action)
-                return (
-                  <li
-                    key={item.id}
-                    className="flex items-start gap-4 py-4 first:pt-0 last:pb-0"
-                  >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface">
-                      <Icon className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-text-primary">
-                        {item.description}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
-                        <span>
-                          {item.user?.email ?? 'Unknown user'}
-                          {item.user?.role
-                            ? ` · ${formatRole(item.user.role)}`
-                            : ''}
-                        </span>
-                        <span>
-                          {format(new Date(item.createdAt), 'dd MMM yyyy, hh:mm a')}
-                        </span>
-                        <span>
-                          {formatDistanceToNow(new Date(item.createdAt), {
-                            addSuffix: true,
-                          })}
-                        </span>
+            <>
+              <ul className="divide-y divide-border">
+                {paginated.map((item) => {
+                  const Icon = activityIcon(item.action)
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex items-start gap-4 py-4 first:pt-0 last:pb-0"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface">
+                        <Icon className="h-4 w-4 text-primary" />
                       </div>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-text-primary">
+                          {item.description}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
+                          <span>
+                            {item.user?.email ?? 'Unknown user'}
+                            {item.user?.role
+                              ? ` · ${formatRole(item.user.role)}`
+                              : ''}
+                          </span>
+                          <span>
+                            {format(new Date(item.createdAt), 'dd MMM yyyy, hh:mm a')}
+                          </span>
+                          <span>
+                            {formatDistanceToNow(new Date(item.createdAt), {
+                              addSuffix: true,
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              <TablePagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                onPageChange={setPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>

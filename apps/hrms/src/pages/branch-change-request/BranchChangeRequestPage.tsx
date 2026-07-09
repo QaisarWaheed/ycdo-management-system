@@ -6,9 +6,12 @@ import { CheckCircle, Clock, MapPin, Plus, XCircle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { branchChangeRequestApi } from '@/api/endpoints/branchChangeRequest'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -48,6 +51,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { useAuthStore } from '@/store/auth.store'
 import type {
   BranchChangeRequest,
@@ -353,6 +357,13 @@ function RequestsTab() {
     queryFn: () => branchChangeRequestApi.getAll(filters),
   })
 
+  const requestList = requests as BranchChangeRequest[]
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    requestList,
+    [filters],
+  )
+
   const updateMutation = useMutation({
     mutationFn: ({
       id,
@@ -445,6 +456,8 @@ function RequestsTab() {
         </div>
       </div>
 
+      <TableRecordCount count={total} label="branch change request" />
+
       <div className="rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -470,22 +483,18 @@ function RequestsTab() {
                   ))}
                 </TableRow>
               ))
-            ) : requests.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
                   No branch change requests found
                 </TableCell>
               </TableRow>
             ) : (
-              (requests as BranchChangeRequest[]).map((req) => (
+              paginated.map((req) => (
                 <TableRow key={req.id}>
                   <TableCell>
                     <div>
-                      <p className="font-medium">
-                        {req.employee
-                          ? `${req.employee.fullName}`
-                          : '—'}
-                      </p>
+                        <EmployeeNameLink employee={req.employee} />
                       <p className="font-mono text-xs text-text-secondary">
                         {req.employee?.employeeCode ?? '—'}
                       </p>
@@ -542,6 +551,13 @@ function RequestsTab() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       <ConfirmDialog

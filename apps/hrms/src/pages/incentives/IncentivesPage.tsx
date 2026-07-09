@@ -4,8 +4,11 @@ import { format } from 'date-fns'
 import { Plus, Trash2 } from 'lucide-react'
 import { branchesApi } from '@/api/endpoints/branches'
 import { incentivesApi } from '@/api/endpoints/incentives'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -27,6 +30,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { useAuth } from '@/hooks/useAuth'
 import type { Incentive } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
@@ -101,6 +105,11 @@ export function IncentivesPage() {
   const totalAmount = list.reduce((sum, i) => sum + Number(i.amount), 0)
   const uniqueEmployees = new Set(list.map((i) => i.employeeId)).size
 
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    list,
+    [filters],
+  )
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -163,6 +172,19 @@ export function IncentivesPage() {
         <MonthYearPicker value={monthYear} onChange={setMonthYear} />
       </div>
 
+      <TableRecordCount
+        count={total}
+        label="incentive"
+        extra={
+          total > 0 ? (
+            <p className="text-sm text-text-secondary">
+              Total amount: {formatPKR(totalAmount)} · {uniqueEmployees} employee
+              {uniqueEmployees === 1 ? '' : 's'}
+            </p>
+          ) : undefined
+        }
+      />
+
       <div className="rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -188,7 +210,7 @@ export function IncentivesPage() {
                   ))}
                 </TableRow>
               ))
-            ) : list.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={canDelete ? 8 : 7}
@@ -198,12 +220,10 @@ export function IncentivesPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              list.map((item) => (
+              paginated.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell>
-                    {item.employee
-                      ? `${item.employee.fullName}`
-                      : '—'}
+                    <EmployeeNameLink employee={item.employee} />
                   </TableCell>
                   <TableCell>
                     {formatBranchLabel(item.employee?.currentBranch)}
@@ -243,6 +263,13 @@ export function IncentivesPage() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       <AddIncentiveDialog open={addOpen} onOpenChange={setAddOpen} />

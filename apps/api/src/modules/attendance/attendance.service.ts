@@ -9,6 +9,7 @@ import {
   AttendanceStatus,
   EmployeeStatus,
   Gender,
+  LeaveStatus,
   Prisma,
   ProjectType,
   UserRole,
@@ -38,7 +39,10 @@ import {
 } from './attendance-late.util';
 import {
   calculateLateMinutesFromCheckIn,
+  getShiftAttendanceDate,
   isWithinAttendanceMarkingGrace,
+  minutesSinceShiftStart,
+  parseTimeToMinutes,
   statusFromLateMinutes,
 } from './shift-time.util';
 import { haversineMeters } from './geo.helper';
@@ -47,6 +51,7 @@ import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { enforceBranchScope } from '../../common/branch-scope.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
+const AUTO_UNMARKED_NOTE = 'Auto-marked unmarked at shift start';
 
 @Injectable()
 export class AttendanceService {
@@ -627,11 +632,136 @@ export class AttendanceService {
     return Object.keys(employeeWhere).length > 0 ? employeeWhere : undefined;
   }
 
+  private referenceTimeForCalendarDate(dateOnly: Date, isToday: boolean): Date {
+    if (isToday) {
+      return new Date();
+    }
+
+    const y = dateOnly.getUTCFullYear();
+    const mo = String(dateOnly.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(dateOnly.getUTCDate()).padStart(2, '0');
+    return new Date(`${y}-${mo}-${d}T23:59:00+05:00`);
+  }
+
+  private async ensureUnmarkedForActiveShiftsOnDate(
+    dateOnly: Date,
+    employeeWhere?: Prisma.EmployeeWhereInput,
+  ): Promise<void> {
+    const pkToday = toPakistanDateOnly(new Date());
+    if (dateOnly.getTime() > pkToday.getTime()) {
+      return;
+    }
+
+    const isToday = dateOnly.getTime() === pkToday.getTime();
+    const referenceTime = this.referenceTimeForCalendarDate(dateOnly, isToday);
+    const nowMinutes = isToday ? toPakistanMinutesOfDay(new Date()) : 1440;
+
+    const shifts = await this.prisma.shift.findMany({
+      where: { isActive: true },
+    });
+
+    for (const shift of shifts) {
+      const attendanceDate = getShiftAttendanceDate(
+        referenceTime,
+        shift.startTime,
+      );
+      if (attendanceDate.getTime() !== dateOnly.getTime()) {
+        continue;
+      }
+
+      if (isToday) {
+        const shiftStartMinutes = parseTimeToMinutes(shift.startTime);
+        if (minutesSinceShiftStart(nowMinutes, shiftStartMinutes) < 0) {
+          continue;
+        }
+      }
+
+      await this.ensureUnmarkedLogsForShift(
+        shift.id,
+        dateOnly,
+        employeeWhere,
+      );
+    }
+  }
+
+  private async ensureUnmarkedLogsForShift(
+    shiftId: string,
+    date: Date,
+    employeeWhere?: Prisma.EmployeeWhereInput,
+  ): Promise<void> {
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        shiftId,
+        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        ...(employeeWhere ?? {}),
+      },
+      select: {
+        id: true,
+        currentBranchId: true,
+      },
+    });
+
+    for (const employee of employees) {
+      const onLeave = await this.prisma.leaveRecord.findFirst({
+        where: {
+          employeeId: employee.id,
+          status: LeaveStatus.APPROVED,
+          startDate: { lte: date },
+          endDate: { gte: date },
+        },
+        select: { id: true },
+      });
+      if (onLeave) {
+        continue;
+      }
+
+      const existing = await this.prisma.attendanceLog.findUnique({
+        where: {
+          employeeId_date: {
+            employeeId: employee.id,
+            date,
+          },
+        },
+      });
+
+      if (!existing) {
+        await this.prisma.attendanceLog.create({
+          data: {
+            employeeId: employee.id,
+            branchId: employee.currentBranchId,
+            date,
+            status: AttendanceStatus.UNMARKED,
+            source: AttendanceSource.MANUAL,
+            note: AUTO_UNMARKED_NOTE,
+          },
+        });
+      }
+    }
+  }
+
   async findAll(
     query: AttendanceQueryDto,
     actingUser?: { role: UserRole | string; branchId?: string | null },
   ) {
     enforceBranchScope(query, actingUser);
+
+    const employeeWhere = this.buildEmployeeFilterWhere(query);
+
+    const isSingleDay =
+      !!query.startDate &&
+      !!query.endDate &&
+      query.startDate === query.endDate;
+
+    const shouldEnsureUnmarked =
+      isSingleDay &&
+      (!query.status || query.status === AttendanceStatus.UNMARKED);
+
+    if (shouldEnsureUnmarked) {
+      await this.ensureUnmarkedForActiveShiftsOnDate(
+        this.toDateOnly(new Date(query.startDate!)),
+        employeeWhere,
+      );
+    }
 
     const where: Prisma.AttendanceLogWhereInput = {};
 
@@ -658,7 +788,6 @@ export class AttendanceService {
       };
     }
 
-    const employeeWhere = this.buildEmployeeFilterWhere(query);
     if (employeeWhere) {
       where.employee = employeeWhere;
     }
@@ -668,6 +797,7 @@ export class AttendanceService {
       include: {
         employee: {
           select: {
+            id: true,
             fullName: true,
             employeeCode: true,
             phone: true,
@@ -726,7 +856,7 @@ export class AttendanceService {
       where,
       include: {
         employee: {
-          select: { fullName: true, employeeCode: true },
+          select: { id: true, fullName: true, employeeCode: true },
         },
         branch: { select: BRANCH_LABEL_SELECT },
       },

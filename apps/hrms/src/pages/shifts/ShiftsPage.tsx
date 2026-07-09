@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import { Navigate } from 'react-router-dom'
 import { shiftsApi } from '@/api/endpoints/shifts'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -31,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { useAuth } from '@/hooks/useAuth'
 import {
   checkInGroupLabel,
@@ -73,6 +76,11 @@ export function ShiftsPage() {
   })
 
   const groups = useMemo(() => groupShiftsByCheckIn(shifts), [shifts])
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    groups,
+    [shifts],
+  )
 
   const resetForm = () => {
     setPresetStartTime('')
@@ -234,6 +242,8 @@ export function ShiftsPage() {
         </Button>
       </div>
 
+      <TableRecordCount count={total} label="shift group" />
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -257,7 +267,7 @@ export function ShiftsPage() {
                     ))}
                   </TableRow>
                 ))
-              ) : groups.length === 0 ? (
+              ) : paginated.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={5}
@@ -267,7 +277,7 @@ export function ShiftsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                groups.map((group) => {
+                paginated.map((group) => {
                   const isExpanded = expandedGroups.has(group.startTime)
                   const groupName = group.variants[0]?.name ?? '—'
 
@@ -357,6 +367,13 @@ export function ShiftsPage() {
               )}
             </TableBody>
           </Table>
+
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
 
