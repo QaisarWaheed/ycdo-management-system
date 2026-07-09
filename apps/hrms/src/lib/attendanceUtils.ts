@@ -1,5 +1,5 @@
-import { format } from 'date-fns'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
+import { toPakistanTime24 } from '@/lib/timeFormat'
 
 export function parseTimeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number)
@@ -7,7 +7,7 @@ export function parseTimeToMinutes(time: string): number {
 }
 
 export function combineDateAndTime(date: string, time: string): string {
-  return `${date}T${time}:00`
+  return `${date}T${time}:00+05:00`
 }
 
 export function calcLateMinutes(
@@ -146,7 +146,7 @@ export function getLogLateMinutes(log: {
     return 0
   }
 
-  const checkInTime = format(new Date(log.checkIn), 'HH:mm')
+  const checkInTime = toPakistanTime24(log.checkIn)
   return calcLateMinutes(checkInTime, dutyStart)
 }
 

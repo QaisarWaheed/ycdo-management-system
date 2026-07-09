@@ -30,15 +30,9 @@ import {
   enumValueToLabel,
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
-import { formatDateTimeTime } from '@/lib/timeFormat'
+import { formatDateTimeTime, toPakistanTime24 } from '@/lib/timeFormat'
 import { cn } from '@/lib/utils'
 import { ATTENDANCE_STATUSES, type AttendanceLog, type AttendanceStatus } from '@/types'
-
-function isoToTimeInput(value?: string | null): string {
-  if (!value) return ''
-  const d = new Date(value)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
 
 const statusStyles: Record<string, string> = {
   PRESENT: 'bg-green-100 text-green-800 border-green-200',
@@ -96,8 +90,8 @@ export function UpdateAttendanceDialog({
     if (open && log) {
       setStatus(log.status as AttendanceStatus)
       setStatusOverride(false)
-      setCheckIn(isoToTimeInput(log.checkIn))
-      setCheckOut(isoToTimeInput(log.checkOut))
+      setCheckIn(log.checkIn ? toPakistanTime24(log.checkIn) : '')
+      setCheckOut(log.checkOut ? toPakistanTime24(log.checkOut) : '')
       setLateMinutes(log.lateMinutes ?? 0)
       setOvertimeMinutes(log.overtimeMinutes ?? 0)
       setNote(log.note ?? '')
@@ -123,7 +117,7 @@ export function UpdateAttendanceDialog({
         payload.checkIn = combineDateAndTime(date, checkIn)
       }
 
-      if (checkOut) {
+      if (checkIn && checkOut) {
         payload.checkOut = combineDateAndTime(date, checkOut)
       }
 
@@ -172,7 +166,7 @@ export function UpdateAttendanceDialog({
       : Number(lateMinutes)
     : calculatedLate
 
-  const showCheckOut = checkIn || showsTimeFields(displayStatus)
+  const showOvertime = checkIn || showsTimeFields(displayStatus)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -210,12 +204,19 @@ export function UpdateAttendanceDialog({
                 </p>
               )}
             </div>
-            {showCheckOut && (
-              <div className="space-y-2">
-                <Label>Check Out</Label>
-                <TimeInput12Hour value={checkOut} onChange={setCheckOut} />
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label>Check Out</Label>
+              <TimeInput12Hour
+                value={checkOut}
+                onChange={setCheckOut}
+                disabled={!checkIn}
+              />
+              {!checkIn && (
+                <p className="text-xs text-text-secondary">
+                  Check-out is available after check-in is recorded.
+                </p>
+              )}
+            </div>
           </div>
 
           {checkIn && dutyStartTime && (
@@ -289,7 +290,7 @@ export function UpdateAttendanceDialog({
             </div>
           )}
 
-          {showCheckOut && (
+          {showOvertime && (
             <div className="space-y-2">
               <Label>Overtime (minutes)</Label>
               <Input

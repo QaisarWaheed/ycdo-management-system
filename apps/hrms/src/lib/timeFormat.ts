@@ -1,3 +1,14 @@
+const PK_OFFSET_MS = 5 * 60 * 60 * 1000
+
+/** Extract HH:mm in Pakistan time from an ISO datetime */
+export function toPakistanTime24(value: string | Date): string {
+  const d = typeof value === 'string' ? new Date(value) : value
+  const pkDate = new Date(d.getTime() + PK_OFFSET_MS)
+  const h = pkDate.getUTCHours()
+  const m = pkDate.getUTCMinutes()
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 export function to12Hour(time: string): string {
   if (!time) return '—'
   const [h, m] = time.split(':').map(Number)
@@ -38,14 +49,11 @@ export function parseAMPM(timeStr: string): string {
   return `${String(h).padStart(2, '0')}:${m}`
 }
 
-/** Format ISO datetime or HH:mm string for display */
+/** Format ISO datetime or HH:mm string for display (Pakistan time) */
 export function formatDateTimeTime(value?: string | null): string {
   if (!value) return '—'
   if (value.includes('T')) {
-    const d = new Date(value)
-    const h = d.getHours()
-    const m = d.getMinutes()
-    return to12Hour(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+    return to12Hour(toPakistanTime24(value))
   }
   if (/^\d{2}:\d{2}$/.test(value)) {
     return to12Hour(value)

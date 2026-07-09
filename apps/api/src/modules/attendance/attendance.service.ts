@@ -33,6 +33,7 @@ import {
 import { applyDisciplineRules } from './discipline.helper';
 import {
   computeLateMinutesFromCheckIn,
+  parseAttendanceDateTime,
   resolveDutyStartTime,
 } from './attendance-late.util';
 import {
@@ -228,8 +229,8 @@ export class AttendanceService {
     }
 
     const dateOnly = this.toDateOnly(new Date(dto.date));
-    const checkIn = dto.checkIn ? new Date(dto.checkIn) : undefined;
-    const checkOut = dto.checkOut ? new Date(dto.checkOut) : undefined;
+    const checkIn = dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : undefined;
+    const checkOut = dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : undefined;
 
     let status = dto.status;
     let lateMinutes = dto.lateMinutes ?? 0;
@@ -402,16 +403,16 @@ export class AttendanceService {
       data.status = dto.status;
     }
     if (dto.checkIn !== undefined) {
-      data.checkIn = dto.checkIn ? new Date(dto.checkIn) : null;
+      data.checkIn = dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : null;
     }
     if (dto.checkOut !== undefined) {
-      data.checkOut = dto.checkOut ? new Date(dto.checkOut) : null;
+      data.checkOut = dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : null;
     }
 
     const effectiveCheckIn =
       dto.checkIn !== undefined
         ? dto.checkIn
-          ? new Date(dto.checkIn)
+          ? parseAttendanceDateTime(dto.checkIn)
           : null
         : log.checkIn;
 

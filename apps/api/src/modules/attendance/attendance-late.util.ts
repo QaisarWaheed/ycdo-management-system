@@ -17,6 +17,14 @@ export function toPakistanMinutesOfDay(date: Date): number {
   return pkDate.getUTCHours() * 60 + pkDate.getUTCMinutes();
 }
 
+/** Parse attendance datetimes; naive strings are treated as Pakistan local time */
+export function parseAttendanceDateTime(iso: string): Date {
+  if (/[Zz]$/.test(iso) || /[+-]\d{2}:\d{2}$/.test(iso)) {
+    return new Date(iso);
+  }
+  return new Date(`${iso}+05:00`);
+}
+
 export function computeLateMinutesFromCheckIn(
   checkIn: Date,
   dutyStartTime: string,
