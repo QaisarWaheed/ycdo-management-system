@@ -7,7 +7,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import {
-  EMPTY_EMPLOYEE_FILTERS,
+  createEmployeeFilters,
   EmployeeFiltersBar,
   employeeFiltersToParams,
 } from '@/components/employees/EmployeeFiltersBar'
@@ -33,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useAuth } from '@/hooks/useAuth'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { formatShiftTime } from '@/lib/shiftFilterUtils'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
@@ -41,8 +42,11 @@ const PAGE_SIZE = 20
 
 export function EmployeesListPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [search, setSearch] = useState('')
-  const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
+  const [employeeFilters, setEmployeeFilters] = useState(() =>
+    createEmployeeFilters(user),
+  )
   const [page, setPage] = useState(0)
 
   const [letterDialog, setLetterDialog] = useState<string | null>(null)
@@ -97,7 +101,7 @@ export function EmployeesListPage() {
 
   const clearFilters = () => {
     setSearch('')
-    setEmployeeFilters(EMPTY_EMPLOYEE_FILTERS)
+    setEmployeeFilters(createEmployeeFilters(user))
     setPage(0)
   }
 
@@ -129,7 +133,10 @@ export function EmployeesListPage() {
             className="text-left font-medium text-amber-900 underline hover:text-amber-950 sm:text-right"
             onClick={() => {
               setSearch('')
-              setEmployeeFilters({ ...EMPTY_EMPLOYEE_FILTERS, employeeStatus: 'UNASSIGNED' })
+              setEmployeeFilters({
+                ...createEmployeeFilters(user),
+                employeeStatus: 'UNASSIGNED',
+              })
               setPage(0)
             }}
           >

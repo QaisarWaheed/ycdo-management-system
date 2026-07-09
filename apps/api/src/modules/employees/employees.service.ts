@@ -21,6 +21,7 @@ import { parseTimeToMinutes } from '../attendance/attendance-late.util';
 import { generateEmployeeCode } from './employee-code.helper';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { enforceBranchScope } from '../../common/branch-scope.util';
+import type { BranchScopedUser } from '../../common/branch-scope.util';
 import {
   ActiveShiftQueryDto,
   ChangeStatusDto,
@@ -1037,10 +1038,16 @@ export class EmployeesService {
     });
   }
 
-  async findActiveShiftEmployees(query: ActiveShiftQueryDto) {
-    const today = new Date(query.date);
+  async findActiveShiftEmployees(
+    query: ActiveShiftQueryDto,
+    actingUser?: BranchScopedUser,
+  ) {
+    const scopedQuery = { ...query }
+    enforceBranchScope(scopedQuery, actingUser)
+
+    const today = new Date(scopedQuery.date);
     today.setHours(0, 0, 0, 0);
-    const [currentH, currentM] = query.time.split(':').map(Number);
+    const [currentH, currentM] = scopedQuery.time.split(':').map(Number);
     const currentMinutes = currentH * 60 + currentM;
 
     const employees = await this.prisma.employee.findMany({
@@ -1053,9 +1060,9 @@ export class EmployeesService {
           ],
         },
         shiftId: { not: null },
-        ...(query.branchId ? { currentBranchId: query.branchId } : {}),
-        ...(query.departmentId
-          ? { currentDepartmentId: query.departmentId }
+        ...(scopedQuery.branchId ? { currentBranchId: scopedQuery.branchId } : {}),
+        ...(scopedQuery.departmentId
+          ? { currentDepartmentId: scopedQuery.departmentId }
           : {}),
       },
       include: {

@@ -13,7 +13,7 @@ import {
   CheckOutManualTab,
 } from '@/components/attendance/ManualAttendanceTabs'
 import {
-  EMPTY_EMPLOYEE_FILTERS,
+  createEmployeeFilters,
   EmployeeFiltersBar,
   employeeFiltersToAttendanceParams,
 } from '@/components/employees/EmployeeFiltersBar'
@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { getLogLateMinutes } from '@/lib/attendanceUtils'
 import { formatDateTimeTime } from '@/lib/timeFormat'
@@ -88,10 +89,13 @@ function DailyLogTab({
   initialDate?: string
 }) {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
   const today = format(new Date(), 'yyyy-MM-dd')
   const [date, setDate] = useState(initialDate ?? today)
   const [search, setSearch] = useState('')
-  const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
+  const [employeeFilters, setEmployeeFilters] = useState(() =>
+    createEmployeeFilters(user),
+  )
   const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [confirmAbsentees, setConfirmAbsentees] = useState(false)
   const [updateLog, setUpdateLog] = useState<AttendanceLog | null>(null)
@@ -362,9 +366,12 @@ function DailyLogTab({
 }
 
 function RelieverSessionsTab() {
+  const { user } = useAuth()
   const today = format(new Date(), 'yyyy-MM-dd')
   const [date, setDate] = useState(today)
-  const [employeeFilters, setEmployeeFilters] = useState(EMPTY_EMPLOYEE_FILTERS)
+  const [employeeFilters, setEmployeeFilters] = useState(() =>
+    createEmployeeFilters(user),
+  )
 
   const { data: shifts = [] } = useQuery({
     queryKey: ['shifts', employeeFilters.branchId || 'all'],

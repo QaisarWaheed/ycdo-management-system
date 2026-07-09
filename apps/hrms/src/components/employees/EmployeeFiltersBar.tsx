@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
@@ -22,6 +22,8 @@ import {
 } from '@/lib/shiftFilterUtils'
 import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { getLockedBranchId } from '@/lib/branchScope'
+import { useAuth } from '@/hooks/useAuth'
 import {
   BLOOD_GROUP_OPTIONS,
   MARITAL_STATUS_LABELS,
@@ -60,6 +62,19 @@ export const EMPTY_EMPLOYEE_FILTERS: EmployeeFilterState = {
   shiftId: '',
   joinedFrom: '',
   joinedTo: '',
+}
+
+export function createEmployeeFilters(
+  user?: { role?: string | null; branchId?: string | null } | null,
+): EmployeeFilterState {
+  const lockedBranchId = getLockedBranchId(user)
+  if (!lockedBranchId) {
+    return { ...EMPTY_EMPLOYEE_FILTERS }
+  }
+  return {
+    ...EMPTY_EMPLOYEE_FILTERS,
+    branchId: lockedBranchId,
+  }
 }
 
 export function employeeFiltersToParams(
@@ -142,28 +157,35 @@ export function EmployeeFiltersBar({
   unassignedCount,
   className,
 }: EmployeeFiltersBarProps) {
+  const { user } = useAuth()
+  const lockedBranchId = getLockedBranchId(user)
+
   const { data: projects = [] } = useQuery({
     queryKey: ['projects'],
     queryFn: () => projectsApi.getAll(),
+    enabled: !lockedBranchId,
   })
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
     queryFn: () => branchesApi.getAll(),
+    enabled: !lockedBranchId,
   })
 
+  const effectiveBranchId = lockedBranchId || filters.branchId
+
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', filters.branchId || 'all'],
+    queryKey: ['departments', effectiveBranchId || 'all'],
     queryFn: () =>
       departmentsApi.getAll(
-        filters.branchId ? { branchId: filters.branchId } : undefined,
+        effectiveBranchId ? { branchId: effectiveBranchId } : undefined,
       ),
   })
 
   const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', filters.branchId || 'all'],
+    queryKey: ['shifts', effectiveBranchId || 'all'],
     queryFn: () =>
-      shiftsApi.getAll(filters.branchId ? filters.branchId : undefined),
+      shiftsApi.getAll(effectiveBranchId ? effectiveBranchId : undefined),
   })
 
   const { data: filterOptions } = useQuery({
@@ -175,6 +197,24 @@ export function EmployeeFiltersBar({
     if (!filters.projectId) return branches
     return branches.filter((b) => b.projectId === filters.projectId)
   }, [branches, filters.projectId])
+
+  useEffect(() => {
+    if (!lockedBranchId) return
+    if (filters.branchId === lockedBranchId && !filters.projectId) return
+
+    onChange({
+      ...filters,
+      projectId: '',
+      branchId: lockedBranchId,
+      ...(filters.branchId !== lockedBranchId
+        ? {
+            departmentId: '',
+            shiftStartTime: '',
+            shiftId: '',
+          }
+        : {}),
+    })
+  }, [lockedBranchId, filters.branchId, filters.projectId, filters, onChange])
 
   const update = (patch: Partial<EmployeeFilterState>) => {
     onChange({ ...filters, ...patch })
@@ -202,45 +242,49 @@ export function EmployeeFiltersBar({
   return (
     <div className={className}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-        <div className="space-y-1">
-          <Label>Project</Label>
-          <Select
-            value={filters.projectId || 'all'}
-            onValueChange={handleProjectChange}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="All Projects" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Projects</SelectItem>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {!lockedBranchId && (
+          <div className="space-y-1">
+            <Label>Project</Label>
+            <Select
+              value={filters.projectId || 'all'}
+              onValueChange={handleProjectChange}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All Projects" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Projects</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
-        <div className="space-y-1">
-          <Label>Branch</Label>
-          <Select
-            value={filters.branchId || 'all'}
-            onValueChange={handleBranchChange}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="All Branches" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Branches</SelectItem>
-              {filteredBranches.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {formatBranchLabel(b)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {!lockedBranchId && (
+          <div className="space-y-1">
+            <Label>Branch</Label>
+            <Select
+              value={filters.branchId || 'all'}
+              onValueChange={handleBranchChange}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All Branches" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Branches</SelectItem>
+                {filteredBranches.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {formatBranchLabel(b)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="space-y-1">
           <Label>Department</Label>

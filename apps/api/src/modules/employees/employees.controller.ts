@@ -112,8 +112,12 @@ export class EmployeesController {
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  findActiveShift(@Query() query: ActiveShiftQueryDto) {
-    return this.employeesService.findActiveShiftEmployees(query);
+  findActiveShift(
+    @Query() query: ActiveShiftQueryDto,
+    @CurrentUser()
+    user: { id: string; role: UserRole; branchId?: string | null },
+  ) {
+    return this.employeesService.findActiveShiftEmployees(query, user);
   }
 
   @Post('backfill-users')

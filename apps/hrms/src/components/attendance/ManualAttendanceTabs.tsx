@@ -27,6 +27,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { getLockedBranchId } from '@/lib/branchScope'
 import { useAuth } from '@/hooks/useAuth'
 import {
   calcLateMinutes,
@@ -71,6 +72,7 @@ type ManualFiltersProps = {
   departmentId: string
   shiftStartTime: string
   shiftId: string
+  lockedBranchId?: string
   onBranchChange: (id: string) => void
   onDepartmentChange: (id: string) => void
   onShiftStartTimeChange: (startTime: string) => void
@@ -82,52 +84,60 @@ function ManualAttendanceFilters({
   departmentId,
   shiftStartTime,
   shiftId,
+  lockedBranchId,
   onBranchChange,
   onDepartmentChange,
   onShiftStartTimeChange,
   onShiftIdChange,
 }: ManualFiltersProps) {
+  const effectiveBranchId = lockedBranchId || branchId
+
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
     queryFn: () => branchesApi.getAll(),
+    enabled: !lockedBranchId,
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId || 'all'],
+    queryKey: ['departments', effectiveBranchId || 'all'],
     queryFn: () =>
-      departmentsApi.getAll(branchId ? { branchId } : undefined),
+      departmentsApi.getAll(
+        effectiveBranchId ? { branchId: effectiveBranchId } : undefined,
+      ),
   })
 
   const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', branchId || 'all'],
-    queryFn: () => shiftsApi.getAll(branchId || undefined),
+    queryKey: ['shifts', effectiveBranchId || 'all'],
+    queryFn: () => shiftsApi.getAll(effectiveBranchId || undefined),
   })
 
   return (
     <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-white p-4">
-      <div className="space-y-1">
-        <Label>Branch *</Label>
-        <Select
-          value={branchId}
-          onValueChange={(v) => {
-            onBranchChange(v)
-            onDepartmentChange('')
-            onShiftStartTimeChange('')
-            onShiftIdChange('')
-          }}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select branch" />
-          </SelectTrigger>
-          <SelectContent>
-            {branches.map((b) => (
-              <SelectItem key={b.id} value={b.id}>
-                {formatBranchLabel(b)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {!lockedBranchId && (
+        <div className="space-y-1">
+          <Label>Branch *</Label>
+          <Select
+            value={branchId}
+            onValueChange={(v) => {
+              onBranchChange(v)
+              onDepartmentChange('')
+              onShiftStartTimeChange('')
+              onShiftIdChange('')
+            }}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Select branch" />
+            </SelectTrigger>
+            <SelectContent>
+              {branches.map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {formatBranchLabel(b)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="space-y-1">
         <Label>Department</Label>
@@ -167,6 +177,7 @@ function ManualAttendanceFilters({
 export function CheckInManualTab() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const lockedBranchId = getLockedBranchId(user)
   const isAdminManager = user?.role === 'ADMIN_MANAGER'
   const today = format(new Date(), 'yyyy-MM-dd')
   const [, setTick] = useState(0)
@@ -176,17 +187,25 @@ export function CheckInManualTab() {
     return () => clearInterval(id)
   }, [])
 
-  const [branchId, setBranchId] = useState('')
+  const [branchId, setBranchId] = useState(lockedBranchId ?? '')
   const [departmentId, setDepartmentId] = useState('')
   const [shiftStartTime, setShiftStartTime] = useState('')
   const [shiftId, setShiftId] = useState('')
   const [checkInTimes, setCheckInTimes] = useState<Record<string, string>>({})
   const [markingId, setMarkingId] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (lockedBranchId) {
+      setBranchId(lockedBranchId)
+    }
+  }, [lockedBranchId])
+
+  const effectiveBranchId = lockedBranchId || branchId
+
   const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', branchId || 'all'],
-    queryFn: () => shiftsApi.getAll(branchId || undefined),
-    enabled: !!branchId,
+    queryKey: ['shifts', effectiveBranchId || 'all'],
+    queryFn: () => shiftsApi.getAll(effectiveBranchId || undefined),
+    enabled: !!effectiveBranchId,
   })
 
   const shiftIdsParam = resolveShiftIds(shiftStartTime, shiftId, shifts)
@@ -195,7 +214,7 @@ export function CheckInManualTab() {
     queryKey: [
       'active-shift-checkin',
       today,
-      branchId,
+      effectiveBranchId,
       departmentId,
       shiftStartTime,
       shiftId,
@@ -204,10 +223,10 @@ export function CheckInManualTab() {
       employeesApi.getActiveShift({
         date: today,
         time: currentTime24(),
-        branchId: branchId || undefined,
+        branchId: effectiveBranchId || undefined,
         departmentId: departmentId || undefined,
       }),
-    enabled: !!branchId,
+    enabled: !!effectiveBranchId,
     refetchInterval: REFRESH_MS,
   })
 
@@ -280,6 +299,7 @@ export function CheckInManualTab() {
         departmentId={departmentId}
         shiftStartTime={shiftStartTime}
         shiftId={shiftId}
+        lockedBranchId={lockedBranchId}
         onBranchChange={setBranchId}
         onDepartmentChange={setDepartmentId}
         onShiftStartTimeChange={setShiftStartTime}
@@ -299,7 +319,7 @@ export function CheckInManualTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {!branchId ? (
+            {!effectiveBranchId ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-text-secondary">
                   Select a branch to load employees
@@ -395,10 +415,12 @@ export function CheckInManualTab() {
 
 export function CheckOutManualTab() {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const lockedBranchId = getLockedBranchId(user)
   const today = format(new Date(), 'yyyy-MM-dd')
   const [, setTick] = useState(0)
 
-  const [branchId, setBranchId] = useState('')
+  const [branchId, setBranchId] = useState(lockedBranchId ?? '')
   const [departmentId, setDepartmentId] = useState('')
   const [shiftStartTime, setShiftStartTime] = useState('')
   const [shiftId, setShiftId] = useState('')
@@ -410,10 +432,18 @@ export function CheckOutManualTab() {
     return () => clearInterval(id)
   }, [])
 
+  useEffect(() => {
+    if (lockedBranchId) {
+      setBranchId(lockedBranchId)
+    }
+  }, [lockedBranchId])
+
+  const effectiveBranchId = lockedBranchId || branchId
+
   const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', branchId || 'all'],
-    queryFn: () => shiftsApi.getAll(branchId || undefined),
-    enabled: !!branchId,
+    queryKey: ['shifts', effectiveBranchId || 'all'],
+    queryFn: () => shiftsApi.getAll(effectiveBranchId || undefined),
+    enabled: !!effectiveBranchId,
   })
 
   const shiftIdsParam = resolveShiftIds(shiftStartTime, shiftId, shifts)
@@ -422,7 +452,7 @@ export function CheckOutManualTab() {
     queryKey: [
       'manual-checkout',
       today,
-      branchId,
+      effectiveBranchId,
       departmentId,
       shiftStartTime,
       shiftId,
@@ -431,11 +461,11 @@ export function CheckOutManualTab() {
       attendanceApi.getAll({
         startDate: today,
         endDate: today,
-        branchId: branchId || undefined,
+        branchId: effectiveBranchId || undefined,
         departmentId: departmentId || undefined,
         shiftIds: shiftIdsParam,
       }),
-    enabled: !!branchId,
+    enabled: !!effectiveBranchId,
     refetchInterval: REFRESH_MS,
   })
 
@@ -494,6 +524,7 @@ export function CheckOutManualTab() {
         departmentId={departmentId}
         shiftStartTime={shiftStartTime}
         shiftId={shiftId}
+        lockedBranchId={lockedBranchId}
         onBranchChange={setBranchId}
         onDepartmentChange={setDepartmentId}
         onShiftStartTimeChange={setShiftStartTime}
@@ -513,7 +544,7 @@ export function CheckOutManualTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {!branchId ? (
+            {!effectiveBranchId ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-text-secondary">
                   Select a branch to load employees
