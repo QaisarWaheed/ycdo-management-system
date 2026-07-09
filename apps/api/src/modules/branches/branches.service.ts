@@ -110,9 +110,14 @@ export class BranchesService {
   async update(id: string, dto: UpdateBranchDto) {
     await this.findOne(id);
 
+    const data = { ...dto };
+    if (dto.abbreviation !== undefined) {
+      data.abbreviation = dto.abbreviation.trim() || null;
+    }
+
     return this.prisma.branch.update({
       where: { id },
-      data: dto,
+      data,
     });
   }
 

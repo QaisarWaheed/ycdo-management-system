@@ -42,6 +42,7 @@ import {
   statusFromLateMinutes,
 } from './shift-time.util';
 import { haversineMeters } from './geo.helper';
+import { BRANCH_LABEL_SELECT } from '../../common/branch-select.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { enforceBranchScope } from '../../common/branch-scope.util';
 
@@ -411,7 +412,7 @@ export class AttendanceService {
             shift: { select: { startTime: true } },
           },
         },
-        branch: { select: { name: true, address: true } },
+        branch: { select: BRANCH_LABEL_SELECT },
       },
     });
 
@@ -511,7 +512,7 @@ export class AttendanceService {
           employee: {
             select: { fullName: true, employeeCode: true },
           },
-          branch: { select: { name: true, address: true } },
+          branch: { select: BRANCH_LABEL_SELECT },
         },
       });
 
@@ -674,14 +675,14 @@ export class AttendanceService {
             currentDepartmentId: true,
             dutyStartTime: true,
             dutyEndTime: true,
-            currentBranch: { select: { name: true, address: true } },
+            currentBranch: { select: BRANCH_LABEL_SELECT },
             currentDepartment: { select: { name: true } },
             shift: {
               select: { name: true, startTime: true, endTime: true },
             },
           },
         },
-        branch: { select: { name: true, address: true } },
+        branch: { select: BRANCH_LABEL_SELECT },
       },
       orderBy: { date: 'desc' },
     });
@@ -727,7 +728,7 @@ export class AttendanceService {
         employee: {
           select: { fullName: true, employeeCode: true },
         },
-        branch: { select: { name: true, address: true } },
+        branch: { select: BRANCH_LABEL_SELECT },
       },
       orderBy: { checkIn: 'desc' },
     });

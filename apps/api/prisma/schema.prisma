@@ -27,9 +27,10 @@ enum ProjectType {
 }
 
 model Branch {
-  id        String   @id @default(uuid())
-  name      String
-  address   String?
+  id           String   @id @default(uuid())
+  name         String
+  abbreviation String?
+  address      String?
   phone     String?
   isActive  Boolean  @default(true)
   sortOrder Int      @default(999)

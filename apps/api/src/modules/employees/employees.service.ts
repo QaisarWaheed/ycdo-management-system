@@ -475,6 +475,7 @@ export class EmployeesService {
             id: true,
             name: true,
             address: true,
+            abbreviation: true,
             projectId: true,
             project: { select: { id: true, name: true, type: true } },
           },

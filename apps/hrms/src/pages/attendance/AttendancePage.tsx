@@ -16,7 +16,7 @@ import {
   EmployeeFiltersBar,
   employeeFiltersToAttendanceParams,
 } from '@/components/employees/EmployeeFiltersBar'
-import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -254,7 +254,7 @@ function DailyLogTab({
                     )}
                   </TableCell>
                   <TableCell className="text-text-secondary">
-                    {formatBranchLabel(log.branch)}
+                    {formatBranchTableLabel(log.branch)}
                   </TableCell>
                   <TableCell className="text-sm text-text-secondary">
                     {formatLogShift(log)}
@@ -438,7 +438,7 @@ function RelieverSessionsTab() {
                       ? session.employee.fullName
                       : '—'}
                   </TableCell>
-                  <TableCell>{formatBranchLabel(session.branch)}</TableCell>
+                  <TableCell>{formatBranchTableLabel(session.branch)}</TableCell>
                   <TableCell>{formatDateTimeTime(session.checkIn)}</TableCell>
                   <TableCell>{formatDateTimeTime(session.checkOut)}</TableCell>
                   <TableCell>

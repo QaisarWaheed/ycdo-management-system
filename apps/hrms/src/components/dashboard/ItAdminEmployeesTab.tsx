@@ -26,7 +26,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
-import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import type { Employee } from '@/types'
 
@@ -147,7 +147,7 @@ export function ItAdminEmployeesTab() {
                       {emp.fullName}
                     </Link>
                   </TableCell>
-                  <TableCell>{formatBranchLabel(emp.currentBranch)}</TableCell>
+                  <TableCell>{formatBranchTableLabel(emp.currentBranch)}</TableCell>
                   <TableCell>{emp.currentDepartment?.name ?? '—'}</TableCell>
                   <TableCell>{emp.currentDesignation ?? '—'}</TableCell>
                   <TableCell>

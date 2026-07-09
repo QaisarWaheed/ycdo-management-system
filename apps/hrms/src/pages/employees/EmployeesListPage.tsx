@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/table'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useAuth } from '@/hooks/useAuth'
-import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
 import {
   getEmployeeDutyEndTime,
   getEmployeeDutyStartTime,
@@ -253,7 +253,7 @@ export function EmployeesListPage() {
                         {emp.currentDepartment?.name ?? '—'}
                       </p>
                       <p className="text-xs text-text-secondary">
-                        {formatBranchLabel(emp.currentBranch)}
+                        {formatBranchTableLabel(emp.currentBranch)}
                       </p>
                     </div>
                   </TableCell>

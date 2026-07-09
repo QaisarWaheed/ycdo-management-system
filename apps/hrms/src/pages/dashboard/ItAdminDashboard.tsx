@@ -482,6 +482,182 @@ function BranchesTab() {
   )
 }
 
+function BranchAbbreviationsTab() {
+  const queryClient = useQueryClient()
+  const [projectFilter, setProjectFilter] = useState('')
+  const [editBranch, setEditBranch] = useState<Branch | null>(null)
+  const [abbreviation, setAbbreviation] = useState('')
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsApi.getAll(),
+  })
+
+  const { data: branches = [], isLoading } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => branchesApi.getAll(),
+  })
+
+  const filteredBranches = projectFilter
+    ? branches.filter((b) => b.projectId === projectFilter)
+    : branches
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      branchesApi.update(editBranch!.id, {
+        abbreviation: abbreviation.trim() || null,
+      }),
+    onSuccess: () => {
+      toast({ title: 'Abbreviation saved' })
+      setEditBranch(null)
+      setAbbreviation('')
+      queryClient.invalidateQueries({ queryKey: ['branches'] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to save abbreviation',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const openEdit = (branch: Branch) => {
+    setEditBranch(branch)
+    setAbbreviation(branch.abbreviation ?? '')
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-text-secondary">
+        Set a short label for each branch. Abbreviations appear in employee and
+        attendance tables instead of the full branch name.
+      </p>
+
+      <div className="space-y-1">
+        <Label>Filter by Project</Label>
+        <Select
+          value={projectFilter || 'all'}
+          onValueChange={(v) => setProjectFilter(v === 'all' ? '' : v)}
+        >
+          <SelectTrigger className="w-[240px]">
+            <SelectValue placeholder="All projects" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All projects</SelectItem>
+            {projects.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Branch Name</TableHead>
+                <TableHead>Project</TableHead>
+                <TableHead>Abbreviation</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                [...Array(4)].map((_, i) => (
+                  <TableRow key={i}>
+                    {[...Array(4)].map((__, j) => (
+                      <TableCell key={j}>
+                        <Skeleton className="h-5 w-full" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : filteredBranches.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-text-secondary">
+                    No branches found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredBranches.map((branch) => (
+                  <TableRow key={branch.id}>
+                    <TableCell className="font-medium">{branch.name}</TableCell>
+                    <TableCell>
+                      {projects.find((p) => p.id === branch.projectId)?.name ??
+                        branch.project?.name ??
+                        '—'}
+                    </TableCell>
+                    <TableCell>
+                      {branch.abbreviation?.trim() ? (
+                        <Badge variant="secondary">{branch.abbreviation}</Badge>
+                      ) : (
+                        <span className="text-text-secondary">Not set</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => openEdit(branch)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={!!editBranch}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditBranch(null)
+            setAbbreviation('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Branch Abbreviation — {editBranch?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Abbreviation</Label>
+            <Input
+              value={abbreviation}
+              onChange={(e) => setAbbreviation(e.target.value)}
+              placeholder="e.g. LHR, ISB, KHI"
+              maxLength={20}
+            />
+            <p className="text-xs text-text-secondary">
+              Short code shown in tables. Leave empty to use the full branch name.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              className="bg-primary hover:bg-primary-dark"
+              disabled={updateMutation.isPending}
+              onClick={() => updateMutation.mutate()}
+            >
+              {updateMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 function DepartmentsTab() {
   const queryClient = useQueryClient()
   const [branchFilter, setBranchFilter] = useState('')
@@ -2068,6 +2244,7 @@ export function ItAdminDashboard() {
             <TabsList className="flex h-auto flex-wrap gap-1">
               <TabsTrigger value="projects">Projects</TabsTrigger>
               <TabsTrigger value="branches">Branches</TabsTrigger>
+              <TabsTrigger value="abbreviations">Abbreviations</TabsTrigger>
               <TabsTrigger value="departments">Departments</TabsTrigger>
               <TabsTrigger value="designations">Designations</TabsTrigger>
               <TabsTrigger value="employees">Employees</TabsTrigger>
@@ -2090,6 +2267,9 @@ export function ItAdminDashboard() {
             </TabsContent>
             <TabsContent value="branches" className="mt-4">
               <BranchesTab />
+            </TabsContent>
+            <TabsContent value="abbreviations" className="mt-4">
+              <BranchAbbreviationsTab />
             </TabsContent>
             {/* Kept for build-time usage; there are no visible tab triggers for these sections. */}
             <TabsContent value="shifts" className="mt-4">
