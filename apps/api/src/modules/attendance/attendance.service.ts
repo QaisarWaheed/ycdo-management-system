@@ -32,9 +32,9 @@ import {
 } from './attendance-biometric.util';
 import { applyDisciplineRules } from './discipline.helper';
 import {
-  computeLateMinutesFromCheckIn,
   parseAttendanceDateTime,
   resolveDutyStartTime,
+  toPakistanMinutesOfDay,
 } from './attendance-late.util';
 import {
   calculateLateMinutesFromCheckIn,
@@ -228,7 +228,9 @@ export class AttendanceService {
       }
     }
 
-    const dateOnly = this.toDateOnly(new Date(dto.date));
+    const dateOnly = toPakistanDateOnly(
+      new Date(`${dto.date}T00:00:00+05:00`),
+    );
     const checkIn = dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : undefined;
     const checkOut = dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : undefined;
 
@@ -238,7 +240,7 @@ export class AttendanceService {
     if (checkIn) {
       const dutyStart = resolveDutyStartTime(employee);
       const computedLate = dutyStart
-        ? computeLateMinutesFromCheckIn(checkIn, dutyStart)
+        ? calculateLateMinutesFromCheckIn(checkIn, dutyStart)
         : this.determineCheckInStatus(checkIn, employee.shift).lateMinutes;
 
       if (typeof dto.lateMinutes === 'number' && dto.lateMinutes > 0) {
@@ -1015,7 +1017,7 @@ export class AttendanceService {
     status: AttendanceStatus;
     lateMinutes: number;
   } {
-    const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
+    const checkInMinutes = toPakistanMinutesOfDay(checkIn);
 
     if (!shift) {
       const defaultStart = 9 * 60;
@@ -1060,7 +1062,7 @@ export class AttendanceService {
     checkOut: Date,
     shift: { endTime: string } | null,
   ): number {
-    const checkOutMinutes = checkOut.getHours() * 60 + checkOut.getMinutes();
+    const checkOutMinutes = toPakistanMinutesOfDay(checkOut);
     const endMinutes = shift
       ? this.parseTimeToMinutes(shift.endTime)
       : 18 * 60;

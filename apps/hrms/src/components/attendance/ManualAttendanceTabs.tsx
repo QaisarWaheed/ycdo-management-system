@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
@@ -43,17 +42,14 @@ import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import { cn } from '@/lib/utils'
 import { formatShiftTime } from '@/lib/shiftFilterUtils'
 import {
+  currentPakistanTime24,
   formatDateTimeTime,
   formatDurationSince,
+  todayPakistan,
 } from '@/lib/timeFormat'
 import type { AttendanceLog, Employee } from '@/types'
 
 const REFRESH_MS = 60_000
-
-function currentTime24(): string {
-  const now = new Date()
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-}
 
 function filterLogsByDutyStartTime(
   logs: AttendanceLog[],
@@ -179,7 +175,7 @@ export function CheckInManualTab() {
   const { user } = useAuth()
   const lockedBranchId = getLockedBranchId(user)
   const isAdminManager = user?.role === 'ADMIN_MANAGER'
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = todayPakistan()
   const [, setTick] = useState(0)
 
   useEffect(() => {
@@ -225,7 +221,7 @@ export function CheckInManualTab() {
     queryFn: () =>
       employeesApi.getActiveShift({
         date: today,
-        time: currentTime24(),
+        time: currentPakistanTime24(),
         branchId: effectiveBranchId || undefined,
         departmentId: departmentId || undefined,
       }),
@@ -278,7 +274,7 @@ export function CheckInManualTab() {
   const handleMarkCheckIn = (employee: Employee) => {
     const checkIn24 =
       checkInTimes[employee.id] ||
-      currentTime24()
+      currentPakistanTime24()
     setMarkingId(employee.id)
     markMutation.mutate({ employee, checkIn24 })
   }
@@ -377,7 +373,7 @@ export function CheckInManualTab() {
                   </TableCell>
                   <TableCell>
                     <TimeInput12Hour
-                      value={checkInTimes[emp.id] ?? currentTime24()}
+                      value={checkInTimes[emp.id] ?? currentPakistanTime24()}
                       onChange={(v) =>
                         setCheckInTimes((prev) => ({ ...prev, [emp.id]: v }))
                       }
@@ -417,7 +413,7 @@ export function CheckOutManualTab() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const lockedBranchId = getLockedBranchId(user)
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = todayPakistan()
   const [, setTick] = useState(0)
 
   const [branchId, setBranchId] = useState(lockedBranchId ?? '')
@@ -510,7 +506,7 @@ export function CheckOutManualTab() {
   })
 
   const handleMarkCheckOut = (log: AttendanceLog) => {
-    const checkOut24 = checkOutTimes[log.id] || currentTime24()
+    const checkOut24 = checkOutTimes[log.id] || currentPakistanTime24()
     setMarkingId(log.id)
     markMutation.mutate({ log, checkOut24 })
   }
@@ -585,7 +581,7 @@ export function CheckOutManualTab() {
                   </TableCell>
                   <TableCell>
                     <TimeInput12Hour
-                      value={checkOutTimes[log.id] ?? currentTime24()}
+                      value={checkOutTimes[log.id] ?? currentPakistanTime24()}
                       onChange={(v) =>
                         setCheckOutTimes((prev) => ({ ...prev, [log.id]: v }))
                       }

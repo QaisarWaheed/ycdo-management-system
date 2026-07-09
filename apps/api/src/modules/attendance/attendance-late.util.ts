@@ -18,11 +18,29 @@ export function toPakistanMinutesOfDay(date: Date): number {
 }
 
 /** Parse attendance datetimes; naive strings are treated as Pakistan local time */
-export function parseAttendanceDateTime(iso: string): Date {
+export function parseAttendanceDateTime(iso: string | Date): Date {
+  if (iso instanceof Date) {
+    return iso;
+  }
   if (/[Zz]$/.test(iso) || /[+-]\d{2}:\d{2}$/.test(iso)) {
     return new Date(iso);
   }
   return new Date(`${iso}+05:00`);
+}
+
+const OVERNIGHT_SHIFT_START = 18 * 60;
+
+function minutesSinceShiftStart(
+  currentMinutes: number,
+  shiftStartMinutes: number,
+): number {
+  if (shiftStartMinutes >= OVERNIGHT_SHIFT_START) {
+    if (currentMinutes >= shiftStartMinutes) {
+      return currentMinutes - shiftStartMinutes;
+    }
+    return 1440 - shiftStartMinutes + currentMinutes;
+  }
+  return currentMinutes - shiftStartMinutes;
 }
 
 export function computeLateMinutesFromCheckIn(
@@ -30,9 +48,10 @@ export function computeLateMinutesFromCheckIn(
   dutyStartTime: string,
   graceMinutes = 15,
 ): number {
-  const checkInMinutes = checkIn.getHours() * 60 + checkIn.getMinutes();
+  const checkInMinutes = toPakistanMinutesOfDay(checkIn);
   const dutyStart = parseTimeToMinutes(dutyStartTime);
-  const late = checkInMinutes - dutyStart - graceMinutes;
+  const late =
+    minutesSinceShiftStart(checkInMinutes, dutyStart) - graceMinutes;
   return late > 0 ? late : 0;
 }
 

@@ -9,6 +9,20 @@ export function toPakistanTime24(value: string | Date): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+/** Current HH:mm in Pakistan time */
+export function currentPakistanTime24(): string {
+  return toPakistanTime24(new Date())
+}
+
+/** Today's date (yyyy-MM-dd) in Pakistan time */
+export function todayPakistan(): string {
+  const pk = new Date(Date.now() + PK_OFFSET_MS)
+  const y = pk.getUTCFullYear()
+  const mo = String(pk.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(pk.getUTCDate()).padStart(2, '0')
+  return `${y}-${mo}-${d}`
+}
+
 export function to12Hour(time: string): string {
   if (!time) return '—'
   const [h, m] = time.split(':').map(Number)
