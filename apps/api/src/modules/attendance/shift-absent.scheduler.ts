@@ -26,6 +26,8 @@ export class ShiftAbsentScheduler {
 
   @Cron('*/15 * * * *')
   async markShiftStartAbsent() {
+    await this.normalizeLegacyAutoMarkedAbsent();
+
     const now = new Date();
     const today = toPakistanDateOnly(now);
     const nowMinutes = toPakistanMinutesOfDay(now);
@@ -210,5 +212,24 @@ export class ShiftAbsentScheduler {
     }
 
     return marked;
+  }
+
+  /** Convert old auto-marked ABSENT rows (no check-in) to UNMARKED. */
+  private async normalizeLegacyAutoMarkedAbsent(): Promise<void> {
+    await this.prisma.attendanceLog.updateMany({
+      where: {
+        status: AttendanceStatus.ABSENT,
+        checkIn: null,
+        OR: [
+          { note: 'Auto-marked absent at shift start' },
+          { note: 'Auto-marked absent' },
+          { note: AUTO_UNMARKED_NOTE },
+        ],
+      },
+      data: {
+        status: AttendanceStatus.UNMARKED,
+        note: AUTO_UNMARKED_NOTE,
+      },
+    });
   }
 }

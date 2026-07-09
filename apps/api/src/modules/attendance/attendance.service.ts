@@ -152,6 +152,44 @@ export class AttendanceService {
       return log.log;
     }
 
+    if (!existing.checkIn) {
+      const lateMinutes = computeBiometricLateMinutes(checkTime, employee);
+      let status = determineBiometricCheckInStatus(
+        lateMinutes,
+        employee,
+        0,
+      );
+
+      const log = await this.prisma.$transaction(async (tx) => {
+        const effectiveStatus = await applyDisciplineRules(
+          tx,
+          employee.id,
+          status,
+          dateOnly,
+          { lateMinutes },
+        );
+
+        if (effectiveStatus === AttendanceStatus.HALF_DAY) {
+          status = AttendanceStatus.HALF_DAY;
+        }
+
+        return tx.attendanceLog.update({
+          where: { id: existing.id },
+          data: {
+            checkIn: checkTime,
+            status,
+            lateMinutes,
+            source: AttendanceSource.BIOMETRIC,
+            note: existing.note?.toLowerCase().includes('auto-marked')
+              ? null
+              : existing.note,
+          },
+        });
+      });
+
+      return log;
+    }
+
     if (!existing.checkOut) {
       const sessionMinutes = Math.round(
         (checkTime.getTime() - existing.checkIn!.getTime()) / 60000,
@@ -751,9 +789,9 @@ export class AttendanceService {
         employeeId: emp.id,
         branchId: emp.currentBranchId,
         date: dateOnly,
-        status: AttendanceStatus.ABSENT,
+        status: AttendanceStatus.UNMARKED,
         source: AttendanceSource.MANUAL,
-        note: 'Auto-marked absent',
+        note: 'Auto-marked unmarked',
       })),
     });
 

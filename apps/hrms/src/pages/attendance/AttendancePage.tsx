@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { getLogLateMinutes } from '@/lib/attendanceUtils'
+import { formatShiftOptionLabel } from '@/lib/shiftFilterUtils'
 import { formatDateTimeTime } from '@/lib/timeFormat'
 import { cn } from '@/lib/utils'
 import {
@@ -60,6 +61,12 @@ const statusStyles: Record<AttendanceStatus, string> = {
   HALF_DAY: 'bg-blue-100 text-blue-800 border-blue-200',
   ON_LEAVE: 'bg-purple-100 text-purple-800 border-purple-200',
   UNINFORMED_ABSENT: 'bg-red-200 text-red-900 border-red-300',
+}
+
+function formatLogShift(log: AttendanceLog): string {
+  const shift = log.employee?.shift
+  if (!shift?.startTime || !shift?.endTime) return '—'
+  return formatShiftOptionLabel(shift)
 }
 
 function AttendanceStatusBadge({ status }: { status: string }) {
@@ -190,6 +197,7 @@ function DailyLogTab({
               <TableHead>Designation</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Branch</TableHead>
+              <TableHead>Shift</TableHead>
               <TableHead>Check In</TableHead>
               <TableHead>Check Out</TableHead>
               <TableHead>Status</TableHead>
@@ -203,7 +211,7 @@ function DailyLogTab({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(13)].map((__, j) => (
+                  {[...Array(14)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -212,7 +220,7 @@ function DailyLogTab({
               ))
             ) : attendanceLogs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={13} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={14} className="h-32 text-center text-text-secondary">
                   No attendance records for this date
                 </TableCell>
               </TableRow>
@@ -247,6 +255,9 @@ function DailyLogTab({
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {formatBranchLabel(log.branch)}
+                  </TableCell>
+                  <TableCell className="text-sm text-text-secondary">
+                    {formatLogShift(log)}
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {formatDateTimeTime(log.checkIn)}
