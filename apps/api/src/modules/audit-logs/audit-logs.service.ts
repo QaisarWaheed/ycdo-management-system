@@ -55,6 +55,21 @@ export class AuditLogsService {
     return enriched;
   }
 
+  async findLoginUsers() {
+    return this.prisma.user.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        employee: {
+          select: { fullName: true },
+        },
+      },
+      orderBy: { email: 'asc' },
+    });
+  }
+
   private async resolveEmployeeName(log: {
     entity: string;
     entityId: string;
