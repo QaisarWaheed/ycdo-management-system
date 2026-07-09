@@ -17,7 +17,12 @@ import {
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LettersService } from '../letters/letters.service';
-import { parseTimeToMinutes } from '../attendance/attendance-late.util';
+import {
+  isWithinDutyWindow,
+  resolveDutyEndTime,
+  resolveDutyStartTime,
+  toPakistanMinutesOfDay,
+} from '../attendance/attendance-late.util';
 import { generateEmployeeCode } from './employee-code.helper';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { enforceBranchScope } from '../../common/branch-scope.util';
@@ -455,6 +460,8 @@ export class EmployeesService {
         currentDesignation: true,
         status: true,
         joiningDate: true,
+        dutyStartTime: true,
+        dutyEndTime: true,
         currentBranch: {
           select: {
             id: true,
@@ -1047,8 +1054,7 @@ export class EmployeesService {
 
     const today = new Date(scopedQuery.date);
     today.setHours(0, 0, 0, 0);
-    const [currentH, currentM] = scopedQuery.time.split(':').map(Number);
-    const currentMinutes = currentH * 60 + currentM;
+    const currentMinutes = toPakistanMinutesOfDay(new Date());
 
     const employees = await this.prisma.employee.findMany({
       where: {
@@ -1059,7 +1065,6 @@ export class EmployeesService {
             EmployeeStatus.TRAINEE,
           ],
         },
-        shiftId: { not: null },
         ...(scopedQuery.branchId ? { currentBranchId: scopedQuery.branchId } : {}),
         ...(scopedQuery.departmentId
           ? { currentDepartmentId: scopedQuery.departmentId }
@@ -1087,17 +1092,11 @@ export class EmployeesService {
         const log = emp.attendanceLogs[0];
         if (log?.checkIn) return false;
 
-        if (!emp.shift) return false;
+        const dutyStart = resolveDutyStartTime(emp);
+        const dutyEnd = resolveDutyEndTime(emp);
+        if (!dutyStart || !dutyEnd) return false;
 
-        const startMin = parseTimeToMinutes(emp.shift.startTime);
-        const endMin = parseTimeToMinutes(emp.shift.endTime);
-        const isOvernight = endMin < startMin;
-
-        if (isOvernight) {
-          return currentMinutes >= startMin || currentMinutes <= endMin;
-        }
-
-        return currentMinutes >= startMin && currentMinutes <= endMin;
+        return isWithinDutyWindow(currentMinutes, dutyStart, dutyEnd);
       })
       .map(({ attendanceLogs: _a, leaveRecords: _l, ...emp }) => emp);
   }

@@ -34,3 +34,29 @@ export function resolveDutyStartTime(employee: {
 }): string | null {
   return employee.dutyStartTime ?? employee.shift?.startTime ?? null;
 }
+
+export function resolveDutyEndTime(employee: {
+  dutyEndTime?: string | null;
+  shift?: { endTime: string } | null;
+}): string | null {
+  return employee.dutyEndTime ?? employee.shift?.endTime ?? null;
+}
+
+export function isWithinDutyWindow(
+  currentMinutes: number,
+  startTime: string,
+  endTime: string,
+): boolean {
+  const startMin = parseTimeToMinutes(startTime);
+  const endMin = parseTimeToMinutes(endTime);
+
+  if (startMin === endMin) {
+    return true;
+  }
+
+  if (endMin < startMin) {
+    return currentMinutes >= startMin || currentMinutes <= endMin;
+  }
+
+  return currentMinutes >= startMin && currentMinutes <= endMin;
+}

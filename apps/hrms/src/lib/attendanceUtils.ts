@@ -1,4 +1,5 @@
 import { format } from 'date-fns'
+import { formatDutyDisplay } from '@/lib/dutyTimes'
 
 export function parseTimeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number)
@@ -54,6 +55,73 @@ export function getEmployeeDutyStartTime(employee: {
   shift?: { startTime?: string } | null
 }): string {
   return employee.dutyStartTime ?? employee.shift?.startTime ?? ''
+}
+
+export function getEmployeeDutyEndTime(employee: {
+  dutyEndTime?: string | null
+  shift?: { endTime?: string } | null
+}): string {
+  return employee.dutyEndTime ?? employee.shift?.endTime ?? ''
+}
+
+export function isWithinDutyWindow(
+  currentMinutes: number,
+  startTime: string,
+  endTime: string,
+): boolean {
+  if (!startTime || !endTime) return false
+
+  const startMin = parseTimeToMinutes(startTime)
+  const endMin = parseTimeToMinutes(endTime)
+
+  if (startMin === endMin) {
+    return true
+  }
+
+  if (endMin < startMin) {
+    return currentMinutes >= startMin || currentMinutes <= endMin
+  }
+
+  return currentMinutes >= startMin && currentMinutes <= endMin
+}
+
+export function getUniqueDutyStartTimes(
+  employees: Array<{
+    dutyStartTime?: string | null
+    shift?: { startTime?: string } | null
+  }>,
+): string[] {
+  return [
+    ...new Set(
+      employees
+        .map((e) => getEmployeeDutyStartTime(e))
+        .filter((t): t is string => Boolean(t)),
+    ),
+  ].sort()
+}
+
+export function filterByDutyStartTime<T extends {
+  dutyStartTime?: string | null
+  shift?: { startTime?: string } | null
+}>(items: T[], dutyStartTime: string): T[] {
+  if (!dutyStartTime) return items
+  return items.filter(
+    (item) => getEmployeeDutyStartTime(item) === dutyStartTime,
+  )
+}
+
+export function formatEmployeeDutyLabel(employee: {
+  shift?: { name?: string; startTime?: string; endTime?: string } | null
+  dutyStartTime?: string | null
+  dutyEndTime?: string | null
+}): string {
+  const start = getEmployeeDutyStartTime(employee)
+  const end = getEmployeeDutyEndTime(employee)
+  if (!start || !end) {
+    return employee.shift?.name ?? '—'
+  }
+  const hours = formatDutyDisplay(start, end)
+  return employee.shift?.name ? `${employee.shift.name} · ${hours}` : hours
 }
 
 export function getLogLateMinutes(log: {

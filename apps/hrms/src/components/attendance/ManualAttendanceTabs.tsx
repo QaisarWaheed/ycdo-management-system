@@ -5,9 +5,7 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
-import { shiftsApi } from '@/api/endpoints/shifts'
 import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
-import { ShiftFilterDropdowns } from '@/components/employees/ShiftFilterDropdowns'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -32,7 +30,10 @@ import { useAuth } from '@/hooks/useAuth'
 import {
   calcLateMinutes,
   combineDateAndTime,
+  filterByDutyStartTime,
+  formatEmployeeDutyLabel,
   getEmployeeDutyStartTime,
+  getUniqueDutyStartTimes,
   graceMinutesRemaining,
   isWithinGrace,
   statusFromLateMinutes,
@@ -40,11 +41,7 @@ import {
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import { cn } from '@/lib/utils'
-import {
-  ALL_SHIFTS_AT_START,
-  formatShiftOptionLabel,
-  resolveShiftIds,
-} from '@/lib/shiftFilterUtils'
+import { formatShiftTime } from '@/lib/shiftFilterUtils'
 import {
   formatDateTimeTime,
   formatDurationSince,
@@ -58,37 +55,36 @@ function currentTime24(): string {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
 
-function filterByShift(
-  employees: Employee[],
-  shiftIdsParam: string | undefined,
-): Employee[] {
-  if (!shiftIdsParam) return employees
-  const allowed = new Set(shiftIdsParam.split(','))
-  return employees.filter((e) => e.shiftId && allowed.has(e.shiftId))
+function filterLogsByDutyStartTime(
+  logs: AttendanceLog[],
+  dutyStartTime: string,
+): AttendanceLog[] {
+  if (!dutyStartTime) return logs
+  return logs.filter(
+    (log) => getEmployeeDutyStartTime(log.employee ?? {}) === dutyStartTime,
+  )
 }
 
 type ManualFiltersProps = {
   branchId: string
   departmentId: string
-  shiftStartTime: string
-  shiftId: string
+  dutyStartTime: string
+  dutyStartOptions: string[]
   lockedBranchId?: string
   onBranchChange: (id: string) => void
   onDepartmentChange: (id: string) => void
-  onShiftStartTimeChange: (startTime: string) => void
-  onShiftIdChange: (id: string) => void
+  onDutyStartTimeChange: (startTime: string) => void
 }
 
 function ManualAttendanceFilters({
   branchId,
   departmentId,
-  shiftStartTime,
-  shiftId,
+  dutyStartTime,
+  dutyStartOptions,
   lockedBranchId,
   onBranchChange,
   onDepartmentChange,
-  onShiftStartTimeChange,
-  onShiftIdChange,
+  onDutyStartTimeChange,
 }: ManualFiltersProps) {
   const effectiveBranchId = lockedBranchId || branchId
 
@@ -106,11 +102,6 @@ function ManualAttendanceFilters({
       ),
   })
 
-  const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', effectiveBranchId || 'all'],
-    queryFn: () => shiftsApi.getAll(effectiveBranchId || undefined),
-  })
-
   return (
     <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-white p-4">
       {!lockedBranchId && (
@@ -121,8 +112,7 @@ function ManualAttendanceFilters({
             onValueChange={(v) => {
               onBranchChange(v)
               onDepartmentChange('')
-              onShiftStartTimeChange('')
-              onShiftIdChange('')
+              onDutyStartTimeChange('')
             }}
           >
             <SelectTrigger className="w-[180px]">
@@ -159,17 +149,27 @@ function ManualAttendanceFilters({
         </Select>
       </div>
 
-      <ShiftFilterDropdowns
-        shifts={shifts}
-        shiftStartTime={shiftStartTime}
-        shiftId={shiftId}
-        triggerClassName="w-[180px]"
-        onShiftStartTimeChange={(startTime) => {
-          onShiftStartTimeChange(startTime)
-          onShiftIdChange(startTime ? ALL_SHIFTS_AT_START : '')
-        }}
-        onShiftIdChange={onShiftIdChange}
-      />
+      <div className="space-y-1">
+        <Label>Duty Start Time</Label>
+        <Select
+          value={dutyStartTime || 'all'}
+          onValueChange={(v) =>
+            onDutyStartTimeChange(v === 'all' ? '' : v)
+          }
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Duty Times</SelectItem>
+            {dutyStartOptions.map((startTime) => (
+              <SelectItem key={startTime} value={startTime}>
+                {formatShiftTime(startTime)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   )
 }
@@ -189,8 +189,7 @@ export function CheckInManualTab() {
 
   const [branchId, setBranchId] = useState(lockedBranchId ?? '')
   const [departmentId, setDepartmentId] = useState('')
-  const [shiftStartTime, setShiftStartTime] = useState('')
-  const [shiftId, setShiftId] = useState('')
+  const [dutyStartTime, setDutyStartTime] = useState('')
   const [checkInTimes, setCheckInTimes] = useState<Record<string, string>>({})
   const [markingId, setMarkingId] = useState<string | null>(null)
 
@@ -202,13 +201,19 @@ export function CheckInManualTab() {
 
   const effectiveBranchId = lockedBranchId || branchId
 
-  const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', effectiveBranchId || 'all'],
-    queryFn: () => shiftsApi.getAll(effectiveBranchId || undefined),
+  const { data: branchEmployees = [] } = useQuery({
+    queryKey: ['employees', effectiveBranchId, 'duty-times'],
+    queryFn: () =>
+      employeesApi.getAll(
+        effectiveBranchId ? { branchId: effectiveBranchId } : undefined,
+      ),
     enabled: !!effectiveBranchId,
   })
 
-  const shiftIdsParam = resolveShiftIds(shiftStartTime, shiftId, shifts)
+  const dutyStartOptions = useMemo(
+    () => getUniqueDutyStartTimes(branchEmployees),
+    [branchEmployees],
+  )
 
   const { data: activeEmployees = [], isLoading } = useQuery({
     queryKey: [
@@ -216,8 +221,6 @@ export function CheckInManualTab() {
       today,
       effectiveBranchId,
       departmentId,
-      shiftStartTime,
-      shiftId,
     ],
     queryFn: () =>
       employeesApi.getActiveShift({
@@ -231,9 +234,9 @@ export function CheckInManualTab() {
   })
 
   const employees = useMemo(() => {
-    const filtered = filterByShift(activeEmployees, shiftIdsParam)
+    const filtered = filterByDutyStartTime(activeEmployees, dutyStartTime)
     return sortEmployeesByHierarchy(filtered)
-  }, [activeEmployees, shiftIdsParam])
+  }, [activeEmployees, dutyStartTime])
 
   const markMutation = useMutation({
     mutationFn: async ({
@@ -290,20 +293,19 @@ export function CheckInManualTab() {
       )}
 
       <p className="text-sm text-text-secondary">
-        Employees on an active shift who have not checked in today. Refreshes
-        every 60 seconds.
+        Employees within their registered duty hours who have not checked in
+        today. Refreshes every 60 seconds.
       </p>
 
       <ManualAttendanceFilters
         branchId={branchId}
         departmentId={departmentId}
-        shiftStartTime={shiftStartTime}
-        shiftId={shiftId}
+        dutyStartTime={dutyStartTime}
+        dutyStartOptions={dutyStartOptions}
         lockedBranchId={lockedBranchId}
         onBranchChange={setBranchId}
         onDepartmentChange={setDepartmentId}
-        onShiftStartTimeChange={setShiftStartTime}
-        onShiftIdChange={setShiftId}
+        onDutyStartTimeChange={setDutyStartTime}
       />
 
       <div className="overflow-x-auto rounded-lg border border-border bg-white">
@@ -338,7 +340,7 @@ export function CheckInManualTab() {
             ) : employees.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-text-secondary">
-                  No employees pending check-in for the current shift
+                  No employees pending check-in for the current duty hours
                 </TableCell>
               </TableRow>
             ) : (
@@ -365,9 +367,7 @@ export function CheckInManualTab() {
                   </TableCell>
                   <TableCell>{emp.currentDesignation ?? '—'}</TableCell>
                   <TableCell className="text-sm text-text-secondary">
-                    {emp.shift
-                      ? formatShiftOptionLabel(emp.shift)
-                      : '—'}
+                    {formatEmployeeDutyLabel(emp)}
                     {isAdminManager && withinGrace && (
                       <p className="mt-1 text-xs font-medium text-green-700">
                         Grace ends in {graceRemaining} minute
@@ -422,8 +422,7 @@ export function CheckOutManualTab() {
 
   const [branchId, setBranchId] = useState(lockedBranchId ?? '')
   const [departmentId, setDepartmentId] = useState('')
-  const [shiftStartTime, setShiftStartTime] = useState('')
-  const [shiftId, setShiftId] = useState('')
+  const [dutyStartTime, setDutyStartTime] = useState('')
   const [checkOutTimes, setCheckOutTimes] = useState<Record<string, string>>({})
   const [markingId, setMarkingId] = useState<string | null>(null)
 
@@ -440,13 +439,19 @@ export function CheckOutManualTab() {
 
   const effectiveBranchId = lockedBranchId || branchId
 
-  const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', effectiveBranchId || 'all'],
-    queryFn: () => shiftsApi.getAll(effectiveBranchId || undefined),
+  const { data: branchEmployees = [] } = useQuery({
+    queryKey: ['employees', effectiveBranchId, 'duty-times'],
+    queryFn: () =>
+      employeesApi.getAll(
+        effectiveBranchId ? { branchId: effectiveBranchId } : undefined,
+      ),
     enabled: !!effectiveBranchId,
   })
 
-  const shiftIdsParam = resolveShiftIds(shiftStartTime, shiftId, shifts)
+  const dutyStartOptions = useMemo(
+    () => getUniqueDutyStartTimes(branchEmployees),
+    [branchEmployees],
+  )
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: [
@@ -454,8 +459,6 @@ export function CheckOutManualTab() {
       today,
       effectiveBranchId,
       departmentId,
-      shiftStartTime,
-      shiftId,
     ],
     queryFn: () =>
       attendanceApi.getAll({
@@ -463,19 +466,19 @@ export function CheckOutManualTab() {
         endDate: today,
         branchId: effectiveBranchId || undefined,
         departmentId: departmentId || undefined,
-        shiftIds: shiftIdsParam,
       }),
     enabled: !!effectiveBranchId,
     refetchInterval: REFRESH_MS,
   })
 
   const pendingCheckout = useMemo(() => {
-    return (logs as AttendanceLog[])
-      .filter((log) => log.checkIn && !log.checkOut)
-      .sort((a, b) =>
-        (a.employee?.fullName ?? '').localeCompare(b.employee?.fullName ?? ''),
-      )
-  }, [logs])
+    return filterLogsByDutyStartTime(
+      (logs as AttendanceLog[]).filter((log) => log.checkIn && !log.checkOut),
+      dutyStartTime,
+    ).sort((a, b) =>
+      (a.employee?.fullName ?? '').localeCompare(b.employee?.fullName ?? ''),
+    )
+  }, [logs, dutyStartTime])
 
   const markMutation = useMutation({
     mutationFn: async ({
@@ -522,13 +525,12 @@ export function CheckOutManualTab() {
       <ManualAttendanceFilters
         branchId={branchId}
         departmentId={departmentId}
-        shiftStartTime={shiftStartTime}
-        shiftId={shiftId}
+        dutyStartTime={dutyStartTime}
+        dutyStartOptions={dutyStartOptions}
         lockedBranchId={lockedBranchId}
         onBranchChange={setBranchId}
         onDepartmentChange={setDepartmentId}
-        onShiftStartTimeChange={setShiftStartTime}
-        onShiftIdChange={setShiftId}
+        onDutyStartTimeChange={setDutyStartTime}
       />
 
       <div className="overflow-x-auto rounded-lg border border-border bg-white">

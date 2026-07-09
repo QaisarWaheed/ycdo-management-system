@@ -35,7 +35,11 @@ import {
 import { useDebounce } from '@/hooks/useDebounce'
 import { useAuth } from '@/hooks/useAuth'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
-import { formatShiftTime } from '@/lib/shiftFilterUtils'
+import {
+  getEmployeeDutyEndTime,
+  getEmployeeDutyStartTime,
+} from '@/lib/attendanceUtils'
+import { formatDutyDisplay } from '@/lib/dutyTimes'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 
 const PAGE_SIZE = 20
@@ -260,8 +264,10 @@ export function EmployeesListPage() {
                       <div>
                         <p className="font-medium">{emp.shift.name}</p>
                         <p className="text-xs text-text-secondary">
-                          {formatShiftTime(emp.shift.startTime)} -{' '}
-                          {formatShiftTime(emp.shift.endTime)}
+                          {formatDutyDisplay(
+                            getEmployeeDutyStartTime(emp),
+                            getEmployeeDutyEndTime(emp),
+                          )}
                         </p>
                       </div>
                     ) : (

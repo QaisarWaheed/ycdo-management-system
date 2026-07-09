@@ -626,6 +626,7 @@ export class AttendanceService {
             currentDesignation: true,
             currentDepartmentId: true,
             dutyStartTime: true,
+            dutyEndTime: true,
             currentBranch: { select: { name: true, address: true } },
             currentDepartment: { select: { name: true } },
             shift: {
