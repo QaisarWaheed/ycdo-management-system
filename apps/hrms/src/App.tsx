@@ -21,6 +21,7 @@ import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
 import { ProfilePage } from '@/pages/settings/ProfilePage'
 import { UserPasswordsPage } from '@/pages/admin/UserPasswordsPage'
 import { SystemLoginsPage } from '@/pages/admin/SystemLoginsPage'
+import { ActivityTrailPage } from '@/pages/activity/ActivityTrailPage'
 
 export default function App() {
   return (
@@ -153,6 +154,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/activity-trail"
+        element={
+          <ProtectedRoute>
+            <ActivityTrailPage />
           </ProtectedRoute>
         }
       />

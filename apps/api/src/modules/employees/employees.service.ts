@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { stripPersonalEmployeeFields } from '../../common/hr-executive.util';
 import {
   ChangeType,
   EmployeeStatus,
@@ -615,10 +616,18 @@ export class EmployeesService {
     return employee;
   }
 
-  async update(id: string, dto: UpdateEmployeeDto) {
+  async update(
+    id: string,
+    dto: UpdateEmployeeDto,
+    actingRole?: UserRole | string,
+  ) {
     await this.findOne(id);
 
-    if (dto.currentBranchId !== undefined || dto.currentDepartmentId !== undefined) {
+    const sanitizedDto = actingRole
+      ? stripPersonalEmployeeFields(dto, actingRole)
+      : dto;
+
+    if (sanitizedDto.currentBranchId !== undefined || sanitizedDto.currentDepartmentId !== undefined) {
       throw new BadRequestException(
         'Use the transfer endpoint to change branch or department',
       );
@@ -626,71 +635,71 @@ export class EmployeesService {
 
     const data: Prisma.EmployeeUpdateInput = {};
 
-    if (dto.fullName !== undefined) data.fullName = dto.fullName;
-    if (dto.fatherName !== undefined) data.fatherName = dto.fatherName;
-    if (dto.phone !== undefined) data.phone = dto.phone;
-    if (dto.email !== undefined) data.email = dto.email;
-    if (dto.dateOfBirth !== undefined) {
-      data.dateOfBirth = new Date(dto.dateOfBirth);
+    if (sanitizedDto.fullName !== undefined) data.fullName = sanitizedDto.fullName;
+    if (sanitizedDto.fatherName !== undefined) data.fatherName = sanitizedDto.fatherName;
+    if (sanitizedDto.phone !== undefined) data.phone = sanitizedDto.phone;
+    if (sanitizedDto.email !== undefined) data.email = sanitizedDto.email;
+    if (sanitizedDto.dateOfBirth !== undefined) {
+      data.dateOfBirth = new Date(sanitizedDto.dateOfBirth);
     }
-    if (dto.joiningDate !== undefined) {
-      data.joiningDate = new Date(dto.joiningDate);
+    if (sanitizedDto.joiningDate !== undefined) {
+      data.joiningDate = new Date(sanitizedDto.joiningDate);
     }
-    if (dto.gender !== undefined) data.gender = dto.gender;
-    if (dto.biometricId !== undefined) data.biometricId = dto.biometricId;
-    if (dto.currentDesignation !== undefined) {
-      data.currentDesignation = dto.currentDesignation;
+    if (sanitizedDto.gender !== undefined) data.gender = sanitizedDto.gender;
+    if (sanitizedDto.biometricId !== undefined) data.biometricId = sanitizedDto.biometricId;
+    if (sanitizedDto.currentDesignation !== undefined) {
+      data.currentDesignation = sanitizedDto.currentDesignation;
     }
-    if (dto.fatherContactNumber !== undefined) {
-      data.fatherContactNumber = dto.fatherContactNumber;
+    if (sanitizedDto.fatherContactNumber !== undefined) {
+      data.fatherContactNumber = sanitizedDto.fatherContactNumber;
     }
-    if (dto.emergencyContactName !== undefined) {
-      data.emergencyContactName = dto.emergencyContactName;
+    if (sanitizedDto.emergencyContactName !== undefined) {
+      data.emergencyContactName = sanitizedDto.emergencyContactName;
     }
-    if (dto.emergencyContactNumber !== undefined) {
-      data.emergencyContactNumber = dto.emergencyContactNumber;
+    if (sanitizedDto.emergencyContactNumber !== undefined) {
+      data.emergencyContactNumber = sanitizedDto.emergencyContactNumber;
     }
-    if (dto.spouseName !== undefined) {
-      data.spouseName = dto.spouseName;
+    if (sanitizedDto.spouseName !== undefined) {
+      data.spouseName = sanitizedDto.spouseName;
     }
-    if (dto.spouseContactNumber !== undefined) {
-      data.spouseContactNumber = dto.spouseContactNumber;
+    if (sanitizedDto.spouseContactNumber !== undefined) {
+      data.spouseContactNumber = sanitizedDto.spouseContactNumber;
     }
-    if (dto.caste !== undefined) data.caste = dto.caste;
-    if (dto.domicile !== undefined) data.domicile = dto.domicile;
-    if (dto.currentAddress !== undefined) {
-      data.currentAddress = dto.currentAddress;
+    if (sanitizedDto.caste !== undefined) data.caste = sanitizedDto.caste;
+    if (sanitizedDto.domicile !== undefined) data.domicile = sanitizedDto.domicile;
+    if (sanitizedDto.currentAddress !== undefined) {
+      data.currentAddress = sanitizedDto.currentAddress;
     }
-    if (dto.permanentAddress !== undefined) {
-      data.permanentAddress = dto.permanentAddress;
+    if (sanitizedDto.permanentAddress !== undefined) {
+      data.permanentAddress = sanitizedDto.permanentAddress;
     }
-    if (dto.district !== undefined) data.district = dto.district;
-    if (dto.tehsil !== undefined) data.tehsil = dto.tehsil;
-    if (dto.policeStation !== undefined) {
-      data.policeStation = dto.policeStation;
+    if (sanitizedDto.district !== undefined) data.district = sanitizedDto.district;
+    if (sanitizedDto.tehsil !== undefined) data.tehsil = sanitizedDto.tehsil;
+    if (sanitizedDto.policeStation !== undefined) {
+      data.policeStation = sanitizedDto.policeStation;
     }
-    if (dto.bloodGroup !== undefined) data.bloodGroup = dto.bloodGroup;
-    if (dto.dutyStartTime !== undefined) data.dutyStartTime = dto.dutyStartTime;
-    if (dto.dutyEndTime !== undefined) data.dutyEndTime = dto.dutyEndTime;
-    if (dto.province !== undefined) data.province = dto.province;
-    if (dto.city !== undefined) data.city = dto.city;
-    if (dto.permanentProvince !== undefined) {
-      data.permanentProvince = dto.permanentProvince;
+    if (sanitizedDto.bloodGroup !== undefined) data.bloodGroup = sanitizedDto.bloodGroup;
+    if (sanitizedDto.dutyStartTime !== undefined) data.dutyStartTime = sanitizedDto.dutyStartTime;
+    if (sanitizedDto.dutyEndTime !== undefined) data.dutyEndTime = sanitizedDto.dutyEndTime;
+    if (sanitizedDto.province !== undefined) data.province = sanitizedDto.province;
+    if (sanitizedDto.city !== undefined) data.city = sanitizedDto.city;
+    if (sanitizedDto.permanentProvince !== undefined) {
+      data.permanentProvince = sanitizedDto.permanentProvince;
     }
-    if (dto.permanentCity !== undefined) data.permanentCity = dto.permanentCity;
+    if (sanitizedDto.permanentCity !== undefined) data.permanentCity = sanitizedDto.permanentCity;
 
-    if (dto.email) {
+    if (sanitizedDto.email) {
       const existingEmail = await this.prisma.employee.findFirst({
-        where: { email: dto.email, NOT: { id } },
+        where: { email: sanitizedDto.email, NOT: { id } },
       });
       if (existingEmail) {
         throw new ConflictException('Employee with this email already exists');
       }
     }
 
-    if (dto.biometricId) {
+    if (sanitizedDto.biometricId) {
       const existingBiometric = await this.prisma.employee.findFirst({
-        where: { biometricId: dto.biometricId, NOT: { id } },
+        where: { biometricId: sanitizedDto.biometricId, NOT: { id } },
       });
       if (existingBiometric) {
         throw new ConflictException(

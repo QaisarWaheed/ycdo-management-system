@@ -10,8 +10,10 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { assertCanEditPersonalInfo } from '../../common/hr-executive.util';
 import {
   CreateQualificationDto,
   UpdateQualificationDto,
@@ -31,7 +33,11 @@ export class QualificationsController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.IT_ADMIN,
   )
-  create(@Body() dto: CreateQualificationDto) {
+  create(
+    @Body() dto: CreateQualificationDto,
+    @CurrentUser() user: { role: UserRole },
+  ) {
+    assertCanEditPersonalInfo(user.role);
     return this.qualificationsService.create(dto);
   }
 
@@ -48,7 +54,12 @@ export class QualificationsController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.IT_ADMIN,
   )
-  update(@Param('id') id: string, @Body() dto: UpdateQualificationDto) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateQualificationDto,
+    @CurrentUser() user: { role: UserRole },
+  ) {
+    assertCanEditPersonalInfo(user.role);
     return this.qualificationsService.update(id, dto);
   }
 
@@ -59,7 +70,11 @@ export class QualificationsController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.IT_ADMIN,
   )
-  delete(@Param('id') id: string) {
+  delete(
+    @Param('id') id: string,
+    @CurrentUser() user: { role: UserRole },
+  ) {
+    assertCanEditPersonalInfo(user.role);
     return this.qualificationsService.delete(id);
   }
 }

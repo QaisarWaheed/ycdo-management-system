@@ -61,6 +61,24 @@ async function findBranchByName(branchName: string) {
   });
 }
 
+async function seedHrExecutiveAccounts() {
+  const accounts = [
+    { email: 'hr.urooj@ycdo.org', password: 'HRUrooj@123' },
+    { email: 'hr.muneeba@ycdo.org', password: 'HRMuneeba@123' },
+    { email: 'hr.sana@ycdo.org', password: 'HRSana@123' },
+  ];
+
+  for (const account of accounts) {
+    await ensureUserAccount(
+      account.email,
+      account.password,
+      UserRole.HR_EXECUTIVE,
+      null,
+    );
+    console.log(`HR executive account: ${account.email}`);
+  }
+}
+
 async function seedBranchSystemAccounts() {
   const branchAccounts = [
     { email: 'ycdocentralhospital@ycdo.org', branchName: 'YCDO Central Hospital' },
@@ -603,6 +621,7 @@ async function main() {
   if (!isFirstRun && !FORCE_RESEED) {
     console.log('Database already seeded. Skipping...');
     console.log('Set FORCE_RESEED=true to re-run seed.');
+    await seedHrExecutiveAccounts();
     await seedBranchSystemAccounts();
     return;
   }
@@ -1092,6 +1111,8 @@ async function main() {
   for (const account of roleAccounts) {
     await ensureUserAccount(account.email, account.password, account.role, null);
   }
+
+  await seedHrExecutiveAccounts();
 
   await seedBranchSystemAccounts();
 

@@ -8,6 +8,7 @@ import {
   Clock,
   FileText,
   Gift,
+  History,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -43,20 +44,31 @@ const itTeamNavItems = [
   { to: '/admin/system-logins', label: 'System Logins', icon: Monitor },
 ]
 
+const activityTrailNavItem = {
+  to: '/activity-trail',
+  label: 'Activity Trail',
+  icon: History,
+}
+
 function navItemsForRole(role?: string) {
   if (!role) return allNavItems
 
   const fullAccess = [
     'SUPER_ADMIN',
+    'HR_EXECUTIVE',
     'HR_MANAGER',
     'HR_ADMIN_MANAGER',
   ]
   if (fullAccess.includes(role)) {
     const items = allNavItems.filter((item) => item.to !== '/broadcasts')
+    const withActivity = [
+      ...items,
+      ...(role === 'SUPER_ADMIN' ? [activityTrailNavItem] : []),
+    ]
     if (role === 'SUPER_ADMIN') {
-      return [...items, ...itTeamNavItems]
+      return [...withActivity, ...itTeamNavItems]
     }
-    return items
+    return withActivity
   }
 
   if (role === 'ADMIN_MANAGER' || role === 'ADMIN_OFFICER') {
