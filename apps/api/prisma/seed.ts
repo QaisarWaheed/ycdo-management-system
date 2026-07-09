@@ -832,11 +832,15 @@ async function main() {
   });
   for (const shift of shifts) {
     const exists = await prisma.shift.findFirst({
-      where: { name: shift.name, branchId: mainBranch.id },
+      where: {
+        name: shift.name,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+      },
     });
     if (!exists) {
       await prisma.shift.create({
-        data: { ...shift, branchId: mainBranch.id },
+        data: { ...shift, branchId: null },
       });
     }
   }

@@ -85,12 +85,12 @@ export interface Project {
 
 export interface Shift {
   id: string
-  branchId: string
+  branchId?: string | null
   name: string
   startTime: string
   endTime: string
   isActive?: boolean
-  branch?: { name: string; address?: string | null }
+  branch?: { name: string; address?: string | null } | null
   _count?: { employees: number }
 }
 

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus, Timer, Trash2 } from 'lucide-react'
 import { Navigate } from 'react-router-dom'
-import { branchesApi } from '@/api/endpoints/branches'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -33,7 +32,7 @@ import {
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
-import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { to12Hour } from '@/lib/timeFormat'
 import type { Shift } from '@/types'
 
 const SUPER_ADMIN_ROLES = ['SUPER_ADMIN'] as const
@@ -49,10 +48,8 @@ function apiErrorMessage(err: {
 export function ShiftsPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [branchFilter, setBranchFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [editShift, setEditShift] = useState<Shift | null>(null)
-  const [branchId, setBranchId] = useState('')
   const [name, setName] = useState('')
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
@@ -61,28 +58,20 @@ export function ShiftsPage() {
     user?.role &&
     SUPER_ADMIN_ROLES.includes(user.role as (typeof SUPER_ADMIN_ROLES)[number])
 
-  const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn: () => branchesApi.getAll(),
-    enabled: !!canManage,
-  })
-
   const { data: shifts = [], isLoading } = useQuery({
-    queryKey: ['shifts', branchFilter || 'all'],
-    queryFn: () => shiftsApi.getAll(branchFilter || undefined),
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
     enabled: !!canManage,
   })
 
   const resetForm = () => {
-    setBranchId('')
     setName('')
     setStartTime('')
     setEndTime('')
   }
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      shiftsApi.create({ branchId, name, startTime, endTime }),
+    mutationFn: () => shiftsApi.create({ name, startTime, endTime }),
     onSuccess: () => {
       toast({ title: 'Shift created' })
       resetForm()
@@ -137,23 +126,6 @@ export function ShiftsPage() {
 
   const shiftForm = (
     <div className="space-y-4">
-      {!editShift && (
-        <div className="space-y-2">
-          <Label>Branch</Label>
-          <Select value={branchId} onValueChange={setBranchId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select branch" />
-            </SelectTrigger>
-            <SelectContent>
-              {branches.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {formatBranchLabel(b)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
       <div className="space-y-2">
         <Label>Shift Name</Label>
         <Select value={name} onValueChange={setName}>
@@ -175,7 +147,7 @@ export function ShiftsPage() {
           <Input
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
-            placeholder="09:00"
+            placeholder="08:00"
           />
         </div>
         <div className="space-y-2">
@@ -183,7 +155,7 @@ export function ShiftsPage() {
           <Input
             value={endTime}
             onChange={(e) => setEndTime(e.target.value)}
-            placeholder="17:00"
+            placeholder="12:00"
           />
         </div>
       </div>
@@ -199,7 +171,7 @@ export function ShiftsPage() {
             Shifts
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Add, update, and delete branch shifts.
+            Universal shifts shared across all branches.
           </p>
         </div>
         <Button
@@ -211,33 +183,12 @@ export function ShiftsPage() {
         </Button>
       </div>
 
-      <div className="space-y-1">
-        <Label>Filter by Branch</Label>
-        <Select
-          value={branchFilter || 'all'}
-          onValueChange={(v) => setBranchFilter(v === 'all' ? '' : v)}
-        >
-          <SelectTrigger className="w-full max-w-xs">
-            <SelectValue placeholder="All branches" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All branches</SelectItem>
-            {branches.map((b) => (
-              <SelectItem key={b.id} value={b.id}>
-                {formatBranchLabel(b)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Branch</TableHead>
                 <TableHead>Start</TableHead>
                 <TableHead>End</TableHead>
                 <TableHead>Employees</TableHead>
@@ -248,7 +199,7 @@ export function ShiftsPage() {
               {isLoading ? (
                 [...Array(4)].map((_, i) => (
                   <TableRow key={i}>
-                    {[...Array(6)].map((__, j) => (
+                    {[...Array(5)].map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-5 w-full" />
                       </TableCell>
@@ -258,7 +209,7 @@ export function ShiftsPage() {
               ) : shifts.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={5}
                     className="text-center text-text-secondary"
                   >
                     No shifts found
@@ -268,9 +219,8 @@ export function ShiftsPage() {
                 shifts.map((shift) => (
                   <TableRow key={shift.id}>
                     <TableCell className="font-medium">{shift.name}</TableCell>
-                    <TableCell>{formatBranchLabel(shift.branch)}</TableCell>
-                    <TableCell>{shift.startTime}</TableCell>
-                    <TableCell>{shift.endTime}</TableCell>
+                    <TableCell>{to12Hour(shift.startTime)}</TableCell>
+                    <TableCell>{to12Hour(shift.endTime)}</TableCell>
                     <TableCell>{shift._count?.employees ?? 0}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
@@ -294,7 +244,7 @@ export function ShiftsPage() {
                           onClick={() => {
                             if (
                               window.confirm(
-                                `Delete shift "${shift.name}" at ${formatBranchLabel(shift.branch)}?`,
+                                `Delete shift "${shift.name}" (${to12Hour(shift.startTime)} – ${to12Hour(shift.endTime)})?`,
                               )
                             ) {
                               deleteMutation.mutate(shift.id)
@@ -323,11 +273,7 @@ export function ShiftsPage() {
             <Button
               className="bg-primary hover:bg-primary-dark"
               disabled={
-                !branchId ||
-                !name ||
-                !startTime ||
-                !endTime ||
-                createMutation.isPending
+                !name || !startTime || !endTime || createMutation.isPending
               }
               onClick={() => createMutation.mutate()}
             >

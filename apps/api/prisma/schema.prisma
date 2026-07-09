@@ -60,17 +60,17 @@ model BiometricDevice {
 
 model Shift {
   id        String   @id @default(uuid())
-  branchId  String
+  branchId  String?
   name      String
   startTime String
   endTime   String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  branch    Branch     @relation(fields: [branchId], references: [id])
+  branch    Branch?    @relation(fields: [branchId], references: [id])
   employees Employee[]
 
-  @@unique([branchId, name])
+  @@unique([name, startTime, endTime])
 }
 
 model Department {

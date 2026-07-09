@@ -93,22 +93,16 @@ export class EmployeesService {
     }
 
     if (dto.shiftId) {
-      await this.ensureShiftInBranch(dto.shiftId, dto.currentBranchId);
+      await this.ensureShiftExists(dto.shiftId);
     }
 
     let resolvedShiftId = dto.shiftId;
     if (!resolvedShiftId && dto.dutyStartTime) {
-      const inferredShiftName = inferShiftNameFromDuty(
+      resolvedShiftId = await this.assignShiftFromDuty(
         dto.dutyStartTime,
         dto.dutyEndTime,
         dto.dutyTotalHours,
       );
-      if (inferredShiftName) {
-        resolvedShiftId = await this.resolveOrCreateShift(
-          inferredShiftName,
-          dto.currentBranchId,
-        );
-      }
     }
 
     const employeeCode = await generateEmployeeCode(this.prisma);
@@ -385,7 +379,6 @@ export class EmployeesService {
       where.shift = {
         name: filters.shiftName,
         isActive: true,
-        ...(filters.branchId ? { branchId: filters.branchId } : {}),
       };
     } else if (filters.shiftIds) {
       const ids = filters.shiftIds.split(',').filter(Boolean);
@@ -729,7 +722,6 @@ export class EmployeesService {
     ) {
       const employee = await this.findOne(id);
       const shiftId = await this.assignShiftFromDuty(
-        employee.currentBranchId,
         sanitizedDto.dutyStartTime ?? employee.dutyStartTime,
         sanitizedDto.dutyEndTime ?? employee.dutyEndTime,
         sanitizedDto.dutyTotalHours ?? employee.dutyTotalHours,
@@ -846,20 +838,17 @@ export class EmployeesService {
     });
   }
 
-  private async ensureShiftInBranch(shiftId: string, branchId: string) {
+  private async ensureShiftExists(shiftId: string) {
     const shift = await this.prisma.shift.findFirst({
-      where: { id: shiftId, branchId, isActive: true },
+      where: { id: shiftId, isActive: true },
     });
 
     if (!shift) {
-      throw new NotFoundException(
-        `Shift with id ${shiftId} not found in branch`,
-      );
+      throw new NotFoundException(`Shift with id ${shiftId} not found`);
     }
   }
 
   private async assignShiftFromDuty(
-    branchId: string,
     dutyStartTime?: string | null,
     dutyEndTime?: string | null,
     dutyTotalHours?: number | null,
@@ -869,51 +858,75 @@ export class EmployeesService {
       dutyEndTime,
       dutyTotalHours,
     );
-    if (!shiftName) {
+    if (!shiftName || !dutyStartTime) {
       return undefined;
     }
-    return this.resolveOrCreateShift(shiftName, branchId);
+
+    const { startTime, endTime } = this.defaultShiftTimes(
+      shiftName,
+      dutyStartTime,
+      dutyEndTime,
+      dutyTotalHours,
+    );
+
+    return this.resolveOrCreateShift(shiftName, startTime, endTime);
+  }
+
+  private defaultShiftTimes(
+    shiftName: string,
+    dutyStartTime: string,
+    dutyEndTime?: string | null,
+    dutyTotalHours?: number | null,
+  ) {
+    if (dutyTotalHours === 24 || shiftName === '24 Hours') {
+      return { startTime: '00:00', endTime: '23:59' };
+    }
+
+    return {
+      startTime: dutyStartTime,
+      endTime: dutyEndTime ?? this.fallbackEndTime(shiftName),
+    };
+  }
+
+  private fallbackEndTime(shiftName: string): string {
+    switch (shiftName) {
+      case 'Morning':
+        return '14:00';
+      case 'Evening':
+        return '20:00';
+      case 'Night':
+        return '08:00';
+      case '24 Hours':
+        return '23:59';
+      default:
+        return '20:00';
+    }
   }
 
   private async resolveOrCreateShift(
     shiftName: string,
-    branchId: string,
+    startTime: string,
+    endTime: string,
   ): Promise<string> {
     const existing = await this.prisma.shift.findFirst({
-      where: { name: shiftName, branchId, isActive: true },
+      where: {
+        name: shiftName,
+        startTime,
+        endTime,
+        isActive: true,
+      },
     });
 
     if (existing) {
       return existing.id;
     }
 
-    const startTime =
-      shiftName === 'Morning'
-        ? '08:00'
-        : shiftName === 'Evening'
-          ? '14:00'
-          : shiftName === 'Night'
-            ? '20:00'
-            : shiftName === '24 Hours'
-              ? '00:00'
-              : '08:00';
-    const endTime =
-      shiftName === 'Morning'
-        ? '14:00'
-        : shiftName === 'Evening'
-          ? '20:00'
-          : shiftName === 'Night'
-            ? '08:00'
-            : shiftName === '24 Hours'
-              ? '23:59'
-              : '20:00';
-
     const created = await this.prisma.shift.create({
       data: {
         name: shiftName,
-        branchId,
         startTime,
         endTime,
+        branchId: null,
       },
     });
 
@@ -1072,7 +1085,6 @@ export class EmployeesService {
         dto.dutyTotalHours !== undefined
       ) {
         const shiftId = await this.assignShiftFromDuty(
-          targetBranchId,
           nextStart,
           nextEnd,
           nextHours,

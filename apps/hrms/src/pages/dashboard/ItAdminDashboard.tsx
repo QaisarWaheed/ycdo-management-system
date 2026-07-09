@@ -1392,9 +1392,8 @@ function ShiftsTab() {
   })
 
   const { data: shifts = [], isLoading } = useQuery({
-    queryKey: ['shifts', branchFilter || 'all'],
-    queryFn: () =>
-      shiftsApi.getAll(branchFilter || undefined),
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
   })
 
   const resetForm = () => {
@@ -1406,7 +1405,7 @@ function ShiftsTab() {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      shiftsApi.create({ branchId, name, startTime, endTime }),
+      shiftsApi.create({ name, startTime, endTime }),
     onSuccess: () => {
       toast({ title: 'Shift created' })
       resetForm()

@@ -166,8 +166,8 @@ function AcceptCandidateDialog({
   })
 
   const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', branchId],
-    queryFn: () => shiftsApi.getAll(branchId),
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
     enabled: !!branchId && open,
   })
 
