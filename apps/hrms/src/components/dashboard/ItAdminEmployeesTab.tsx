@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Search, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
+import { shiftsApi } from '@/api/endpoints/shifts'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import {
@@ -44,12 +45,17 @@ export function ItAdminEmployeesTab() {
 
   const debouncedSearch = useDebounce(search, 400)
 
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
+  })
+
   const filters = useMemo(
     () => ({
-      ...employeeFiltersToParams(employeeFilters),
+      ...employeeFiltersToParams(employeeFilters, shifts),
       search: debouncedSearch || undefined,
     }),
-    [employeeFilters, debouncedSearch],
+    [employeeFilters, debouncedSearch, shifts],
   )
 
   const { data: employees = [], isLoading } = useQuery({

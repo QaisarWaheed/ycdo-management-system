@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { Search } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
+import { shiftsApi } from '@/api/endpoints/shifts'
 import { DateInput } from '@/components/common/DateInput'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
 import {
@@ -99,15 +100,20 @@ function DailyLogTab({
 
   const debouncedSearch = useDebounce(search, 400)
 
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
+  })
+
   const queryParams = useMemo(
     () => ({
       startDate: date,
       endDate: date,
       status: statusFilter !== ALL ? statusFilter : undefined,
       search: debouncedSearch || undefined,
-      ...employeeFiltersToAttendanceParams(employeeFilters),
+      ...employeeFiltersToAttendanceParams(employeeFilters, shifts),
     }),
-    [date, statusFilter, debouncedSearch, employeeFilters],
+    [date, statusFilter, debouncedSearch, employeeFilters, shifts],
   )
 
   const { data: logs = [], isLoading } = useQuery({
@@ -331,13 +337,18 @@ function RelieverSessionsTab() {
     createEmployeeFilters(user),
   )
 
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
+  })
+
   const queryParams = useMemo(
     () => ({
       startDate: date,
       endDate: date,
-      ...employeeFiltersToAttendanceParams(employeeFilters),
+      ...employeeFiltersToAttendanceParams(employeeFilters, shifts),
     }),
-    [date, employeeFilters],
+    [date, employeeFilters, shifts],
   )
 
   const { data: sessions = [], isLoading } = useQuery({

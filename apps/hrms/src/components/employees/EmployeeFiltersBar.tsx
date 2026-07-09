@@ -4,8 +4,10 @@ import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
+import { shiftsApi } from '@/api/endpoints/shifts'
 import { DateInput } from '@/components/common/DateInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { ShiftFilterDropdowns } from '@/components/employees/ShiftFilterDropdowns'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -14,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { SHIFT_PERIOD_FILTERS } from '@/lib/shiftInference'
+import { resolveShiftIds } from '@/lib/shiftFilterUtils'
 import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { getLockedBranchId } from '@/lib/branchScope'
@@ -37,7 +39,8 @@ export type EmployeeFilterState = {
   gender: string
   maritalStatus: string
   bloodGroup: string
-  shiftPeriod: string
+  shiftStartTime: string
+  shiftId: string
   joinedFrom: string
   joinedTo: string
 }
@@ -52,7 +55,8 @@ export const EMPTY_EMPLOYEE_FILTERS: EmployeeFilterState = {
   gender: ALL_FILTER,
   maritalStatus: ALL_FILTER,
   bloodGroup: ALL_FILTER,
-  shiftPeriod: '',
+  shiftStartTime: '',
+  shiftId: '',
   joinedFrom: '',
   joinedTo: '',
 }
@@ -70,7 +74,10 @@ export function createEmployeeFilters(
   }
 }
 
-export function employeeFiltersToParams(filters: EmployeeFilterState) {
+export function employeeFiltersToParams(
+  filters: EmployeeFilterState,
+  shifts: Pick<Shift, 'id' | 'startTime'>[] = [],
+) {
   return {
     projectId: filters.projectId || undefined,
     branchId: filters.branchId || undefined,
@@ -100,7 +107,11 @@ export function employeeFiltersToParams(filters: EmployeeFilterState) {
       filters.maritalStatus === 'Widow' ? 'true' : undefined,
     bloodGroup:
       filters.bloodGroup !== ALL_FILTER ? filters.bloodGroup : undefined,
-    shiftName: filters.shiftPeriod || undefined,
+    shiftIds: resolveShiftIds(
+      filters.shiftStartTime,
+      filters.shiftId,
+      shifts,
+    ),
     joinedFrom: filters.joinedFrom || undefined,
     joinedTo: filters.joinedTo || undefined,
   }
@@ -108,8 +119,9 @@ export function employeeFiltersToParams(filters: EmployeeFilterState) {
 
 export function employeeFiltersToAttendanceParams(
   filters: EmployeeFilterState,
+  shifts: Pick<Shift, 'id' | 'startTime'>[] = [],
 ) {
-  const params = employeeFiltersToParams(filters)
+  const params = employeeFiltersToParams(filters, shifts)
   return {
     projectId: params.projectId,
     branchId: params.branchId,
@@ -119,7 +131,7 @@ export function employeeFiltersToAttendanceParams(
     district: params.district,
     gender: params.gender,
     bloodGroup: params.bloodGroup,
-    shiftName: params.shiftName,
+    shiftIds: params.shiftIds,
   }
 }
 
@@ -168,6 +180,11 @@ export function EmployeeFiltersBar({
     queryFn: () => employeesApi.getFilterOptions(),
   })
 
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
+  })
+
   const filteredBranches = useMemo(() => {
     if (!filters.projectId) return branches
     return branches.filter((b) => b.projectId === filters.projectId)
@@ -184,7 +201,8 @@ export function EmployeeFiltersBar({
       ...(filters.branchId !== lockedBranchId
         ? {
             departmentId: '',
-            shiftPeriod: '',
+            shiftStartTime: '',
+            shiftId: '',
           }
         : {}),
     })
@@ -199,7 +217,8 @@ export function EmployeeFiltersBar({
       projectId: value === 'all' ? '' : value,
       branchId: '',
       departmentId: '',
-      shiftPeriod: '',
+      shiftStartTime: '',
+      shiftId: '',
     })
   }
 
@@ -207,7 +226,8 @@ export function EmployeeFiltersBar({
     update({
       branchId: value === 'all' ? '' : value,
       departmentId: '',
-      shiftPeriod: '',
+      shiftStartTime: '',
+      shiftId: '',
     })
   }
 
@@ -280,29 +300,16 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className="space-y-1">
-          <Label>Shift</Label>
-          <Select
-            value={filters.shiftPeriod || 'all'}
-            onValueChange={(v) =>
-              update({ shiftPeriod: v === 'all' ? '' : v })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="All shifts" />
-            </SelectTrigger>
-            <SelectContent>
-              {SHIFT_PERIOD_FILTERS.map((option) => (
-                <SelectItem
-                  key={option.label}
-                  value={option.value || 'all'}
-                >
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <ShiftFilterDropdowns
+          shifts={shifts}
+          shiftStartTime={filters.shiftStartTime}
+          shiftId={filters.shiftId}
+          onShiftStartTimeChange={(shiftStartTime) =>
+            update({ shiftStartTime, shiftId: '' })
+          }
+          onShiftIdChange={(shiftId) => update({ shiftId })}
+          className="contents"
+        />
 
         <div className="space-y-1">
           <Label>Designation</Label>

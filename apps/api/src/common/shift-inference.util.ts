@@ -36,3 +36,7 @@ export function inferShiftNameFromDuty(
   }
   return 'Night';
 }
+
+export function inferShiftNameFromStartTime(startTime: string): ShiftPeriodName {
+  return inferShiftNameFromDuty(startTime, null, null) ?? 'Morning';
+}

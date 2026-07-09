@@ -1,6 +1,13 @@
-import { useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus, Timer, Trash2 } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Timer,
+  Trash2,
+} from 'lucide-react'
 import { Navigate } from 'react-router-dom'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { Button } from '@/components/ui/button'
@@ -14,13 +21,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -32,11 +32,17 @@ import {
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import {
+  checkInGroupLabel,
+  groupShiftsByCheckIn,
+} from '@/lib/shiftFilterUtils'
 import { to12Hour } from '@/lib/timeFormat'
+import { cn } from '@/lib/utils'
 import type { Shift } from '@/types'
 
 const SUPER_ADMIN_ROLES = ['SUPER_ADMIN'] as const
-const SHIFT_NAMES = ['Morning', 'Evening', 'Night', '24 Hours'] as const
+
+type DialogMode = 'new-checkin' | 'add-checkout' | 'edit'
 
 function apiErrorMessage(err: {
   response?: { data?: { message?: string | string[] } }
@@ -48,9 +54,11 @@ function apiErrorMessage(err: {
 export function ShiftsPage() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [createOpen, setCreateOpen] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogMode, setDialogMode] = useState<DialogMode>('new-checkin')
   const [editShift, setEditShift] = useState<Shift | null>(null)
-  const [name, setName] = useState('')
+  const [presetStartTime, setPresetStartTime] = useState('')
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
 
@@ -64,18 +72,57 @@ export function ShiftsPage() {
     enabled: !!canManage,
   })
 
+  const groups = useMemo(() => groupShiftsByCheckIn(shifts), [shifts])
+
   const resetForm = () => {
-    setName('')
+    setPresetStartTime('')
     setStartTime('')
     setEndTime('')
+    setEditShift(null)
+  }
+
+  const openNewCheckIn = () => {
+    resetForm()
+    setDialogMode('new-checkin')
+    setDialogOpen(true)
+  }
+
+  const openAddCheckout = (checkInTime: string) => {
+    resetForm()
+    setDialogMode('add-checkout')
+    setPresetStartTime(checkInTime)
+    setStartTime(checkInTime)
+    setDialogOpen(true)
+  }
+
+  const openEdit = (shift: Shift) => {
+    setEditShift(shift)
+    setDialogMode('edit')
+    setPresetStartTime(shift.startTime)
+    setStartTime(shift.startTime)
+    setEndTime(shift.endTime)
+    setDialogOpen(true)
+  }
+
+  const toggleGroup = (checkInTime: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(checkInTime)) {
+        next.delete(checkInTime)
+      } else {
+        next.add(checkInTime)
+      }
+      return next
+    })
   }
 
   const createMutation = useMutation({
-    mutationFn: () => shiftsApi.create({ name, startTime, endTime }),
+    mutationFn: () => shiftsApi.create({ startTime, endTime }),
     onSuccess: () => {
       toast({ title: 'Shift created' })
       resetForm()
-      setCreateOpen(false)
+      setDialogOpen(false)
+      setExpandedGroups((prev) => new Set(prev).add(startTime))
       queryClient.invalidateQueries({ queryKey: ['shifts'] })
     },
     onError: (err) => {
@@ -89,11 +136,11 @@ export function ShiftsPage() {
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      shiftsApi.update(editShift!.id, { name, startTime, endTime }),
+      shiftsApi.update(editShift!.id, { startTime, endTime }),
     onSuccess: () => {
       toast({ title: 'Shift updated' })
-      setEditShift(null)
       resetForm()
+      setDialogOpen(false)
       queryClient.invalidateQueries({ queryKey: ['shifts'] })
     },
     onError: (err) => {
@@ -124,43 +171,51 @@ export function ShiftsPage() {
     return <Navigate to="/dashboard" replace />
   }
 
+  const dialogTitle =
+    dialogMode === 'new-checkin'
+      ? 'Add Check-in Time'
+      : dialogMode === 'add-checkout'
+        ? `Add Checkout — ${to12Hour(presetStartTime)}`
+        : 'Edit Shift'
+
   const shiftForm = (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>Shift Name</Label>
-        <Select value={name} onValueChange={setName}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select shift" />
-          </SelectTrigger>
-          <SelectContent>
-            {SHIFT_NAMES.map((shiftName) => (
-              <SelectItem key={shiftName} value={shiftName}>
-                {shiftName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
+      {dialogMode === 'add-checkout' ? (
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+          <span className="text-text-secondary">Check-in: </span>
+          <span className="font-medium">{to12Hour(presetStartTime)}</span>
+        </div>
+      ) : (
         <div className="space-y-2">
-          <Label>Start Time (HH:MM)</Label>
+          <Label>Check-in Time (HH:MM)</Label>
           <Input
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
-            placeholder="08:00"
+            placeholder="06:00"
           />
         </div>
-        <div className="space-y-2">
-          <Label>End Time (HH:MM)</Label>
-          <Input
-            value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
-            placeholder="12:00"
-          />
-        </div>
+      )}
+      <div className="space-y-2">
+        <Label>Checkout Time (HH:MM)</Label>
+        <Input
+          value={endTime}
+          onChange={(e) => setEndTime(e.target.value)}
+          placeholder="12:00"
+        />
       </div>
+      {dialogMode !== 'new-checkin' && (
+        <p className="text-xs text-text-secondary">
+          Multiple checkout times under the same check-in are grouped together.
+        </p>
+      )}
     </div>
   )
+
+  const isSaving = createMutation.isPending || updateMutation.isPending
+  const canSave =
+    (dialogMode === 'add-checkout' ? !!presetStartTime : !!startTime) &&
+    !!endTime &&
+    !isSaving
 
   return (
     <div className="space-y-6">
@@ -171,15 +226,16 @@ export function ShiftsPage() {
             Shifts
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Universal shifts shared across all branches.
+            Shifts are grouped by check-in time. Each check-in can have multiple
+            checkout times (e.g. 6:00 AM → 8:00 AM, 12:00 PM, 3:00 PM).
           </p>
         </div>
         <Button
           className="bg-primary hover:bg-primary-dark"
-          onClick={() => setCreateOpen(true)}
+          onClick={openNewCheckIn}
         >
           <Plus className="mr-2 h-4 w-4" />
-          Add Shift
+          Add Check-in Time
         </Button>
       </div>
 
@@ -188,11 +244,11 @@ export function ShiftsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Start</TableHead>
-                <TableHead>End</TableHead>
+                <TableHead className="w-10" />
+                <TableHead>Check-in / Checkout</TableHead>
+                <TableHead>Period</TableHead>
                 <TableHead>Employees</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
+                <TableHead className="w-[140px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -206,7 +262,7 @@ export function ShiftsPage() {
                     ))}
                   </TableRow>
                 ))
-              ) : shifts.length === 0 ? (
+              ) : groups.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={5}
@@ -216,96 +272,128 @@ export function ShiftsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                shifts.map((shift) => (
-                  <TableRow key={shift.id}>
-                    <TableCell className="font-medium">{shift.name}</TableCell>
-                    <TableCell>{to12Hour(shift.startTime)}</TableCell>
-                    <TableCell>{to12Hour(shift.endTime)}</TableCell>
-                    <TableCell>{shift._count?.employees ?? 0}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setEditShift(shift)
-                            setName(shift.name)
-                            setStartTime(shift.startTime)
-                            setEndTime(shift.endTime)
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive hover:text-destructive"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Delete shift "${shift.name}" (${to12Hour(shift.startTime)} – ${to12Hour(shift.endTime)})?`,
-                              )
-                            ) {
-                              deleteMutation.mutate(shift.id)
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                groups.map((group) => {
+                  const isExpanded = expandedGroups.has(group.startTime)
+                  const groupName = group.variants[0]?.name ?? '—'
+
+                  return (
+                    <Fragment key={group.startTime}>
+                      <TableRow
+                        className="cursor-pointer bg-muted/30 hover:bg-muted/50"
+                        onClick={() => toggleGroup(group.startTime)}
+                      >
+                        <TableCell>
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-text-secondary" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-text-secondary" />
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {checkInGroupLabel(
+                            group.startTime,
+                            group.variants.length,
+                          )}
+                        </TableCell>
+                        <TableCell>{groupName}</TableCell>
+                        <TableCell>{group.totalEmployees}</TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openAddCheckout(group.startTime)}
+                          >
+                            <Plus className="mr-1 h-3 w-3" />
+                            Checkout
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+
+                      {isExpanded &&
+                        group.variants.map((shift) => (
+                          <TableRow key={shift.id} className="bg-background">
+                            <TableCell />
+                            <TableCell className="pl-10">
+                              <span className="text-text-secondary">
+                                {to12Hour(shift.startTime)}
+                              </span>
+                              <span className="mx-2 text-text-secondary">→</span>
+                              <span className="font-medium">
+                                {to12Hour(shift.endTime)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-text-secondary">
+                              {shift.name}
+                            </TableCell>
+                            <TableCell>{shift._count?.employees ?? 0}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => openEdit(shift)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-destructive hover:text-destructive"
+                                  disabled={deleteMutation.isPending}
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        `Delete shift ${to12Hour(shift.startTime)} – ${to12Hour(shift.endTime)}?`,
+                                      )
+                                    ) {
+                                      deleteMutation.mutate(shift.id)
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </Fragment>
+                  )
+                })
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Shift</DialogTitle>
-          </DialogHeader>
-          {shiftForm}
-          <DialogFooter>
-            <Button
-              className="bg-primary hover:bg-primary-dark"
-              disabled={
-                !name || !startTime || !endTime || createMutation.isPending
-              }
-              onClick={() => createMutation.mutate()}
-            >
-              {createMutation.isPending ? 'Creating...' : 'Create Shift'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog
-        open={!!editShift}
+        open={dialogOpen}
         onOpenChange={(open) => {
-          if (!open) {
-            setEditShift(null)
-            resetForm()
-          }
+          setDialogOpen(open)
+          if (!open) resetForm()
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Shift</DialogTitle>
+            <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>
           {shiftForm}
           <DialogFooter>
             <Button
-              className="bg-primary hover:bg-primary-dark"
-              disabled={
-                !name || !startTime || !endTime || updateMutation.isPending
-              }
-              onClick={() => updateMutation.mutate()}
+              className={cn('bg-primary hover:bg-primary-dark')}
+              disabled={!canSave}
+              onClick={() => {
+                if (dialogMode === 'edit') {
+                  updateMutation.mutate()
+                } else {
+                  createMutation.mutate()
+                }
+              }}
             >
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+              {isSaving
+                ? 'Saving...'
+                : dialogMode === 'edit'
+                  ? 'Save Changes'
+                  : 'Create Shift'}
             </Button>
           </DialogFooter>
         </DialogContent>

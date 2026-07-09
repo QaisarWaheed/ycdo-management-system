@@ -10,7 +10,6 @@ import {
 import {
   ALL_SHIFTS_AT_START,
   allShiftsAtStartLabel,
-  formatShiftOptionLabel,
   formatShiftTime,
   getShiftsForStartTime,
   getUniqueShiftStartTimes,
@@ -52,7 +51,7 @@ export function ShiftFilterDropdowns({
   return (
     <div className={cn('flex flex-wrap gap-3', className)}>
       <div className="space-y-1">
-        <Label>Shift Start</Label>
+        <Label>Check-in</Label>
         <Select
           value={shiftStartTime || 'all'}
           onValueChange={(v) => {
@@ -75,7 +74,7 @@ export function ShiftFilterDropdowns({
 
       {showSpecificShift && (
         <div className="space-y-1">
-          <Label>Specific Shift</Label>
+          <Label>Checkout</Label>
           <Select
             value={shiftId || ALL_SHIFTS_AT_START}
             onValueChange={onShiftIdChange}
@@ -92,7 +91,7 @@ export function ShiftFilterDropdowns({
               )}
               {matchingShifts.map((shift) => (
                 <SelectItem key={shift.id} value={shift.id}>
-                  {formatShiftOptionLabel(shift)}
+                  {formatShiftTime(shift.endTime)} checkout
                 </SelectItem>
               ))}
             </SelectContent>
