@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { MoreHorizontal, Plus, Search, Users } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
@@ -41,11 +41,14 @@ import {
 } from '@/lib/attendanceUtils'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
+import { withReturnTo } from '@/lib/backNavigation'
 
 const PAGE_SIZE = 20
 
 export function EmployeesListPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = `${location.pathname}${location.search}`
   const { user } = useAuth()
   const [search, setSearch] = useState('')
   const [employeeFilters, setEmployeeFilters] = useState(() =>
@@ -287,12 +290,22 @@ export function EmployeesListPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          onClick={() => navigate(`/employees/${emp.id}`)}
+                          onClick={() =>
+                            navigate(
+                              `/employees/${emp.id}`,
+                              withReturnTo(returnTo),
+                            )
+                          }
                         >
                           View Profile
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => navigate(`/employees/${emp.id}`)}
+                          onClick={() =>
+                            navigate(
+                              `/employees/${emp.id}`,
+                              withReturnTo(returnTo),
+                            )
+                          }
                         >
                           Edit
                         </DropdownMenuItem>

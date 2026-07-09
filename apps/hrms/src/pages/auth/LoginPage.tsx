@@ -43,7 +43,7 @@ export function LoginPage() {
     try {
       const response = await authApi.login(data.email, data.password)
       login(response.access_token, response.user)
-      navigate('/dashboard')
+      navigate('/dashboard', { replace: true })
     } catch {
       setError('Invalid email or password')
     }

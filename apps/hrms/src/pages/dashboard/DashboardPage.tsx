@@ -10,7 +10,7 @@ import {
   Users,
   UserX,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { withReturnTo } from '@/lib/backNavigation'
 import {
   Table,
   TableBody,
@@ -213,6 +214,8 @@ function DashboardContent({ role }: { role?: string }) {
 
 function AdminDashboard() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = `${location.pathname}${location.search}`
   const today = todayRange()
 
   const {
@@ -423,7 +426,12 @@ function AdminDashboard() {
                     <TableRow
                       key={emp.id}
                       className="cursor-pointer hover:bg-gray-50"
-                      onClick={() => navigate(`/employees/${emp.id}`)}
+                      onClick={() =>
+                        navigate(
+                          `/employees/${emp.id}`,
+                          withReturnTo(returnTo),
+                        )
+                      }
                     >
                       <TableCell className="font-medium">{emp.employeeCode}</TableCell>
                       <TableCell>{emp.fullName}</TableCell>

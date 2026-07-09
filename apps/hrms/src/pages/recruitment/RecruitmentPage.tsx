@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { PKRInput } from '@/components/common/PKRInput'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { withReturnTo } from '@/lib/backNavigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -319,6 +320,8 @@ function SuccessDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = `${location.pathname}${location.search}`
 
   if (!result) return null
 
@@ -343,7 +346,10 @@ function SuccessDialog({
             className="bg-primary hover:bg-primary-dark"
             onClick={() => {
               onOpenChange(false)
-              navigate(`/employees/${result.employee.id}`)
+              navigate(
+                `/employees/${result.employee.id}`,
+                withReturnTo(returnTo),
+              )
             }}
           >
             Go to Employee Profile
@@ -507,6 +513,8 @@ function AcceptedTab({
   branches: { id: string; name: string }[]
 }) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = `${location.pathname}${location.search}`
   const selected = applications.filter((a) => a.status === 'SELECTED')
 
   const findEmployee = (app: JobApplication) =>
@@ -571,7 +579,12 @@ function AcceptedTab({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => navigate(`/employees/${emp.id}`)}
+                      onClick={() =>
+                        navigate(
+                          `/employees/${emp.id}`,
+                          withReturnTo(returnTo),
+                        )
+                      }
                     >
                       View Employee Profile
                     </Button>

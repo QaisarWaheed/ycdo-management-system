@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Bell, LogOut, User } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { ArrowLeft, Bell, LogOut, User } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { notificationsApi } from '@/api/endpoints/notifications'
 import { useAuth } from '@/hooks/useAuth'
+import { handleAppBack, shouldShowBackButton } from '@/lib/backNavigation'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +22,16 @@ interface HeaderProps {
 export function Header({ title }: HeaderProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const fromState =
+    typeof location.state === 'object' &&
+    location.state !== null &&
+    'from' in location.state &&
+    typeof (location.state as { from?: string }).from === 'string'
+      ? (location.state as { from: string }).from
+      : undefined
+
+  const showBack = shouldShowBackButton(location.pathname)
 
   const { data: unread } = useQuery({
     queryKey: ['notifications', 'unread-count'],
@@ -37,7 +49,25 @@ export function Header({ title }: HeaderProps) {
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-white px-6 print:hidden">
-      <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
+      <div className="flex min-w-0 items-center gap-3">
+        {showBack && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0 gap-1 text-text-secondary hover:text-text-primary"
+            onClick={() =>
+              handleAppBack(navigate, location.pathname, fromState)
+            }
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        )}
+        <h1 className="truncate text-xl font-semibold text-text-primary">
+          {title}
+        </h1>
+      </div>
 
       <div className="flex items-center gap-4">
         <button

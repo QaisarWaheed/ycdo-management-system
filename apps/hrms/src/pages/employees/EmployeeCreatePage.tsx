@@ -874,7 +874,10 @@ export function EmployeeCreatePage() {
     },
     onSuccess: (employee) => {
       toast({ title: 'Employee created successfully' })
-      navigate(`/employees/${employee.id}`)
+      navigate(`/employees/${employee.id}`, {
+        replace: true,
+        state: { from: '/employees' },
+      })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
