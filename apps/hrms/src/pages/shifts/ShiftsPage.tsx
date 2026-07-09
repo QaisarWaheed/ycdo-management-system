@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { Navigate } from 'react-router-dom'
 import { shiftsApi } from '@/api/endpoints/shifts'
+import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -19,7 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -83,6 +83,8 @@ export function ShiftsPage() {
 
   const openNewCheckIn = () => {
     resetForm()
+    setStartTime('06:00')
+    setEndTime('08:00')
     setDialogMode('new-checkin')
     setDialogOpen(true)
   }
@@ -92,6 +94,7 @@ export function ShiftsPage() {
     setDialogMode('add-checkout')
     setPresetStartTime(checkInTime)
     setStartTime(checkInTime)
+    setEndTime('12:00')
     setDialogOpen(true)
   }
 
@@ -187,21 +190,13 @@ export function ShiftsPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          <Label>Check-in Time (HH:MM)</Label>
-          <Input
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-            placeholder="06:00"
-          />
+          <Label>Check-in Time</Label>
+          <TimeInput12Hour value={startTime} onChange={setStartTime} />
         </div>
       )}
       <div className="space-y-2">
-        <Label>Checkout Time (HH:MM)</Label>
-        <Input
-          value={endTime}
-          onChange={(e) => setEndTime(e.target.value)}
-          placeholder="12:00"
-        />
+        <Label>Checkout Time</Label>
+        <TimeInput12Hour value={endTime} onChange={setEndTime} />
       </div>
       {dialogMode !== 'new-checkin' && (
         <p className="text-xs text-text-secondary">
