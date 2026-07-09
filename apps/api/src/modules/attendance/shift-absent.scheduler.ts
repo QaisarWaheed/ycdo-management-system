@@ -16,7 +16,7 @@ import {
   toPakistanMinutesOfDay,
 } from './shift-time.util';
 
-const AUTO_ABSENT_NOTE = 'Auto-marked absent at shift start';
+const AUTO_UNMARKED_NOTE = 'Auto-marked unmarked at shift start';
 
 @Injectable()
 export class ShiftAbsentScheduler {
@@ -51,12 +51,12 @@ export class ShiftAbsentScheduler {
       marked += await this.markAbsentForShift(
         shift.id,
         attendanceDate,
-        AUTO_ABSENT_NOTE,
+        AUTO_UNMARKED_NOTE,
       );
     }
 
     if (marked > 0) {
-      this.logger.log(`Auto-marked ${marked} employee(s) absent at shift start`);
+      this.logger.log(`Auto-marked ${marked} employee(s) unmarked at shift start`);
     }
   }
 
@@ -68,13 +68,16 @@ export class ShiftAbsentScheduler {
     const pkYesterday = new Date(pkToday);
     pkYesterday.setUTCDate(pkYesterday.getUTCDate() - 1);
 
-    const absentLogs = await this.prisma.attendanceLog.findMany({
+    const unmarkedLogs = await this.prisma.attendanceLog.findMany({
       where: {
         date: { in: [pkToday, pkYesterday] },
-        status: AttendanceStatus.ABSENT,
+        status: { in: [AttendanceStatus.UNMARKED, AttendanceStatus.ABSENT] },
         checkIn: null,
         source: AttendanceSource.MANUAL,
-        note: AUTO_ABSENT_NOTE,
+        OR: [
+          { note: AUTO_UNMARKED_NOTE },
+          { note: 'Auto-marked absent at shift start' },
+        ],
       },
       include: {
         employee: {
@@ -87,7 +90,7 @@ export class ShiftAbsentScheduler {
 
     let upgraded = 0;
 
-    for (const log of absentLogs) {
+    for (const log of unmarkedLogs) {
       if (!log.employee.shift) continue;
 
       const shift = log.employee.shift;
@@ -160,7 +163,7 @@ export class ShiftAbsentScheduler {
       marked += await this.markAbsentForShift(
         shift.id,
         date,
-        AUTO_ABSENT_NOTE,
+        AUTO_UNMARKED_NOTE,
       );
     }
 
@@ -197,7 +200,7 @@ export class ShiftAbsentScheduler {
             employeeId: employee.id,
             branchId: employee.currentBranchId,
             date,
-            status: AttendanceStatus.ABSENT,
+            status: AttendanceStatus.UNMARKED,
             source: AttendanceSource.MANUAL,
             note,
           },

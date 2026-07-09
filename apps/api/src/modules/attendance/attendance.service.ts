@@ -234,12 +234,7 @@ export class AttendanceService {
     let status = dto.status;
     let lateMinutes = dto.lateMinutes ?? 0;
 
-    if (
-      checkIn &&
-      (status === AttendanceStatus.PRESENT ||
-        status === AttendanceStatus.LATE ||
-        status === AttendanceStatus.HALF_DAY)
-    ) {
+    if (checkIn) {
       const dutyStart = resolveDutyStartTime(employee);
       const computedLate = dutyStart
         ? computeLateMinutesFromCheckIn(checkIn, dutyStart)
@@ -251,13 +246,7 @@ export class AttendanceService {
         lateMinutes = computedLate;
       }
 
-      const derived = this.determineCheckInStatus(checkIn, employee.shift);
-      if (
-        status === AttendanceStatus.PRESENT &&
-        derived.status === AttendanceStatus.LATE
-      ) {
-        status = AttendanceStatus.LATE;
-      }
+      status = statusFromLateMinutes(lateMinutes);
     }
 
     let calculatedOvertime = dto.overtimeMinutes ?? 0;
@@ -438,6 +427,10 @@ export class AttendanceService {
       }
     }
 
+    if (dto.checkIn && log.note?.toLowerCase().includes('auto-marked')) {
+      data.note = dto.note ?? '';
+    }
+
     if (dto.lateMinutes !== undefined) {
       data.lateMinutes = dto.lateMinutes;
     }
@@ -453,9 +446,26 @@ export class AttendanceService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      let updateData = { ...data };
+
+      if (
+        effectiveCheckIn &&
+        updateData.status &&
+        (updateData.status === AttendanceStatus.LATE ||
+          updateData.status === AttendanceStatus.HALF_DAY)
+      ) {
+        updateData.status = await applyDisciplineRules(
+          tx,
+          log.employeeId,
+          updateData.status as AttendanceStatus,
+          log.date,
+          { lateMinutes: (updateData.lateMinutes as number | undefined) ?? 0 },
+        );
+      }
+
       const result = await tx.attendanceLog.update({
         where: { id },
-        data,
+        data: updateData,
         include: {
           employee: {
             select: { fullName: true, employeeCode: true },
@@ -697,6 +707,7 @@ export class AttendanceService {
       halfDay: countByStatus(AttendanceStatus.HALF_DAY),
       onLeave: countByStatus(AttendanceStatus.ON_LEAVE),
       uninformedAbsent: countByStatus(AttendanceStatus.UNINFORMED_ABSENT),
+      unmarked: countByStatus(AttendanceStatus.UNMARKED),
       overtimeMinutes: logs.reduce((sum, log) => sum + log.overtimeMinutes, 0),
       totalLateMinutes: logs.reduce((sum, log) => sum + log.lateMinutes, 0),
     };

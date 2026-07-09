@@ -505,6 +505,7 @@ export interface AttendanceLog {
 export type AttendanceStatus =
   | 'PRESENT'
   | 'ABSENT'
+  | 'UNMARKED'
   | 'LATE'
   | 'HALF_DAY'
   | 'ON_LEAVE'
@@ -604,6 +605,7 @@ export interface Incentive {
 
 export const ATTENDANCE_STATUSES: AttendanceStatus[] = [
   'PRESENT',
+  'UNMARKED',
   'ABSENT',
   'LATE',
   'HALF_DAY',
@@ -626,6 +628,7 @@ export interface AttendanceSummary {
   halfDay: number
   onLeave: number
   uninformedAbsent: number
+  unmarked?: number
   overtimeMinutes: number
   totalLateMinutes: number
 }

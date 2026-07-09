@@ -44,6 +44,15 @@ const statusStyles: Record<string, string> = {
   PRESENT: 'bg-green-100 text-green-800 border-green-200',
   LATE: 'bg-amber-100 text-amber-800 border-amber-200',
   HALF_DAY: 'bg-blue-100 text-blue-800 border-blue-200',
+  UNMARKED: 'bg-slate-100 text-slate-700 border-slate-200',
+}
+
+function isPendingAttendanceStatus(status: string) {
+  return (
+    status === 'UNMARKED' ||
+    status === 'ABSENT' ||
+    status === 'UNINFORMED_ABSENT'
+  )
 }
 
 type UpdateAttendanceDialogProps = {
@@ -105,16 +114,17 @@ export function UpdateAttendanceDialog({
   const mutation = useMutation({
     mutationFn: () => {
       if (!log) throw new Error('No attendance record')
+
       const payload: Record<string, unknown> = {
-        checkIn:
-          checkIn && showsTimeFields(status)
-            ? combineDateAndTime(date, checkIn)
-            : undefined,
-        checkOut:
-          checkOut && showsTimeFields(status)
-            ? combineDateAndTime(date, checkOut)
-            : undefined,
         note: note || undefined,
+      }
+
+      if (checkIn) {
+        payload.checkIn = combineDateAndTime(date, checkIn)
+      }
+
+      if (checkOut) {
+        payload.checkOut = combineDateAndTime(date, checkOut)
       }
 
       if (statusOverride) {
@@ -162,6 +172,8 @@ export function UpdateAttendanceDialog({
       : Number(lateMinutes)
     : calculatedLate
 
+  const showCheckOut = checkIn || showsTimeFields(displayStatus)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -188,18 +200,23 @@ export function UpdateAttendanceDialog({
             </p>
           </div>
 
-          {showsTimeFields(displayStatus) && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Check In</Label>
-                <TimeInput12Hour value={checkIn} onChange={setCheckIn} />
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Check In</Label>
+              <TimeInput12Hour value={checkIn} onChange={setCheckIn} />
+              {isPendingAttendanceStatus(log.status) && !checkIn && (
+                <p className="text-xs text-text-secondary">
+                  Enter check-in time to mark attendance.
+                </p>
+              )}
+            </div>
+            {showCheckOut && (
               <div className="space-y-2">
                 <Label>Check Out</Label>
                 <TimeInput12Hour value={checkOut} onChange={setCheckOut} />
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {checkIn && dutyStartTime && (
             <div className="space-y-2">
@@ -272,7 +289,7 @@ export function UpdateAttendanceDialog({
             </div>
           )}
 
-          {showsTimeFields(displayStatus) && (
+          {showCheckOut && (
             <div className="space-y-2">
               <Label>Overtime (minutes)</Label>
               <Input
@@ -310,7 +327,7 @@ export function UpdateAttendanceDialog({
           </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !checkIn}
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Saving...' : 'Save Changes'}

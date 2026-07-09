@@ -18,6 +18,7 @@ export enum EmployeeStatus {
 export enum AttendanceStatus {
   PRESENT = 'PRESENT',
   ABSENT = 'ABSENT',
+  UNMARKED = 'UNMARKED',
   LATE = 'LATE',
   HALF_DAY = 'HALF_DAY',
   ON_LEAVE = 'ON_LEAVE',

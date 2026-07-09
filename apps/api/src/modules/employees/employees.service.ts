@@ -1083,7 +1083,10 @@ export class EmployeesService {
     return employees
       .filter((emp) => {
         if (emp.leaveRecords.length > 0) return false;
-        if (emp.attendanceLogs.length > 0) return false;
+
+        const log = emp.attendanceLogs[0];
+        if (log?.checkIn) return false;
+
         if (!emp.shift) return false;
 
         const startMin = parseTimeToMinutes(emp.shift.startTime);

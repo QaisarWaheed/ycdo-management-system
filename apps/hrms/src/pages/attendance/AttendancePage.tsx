@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Search } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { DateInput } from '@/components/common/DateInput'
-import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
 import {
   CheckInManualTab,
@@ -32,7 +31,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { getLogLateMinutes } from '@/lib/attendanceUtils'
@@ -57,6 +55,7 @@ const ALL = 'ALL'
 const statusStyles: Record<AttendanceStatus, string> = {
   PRESENT: 'bg-green-100 text-green-800 border-green-200',
   ABSENT: 'bg-red-100 text-red-800 border-red-200',
+  UNMARKED: 'bg-slate-100 text-slate-700 border-slate-200',
   LATE: 'bg-amber-100 text-amber-800 border-amber-200',
   HALF_DAY: 'bg-blue-100 text-blue-800 border-blue-200',
   ON_LEAVE: 'bg-purple-100 text-purple-800 border-purple-200',
@@ -97,7 +96,6 @@ function DailyLogTab({
     createEmployeeFilters(user),
   )
   const [statusFilter, setStatusFilter] = useState(initialStatus)
-  const [confirmAbsentees, setConfirmAbsentees] = useState(false)
   const [updateLog, setUpdateLog] = useState<AttendanceLog | null>(null)
 
   const debouncedSearch = useDebounce(search, 400)
@@ -130,26 +128,10 @@ function DailyLogTab({
     const total = attendanceLogs.length
     const present = attendanceLogs.filter((l) => l.status === 'PRESENT').length
     const absent = attendanceLogs.filter((l) => l.status === 'ABSENT').length
+    const unmarked = attendanceLogs.filter((l) => l.status === 'UNMARKED').length
     const late = attendanceLogs.filter((l) => l.status === 'LATE').length
-    return { total, present, absent, late }
+    return { total, present, absent, unmarked, late }
   }, [attendanceLogs])
-
-  const markAbsenteesMutation = useMutation({
-    mutationFn: () => attendanceApi.markAbsentees(date),
-    onSuccess: () => {
-      toast({ title: 'Absentees marked successfully' })
-      queryClient.invalidateQueries({ queryKey: ['attendance'] })
-      setConfirmAbsentees(false)
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Failed to mark absentees',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-  })
 
   return (
     <div className="space-y-4">
@@ -181,13 +163,6 @@ function DailyLogTab({
             </Select>
           </div>
         </div>
-
-        <Button
-          className="bg-amber-500 hover:bg-amber-600"
-          onClick={() => setConfirmAbsentees(true)}
-        >
-          Mark Absentees
-        </Button>
       </div>
 
       <div className="rounded-lg border border-border bg-white p-4 space-y-4">
@@ -335,21 +310,11 @@ function DailyLogTab({
 
         {!isLoading && attendanceLogs.length > 0 && (
           <div className="border-t border-border px-4 py-3 text-sm text-text-secondary">
-            Total: {summary.total} | Present: {summary.present} | Absent:{' '}
-            {summary.absent} | Late: {summary.late}
+            Total: {summary.total} | Present: {summary.present} | Unmarked:{' '}
+            {summary.unmarked} | Absent: {summary.absent} | Late: {summary.late}
           </div>
         )}
       </div>
-
-      <ConfirmDialog
-        open={confirmAbsentees}
-        title="Mark Absentees"
-        description={`Mark all employees without attendance on ${format(new Date(date), 'dd/MM/yyyy')} as ABSENT?`}
-        confirmLabel="Mark Absent"
-        onConfirm={() => markAbsenteesMutation.mutate()}
-        onCancel={() => setConfirmAbsentees(false)}
-        loading={markAbsenteesMutation.isPending}
-      />
 
       <UpdateAttendanceDialog
         log={updateLog}

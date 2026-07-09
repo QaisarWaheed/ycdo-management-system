@@ -299,6 +299,7 @@ model AttendanceLog {
 enum AttendanceStatus {
   PRESENT
   ABSENT
+  UNMARKED
   LATE
   HALF_DAY
   ON_LEAVE
