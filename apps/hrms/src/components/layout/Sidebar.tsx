@@ -14,6 +14,7 @@ import {
   LogOut,
   MapPin,
   Monitor,
+  Shield,
   Timer,
   UserPlus,
   Users,
@@ -41,6 +42,7 @@ const allNavItems = [
 ]
 
 const itTeamNavItems = [
+  { to: '/admin/login-access', label: 'Login Access', icon: Shield },
   { to: '/admin/employee-passwords', label: 'Employee Logins', icon: KeyRound },
   { to: '/admin/system-logins', label: 'System Logins', icon: Monitor },
 ]

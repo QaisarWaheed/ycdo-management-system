@@ -19,6 +19,7 @@ import { RecruitmentPage } from '@/pages/recruitment/RecruitmentPage'
 import { BranchesPage } from '@/pages/branches/BranchesPage'
 import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
 import { ProfilePage } from '@/pages/settings/ProfilePage'
+import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
 import { UserPasswordsPage } from '@/pages/admin/UserPasswordsPage'
 import { SystemLoginsPage } from '@/pages/admin/SystemLoginsPage'
 import { ActivityTrailPage } from '@/pages/activity/ActivityTrailPage'
@@ -171,6 +172,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ActivityTrailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/login-access"
+        element={
+          <ProtectedRoute>
+            <LoginAccessPage />
           </ProtectedRoute>
         }
       />

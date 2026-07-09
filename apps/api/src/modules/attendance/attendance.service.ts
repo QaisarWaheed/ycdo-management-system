@@ -10,11 +10,13 @@ import {
   EmployeeStatus,
   Gender,
   LeaveStatus,
+  Permission,
   Prisma,
   ProjectType,
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import {
   ApproveOvertimeDto,
   AttendanceQueryDto,
@@ -55,7 +57,10 @@ const AUTO_UNMARKED_NOTE = 'Auto-marked unmarked at shift start';
 
 @Injectable()
 export class AttendanceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private permissionsService: PermissionsService,
+  ) {}
 
   async biometricPush(dto: BiometricPushDto) {
     const employee = await this.prisma.employee.findUnique({
@@ -243,6 +248,17 @@ export class AttendanceService {
     dto: ManualAttendanceDto,
     actingUser: { id: string; role: UserRole },
   ) {
+    const canMark = await this.permissionsService.userHasPermission(
+      actingUser.id,
+      actingUser.role,
+      Permission.ATTENDANCE_MARK,
+    );
+    if (!canMark) {
+      throw new ForbiddenException(
+        'You do not have permission to mark attendance',
+      );
+    }
+
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: { shift: true },
@@ -406,6 +422,17 @@ export class AttendanceService {
     dto: UpdateAttendanceDto,
     actingUser: { id: string; role: UserRole },
   ) {
+    const canEdit = await this.permissionsService.userHasPermission(
+      actingUser.id,
+      actingUser.role,
+      Permission.ATTENDANCE_EDIT,
+    );
+    if (!canEdit) {
+      throw new ForbiddenException(
+        'You do not have permission to edit attendance',
+      );
+    }
+
     const log = await this.prisma.attendanceLog.findUnique({
       where: { id },
       include: {

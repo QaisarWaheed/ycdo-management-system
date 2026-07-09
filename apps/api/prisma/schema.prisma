@@ -654,6 +654,18 @@ model User {
   incentivesAdded Incentive[]
   leaveApprovals LeaveApproval[] @relation("LeaveApprovals")
   passwordRecord UserPassword?
+  permissions    UserPermission[]
+}
+
+model UserPermission {
+  id         String     @id @default(uuid())
+  userId     String
+  permission Permission
+  granted    Boolean
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
 }
 
 model UserPassword {
@@ -688,6 +700,23 @@ model PortalAttendance {
   createdAt  DateTime @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+enum Permission {
+  ATTENDANCE_MARK
+  ATTENDANCE_EDIT
+  LEAVE_APPROVE
+  LEAVE_APPLY_OTHERS
+  PAYROLL_MANAGE
+  EMPLOYEES_CREATE
+  EMPLOYEES_EDIT
+  DISCIPLINARY_MANAGE
+  LETTERS_GENERATE
+  INCENTIVES_MANAGE
+  RECRUITMENT_MANAGE
+  REPORTS_VIEW
+  BROADCASTS_SEND
+  ORG_SETUP
 }
 
 enum UserRole {

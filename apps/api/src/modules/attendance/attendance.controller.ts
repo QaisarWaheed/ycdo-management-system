@@ -54,7 +54,16 @@ export class AttendanceController {
 
   @Post('manual')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.IT_ADMIN,
+  )
   markManual(
     @Body() dto: ManualAttendanceDto,
     @CurrentUser() user: { id: string; role: UserRole },
@@ -79,8 +88,11 @@ export class AttendanceController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
   updateAttendance(
     @Param('id') id: string,
