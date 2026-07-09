@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { Eye, EyeOff, Plus, Settings2, Shield } from 'lucide-react'
+import { Eye, EyeOff, Plus, RefreshCw, Settings2, Shield } from 'lucide-react'
 import { branchesApi } from '@/api/endpoints/branches'
 import { projectsApi } from '@/api/endpoints/projects'
 import {
@@ -48,6 +48,18 @@ import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 type LoginTypeFilter = 'all' | 'employee' | 'system'
 type PermissionMode = 'default' | 'grant' | 'deny'
+
+function loginBranch(record: UserAccessRecord) {
+  return record.employee?.currentBranch ?? record.branch ?? null
+}
+
+function loginPassword(record: UserAccessRecord) {
+  return (
+    record.passwordRecord?.plainText ??
+    record.employee?.employeeCode ??
+    null
+  )
+}
 
 function permissionMode(
   permission: AppPermission,
@@ -202,7 +214,7 @@ function ManageAccessDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(meta?.assignableRoles ?? []).map((r) => (
+                    {(user.assignableRoles ?? meta?.assignableRoles ?? []).map((r) => (
                       <SelectItem key={r} value={r}>
                         {r.replace(/_/g, ' ')}
                       </SelectItem>
@@ -476,6 +488,7 @@ function CreateSystemLoginDialog({
 }
 
 export function LoginAccessPage() {
+  const queryClient = useQueryClient()
   const [loginType, setLoginType] = useState<LoginTypeFilter>('all')
   const [projectId, setProjectId] = useState('')
   const [branchId, setBranchId] = useState('')
@@ -503,7 +516,7 @@ export function LoginAccessPage() {
     return branches.filter((b) => b.projectId === projectId)
   }, [branches, projectId])
 
-  const { data: records = [], isLoading } = useQuery({
+  const { data: records = [], isLoading, isError } = useQuery({
     queryKey: ['login-access', loginType, projectId, branchId, debouncedSearch],
     queryFn: () =>
       userAccessApi.getAll({
@@ -513,6 +526,50 @@ export function LoginAccessPage() {
         branchId: branchId || undefined,
         search: debouncedSearch || undefined,
       }),
+  })
+
+  const { data: summary } = useQuery({
+    queryKey: ['login-access-summary'],
+    queryFn: () => userAccessApi.getSummary(),
+  })
+
+  const syncMutation = useMutation({
+    mutationFn: () => userAccessApi.syncEmployeeLogins(),
+    onSuccess: (result) => {
+      toast({
+        title: 'Employee logins synced',
+        description: `${result.created} created, ${result.remaining} still missing`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['login-access'] })
+      queryClient.invalidateQueries({ queryKey: ['login-access-summary'] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Sync failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const toggleMutation = useMutation({
+    mutationFn: (userId: string) => userAccessApi.toggleActive(userId),
+    onSuccess: (result) => {
+      toast({
+        title: result.isActive ? 'Login enabled' : 'Login disabled',
+      })
+      queryClient.invalidateQueries({ queryKey: ['login-access'] })
+      queryClient.invalidateQueries({ queryKey: ['login-access-summary'] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Action failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
   })
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
@@ -533,18 +590,75 @@ export function LoginAccessPage() {
             Login Access Control
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Manage all logins — disable accounts, assign roles, and set per-user
-            permissions.
+            All employee (Portal) and system (HRMS) logins across every branch
+            and team. Disable or revoke access for any account.
           </p>
         </div>
-        <Button
-          className="bg-primary hover:bg-primary-dark"
-          onClick={() => setCreateOpen(true)}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Create system login
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {(summary?.missingEmployeeLogins ?? 0) > 0 && (
+            <Button
+              variant="outline"
+              disabled={syncMutation.isPending}
+              onClick={() => syncMutation.mutate()}
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`}
+              />
+              Sync {summary?.missingEmployeeLogins} missing logins
+            </Button>
+          )}
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Create system login
+          </Button>
+        </div>
       </div>
+
+      {summary && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold">{summary.total}</p>
+              <p className="text-xs text-text-secondary">Total logins</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold">{summary.employeeLogins}</p>
+              <p className="text-xs text-text-secondary">Employee (Portal)</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold">{summary.systemLogins}</p>
+              <p className="text-xs text-text-secondary">System (HRMS)</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold text-green-700">{summary.active}</p>
+              <p className="text-xs text-text-secondary">Active</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold text-red-700">{summary.disabled}</p>
+              <p className="text-xs text-text-secondary">Disabled</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-2xl font-bold text-amber-700">
+                {summary.missingEmployeeLogins}
+              </p>
+              <p className="text-xs text-text-secondary">Employees without login</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
@@ -645,11 +759,16 @@ export function LoginAccessPage() {
               ) : paginated.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-text-secondary">
-                    No login accounts found
+                    {isError
+                      ? 'Could not load logins — ensure API is updated and migration is applied on the server'
+                      : 'No login accounts found'}
                   </TableCell>
                 </TableRow>
               ) : (
-                paginated.map((record: UserAccessRecord) => (
+                paginated.map((record: UserAccessRecord) => {
+                  const branch = loginBranch(record)
+                  const password = loginPassword(record)
+                  return (
                   <TableRow key={record.id}>
                     <TableCell>
                       <Badge variant="outline">
@@ -669,7 +788,12 @@ export function LoginAccessPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {record.branch ? formatBranchLabel(record.branch) : '—'}
+                      {branch ? formatBranchLabel(branch) : '—'}
+                      {branch?.project && (
+                        <p className="text-xs text-text-secondary">
+                          {branch.project.name}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">
@@ -688,12 +812,10 @@ export function LoginAccessPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {record.passwordRecord ? (
+                      {password ? (
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-sm">
-                            {visiblePasswords[record.id]
-                              ? record.passwordRecord.plainText
-                              : '••••••••'}
+                            {visiblePasswords[record.id] ? password : '••••••••'}
                           </span>
                           <Button
                             size="sm"
@@ -718,17 +840,33 @@ export function LoginAccessPage() {
                         : 'Never'}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setManageUserId(record.id)}
-                      >
-                        <Settings2 className="mr-1 h-3.5 w-3.5" />
-                        Manage
-                      </Button>
+                      <div className="flex flex-wrap gap-1">
+                        <Button
+                          size="sm"
+                          variant={record.isActive ? 'outline' : 'default'}
+                          className={
+                            record.isActive
+                              ? 'text-red-600 hover:text-red-700'
+                              : 'bg-green-600 hover:bg-green-700'
+                          }
+                          disabled={toggleMutation.isPending}
+                          onClick={() => toggleMutation.mutate(record.id)}
+                        >
+                          {record.isActive ? 'Disable' : 'Enable'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setManageUserId(record.id)}
+                        >
+                          <Settings2 className="mr-1 h-3.5 w-3.5" />
+                          Manage
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))
+                  )
+                })
               )}
             </TableBody>
           </Table>

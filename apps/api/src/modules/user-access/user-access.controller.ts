@@ -32,6 +32,11 @@ export class UserAccessController {
     return this.userAccessService.findAll(query);
   }
 
+  @Get('summary')
+  getSummary() {
+    return this.userAccessService.getSummary();
+  }
+
   @Get('meta')
   getMeta(@CurrentUser() user: { role: UserRole }) {
     return {
@@ -41,9 +46,25 @@ export class UserAccessController {
     };
   }
 
+  @Post('sync-employee-logins')
+  syncEmployeeLogins(@CurrentUser() user: { id: string }) {
+    return this.userAccessService.syncEmployeeLogins(user.id);
+  }
+
   @Get(':userId')
-  findOne(@Param('userId') userId: string) {
-    return this.userAccessService.findOne(userId);
+  findOne(
+    @Param('userId') userId: string,
+    @CurrentUser() user: { role: UserRole },
+  ) {
+    return this.userAccessService.findOne(userId, user.role);
+  }
+
+  @Patch(':userId/toggle-active')
+  toggleActive(
+    @Param('userId') userId: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.userAccessService.toggleActive(userId, user.id, user.role);
   }
 
   @Patch(':userId')

@@ -28,6 +28,14 @@ export interface UserAccessRecord {
   employee?: {
     fullName: string
     employeeCode: string
+    currentBranch?: {
+      id: string
+      name: string
+      abbreviation?: string | null
+      address?: string | null
+      projectId?: string | null
+      project?: { id: string; name: string } | null
+    } | null
   } | null
   branch?: {
     id: string
@@ -53,6 +61,16 @@ export interface EffectivePermission {
 
 export interface UserAccessDetail extends UserAccessRecord {
   effectivePermissions: EffectivePermission[]
+  assignableRoles: string[]
+}
+
+export interface LoginAccessSummary {
+  total: number
+  employeeLogins: number
+  systemLogins: number
+  active: number
+  disabled: number
+  missingEmployeeLogins: number
 }
 
 export interface PermissionOverrideInput {
@@ -90,6 +108,19 @@ export const userAccessApi = {
         permissionLabels: Record<AppPermission, string>
       }
     >('/user-access/meta'),
+
+  getSummary: () =>
+    api.get<unknown, LoginAccessSummary>('/user-access/summary'),
+
+  syncEmployeeLogins: () =>
+    api.post<unknown, { created: number; remaining: number }>(
+      '/user-access/sync-employee-logins',
+    ),
+
+  toggleActive: (userId: string) =>
+    api.patch<unknown, { id: string; isActive: boolean }>(
+      `/user-access/${userId}/toggle-active`,
+    ),
 
   getOne: (userId: string) =>
     api.get<unknown, UserAccessDetail>(`/user-access/${userId}`),

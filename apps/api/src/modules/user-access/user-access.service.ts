@@ -28,42 +28,57 @@ export class UserAccessService {
   ) {}
 
   findAll(query: UserAccessQueryDto = {}) {
-    const where: Prisma.UserWhereInput = {};
+    const andConditions: Prisma.UserWhereInput[] = [];
 
     if (query.systemOnly === 'true') {
-      where.employeeId = null;
+      andConditions.push({ employeeId: null });
     } else if (query.employeeOnly === 'true') {
-      where.employeeId = { not: null };
+      andConditions.push({ employeeId: { not: null } });
     }
 
     if (query.branchId) {
-      where.branchId = query.branchId;
+      andConditions.push({
+        OR: [
+          { branchId: query.branchId },
+          { employee: { currentBranchId: query.branchId } },
+        ],
+      });
     }
 
     if (query.projectId) {
-      where.branch = { projectId: query.projectId };
+      andConditions.push({
+        OR: [
+          { branch: { projectId: query.projectId } },
+          { employee: { currentBranch: { projectId: query.projectId } } },
+        ],
+      });
     }
 
     if (query.activeOnly === 'true') {
-      where.isActive = true;
+      andConditions.push({ isActive: true });
     } else if (query.activeOnly === 'false') {
-      where.isActive = false;
+      andConditions.push({ isActive: false });
     }
 
     if (query.search?.trim()) {
       const term = query.search.trim();
-      where.OR = [
-        { email: { contains: term, mode: 'insensitive' } },
-        {
-          employee: {
-            OR: [
-              { fullName: { contains: term, mode: 'insensitive' } },
-              { employeeCode: { contains: term, mode: 'insensitive' } },
-            ],
+      andConditions.push({
+        OR: [
+          { email: { contains: term, mode: 'insensitive' } },
+          {
+            employee: {
+              OR: [
+                { fullName: { contains: term, mode: 'insensitive' } },
+                { employeeCode: { contains: term, mode: 'insensitive' } },
+              ],
+            },
           },
-        },
-      ];
+        ],
+      });
     }
+
+    const where: Prisma.UserWhereInput =
+      andConditions.length > 0 ? { AND: andConditions } : {};
 
     return this.prisma.user.findMany({
       where,
@@ -80,6 +95,16 @@ export class UserAccessService {
           select: {
             fullName: true,
             employeeCode: true,
+            currentBranch: {
+              select: {
+                id: true,
+                name: true,
+                abbreviation: true,
+                address: true,
+                projectId: true,
+                project: { select: { id: true, name: true } },
+              },
+            },
           },
         },
         branch: {
@@ -103,7 +128,98 @@ export class UserAccessService {
     });
   }
 
-  async findOne(userId: string) {
+  async getSummary() {
+    const [total, employeeLogins, systemLogins, active, disabled, missingLogins] =
+      await Promise.all([
+        this.prisma.user.count(),
+        this.prisma.user.count({ where: { employeeId: { not: null } } }),
+        this.prisma.user.count({ where: { employeeId: null } }),
+        this.prisma.user.count({ where: { isActive: true } }),
+        this.prisma.user.count({ where: { isActive: false } }),
+        this.prisma.employee.count({ where: { user: null } }),
+      ]);
+
+    return {
+      total,
+      employeeLogins,
+      systemLogins,
+      active,
+      disabled,
+      missingEmployeeLogins: missingLogins,
+    };
+  }
+
+  async syncEmployeeLogins(actingUserId: string) {
+    const employees = await this.prisma.employee.findMany({
+      where: { user: null },
+      select: {
+        id: true,
+        employeeCode: true,
+        email: true,
+        currentDesignation: true,
+        currentBranchId: true,
+      },
+    });
+
+    let created = 0;
+
+    for (const employee of employees) {
+      const loginEmail =
+        employee.email || `${employee.employeeCode.toLowerCase()}@ycdo.org`;
+
+      const existingUser = await this.prisma.user.findUnique({
+        where: { email: loginEmail },
+      });
+      if (existingUser) {
+        continue;
+      }
+
+      const isAdminManager = employee.currentDesignation === 'Admin Manager';
+      const hashedPassword = await bcrypt.hash(employee.employeeCode, 10);
+
+      await this.prisma.$transaction(async (tx) => {
+        if (!employee.email) {
+          await tx.employee.update({
+            where: { id: employee.id },
+            data: { email: loginEmail },
+          });
+        }
+
+        const newUser = await tx.user.create({
+          data: {
+            email: loginEmail,
+            password: hashedPassword,
+            role: isAdminManager ? UserRole.ADMIN_MANAGER : UserRole.EMPLOYEE,
+            branchId: isAdminManager ? employee.currentBranchId : undefined,
+            isActive: true,
+            employeeId: employee.id,
+          },
+        });
+
+        await tx.userPassword.create({
+          data: { userId: newUser.id, plainText: employee.employeeCode },
+        });
+      });
+
+      created++;
+    }
+
+    if (created > 0) {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'SYNC_EMPLOYEE_LOGINS',
+          entity: 'User',
+          entityId: actingUserId,
+          changes: { created },
+        },
+      });
+    }
+
+    return { created, remaining: employees.length - created };
+  }
+
+  async findOne(userId: string, actingRole: UserRole) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -139,7 +255,11 @@ export class UserAccessService {
     const effectivePermissions =
       await this.permissionsService.getEffectivePermissions(user.id, user.role);
 
-    return { ...user, effectivePermissions };
+    return {
+      ...user,
+      effectivePermissions,
+      assignableRoles: this.assignableRoles(actingRole, user),
+    };
   }
 
   getPermissionCatalog() {
@@ -162,7 +282,7 @@ export class UserAccessService {
     }
 
     if (dto.role) {
-      this.assertAssignableRole(dto.role, actingRole);
+      this.assertAssignableRole(dto.role, actingRole, user);
     }
 
     if (userId === actingUserId && dto.isActive === false) {
@@ -229,7 +349,46 @@ export class UserAccessService {
       });
     });
 
-    return this.findOne(userId);
+    return this.findOne(userId, actingRole);
+  }
+
+  async toggleActive(
+    userId: string,
+    actingUserId: string,
+    actingRole: UserRole,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException(`User with id ${userId} not found`);
+    }
+
+    if (user.role === UserRole.SUPER_ADMIN && actingRole !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Only Super Admin can modify Super Admin accounts');
+    }
+
+    if (userId === actingUserId) {
+      throw new BadRequestException('You cannot disable your own account');
+    }
+
+    const isActive = !user.isActive;
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { isActive },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: isActive ? 'ENABLE_USER_LOGIN' : 'DISABLE_USER_LOGIN',
+          entity: 'User',
+          entityId: userId,
+          changes: { isActive },
+        },
+      }),
+    ]);
+
+    return { id: userId, isActive };
   }
 
   async createSystemLogin(
@@ -275,7 +434,7 @@ export class UserAccessService {
       return created;
     });
 
-    return this.findOne(user.id);
+    return this.findOne(user.id, actingRole);
   }
 
   async resetPassword(
@@ -321,15 +480,25 @@ export class UserAccessService {
     return PERMISSION_LABELS;
   }
 
-  assignableRoles(actingRole: UserRole) {
-    if (actingRole === UserRole.SUPER_ADMIN) {
-      return [...IT_ASSIGNABLE_ROLES, UserRole.SUPER_ADMIN];
+  assignableRoles(actingRole: UserRole, user?: { employeeId?: string | null }) {
+    const base =
+      actingRole === UserRole.SUPER_ADMIN
+        ? [...IT_ASSIGNABLE_ROLES, UserRole.SUPER_ADMIN]
+        : [...IT_ASSIGNABLE_ROLES];
+
+    if (user?.employeeId) {
+      return [...new Set([UserRole.EMPLOYEE, UserRole.ADMIN_MANAGER, ...base])];
     }
-    return IT_ASSIGNABLE_ROLES;
+
+    return base;
   }
 
-  private assertAssignableRole(role: UserRole, actingRole: UserRole) {
-    const allowed = this.assignableRoles(actingRole);
+  private assertAssignableRole(
+    role: UserRole,
+    actingRole: UserRole,
+    user?: { employeeId?: string | null },
+  ) {
+    const allowed = this.assignableRoles(actingRole, user);
     if (!allowed.includes(role)) {
       throw new ForbiddenException(`Role ${role} cannot be assigned`);
     }
