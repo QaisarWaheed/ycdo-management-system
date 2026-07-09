@@ -141,7 +141,11 @@ function DailyLogTab({
     const absent = attendanceLogs.filter((l) => l.status === 'ABSENT').length
     const unmarked = attendanceLogs.filter((l) => l.status === 'UNMARKED').length
     const late = attendanceLogs.filter((l) => l.status === 'LATE').length
-    return { total, present, absent, unmarked, late }
+    const uninformedAbsent = attendanceLogs.filter(
+      (l) => l.status === 'UNINFORMED_ABSENT',
+    ).length
+    const halfDay = attendanceLogs.filter((l) => l.status === 'HALF_DAY').length
+    return { total, present, absent, unmarked, late, uninformedAbsent, halfDay }
   }, [attendanceLogs])
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
@@ -204,7 +208,8 @@ function DailyLogTab({
           !isLoading && total > 0 ? (
             <p className="text-sm text-text-secondary">
               Present: {summary.present} | Unmarked: {summary.unmarked} | Absent:{' '}
-              {summary.absent} | Late: {summary.late}
+              {summary.absent} | Uninformed Absent: {summary.uninformedAbsent} | Late:{' '}
+              {summary.late} | Half Day: {summary.halfDay}
             </p>
           ) : undefined
         }

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { User } from '@/types'
-import { isPortalAllowedRole } from '@/lib/portalRoles'
+import { isPortalEmployeeUser } from '@/lib/portalRoles'
 
 interface AuthState {
   token: string | null
@@ -16,7 +16,7 @@ function readStoredUser(): User | null {
   if (!raw) return null
   try {
     const user = JSON.parse(raw) as User
-    if (!isPortalAllowedRole(user.role)) {
+    if (!isPortalEmployeeUser(user)) {
       localStorage.removeItem('portal_token')
       localStorage.removeItem('portal_user')
       return null
@@ -35,7 +35,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: storedUser,
   isAuthenticated: !!storedToken && !!storedUser,
   login: (token, user) => {
-    if (!isPortalAllowedRole(user.role)) {
+    if (!isPortalEmployeeUser(user)) {
       throw new Error('PORTAL_ACCESS_DENIED')
     }
     localStorage.setItem('portal_token', token)

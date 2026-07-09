@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -40,6 +41,18 @@ export class AuthService {
     const passwordValid = await bcrypt.compare(dto.password, user.password);
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (dto.client === 'hrms' && user.employeeId) {
+      throw new ForbiddenException(
+        'Employee accounts cannot sign in to HRMS. Use the Employee Portal.',
+      );
+    }
+
+    if (dto.client === 'portal' && !user.employeeId) {
+      throw new ForbiddenException(
+        'System accounts cannot sign in to the Employee Portal. Use HRMS.',
+      );
     }
 
     await this.prisma.user.update({

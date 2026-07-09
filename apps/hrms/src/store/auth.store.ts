@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { User } from '@/types'
+import { isHrmsSystemUser } from '@/lib/hrmsAccess'
 
 interface AuthState {
   token: string | null
@@ -10,14 +11,33 @@ interface AuthState {
   hydrate: () => void
 }
 
+function readStoredUser(): User | null {
+  const raw = localStorage.getItem('hrms_user')
+  if (!raw) return null
+  try {
+    const user = JSON.parse(raw) as User
+    if (!isHrmsSystemUser(user)) {
+      localStorage.removeItem('hrms_token')
+      localStorage.removeItem('hrms_user')
+      return null
+    }
+    return user
+  } catch {
+    return null
+  }
+}
+
 const storedToken = localStorage.getItem('hrms_token')
-const storedUser = localStorage.getItem('hrms_user')
+const storedUser = readStoredUser()
 
 export const useAuthStore = create<AuthState>((set) => ({
-  token: storedToken,
-  user: storedUser ? (JSON.parse(storedUser) as User) : null,
-  isAuthenticated: !!storedToken,
+  token: storedUser ? storedToken : null,
+  user: storedUser,
+  isAuthenticated: !!storedToken && !!storedUser,
   login: (token, user) => {
+    if (!isHrmsSystemUser(user)) {
+      throw new Error('HRMS_ACCESS_DENIED')
+    }
     localStorage.setItem('hrms_token', token)
     localStorage.setItem('hrms_user', JSON.stringify(user))
     set({ token, user, isAuthenticated: true })
@@ -29,11 +49,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   hydrate: () => {
     const token = localStorage.getItem('hrms_token')
-    const userRaw = localStorage.getItem('hrms_user')
+    const user = readStoredUser()
     set({
-      token,
-      user: userRaw ? (JSON.parse(userRaw) as User) : null,
-      isAuthenticated: !!token,
+      token: user ? token : null,
+      user,
+      isAuthenticated: !!token && !!user,
     })
   },
 }))
