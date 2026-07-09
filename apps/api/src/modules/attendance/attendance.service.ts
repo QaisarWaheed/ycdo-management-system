@@ -509,6 +509,7 @@ export class AttendanceService {
     departmentId?: string;
     shiftId?: string;
     shiftIds?: string;
+    shiftName?: string;
     employeeStatus?: EmployeeStatus;
     gender?: Gender;
     designation?: string;
@@ -536,7 +537,12 @@ export class AttendanceService {
       };
     }
 
-    if (query.shiftIds) {
+    if (query.shiftName) {
+      employeeWhere.shift = {
+        name: query.shiftName,
+        isActive: true,
+      };
+    } else if (query.shiftIds) {
       const ids = query.shiftIds.split(',').filter(Boolean);
       if (ids.length > 0) {
         employeeWhere.shiftId = { in: ids };

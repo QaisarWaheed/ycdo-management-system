@@ -14,6 +14,7 @@ import {
   LogOut,
   MapPin,
   Monitor,
+  Timer,
   UserPlus,
   Users,
   Wallet,
@@ -50,6 +51,12 @@ const activityTrailNavItem = {
   icon: History,
 }
 
+const shiftsNavItem = {
+  to: '/shifts',
+  label: 'Shifts',
+  icon: Timer,
+}
+
 function navItemsForRole(role?: string) {
   if (!role) return allNavItems
 
@@ -63,7 +70,7 @@ function navItemsForRole(role?: string) {
     const items = allNavItems.filter((item) => item.to !== '/broadcasts')
     const withActivity = [
       ...items,
-      ...(role === 'SUPER_ADMIN' ? [activityTrailNavItem] : []),
+      ...(role === 'SUPER_ADMIN' ? [activityTrailNavItem, shiftsNavItem] : []),
     ]
     if (role === 'SUPER_ADMIN') {
       return [...withActivity, ...itTeamNavItems]

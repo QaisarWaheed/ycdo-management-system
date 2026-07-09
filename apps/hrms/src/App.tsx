@@ -22,6 +22,7 @@ import { ProfilePage } from '@/pages/settings/ProfilePage'
 import { UserPasswordsPage } from '@/pages/admin/UserPasswordsPage'
 import { SystemLoginsPage } from '@/pages/admin/SystemLoginsPage'
 import { ActivityTrailPage } from '@/pages/activity/ActivityTrailPage'
+import { ShiftsPage } from '@/pages/shifts/ShiftsPage'
 
 export default function App() {
   return (
@@ -154,6 +155,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/shifts"
+        element={
+          <ProtectedRoute>
+            <ShiftsPage />
           </ProtectedRoute>
         }
       />

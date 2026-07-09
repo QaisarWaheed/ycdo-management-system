@@ -4,7 +4,6 @@ import { format } from 'date-fns'
 import { MoreHorizontal, Plus, Search, Users } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
-import { shiftsApi } from '@/api/endpoints/shifts'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import {
   createEmployeeFilters,
@@ -61,12 +60,6 @@ export function EmployeesListPage() {
 
   const debouncedSearch = useDebounce(search, 400)
 
-  const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', employeeFilters.branchId || 'all'],
-    queryFn: () =>
-      shiftsApi.getAll(employeeFilters.branchId || undefined),
-  })
-
   const { data: stats } = useQuery({
     queryKey: ['employees', 'stats'],
     queryFn: () => employeesApi.getStats(),
@@ -84,10 +77,10 @@ export function EmployeesListPage() {
 
   const filters = useMemo(
     () => ({
-      ...employeeFiltersToParams(employeeFilters, shifts),
+      ...employeeFiltersToParams(employeeFilters),
       search: debouncedSearch || undefined,
     }),
-    [debouncedSearch, employeeFilters, shifts],
+    [debouncedSearch, employeeFilters],
   )
 
   const { data: employees = [], isLoading, isError } = useQuery({
@@ -163,13 +156,12 @@ export function EmployeesListPage() {
           />
         </div>
 
-        <EmployeeFiltersBar
-          filters={employeeFilters}
-          onChange={handleFiltersChange}
-          showSpecificShift={false}
-          statusCounts={statusCounts}
-          unassignedCount={unassignedCount}
-        />
+          <EmployeeFiltersBar
+            filters={employeeFilters}
+            onChange={handleFiltersChange}
+            statusCounts={statusCounts}
+            unassignedCount={unassignedCount}
+          />
 
         <div className="flex justify-end">
           <Button variant="outline" onClick={clearFilters}>

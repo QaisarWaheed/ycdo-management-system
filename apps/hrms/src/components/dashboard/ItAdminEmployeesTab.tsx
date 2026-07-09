@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Search, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
-import { shiftsApi } from '@/api/endpoints/shifts'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import {
@@ -45,18 +44,12 @@ export function ItAdminEmployeesTab() {
 
   const debouncedSearch = useDebounce(search, 400)
 
-  const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', employeeFilters.branchId || 'all'],
-    queryFn: () =>
-      shiftsApi.getAll(employeeFilters.branchId || undefined),
-  })
-
   const filters = useMemo(
     () => ({
-      ...employeeFiltersToParams(employeeFilters, shifts),
+      ...employeeFiltersToParams(employeeFilters),
       search: debouncedSearch || undefined,
     }),
-    [employeeFilters, shifts, debouncedSearch],
+    [employeeFilters, debouncedSearch],
   )
 
   const { data: employees = [], isLoading } = useQuery({
@@ -99,11 +92,10 @@ export function ItAdminEmployeesTab() {
         />
       </div>
 
-      <EmployeeFiltersBar
-        filters={employeeFilters}
-        onChange={setEmployeeFilters}
-        showSpecificShift={false}
-      />
+        <EmployeeFiltersBar
+          filters={employeeFilters}
+          onChange={setEmployeeFilters}
+        />
 
       <div className="overflow-x-auto rounded-lg border border-border">
         <Table>

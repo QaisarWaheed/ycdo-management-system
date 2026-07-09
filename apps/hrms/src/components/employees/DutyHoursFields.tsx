@@ -1,14 +1,9 @@
-import { useMemo } from 'react'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  dutyTimeOptions,
-  getStartTimeOptionsForShift,
-} from '@/lib/dutyTimes'
+import { dutyTimeOptions } from '@/lib/dutyTimes'
 
 type DutyHoursFieldsProps = {
-  shiftName?: string
   totalHours: number | ''
   startTime: string
   endTime: string
@@ -28,7 +23,6 @@ function timeLabelToValue(label: string): string {
 }
 
 export function DutyHoursFields({
-  shiftName = '',
   totalHours,
   startTime,
   endTime,
@@ -36,22 +30,10 @@ export function DutyHoursFields({
   onStartTimeChange,
   onEndTimeChange,
 }: DutyHoursFieldsProps) {
-  const is24Hours = shiftName === '24 Hours' || totalHours === 24
+  const is24Hours = totalHours === 24
 
-  const startTimeOptions = useMemo(
-    () => getStartTimeOptionsForShift(shiftName),
-    [shiftName],
-  )
-
-  const startTimeLabels = useMemo(
-    () => startTimeOptions.map((opt) => opt.label),
-    [startTimeOptions],
-  )
-
-  const endTimeLabels = useMemo(
-    () => dutyTimeOptions.map((opt) => opt.label),
-    [],
-  )
+  const startTimeLabels = dutyTimeOptions.map((opt) => opt.label)
+  const endTimeLabels = dutyTimeOptions.map((opt) => opt.label)
 
   return (
     <div className="space-y-4 sm:col-span-2">
@@ -68,10 +50,14 @@ export function DutyHoursFields({
             value={totalHours}
             onChange={(e) => {
               const val = e.target.value
-              onTotalHoursChange(val === '' ? '' : Number(val))
+              const next = val === '' ? '' : Number(val)
+              onTotalHoursChange(next)
+              if (next === 24) {
+                onStartTimeChange('00:00')
+                onEndTimeChange('23:59')
+              }
             }}
             className="max-w-[120px]"
-            disabled={is24Hours}
           />
           <span className="text-sm text-text-secondary">hours/day</span>
         </div>

@@ -313,6 +313,10 @@ export class EmployeeQueryDto {
   shiftIds?: string;
 
   @IsOptional()
+  @IsString()
+  shiftName?: string;
+
+  @IsOptional()
   @IsEnum(EmployeeStatus)
   status?: EmployeeStatus;
 

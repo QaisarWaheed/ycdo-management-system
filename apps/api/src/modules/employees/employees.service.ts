@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { stripPersonalEmployeeFields } from '../../common/hr-executive.util';
+import { inferShiftNameFromDuty } from '../../common/shift-inference.util';
 import {
   ChangeType,
   EmployeeStatus,
@@ -96,11 +97,18 @@ export class EmployeesService {
     }
 
     let resolvedShiftId = dto.shiftId;
-    if (dto.shiftName) {
-      resolvedShiftId = await this.resolveOrCreateShift(
-        dto.shiftName,
-        dto.currentBranchId,
+    if (!resolvedShiftId && dto.dutyStartTime) {
+      const inferredShiftName = inferShiftNameFromDuty(
+        dto.dutyStartTime,
+        dto.dutyEndTime,
+        dto.dutyTotalHours,
       );
+      if (inferredShiftName) {
+        resolvedShiftId = await this.resolveOrCreateShift(
+          inferredShiftName,
+          dto.currentBranchId,
+        );
+      }
     }
 
     const employeeCode = await generateEmployeeCode(this.prisma);
@@ -373,7 +381,13 @@ export class EmployeesService {
       };
     }
 
-    if (filters.shiftIds) {
+    if (filters.shiftName) {
+      where.shift = {
+        name: filters.shiftName,
+        isActive: true,
+        ...(filters.branchId ? { branchId: filters.branchId } : {}),
+      };
+    } else if (filters.shiftIds) {
       const ids = filters.shiftIds.split(',').filter(Boolean);
       if (ids.length > 0) {
         where.shiftId = { in: ids };
@@ -708,6 +722,23 @@ export class EmployeesService {
       }
     }
 
+    if (
+      sanitizedDto.dutyStartTime !== undefined ||
+      sanitizedDto.dutyEndTime !== undefined ||
+      sanitizedDto.dutyTotalHours !== undefined
+    ) {
+      const employee = await this.findOne(id);
+      const shiftId = await this.assignShiftFromDuty(
+        employee.currentBranchId,
+        sanitizedDto.dutyStartTime ?? employee.dutyStartTime,
+        sanitizedDto.dutyEndTime ?? employee.dutyEndTime,
+        sanitizedDto.dutyTotalHours ?? employee.dutyTotalHours,
+      );
+      if (shiftId) {
+        data.shift = { connect: { id: shiftId } };
+      }
+    }
+
     return this.prisma.employee.update({
       where: { id },
       data,
@@ -825,6 +856,23 @@ export class EmployeesService {
         `Shift with id ${shiftId} not found in branch`,
       );
     }
+  }
+
+  private async assignShiftFromDuty(
+    branchId: string,
+    dutyStartTime?: string | null,
+    dutyEndTime?: string | null,
+    dutyTotalHours?: number | null,
+  ): Promise<string | undefined> {
+    const shiftName = inferShiftNameFromDuty(
+      dutyStartTime,
+      dutyEndTime,
+      dutyTotalHours,
+    );
+    if (!shiftName) {
+      return undefined;
+    }
+    return this.resolveOrCreateShift(shiftName, branchId);
   }
 
   private async resolveOrCreateShift(
@@ -1013,6 +1061,25 @@ export class EmployeesService {
       }
       if (dto.dutyTotalHours !== undefined) {
         data.dutyTotalHours = dto.dutyTotalHours;
+      }
+
+      const nextStart = dto.dutyStartTime ?? employee.dutyStartTime;
+      const nextEnd = dto.dutyEndTime ?? employee.dutyEndTime;
+      const nextHours = dto.dutyTotalHours ?? employee.dutyTotalHours;
+      if (
+        dto.dutyStartTime !== undefined ||
+        dto.dutyEndTime !== undefined ||
+        dto.dutyTotalHours !== undefined
+      ) {
+        const shiftId = await this.assignShiftFromDuty(
+          targetBranchId,
+          nextStart,
+          nextEnd,
+          nextHours,
+        );
+        if (shiftId) {
+          data.shift = { connect: { id: shiftId } };
+        }
       }
 
       const result = await tx.employee.update({
@@ -1301,8 +1368,8 @@ export class EmployeesService {
       if (!dto.emergencyRelation) {
         throw new BadRequestException('Emergency relation is required');
       }
-      if (!dto.shiftName) {
-        throw new BadRequestException('Shift is required');
+      if (!dto.dutyStartTime || !dto.dutyEndTime) {
+        throw new BadRequestException('Duty hours are required');
       }
       if (dto.fatherStatus === 'ALIVE' && !dto.fatherContactNumber) {
         throw new BadRequestException('Father contact number is required');
