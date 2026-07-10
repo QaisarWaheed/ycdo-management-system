@@ -428,6 +428,11 @@ export class EmployeesService {
             employeeCode: { contains: filters.search, mode: 'insensitive' },
           },
           { cnic: { contains: filters.search, mode: 'insensitive' } },
+          {
+            currentBranch: {
+              name: { contains: filters.search, mode: 'insensitive' },
+            },
+          },
         ],
       });
     }
@@ -1291,6 +1296,9 @@ export class EmployeesService {
       }
       if (!dto.emergencyRelation) {
         throw new BadRequestException('Emergency relation is required');
+      }
+      if (!dto.cnic) {
+        throw new BadRequestException('CNIC is required');
       }
       if (!dto.shiftName) {
         throw new BadRequestException('Shift is required');

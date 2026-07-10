@@ -278,6 +278,7 @@ model AttendanceLog {
   employeeId      String
   branchId        String
   date            DateTime         @db.Date
+  type            AttendanceLogType  @default(REGULAR)
   checkIn         DateTime?
   checkOut        DateTime?
   status          AttendanceStatus
@@ -293,7 +294,12 @@ model AttendanceLog {
   employee Employee @relation(fields: [employeeId], references: [id])
   branch   Branch   @relation(fields: [branchId], references: [id])
 
-  @@unique([employeeId, date])
+  @@unique([employeeId, date, type])
+}
+
+enum AttendanceLogType {
+  REGULAR
+  OVERTIME
 }
 
 enum AttendanceStatus {

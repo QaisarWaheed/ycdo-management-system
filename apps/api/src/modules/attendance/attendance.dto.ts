@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsEnum,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -24,6 +25,10 @@ export class BiometricPushDto {
   @IsOptional()
   @IsString()
   deviceId?: string;
+
+  @IsOptional()
+  @IsIn(['CHECKIN', 'CHECKOUT'])
+  punchType?: 'CHECKIN' | 'CHECKOUT';
 }
 
 export class ManualAttendanceDto {

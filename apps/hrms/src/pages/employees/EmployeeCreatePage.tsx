@@ -157,8 +157,8 @@ const existingStaffStep1Schema = z
     guardianContact: phoneOptional,
     cnic: z
       .string()
-      .optional()
-      .refine((v) => !v || cnicRegex.test(v), 'Format: 12345-1234567-1'),
+      .min(1, 'CNIC is required')
+      .regex(cnicRegex, 'Format: 12345-1234567-1'),
     dateOfBirth: z.string().min(1, 'Date of birth is required'),
     phone: phoneRequired,
     email: z.string().email('Invalid email').optional().or(z.literal('')),
@@ -1173,7 +1173,7 @@ export function EmployeeCreatePage() {
                 name="cnic"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>CNIC{isExistingStaff ? '' : ' *'}</FormLabel>
+                    <FormLabel>CNIC *</FormLabel>
                     <FormControl>
                       <CnicInput value={field.value ?? ''} onChange={field.onChange} />
                     </FormControl>

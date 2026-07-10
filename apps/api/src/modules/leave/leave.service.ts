@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AttendanceLogType,
   AttendanceSource,
   AttendanceStatus,
   EmployeeStatus,
@@ -1229,15 +1230,17 @@ export class LeaveService {
     if (leave.leaveType === LeaveType.SHORT_LEAVE) {
       await tx.attendanceLog.upsert({
         where: {
-          employeeId_date: {
+          employeeId_date_type: {
             employeeId: leave.employeeId,
             date: leave.startDate,
+            type: AttendanceLogType.REGULAR,
           },
         },
         create: {
           employeeId: leave.employeeId,
           branchId: leave.employee.currentBranchId,
           date: leave.startDate,
+          type: AttendanceLogType.REGULAR,
           status: AttendanceStatus.HALF_DAY,
           source: AttendanceSource.MANUAL,
           note: 'Approved short leave',
@@ -1254,15 +1257,17 @@ export class LeaveService {
     for (const day of this.getDateRange(leave.startDate, leave.endDate)) {
       await tx.attendanceLog.upsert({
         where: {
-          employeeId_date: {
+          employeeId_date_type: {
             employeeId: leave.employeeId,
             date: day,
+            type: AttendanceLogType.REGULAR,
           },
         },
         create: {
           employeeId: leave.employeeId,
           branchId: leave.employee.currentBranchId,
           date: day,
+          type: AttendanceLogType.REGULAR,
           status: AttendanceStatus.ON_LEAVE,
           source: AttendanceSource.MANUAL,
           note: 'Approved leave',
