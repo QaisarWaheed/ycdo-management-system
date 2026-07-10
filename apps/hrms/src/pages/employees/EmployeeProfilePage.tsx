@@ -84,6 +84,7 @@ import type {
 const IT_PROFILE_ROLES = ['SUPER_ADMIN', 'IT_ADMIN'] as const
 const HR_JOB_ROLES = [
   'SUPER_ADMIN',
+  'HR_EXECUTIVE',
   'HR_MANAGER',
   'HR_ADMIN_MANAGER',
   'HR_OPERATIONS_MANAGER',

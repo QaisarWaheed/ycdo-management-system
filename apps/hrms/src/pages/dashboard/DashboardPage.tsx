@@ -4,24 +4,27 @@ import {
   AlertTriangle,
   Calendar,
   ChevronRight,
+  CircleDashed,
   Clock,
   Timer,
   UserPlus,
   Users,
   UserX,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
 import { recruitmentApi } from '@/api/endpoints/recruitment'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import type { AttendanceLog, Employee, LeaveRecord } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { withReturnTo } from '@/lib/backNavigation'
 import {
   Table,
   TableBody,
@@ -213,6 +216,8 @@ function DashboardContent({ role }: { role?: string }) {
 
 function AdminDashboard() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = `${location.pathname}${location.search}`
   const today = todayRange()
 
   const {
@@ -274,6 +279,7 @@ function AdminDashboard() {
   })
 
   const attendanceLogs = (attendance ?? []) as AttendanceLog[]
+  const unmarkedToday = attendanceLogs.filter((l) => l.status === 'UNMARKED').length
   const presentToday = attendanceLogs.filter((l) => l.status === 'PRESENT').length
   const absentToday = attendanceLogs.filter((l) => l.status === 'ABSENT').length
   const uninformedAbsentToday = attendanceLogs.filter(
@@ -297,6 +303,17 @@ function AdminDashboard() {
           iconBg="bg-primary/10 text-primary"
           subtitle="Active workforce"
           to="/employees"
+        />
+        <StatCard
+          label="Unmarked Today"
+          value={unmarkedToday}
+          icon={CircleDashed}
+          loading={loadingAttendance}
+          error={errorAttendance}
+          iconBg="bg-slate-100 text-slate-700"
+          subtitle="Awaiting check-in"
+          to="/attendance?date=today&status=UNMARKED"
+          alertWhenPositive
         />
         <StatCard
           label="Present Today"
@@ -423,10 +440,17 @@ function AdminDashboard() {
                     <TableRow
                       key={emp.id}
                       className="cursor-pointer hover:bg-gray-50"
-                      onClick={() => navigate(`/employees/${emp.id}`)}
+                      onClick={() =>
+                        navigate(
+                          `/employees/${emp.id}`,
+                          withReturnTo(returnTo),
+                        )
+                      }
                     >
                       <TableCell className="font-medium">{emp.employeeCode}</TableCell>
-                      <TableCell>{emp.fullName}</TableCell>
+                      <TableCell>
+                        <EmployeeNameLink employee={emp} />
+                      </TableCell>
                       <TableCell>{emp.currentDepartment?.name ?? '—'}</TableCell>
                       <TableCell>{formatBranchLabel(emp.currentBranch)}</TableCell>
                       <TableCell>{statusBadge(emp.status)}</TableCell>
@@ -474,9 +498,7 @@ function AdminDashboard() {
                       onClick={() => navigate('/leave')}
                     >
                       <TableCell>
-                        {leave.employee
-                          ? `${leave.employee.fullName}`
-                          : '—'}
+                        <EmployeeNameLink employee={leave.employee} />
                       </TableCell>
                       <TableCell>
                         {format(new Date(leave.startDate), 'dd/MM/yyyy')}

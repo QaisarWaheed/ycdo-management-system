@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Calendar,
   ChevronRight,
+  CircleDashed,
   Clock,
   UserCheck,
   UserPlus,
@@ -149,6 +150,7 @@ export function AdminManagerDashboard() {
     enabled: !!user?.id,
   })
 
+  const unmarked = attendance.filter((l) => l.status === 'UNMARKED').length
   const present = attendance.filter((l) => l.status === 'PRESENT').length
   const absent = attendance.filter((l) => l.status === 'ABSENT').length
   const uninformed = attendance.filter(
@@ -178,6 +180,15 @@ export function AdminManagerDashboard() {
           loading={loadingEmployees}
           iconBg="bg-blue-100 text-blue-700"
           to={`/employees?${branchQuery}`}
+        />
+        <StatCard
+          label="Unmarked Today"
+          value={unmarked}
+          icon={CircleDashed}
+          loading={loadingAttendance}
+          iconBg="bg-slate-100 text-slate-700"
+          to={`/attendance?status=UNMARKED&${branchQuery}&startDate=${today.startDate}&endDate=${today.endDate}`}
+          alertWhenPositive
         />
         <StatCard
           label="Present Today"

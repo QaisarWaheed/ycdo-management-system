@@ -6,8 +6,11 @@ import { MoreHorizontal } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -52,6 +55,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { cn } from '@/lib/utils'
 import {
   DISCIPLINARY_STATUSES,
@@ -528,6 +532,13 @@ function ActionsTab({
     queryFn: () => disciplinaryApi.getAll(filters),
   })
 
+  const actionList = actions as DisciplinaryAction[]
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    actionList,
+    [filters],
+  )
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -581,6 +592,8 @@ function ActionsTab({
         </div>
       </div>
 
+      <TableRecordCount count={total} label="disciplinary action" />
+
       <div className="rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -605,23 +618,19 @@ function ActionsTab({
                   ))}
                 </TableRow>
               ))
-            ) : actions.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-text-secondary">
                   No disciplinary actions found
                 </TableCell>
               </TableRow>
             ) : (
-              (actions as DisciplinaryAction[]).map((action) => (
+              paginated.map((action) => (
                 <Fragment key={action.id}>
                   <TableRow>
                     <TableCell>
                       <div>
-                        <p className="font-medium">
-                          {action.employee
-                            ? `${action.employee.fullName}`
-                            : '—'}
-                        </p>
+                        <EmployeeNameLink employee={action.employee} />
                         <p className="font-mono text-xs text-text-secondary">
                           {action.employee?.employeeCode ?? '—'}
                         </p>
@@ -725,6 +734,13 @@ function ActionsTab({
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   )
@@ -764,6 +780,11 @@ function InquiriesTab({
     return list
   }, [actions, outcomeFilter])
 
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    inquiries,
+    [employeeId, outcomeFilter],
+  )
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -794,6 +815,8 @@ function InquiriesTab({
         </div>
       </div>
 
+      <TableRecordCount count={total} label="inquiry" />
+
       <div className="rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -819,23 +842,21 @@ function InquiriesTab({
                   ))}
                 </TableRow>
               ))
-            ) : inquiries.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
                   No inquiries found
                 </TableCell>
               </TableRow>
             ) : (
-              inquiries.map((inquiry) => {
+              paginated.map((inquiry) => {
                 const action = inquiry.action
                 const overdue =
                   !inquiry.outcome && isPast(new Date(inquiry.deadlineAt))
                 return (
                   <TableRow key={inquiry.id}>
                     <TableCell>
-                      {action.employee
-                        ? `${action.employee.fullName}`
-                        : '—'}
+                      <EmployeeNameLink employee={action.employee} />
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={typeBadgeClass(action.type)}>
@@ -883,6 +904,13 @@ function InquiriesTab({
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   )

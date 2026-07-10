@@ -6,6 +6,8 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { authApi } from '@/api/endpoints/auth'
 import { useAuth } from '@/hooks/useAuth'
+import { getApiErrorMessage } from '@/lib/apiErrorMessage'
+import { isHrmsSystemUser } from '@/lib/hrmsAccess'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -42,10 +44,22 @@ export function LoginPage() {
     setError('')
     try {
       const response = await authApi.login(data.email, data.password)
+      if (!isHrmsSystemUser(response.user)) {
+        setError(
+          'Employee accounts cannot sign in to HRMS. Use the Employee Portal.',
+        )
+        return
+      }
       login(response.access_token, response.user)
-      navigate('/dashboard')
-    } catch {
-      setError('Invalid email or password')
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      if (err instanceof Error && err.message === 'HRMS_ACCESS_DENIED') {
+        setError(
+          'Employee accounts cannot sign in to HRMS. Use the Employee Portal.',
+        )
+        return
+      }
+      setError(getApiErrorMessage(err, 'Invalid email or password'))
     }
   }
 

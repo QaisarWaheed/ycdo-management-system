@@ -1,19 +1,15 @@
 import { PartialType } from '@nestjs/mapped-types';
 import {
   IsNotEmpty,
+  IsOptional,
   IsString,
-  IsUUID,
   Matches,
 } from 'class-validator';
 
 export class CreateShiftDto {
-  @IsUUID()
-  @IsNotEmpty()
-  branchId: string;
-
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  name: string;
+  name?: string;
 
   @IsString()
   @IsNotEmpty()

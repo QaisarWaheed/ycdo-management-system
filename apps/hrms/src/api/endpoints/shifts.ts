@@ -12,4 +12,5 @@ export const shiftsApi = {
     api.post<unknown, Shift>('/shifts', data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch<unknown, Shift>(`/shifts/${id}`, data),
+  delete: (id: string) => api.delete(`/shifts/${id}`),
 }

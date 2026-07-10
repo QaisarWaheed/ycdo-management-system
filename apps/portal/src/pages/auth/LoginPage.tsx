@@ -6,7 +6,8 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { authApi } from '@/api/endpoints/auth'
 import { useAuth } from '@/hooks/useAuth'
-import { isPortalAllowedRole } from '@/lib/portalRoles'
+import { isPortalEmployeeUser } from '@/lib/portalRoles'
+import { getApiErrorMessage } from '@/lib/apiErrorMessage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -50,18 +51,18 @@ export function LoginPage() {
     setError('')
     try {
       const response = await authApi.login(data.email, data.password)
-      if (!isPortalAllowedRole(response.user.role)) {
-        setError('Access denied. Use HRMS for system access.')
+      if (!isPortalEmployeeUser(response.user)) {
+        setError('System accounts cannot sign in here. Use HRMS.')
         return
       }
       login(response.access_token, response.user)
       navigate('/dashboard')
     } catch (err) {
       if (err instanceof Error && err.message === 'PORTAL_ACCESS_DENIED') {
-        setError('Access denied. Use HRMS for system access.')
+        setError('System accounts cannot sign in here. Use HRMS.')
         return
       }
-      setError('Invalid email or password')
+      setError(getApiErrorMessage(err, 'Invalid email or password'))
     }
   }
 

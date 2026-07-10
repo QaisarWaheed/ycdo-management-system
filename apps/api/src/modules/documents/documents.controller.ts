@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { assertCanEditPersonalInfo } from '../../common/hr-executive.util';
 import { UploadDocumentDto } from './documents.dto';
 import { DocumentsService } from './documents.service';
 import { multerConfig } from './multer.config';
@@ -40,7 +41,9 @@ export class DocumentsController {
     @Param('id') id: string,
     @Body() dto: UploadDocumentDto,
     @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: { role: UserRole },
   ) {
+    assertCanEditPersonalInfo(user.role);
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
@@ -71,7 +74,11 @@ export class DocumentsController {
 
   @Delete(':documentId')
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.IT_ADMIN)
-  delete(@Param('documentId') documentId: string) {
+  delete(
+    @Param('documentId') documentId: string,
+    @CurrentUser() user: { role: UserRole },
+  ) {
+    assertCanEditPersonalInfo(user.role);
     return this.documentsService.delete(documentId);
   }
 }

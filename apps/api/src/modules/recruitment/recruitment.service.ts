@@ -145,14 +145,11 @@ export class RecruitmentService {
       const shift = await this.prisma.shift.findFirst({
         where: {
           id: dto.shiftId,
-          branchId: dto.selectedBranchId,
           isActive: true,
         },
       });
       if (!shift) {
-        throw new NotFoundException(
-          `Shift with id ${dto.shiftId} not found in branch`,
-        );
+        throw new NotFoundException(`Shift with id ${dto.shiftId} not found`);
       }
     }
 

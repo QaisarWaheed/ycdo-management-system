@@ -25,9 +25,12 @@ import {
 import { lettersApi } from '@/api/endpoints/letters'
 import { letterRepliesApi } from '@/api/endpoints/letterReplies'
 import { notificationsApi } from '@/api/endpoints/notifications'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -63,6 +66,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import {
   getLetterExtraFields,
   letterReference,
@@ -274,9 +278,10 @@ function LetterRepliesDialog({
               >
                 <div className="flex items-center justify-between">
                   <p className="font-medium">
-                    {reply.employee
-                      ? `${reply.employee.fullName}`
-                      : 'Employee'}
+                    <EmployeeNameLink
+                      employee={reply.employee}
+                      fallback="Employee"
+                    />
                     {reply.employee?.employeeCode && (
                       <span className="ml-2 font-mono text-xs text-text-secondary">
                         {reply.employee.employeeCode}
@@ -552,6 +557,13 @@ export function LettersPage() {
     refetchInterval: 30000,
   })
 
+  const letterList = letters as Letter[]
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    letterList,
+    [filters],
+  )
+
   const markPrintedMutation = useMutation({
     mutationFn: (id: string) => lettersApi.markPrinted(id),
     onSuccess: () => {
@@ -589,6 +601,7 @@ export function LettersPage() {
     setLetterType(ALL)
     setStartDate('')
     setEndDate('')
+    setPage(0)
   }
 
   return (
@@ -656,6 +669,8 @@ export function LettersPage() {
         </Button>
       </div>
 
+      <TableRecordCount count={total} label="letter" />
+
       <div className="rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -681,14 +696,14 @@ export function LettersPage() {
                   ))}
                 </TableRow>
               ))
-            ) : letters.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
                   No letters found
                 </TableCell>
               </TableRow>
             ) : (
-              (letters as Letter[]).map((letter) => (
+              paginated.map((letter) => (
                 <TableRow key={letter.id}>
                   <TableCell>
                     <Badge variant="outline" className="font-mono text-xs">
@@ -697,11 +712,7 @@ export function LettersPage() {
                   </TableCell>
                   <TableCell>
                     <div>
-                      <p className="font-medium">
-                        {letter.employee
-                          ? `${letter.employee.fullName}`
-                          : '—'}
-                      </p>
+                      <EmployeeNameLink employee={letter.employee} />
                       <p className="font-mono text-xs text-text-secondary">
                         {letter.employee?.employeeCode ?? '—'}
                       </p>
@@ -778,6 +789,13 @@ export function LettersPage() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       <GenerateLetterWizard

@@ -5,6 +5,8 @@ import { Search } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { shiftsApi } from '@/api/endpoints/shifts'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
 import {
@@ -16,7 +18,8 @@ import {
   EmployeeFiltersBar,
   employeeFiltersToAttendanceParams,
 } from '@/components/employees/EmployeeFiltersBar'
-import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,8 +36,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
+import { usePagination } from '@/hooks/usePagination'
 import { getLogLateMinutes } from '@/lib/attendanceUtils'
-import { formatDateTimeTime } from '@/lib/timeFormat'
+import { formatShiftOptionLabel } from '@/lib/shiftFilterUtils'
+import { formatDateTimeTime, todayPakistan } from '@/lib/timeFormat'
 import { cn } from '@/lib/utils'
 import {
   ATTENDANCE_STATUSES,
@@ -60,6 +65,12 @@ const statusStyles: Record<AttendanceStatus, string> = {
   HALF_DAY: 'bg-blue-100 text-blue-800 border-blue-200',
   ON_LEAVE: 'bg-purple-100 text-purple-800 border-purple-200',
   UNINFORMED_ABSENT: 'bg-red-200 text-red-900 border-red-300',
+}
+
+function formatLogShift(log: AttendanceLog): string {
+  const shift = log.employee?.shift
+  if (!shift?.startTime || !shift?.endTime) return '—'
+  return formatShiftOptionLabel(shift)
 }
 
 function AttendanceStatusBadge({ status }: { status: string }) {
@@ -101,9 +112,8 @@ function DailyLogTab({
   const debouncedSearch = useDebounce(search, 400)
 
   const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', employeeFilters.branchId || 'all'],
-    queryFn: () =>
-      shiftsApi.getAll(employeeFilters.branchId || undefined),
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
   })
 
   const queryParams = useMemo(
@@ -120,6 +130,7 @@ function DailyLogTab({
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['attendance', queryParams],
     queryFn: () => attendanceApi.getAll(queryParams),
+    refetchInterval: date === todayPakistan() ? 60_000 : false,
   })
 
   const attendanceLogs = logs as AttendanceLog[]
@@ -130,8 +141,17 @@ function DailyLogTab({
     const absent = attendanceLogs.filter((l) => l.status === 'ABSENT').length
     const unmarked = attendanceLogs.filter((l) => l.status === 'UNMARKED').length
     const late = attendanceLogs.filter((l) => l.status === 'LATE').length
-    return { total, present, absent, unmarked, late }
+    const uninformedAbsent = attendanceLogs.filter(
+      (l) => l.status === 'UNINFORMED_ABSENT',
+    ).length
+    const halfDay = attendanceLogs.filter((l) => l.status === 'HALF_DAY').length
+    return { total, present, absent, unmarked, late, uninformedAbsent, halfDay }
   }, [attendanceLogs])
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    attendanceLogs,
+    [queryParams],
+  )
 
   return (
     <div className="space-y-4">
@@ -181,6 +201,20 @@ function DailyLogTab({
         />
       </div>
 
+      <TableRecordCount
+        count={total}
+        label="attendance record"
+        extra={
+          !isLoading && total > 0 ? (
+            <p className="text-sm text-text-secondary">
+              Present: {summary.present} | Unmarked: {summary.unmarked} | Absent:{' '}
+              {summary.absent} | Uninformed Absent: {summary.uninformedAbsent} | Late:{' '}
+              {summary.late} | Half Day: {summary.halfDay}
+            </p>
+          ) : undefined
+        }
+      />
+
       <div className="rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -191,6 +225,7 @@ function DailyLogTab({
               <TableHead>Designation</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Branch</TableHead>
+              <TableHead>Shift</TableHead>
               <TableHead>Check In</TableHead>
               <TableHead>Check Out</TableHead>
               <TableHead>Status</TableHead>
@@ -204,29 +239,32 @@ function DailyLogTab({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(13)].map((__, j) => (
+                  {[...Array(14)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
                   ))}
                 </TableRow>
               ))
-            ) : attendanceLogs.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={13} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={14} className="h-32 text-center text-text-secondary">
                   No attendance records for this date
                 </TableCell>
               </TableRow>
             ) : (
-              attendanceLogs.map((log) => {
+              paginated.map((log) => {
                 const displayLateMinutes = getLogLateMinutes(log)
                 return (
                 <TableRow key={log.id}>
                   <TableCell className="font-mono text-sm">
                     {log.employee?.employeeCode ?? '—'}
                   </TableCell>
-                  <TableCell className="font-medium">
-                    {log.employee?.fullName ?? '—'}
+                  <TableCell>
+                    <EmployeeNameLink
+                      employee={log.employee}
+                      employeeId={log.employeeId}
+                    />
                   </TableCell>
                   <TableCell>
                     {log.employee?.currentDepartment?.name ?? '—'}
@@ -247,7 +285,10 @@ function DailyLogTab({
                     )}
                   </TableCell>
                   <TableCell className="text-text-secondary">
-                    {formatBranchLabel(log.branch)}
+                    {formatBranchTableLabel(log.branch)}
+                  </TableCell>
+                  <TableCell className="text-sm text-text-secondary">
+                    {formatLogShift(log)}
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {formatDateTimeTime(log.checkIn)}
@@ -308,12 +349,12 @@ function DailyLogTab({
           </TableBody>
         </Table>
 
-        {!isLoading && attendanceLogs.length > 0 && (
-          <div className="border-t border-border px-4 py-3 text-sm text-text-secondary">
-            Total: {summary.total} | Present: {summary.present} | Unmarked:{' '}
-            {summary.unmarked} | Absent: {summary.absent} | Late: {summary.late}
-          </div>
-        )}
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       <UpdateAttendanceDialog
@@ -339,9 +380,8 @@ function RelieverSessionsTab() {
   )
 
   const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', employeeFilters.branchId || 'all'],
-    queryFn: () =>
-      shiftsApi.getAll(employeeFilters.branchId || undefined),
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
   })
 
   const queryParams = useMemo(
@@ -358,9 +398,14 @@ function RelieverSessionsTab() {
     queryFn: () => attendanceApi.listRelieverSessions(queryParams),
   })
 
-  const activeCount = (sessions as RelieverSession[]).filter(
-    (s) => !s.checkOut,
-  ).length
+  const relieverSessions = sessions as RelieverSession[]
+
+  const activeCount = relieverSessions.filter((s) => !s.checkOut).length
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    relieverSessions,
+    [queryParams],
+  )
 
   return (
     <div className="space-y-4">
@@ -380,10 +425,15 @@ function RelieverSessionsTab() {
         />
       </div>
 
-      <p className="text-sm text-text-secondary">
-        {sessions.length} session{sessions.length === 1 ? '' : 's'}
-        {activeCount > 0 ? ` · ${activeCount} active` : ''}
-      </p>
+      <TableRecordCount
+        count={total}
+        label="session"
+        extra={
+          activeCount > 0 ? (
+            <p className="text-sm text-text-secondary">{activeCount} active</p>
+          ) : undefined
+        }
+      />
 
       <div className="rounded-lg border border-border bg-white">
         <Table>
@@ -409,7 +459,7 @@ function RelieverSessionsTab() {
                   ))}
                 </TableRow>
               ))
-            ) : sessions.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={7}
@@ -419,17 +469,18 @@ function RelieverSessionsTab() {
                 </TableCell>
               </TableRow>
             ) : (
-              (sessions as RelieverSession[]).map((session) => (
+              paginated.map((session) => (
                 <TableRow key={session.id}>
                   <TableCell className="font-medium">
                     {session.employee?.employeeCode ?? '—'}
                   </TableCell>
                   <TableCell>
-                    {session.employee
-                      ? session.employee.fullName
-                      : '—'}
+                    <EmployeeNameLink
+                      employee={session.employee}
+                      employeeId={session.employeeId}
+                    />
                   </TableCell>
-                  <TableCell>{formatBranchLabel(session.branch)}</TableCell>
+                  <TableCell>{formatBranchTableLabel(session.branch)}</TableCell>
                   <TableCell>{formatDateTimeTime(session.checkIn)}</TableCell>
                   <TableCell>{formatDateTimeTime(session.checkOut)}</TableCell>
                   <TableCell>
@@ -459,6 +510,13 @@ function RelieverSessionsTab() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   )

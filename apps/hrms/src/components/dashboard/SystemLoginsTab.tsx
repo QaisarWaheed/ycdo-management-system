@@ -5,6 +5,8 @@ import { Eye, EyeOff, Pencil } from 'lucide-react'
 import { branchesApi } from '@/api/endpoints/branches'
 import { projectsApi } from '@/api/endpoints/projects'
 import { userPasswordsApi, type UserPasswordRecord } from '@/api/endpoints/userPasswords'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -34,6 +36,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 function ResetPasswordDialog({
@@ -148,6 +151,11 @@ export function SystemLoginsTab() {
       }),
   })
 
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    records,
+    [projectId, branchId],
+  )
+
   const togglePassword = (id: string) => {
     setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }))
   }
@@ -198,6 +206,8 @@ export function SystemLoginsTab() {
         </div>
       </div>
 
+      <TableRecordCount count={total} label="login account" />
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -222,14 +232,14 @@ export function SystemLoginsTab() {
                     ))}
                   </TableRow>
                 ))
-              ) : records.length === 0 ? (
+              ) : paginated.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-text-secondary">
                     No system login accounts found
                   </TableCell>
                 </TableRow>
               ) : (
-                records.map((record) => (
+                paginated.map((record) => (
                   <TableRow key={record.id}>
                     <TableCell>
                       {record.user.branch
@@ -281,6 +291,13 @@ export function SystemLoginsTab() {
               )}
             </TableBody>
           </Table>
+
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
 

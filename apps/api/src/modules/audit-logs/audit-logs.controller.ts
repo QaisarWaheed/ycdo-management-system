@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -11,6 +11,15 @@ import { AuditLogsService } from './audit-logs.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AuditLogsController {
   constructor(private auditLogsService: AuditLogsService) {}
+
+  @Get('logins')
+  @Roles(UserRole.SUPER_ADMIN)
+  findLogins(@CurrentUser() user: { role: UserRole }) {
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Only super admin can list logins');
+    }
+    return this.auditLogsService.findLoginUsers();
+  }
 
   @Get()
   @Roles(

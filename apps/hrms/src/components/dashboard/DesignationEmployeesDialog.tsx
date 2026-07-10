@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { Link } from 'react-router-dom'
 import type { Designation } from '@/api/endpoints/designations'
 import { employeesApi } from '@/api/endpoints/employees'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -94,13 +94,7 @@ export function DesignationEmployeesDialog({
                       {emp.employeeCode}
                     </TableCell>
                     <TableCell>
-                      <Link
-                        to={`/employees/${emp.id}`}
-                        className="font-medium text-primary hover:underline"
-                        onClick={() => onOpenChange(false)}
-                      >
-                        {emp.fullName}
-                      </Link>
+                      <EmployeeNameLink employee={emp} />
                     </TableCell>
                     <TableCell>
                       {formatBranchLabel(emp.currentBranch)}

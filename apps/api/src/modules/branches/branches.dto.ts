@@ -24,6 +24,10 @@ export class CreateBranchDto {
 
   @IsOptional()
   @IsString()
+  abbreviation?: string;
+
+  @IsOptional()
+  @IsString()
   projectId?: string;
 }
 

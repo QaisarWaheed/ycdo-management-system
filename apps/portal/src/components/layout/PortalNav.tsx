@@ -13,7 +13,7 @@ import {
 import { acknowledgementsApi } from '@/api/endpoints/acknowledgements'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/useAuth'
-import { isEmployeePortalRole } from '@/lib/portalRoles'
+import { isPortalEmployeeUser } from '@/lib/portalRoles'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -31,7 +31,7 @@ export function PortalNav() {
   const { pathname } = useLocation()
   const { user } = useAuth()
 
-  const visibleNavItems = isEmployeePortalRole(user?.role)
+  const visibleNavItems = isPortalEmployeeUser(user)
     ? navItems
     : navItems.filter((item) => item.to === '/dashboard')
 

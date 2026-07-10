@@ -1161,6 +1161,7 @@ export class LeaveService {
       include: {
         employee: {
           select: {
+            id: true,
             fullName: true,
             employeeCode: true,
             currentDesignation: true,
@@ -1172,6 +1173,7 @@ export class LeaveService {
           include: {
             reliever: {
               select: {
+                id: true,
                 fullName: true,
                 employeeCode: true,
                 currentBranch: { select: { name: true, address: true } },
@@ -1193,6 +1195,7 @@ export class LeaveService {
 
     return leaves.map((leave) => ({
       employee: {
+        id: leave.employeeId,
         name: leave.employee.fullName,
         code: leave.employee.employeeCode,
         designation: leave.employee.currentDesignation,
@@ -1202,6 +1205,7 @@ export class LeaveService {
       },
       reliever: leave.relieverRequest
         ? {
+            id: leave.relieverRequest.relieverId,
             name: leave.relieverRequest.reliever.fullName,
             code: leave.relieverRequest.reliever.employeeCode,
             branch: formatBranchLabel(

@@ -4,6 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { stripPersonalEmployeeFields } from '../../common/hr-executive.util';
+import { inferShiftNameFromDuty } from '../../common/shift-inference.util';
 import {
   ChangeType,
   EmployeeStatus,
@@ -91,14 +93,15 @@ export class EmployeesService {
     }
 
     if (dto.shiftId) {
-      await this.ensureShiftInBranch(dto.shiftId, dto.currentBranchId);
+      await this.ensureShiftExists(dto.shiftId);
     }
 
     let resolvedShiftId = dto.shiftId;
-    if (dto.shiftName) {
-      resolvedShiftId = await this.resolveOrCreateShift(
-        dto.shiftName,
-        dto.currentBranchId,
+    if (!resolvedShiftId && dto.dutyStartTime) {
+      resolvedShiftId = await this.assignShiftFromDuty(
+        dto.dutyStartTime,
+        dto.dutyEndTime,
+        dto.dutyTotalHours,
       );
     }
 
@@ -372,7 +375,12 @@ export class EmployeesService {
       };
     }
 
-    if (filters.shiftIds) {
+    if (filters.shiftName) {
+      where.shift = {
+        name: filters.shiftName,
+        isActive: true,
+      };
+    } else if (filters.shiftIds) {
       const ids = filters.shiftIds.split(',').filter(Boolean);
       if (ids.length > 0) {
         where.shiftId = { in: ids };
@@ -472,6 +480,7 @@ export class EmployeesService {
             id: true,
             name: true,
             address: true,
+            abbreviation: true,
             projectId: true,
             project: { select: { id: true, name: true, type: true } },
           },
@@ -620,10 +629,18 @@ export class EmployeesService {
     return employee;
   }
 
-  async update(id: string, dto: UpdateEmployeeDto) {
+  async update(
+    id: string,
+    dto: UpdateEmployeeDto,
+    actingRole?: UserRole | string,
+  ) {
     await this.findOne(id);
 
-    if (dto.currentBranchId !== undefined || dto.currentDepartmentId !== undefined) {
+    const sanitizedDto = actingRole
+      ? stripPersonalEmployeeFields(dto, actingRole)
+      : dto;
+
+    if (sanitizedDto.currentBranchId !== undefined || sanitizedDto.currentDepartmentId !== undefined) {
       throw new BadRequestException(
         'Use the transfer endpoint to change branch or department',
       );
@@ -631,76 +648,92 @@ export class EmployeesService {
 
     const data: Prisma.EmployeeUpdateInput = {};
 
-    if (dto.fullName !== undefined) data.fullName = dto.fullName;
-    if (dto.fatherName !== undefined) data.fatherName = dto.fatherName;
-    if (dto.phone !== undefined) data.phone = dto.phone;
-    if (dto.email !== undefined) data.email = dto.email;
-    if (dto.dateOfBirth !== undefined) {
-      data.dateOfBirth = new Date(dto.dateOfBirth);
+    if (sanitizedDto.fullName !== undefined) data.fullName = sanitizedDto.fullName;
+    if (sanitizedDto.fatherName !== undefined) data.fatherName = sanitizedDto.fatherName;
+    if (sanitizedDto.phone !== undefined) data.phone = sanitizedDto.phone;
+    if (sanitizedDto.email !== undefined) data.email = sanitizedDto.email;
+    if (sanitizedDto.dateOfBirth !== undefined) {
+      data.dateOfBirth = new Date(sanitizedDto.dateOfBirth);
     }
-    if (dto.joiningDate !== undefined) {
-      data.joiningDate = new Date(dto.joiningDate);
+    if (sanitizedDto.joiningDate !== undefined) {
+      data.joiningDate = new Date(sanitizedDto.joiningDate);
     }
-    if (dto.gender !== undefined) data.gender = dto.gender;
-    if (dto.biometricId !== undefined) data.biometricId = dto.biometricId;
-    if (dto.currentDesignation !== undefined) {
-      data.currentDesignation = dto.currentDesignation;
+    if (sanitizedDto.gender !== undefined) data.gender = sanitizedDto.gender;
+    if (sanitizedDto.biometricId !== undefined) data.biometricId = sanitizedDto.biometricId;
+    if (sanitizedDto.currentDesignation !== undefined) {
+      data.currentDesignation = sanitizedDto.currentDesignation;
     }
-    if (dto.fatherContactNumber !== undefined) {
-      data.fatherContactNumber = dto.fatherContactNumber;
+    if (sanitizedDto.fatherContactNumber !== undefined) {
+      data.fatherContactNumber = sanitizedDto.fatherContactNumber;
     }
-    if (dto.emergencyContactName !== undefined) {
-      data.emergencyContactName = dto.emergencyContactName;
+    if (sanitizedDto.emergencyContactName !== undefined) {
+      data.emergencyContactName = sanitizedDto.emergencyContactName;
     }
-    if (dto.emergencyContactNumber !== undefined) {
-      data.emergencyContactNumber = dto.emergencyContactNumber;
+    if (sanitizedDto.emergencyContactNumber !== undefined) {
+      data.emergencyContactNumber = sanitizedDto.emergencyContactNumber;
     }
-    if (dto.spouseName !== undefined) {
-      data.spouseName = dto.spouseName;
+    if (sanitizedDto.spouseName !== undefined) {
+      data.spouseName = sanitizedDto.spouseName;
     }
-    if (dto.spouseContactNumber !== undefined) {
-      data.spouseContactNumber = dto.spouseContactNumber;
+    if (sanitizedDto.spouseContactNumber !== undefined) {
+      data.spouseContactNumber = sanitizedDto.spouseContactNumber;
     }
-    if (dto.caste !== undefined) data.caste = dto.caste;
-    if (dto.domicile !== undefined) data.domicile = dto.domicile;
-    if (dto.currentAddress !== undefined) {
-      data.currentAddress = dto.currentAddress;
+    if (sanitizedDto.caste !== undefined) data.caste = sanitizedDto.caste;
+    if (sanitizedDto.domicile !== undefined) data.domicile = sanitizedDto.domicile;
+    if (sanitizedDto.currentAddress !== undefined) {
+      data.currentAddress = sanitizedDto.currentAddress;
     }
-    if (dto.permanentAddress !== undefined) {
-      data.permanentAddress = dto.permanentAddress;
+    if (sanitizedDto.permanentAddress !== undefined) {
+      data.permanentAddress = sanitizedDto.permanentAddress;
     }
-    if (dto.district !== undefined) data.district = dto.district;
-    if (dto.tehsil !== undefined) data.tehsil = dto.tehsil;
-    if (dto.policeStation !== undefined) {
-      data.policeStation = dto.policeStation;
+    if (sanitizedDto.district !== undefined) data.district = sanitizedDto.district;
+    if (sanitizedDto.tehsil !== undefined) data.tehsil = sanitizedDto.tehsil;
+    if (sanitizedDto.policeStation !== undefined) {
+      data.policeStation = sanitizedDto.policeStation;
     }
-    if (dto.bloodGroup !== undefined) data.bloodGroup = dto.bloodGroup;
-    if (dto.dutyStartTime !== undefined) data.dutyStartTime = dto.dutyStartTime;
-    if (dto.dutyEndTime !== undefined) data.dutyEndTime = dto.dutyEndTime;
-    if (dto.province !== undefined) data.province = dto.province;
-    if (dto.city !== undefined) data.city = dto.city;
-    if (dto.permanentProvince !== undefined) {
-      data.permanentProvince = dto.permanentProvince;
+    if (sanitizedDto.bloodGroup !== undefined) data.bloodGroup = sanitizedDto.bloodGroup;
+    if (sanitizedDto.dutyStartTime !== undefined) data.dutyStartTime = sanitizedDto.dutyStartTime;
+    if (sanitizedDto.dutyEndTime !== undefined) data.dutyEndTime = sanitizedDto.dutyEndTime;
+    if (sanitizedDto.province !== undefined) data.province = sanitizedDto.province;
+    if (sanitizedDto.city !== undefined) data.city = sanitizedDto.city;
+    if (sanitizedDto.permanentProvince !== undefined) {
+      data.permanentProvince = sanitizedDto.permanentProvince;
     }
-    if (dto.permanentCity !== undefined) data.permanentCity = dto.permanentCity;
+    if (sanitizedDto.permanentCity !== undefined) data.permanentCity = sanitizedDto.permanentCity;
 
-    if (dto.email) {
+    if (sanitizedDto.email) {
       const existingEmail = await this.prisma.employee.findFirst({
-        where: { email: dto.email, NOT: { id } },
+        where: { email: sanitizedDto.email, NOT: { id } },
       });
       if (existingEmail) {
         throw new ConflictException('Employee with this email already exists');
       }
     }
 
-    if (dto.biometricId) {
+    if (sanitizedDto.biometricId) {
       const existingBiometric = await this.prisma.employee.findFirst({
-        where: { biometricId: dto.biometricId, NOT: { id } },
+        where: { biometricId: sanitizedDto.biometricId, NOT: { id } },
       });
       if (existingBiometric) {
         throw new ConflictException(
           'Employee with this biometric ID already exists',
         );
+      }
+    }
+
+    if (
+      sanitizedDto.dutyStartTime !== undefined ||
+      sanitizedDto.dutyEndTime !== undefined ||
+      sanitizedDto.dutyTotalHours !== undefined
+    ) {
+      const employee = await this.findOne(id);
+      const shiftId = await this.assignShiftFromDuty(
+        sanitizedDto.dutyStartTime ?? employee.dutyStartTime,
+        sanitizedDto.dutyEndTime ?? employee.dutyEndTime,
+        sanitizedDto.dutyTotalHours ?? employee.dutyTotalHours,
+      );
+      if (shiftId) {
+        data.shift = { connect: { id: shiftId } };
       }
     }
 
@@ -811,57 +844,95 @@ export class EmployeesService {
     });
   }
 
-  private async ensureShiftInBranch(shiftId: string, branchId: string) {
+  private async ensureShiftExists(shiftId: string) {
     const shift = await this.prisma.shift.findFirst({
-      where: { id: shiftId, branchId, isActive: true },
+      where: { id: shiftId, isActive: true },
     });
 
     if (!shift) {
-      throw new NotFoundException(
-        `Shift with id ${shiftId} not found in branch`,
-      );
+      throw new NotFoundException(`Shift with id ${shiftId} not found`);
+    }
+  }
+
+  private async assignShiftFromDuty(
+    dutyStartTime?: string | null,
+    dutyEndTime?: string | null,
+    dutyTotalHours?: number | null,
+  ): Promise<string | undefined> {
+    const shiftName = inferShiftNameFromDuty(
+      dutyStartTime,
+      dutyEndTime,
+      dutyTotalHours,
+    );
+    if (!shiftName || !dutyStartTime) {
+      return undefined;
+    }
+
+    const { startTime, endTime } = this.defaultShiftTimes(
+      shiftName,
+      dutyStartTime,
+      dutyEndTime,
+      dutyTotalHours,
+    );
+
+    return this.resolveOrCreateShift(shiftName, startTime, endTime);
+  }
+
+  private defaultShiftTimes(
+    shiftName: string,
+    dutyStartTime: string,
+    dutyEndTime?: string | null,
+    dutyTotalHours?: number | null,
+  ) {
+    if (dutyTotalHours === 24 || shiftName === '24 Hours') {
+      return { startTime: '00:00', endTime: '23:59' };
+    }
+
+    return {
+      startTime: dutyStartTime,
+      endTime: dutyEndTime ?? this.fallbackEndTime(shiftName),
+    };
+  }
+
+  private fallbackEndTime(shiftName: string): string {
+    switch (shiftName) {
+      case 'Morning':
+        return '14:00';
+      case 'Evening':
+        return '20:00';
+      case 'Night':
+        return '08:00';
+      case '24 Hours':
+        return '23:59';
+      default:
+        return '20:00';
     }
   }
 
   private async resolveOrCreateShift(
     shiftName: string,
-    branchId: string,
+    startTime: string,
+    endTime: string,
   ): Promise<string> {
     const existing = await this.prisma.shift.findFirst({
-      where: { name: shiftName, branchId, isActive: true },
+      where: {
+        name: shiftName,
+        startTime,
+        endTime,
+        isActive: true,
+      },
     });
 
     if (existing) {
       return existing.id;
     }
 
-    const startTime =
-      shiftName === 'Morning'
-        ? '08:00'
-        : shiftName === 'Evening'
-          ? '14:00'
-          : shiftName === 'Night'
-            ? '20:00'
-            : shiftName === '24 Hours'
-              ? '00:00'
-              : '08:00';
-    const endTime =
-      shiftName === 'Morning'
-        ? '14:00'
-        : shiftName === 'Evening'
-          ? '20:00'
-          : shiftName === 'Night'
-            ? '08:00'
-            : shiftName === '24 Hours'
-              ? '23:59'
-              : '20:00';
-
     const created = await this.prisma.shift.create({
       data: {
         name: shiftName,
-        branchId,
         startTime,
         endTime,
+        branchId: null,
       },
     });
 
@@ -1009,6 +1080,24 @@ export class EmployeesService {
       }
       if (dto.dutyTotalHours !== undefined) {
         data.dutyTotalHours = dto.dutyTotalHours;
+      }
+
+      const nextStart = dto.dutyStartTime ?? employee.dutyStartTime;
+      const nextEnd = dto.dutyEndTime ?? employee.dutyEndTime;
+      const nextHours = dto.dutyTotalHours ?? employee.dutyTotalHours;
+      if (
+        dto.dutyStartTime !== undefined ||
+        dto.dutyEndTime !== undefined ||
+        dto.dutyTotalHours !== undefined
+      ) {
+        const shiftId = await this.assignShiftFromDuty(
+          nextStart,
+          nextEnd,
+          nextHours,
+        );
+        if (shiftId) {
+          data.shift = { connect: { id: shiftId } };
+        }
       }
 
       const result = await tx.employee.update({
@@ -1300,8 +1389,8 @@ export class EmployeesService {
       if (!dto.cnic) {
         throw new BadRequestException('CNIC is required');
       }
-      if (!dto.shiftName) {
-        throw new BadRequestException('Shift is required');
+      if (!dto.dutyStartTime || !dto.dutyEndTime) {
+        throw new BadRequestException('Duty hours are required');
       }
       if (dto.fatherStatus === 'ALIVE' && !dto.fatherContactNumber) {
         throw new BadRequestException('Father contact number is required');

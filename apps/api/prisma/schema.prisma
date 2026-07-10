@@ -27,9 +27,10 @@ enum ProjectType {
 }
 
 model Branch {
-  id        String   @id @default(uuid())
-  name      String
-  address   String?
+  id           String   @id @default(uuid())
+  name         String
+  abbreviation String?
+  address      String?
   phone     String?
   isActive  Boolean  @default(true)
   sortOrder Int      @default(999)
@@ -60,17 +61,17 @@ model BiometricDevice {
 
 model Shift {
   id        String   @id @default(uuid())
-  branchId  String
+  branchId  String?
   name      String
   startTime String
   endTime   String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  branch    Branch     @relation(fields: [branchId], references: [id])
+  branch    Branch?    @relation(fields: [branchId], references: [id])
   employees Employee[]
 
-  @@unique([branchId, name])
+  @@unique([name, startTime, endTime])
 }
 
 model Department {
@@ -659,6 +660,18 @@ model User {
   incentivesAdded Incentive[]
   leaveApprovals LeaveApproval[] @relation("LeaveApprovals")
   passwordRecord UserPassword?
+  permissions    UserPermission[]
+}
+
+model UserPermission {
+  id         String     @id @default(uuid())
+  userId     String
+  permission Permission
+  granted    Boolean
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
 }
 
 model UserPassword {
@@ -695,6 +708,23 @@ model PortalAttendance {
   employee Employee @relation(fields: [employeeId], references: [id])
 }
 
+enum Permission {
+  ATTENDANCE_MARK
+  ATTENDANCE_EDIT
+  LEAVE_APPROVE
+  LEAVE_APPLY_OTHERS
+  PAYROLL_MANAGE
+  EMPLOYEES_CREATE
+  EMPLOYEES_EDIT
+  DISCIPLINARY_MANAGE
+  LETTERS_GENERATE
+  INCENTIVES_MANAGE
+  RECRUITMENT_MANAGE
+  REPORTS_VIEW
+  BROADCASTS_SEND
+  ORG_SETUP
+}
+
 enum UserRole {
   SUPER_ADMIN
   IT_ADMIN
@@ -702,6 +732,7 @@ enum UserRole {
   CHAIRMAN
   HR_OPERATIONS_MANAGER
   HR_ADMIN_MANAGER
+  HR_EXECUTIVE
   ADMIN_OFFICER
   HR_MANAGER
   ADMIN_MANAGER

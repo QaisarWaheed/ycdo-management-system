@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { branchesApi } from '@/api/endpoints/branches'
 import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -210,7 +211,9 @@ function BranchDetailSheet({
                       <TableCell className="font-mono text-xs">
                         {emp.employeeCode}
                       </TableCell>
-                      <TableCell>{emp.fullName}</TableCell>
+                      <TableCell>
+                        <EmployeeNameLink employee={emp} />
+                      </TableCell>
                       <TableCell>{emp.currentDesignation}</TableCell>
                       <TableCell>
                         <StatusBadge status={emp.status} />

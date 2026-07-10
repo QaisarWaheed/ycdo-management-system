@@ -2,12 +2,15 @@ import { UserRole } from '@prisma/client';
 import {
   IsEmail,
   IsEnum,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
   MinLength,
 } from 'class-validator';
+
+export type AuthClient = 'portal' | 'hrms';
 
 export class LoginDto {
   @IsEmail()
@@ -16,6 +19,11 @@ export class LoginDto {
   @IsString()
   @MinLength(6)
   password: string;
+
+  /** Which app is signing in — enforces employee vs system login separation. */
+  @IsOptional()
+  @IsIn(['portal', 'hrms'])
+  client?: AuthClient;
 }
 
 export class RegisterDto {

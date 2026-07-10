@@ -70,7 +70,6 @@ export class BranchesService {
             where: { isActive: true, isDeleted: false },
             orderBy: { sortOrder: 'asc' },
           },
-          shifts: { where: { isActive: true }, orderBy: { startTime: 'asc' } },
           project: { select: { name: true, type: true } },
           _count: {
             select: { employees: true, departments: true, shifts: true },
@@ -92,7 +91,6 @@ export class BranchesService {
       include: {
         project: true,
         departments: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } },
-        shifts: { where: { isActive: true }, orderBy: { startTime: 'asc' } },
       },
     });
 
@@ -100,15 +98,26 @@ export class BranchesService {
       throw new NotFoundException(`Branch with id ${id} not found`);
     }
 
-    return branch;
+    const shifts = await this.prisma.shift.findMany({
+      where: { isActive: true },
+      orderBy: { startTime: 'asc' },
+      include: { _count: { select: { employees: true } } },
+    });
+
+    return { ...branch, shifts };
   }
 
   async update(id: string, dto: UpdateBranchDto) {
     await this.findOne(id);
 
+    const data = { ...dto };
+    if (dto.abbreviation !== undefined) {
+      data.abbreviation = dto.abbreviation.trim() || null;
+    }
+
     return this.prisma.branch.update({
       where: { id },
-      data: dto,
+      data,
     });
   }
 

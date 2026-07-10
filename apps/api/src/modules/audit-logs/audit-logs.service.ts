@@ -14,16 +14,23 @@ export class AuditLogsService {
 
   async findAll(query: AuditLogsQueryDto, actingUser: ActingUser) {
     const limit = query.limit ?? 20;
-    const userId = query.actingUserId ?? actingUser.id;
+    const canViewAll = actingUser.role === UserRole.SUPER_ADMIN;
+
+    const userId = canViewAll
+      ? query.actingUserId
+      : (query.actingUserId ?? actingUser.id);
 
     if (
-      actingUser.role !== UserRole.SUPER_ADMIN &&
+      !canViewAll &&
       userId !== actingUser.id
     ) {
       throw new ForbiddenException('You can only view your own activity');
     }
 
-    const where: Prisma.AuditLogWhereInput = { userId };
+    const where: Prisma.AuditLogWhereInput = {};
+    if (userId) {
+      where.userId = userId;
+    }
     if (query.entity) {
       where.entity = query.entity;
     }
@@ -46,6 +53,21 @@ export class AuditLogsService {
     );
 
     return enriched;
+  }
+
+  async findLoginUsers() {
+    return this.prisma.user.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        employee: {
+          select: { fullName: true },
+        },
+      },
+      orderBy: { email: 'asc' },
+    });
   }
 
   private async resolveEmployeeName(log: {
@@ -108,6 +130,14 @@ export class AuditLogsService {
         return `Rejected leave for ${name}`;
       case 'EMPLOYEE_CREATED':
         return `Added new employee ${name}`;
+      case 'PAYROLL_STATUS_CHANGED':
+        return `Updated payroll status for ${name}`;
+      case 'SALARY_INCREMENT':
+        return `Applied salary increment for ${name}`;
+      case 'UPDATE_USER_PASSWORD':
+        return 'Updated a user login password';
+      case 'PASSWORD_RESET':
+        return 'Reset a user password';
       default:
         return `${log.action.replace(/_/g, ' ').toLowerCase()} — ${name}`;
     }

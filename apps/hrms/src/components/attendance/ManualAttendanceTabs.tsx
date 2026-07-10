@@ -4,7 +4,10 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -24,6 +27,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { getLockedBranchId } from '@/lib/branchScope'
 import { useAuth } from '@/hooks/useAuth'
 import {
@@ -234,6 +238,13 @@ export function CheckInManualTab() {
     return sortEmployeesByHierarchy(filtered)
   }, [activeEmployees, dutyStartTime])
 
+  const filterDeps = [effectiveBranchId, departmentId, dutyStartTime]
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    employees,
+    filterDeps,
+  )
+
   const markMutation = useMutation({
     mutationFn: async ({
       employee,
@@ -304,6 +315,8 @@ export function CheckInManualTab() {
         onDutyStartTimeChange={setDutyStartTime}
       />
 
+      <TableRecordCount count={total} label="employee" />
+
       <div className="overflow-x-auto rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -333,14 +346,14 @@ export function CheckInManualTab() {
                   ))}
                 </TableRow>
               ))
-            ) : employees.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-text-secondary">
                   No employees pending check-in for the current duty hours
                 </TableCell>
               </TableRow>
             ) : (
-              employees.map((emp) => {
+              paginated.map((emp) => {
                 const dutyStart =
                   getEmployeeDutyStartTime(emp) || '08:00'
                 const withinGrace =
@@ -357,7 +370,9 @@ export function CheckInManualTab() {
                         : 'bg-muted/40 opacity-60'),
                   )}
                 >
-                  <TableCell className="font-medium">{emp.fullName}</TableCell>
+                  <TableCell>
+                    <EmployeeNameLink employee={emp} />
+                  </TableCell>
                   <TableCell className="font-mono text-sm">
                     {emp.employeeCode}
                   </TableCell>
@@ -404,6 +419,13 @@ export function CheckInManualTab() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   )
@@ -476,6 +498,13 @@ export function CheckOutManualTab() {
     )
   }, [logs, dutyStartTime])
 
+  const filterDeps = [effectiveBranchId, departmentId, dutyStartTime]
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    pendingCheckout,
+    filterDeps,
+  )
+
   const markMutation = useMutation({
     mutationFn: async ({
       log,
@@ -529,6 +558,8 @@ export function CheckOutManualTab() {
         onDutyStartTimeChange={setDutyStartTime}
       />
 
+      <TableRecordCount count={total} label="attendance record" />
+
       <div className="overflow-x-auto rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -558,17 +589,20 @@ export function CheckOutManualTab() {
                   ))}
                 </TableRow>
               ))
-            ) : pendingCheckout.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-text-secondary">
                   No employees pending check-out
                 </TableCell>
               </TableRow>
             ) : (
-              pendingCheckout.map((log) => (
+              paginated.map((log) => (
                 <TableRow key={log.id}>
-                  <TableCell className="font-medium">
-                    {log.employee?.fullName ?? '—'}
+                  <TableCell>
+                    <EmployeeNameLink
+                      employee={log.employee}
+                      employeeId={log.employeeId}
+                    />
                   </TableCell>
                   <TableCell className="font-mono text-sm">
                     {log.employee?.employeeCode ?? '—'}
@@ -602,6 +636,13 @@ export function CheckOutManualTab() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   )

@@ -30,6 +30,7 @@ import {
 } from './employees.dto';
 import { EmployeesService } from './employees.service';
 import { photoMulterConfig } from './photo.multer.config';
+import { assertCanEditPersonalInfo } from '../../common/hr-executive.util';
 
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -198,7 +199,7 @@ export class EmployeesController {
         email: dto.email,
       });
     }
-    return this.employeesService.update(id, dto);
+    return this.employeesService.update(id, dto, user.role);
   }
 
   @Post(':id/transfer')
@@ -241,7 +242,9 @@ export class EmployeesController {
   uploadPhoto(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: { role: UserRole },
   ) {
+    assertCanEditPersonalInfo(user.role);
     if (!file) {
       throw new BadRequestException('No photo uploaded');
     }

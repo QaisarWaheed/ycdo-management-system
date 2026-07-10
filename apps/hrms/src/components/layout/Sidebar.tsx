@@ -8,11 +8,12 @@ import {
   Clock,
   FileText,
   Gift,
-  KeyRound,
+  History,
   LayoutDashboard,
   LogOut,
   MapPin,
-  Monitor,
+  Shield,
+  Timer,
   UserPlus,
   Users,
   Wallet,
@@ -39,24 +40,40 @@ const allNavItems = [
 ]
 
 const itTeamNavItems = [
-  { to: '/admin/employee-passwords', label: 'Employee Logins', icon: KeyRound },
-  { to: '/admin/system-logins', label: 'System Logins', icon: Monitor },
+  { to: '/admin/login-access', label: 'Login Access', icon: Shield },
 ]
+
+const activityTrailNavItem = {
+  to: '/activity-trail',
+  label: 'Activity Trail',
+  icon: History,
+}
+
+const shiftsNavItem = {
+  to: '/shifts',
+  label: 'Shifts',
+  icon: Timer,
+}
 
 function navItemsForRole(role?: string) {
   if (!role) return allNavItems
 
   const fullAccess = [
     'SUPER_ADMIN',
+    'HR_EXECUTIVE',
     'HR_MANAGER',
     'HR_ADMIN_MANAGER',
   ]
   if (fullAccess.includes(role)) {
     const items = allNavItems.filter((item) => item.to !== '/broadcasts')
+    const withActivity = [
+      ...items,
+      ...(role === 'SUPER_ADMIN' ? [activityTrailNavItem, shiftsNavItem] : []),
+    ]
     if (role === 'SUPER_ADMIN') {
-      return [...items, ...itTeamNavItems]
+      return [...withActivity, ...itTeamNavItems]
     }
-    return items
+    return withActivity
   }
 
   if (role === 'ADMIN_MANAGER' || role === 'ADMIN_OFFICER') {

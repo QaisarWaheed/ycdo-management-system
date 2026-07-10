@@ -10,9 +10,12 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { stipendReceiptsApi } from '@/api/endpoints/stipendReceipts'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { PKRInput } from '@/components/common/PKRInput'
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
@@ -61,6 +64,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { cn } from '@/lib/utils'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
@@ -542,6 +546,11 @@ function MonthlyPayrollTab() {
     queryFn: () => payrollApi.getEntries(filters),
   })
 
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    entries,
+    [filters],
+  )
+
   const generateMutation = useMutation({
     mutationFn: async () => {
       const employees = await employeesApi.getAll({
@@ -642,6 +651,8 @@ function MonthlyPayrollTab() {
         </Button>
       </div>
 
+      <TableRecordCount count={total} label="payroll entry" />
+
       <div className="rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -666,24 +677,20 @@ function MonthlyPayrollTab() {
                   ))}
                 </TableRow>
               ))
-            ) : entries.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-text-secondary">
                   No payroll entries for this period
                 </TableCell>
               </TableRow>
             ) : (
-              entries.map((entry) => {
+              paginated.map((entry) => {
                 const emp = entry.stipendRecord?.employee
                 return (
                   <TableRow key={entry.id}>
                     <TableCell>
                       <div>
-                        <p className="font-medium">
-                          {emp
-                            ? `${emp.fullName}`
-                            : '—'}
-                        </p>
+                        <EmployeeNameLink employee={emp} />
                         <p className="font-mono text-xs text-text-secondary">
                           {emp?.employeeCode ?? '—'}
                         </p>
@@ -757,6 +764,13 @@ function MonthlyPayrollTab() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       <PayrollDetailDialog
@@ -1255,6 +1269,11 @@ function StipendReceiptsTab() {
     return list.filter((r) => r.status === statusFilter)
   }, [receipts, statusFilter])
 
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    filtered,
+    [monthYear, statusFilter],
+  )
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -1278,6 +1297,8 @@ function StipendReceiptsTab() {
         </div>
         <Button onClick={() => setGenerateOpen(true)}>Generate Receipts</Button>
       </div>
+
+      <TableRecordCount count={total} label="stipend receipt" />
 
       <div className="rounded-lg border border-border bg-white">
         <Table>
@@ -1303,20 +1324,18 @@ function StipendReceiptsTab() {
                   ))}
                 </TableRow>
               ))
-            ) : filtered.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-text-secondary">
                   No stipend receipts found
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((receipt) => (
+              paginated.map((receipt) => (
                 <Fragment key={receipt.id}>
                   <TableRow>
                     <TableCell>
-                      {receipt.employee
-                        ? `${receipt.employee.fullName}`
-                        : '—'}
+                      <EmployeeNameLink employee={receipt.employee} />
                     </TableCell>
                     <TableCell>
                       {receipt.month}/{receipt.year}
@@ -1368,6 +1387,13 @@ function StipendReceiptsTab() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       <ConfirmDialog

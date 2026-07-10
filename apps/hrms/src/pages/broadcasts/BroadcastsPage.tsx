@@ -5,6 +5,8 @@ import { Bell, Plus } from 'lucide-react'
 import { Navigate } from 'react-router-dom'
 import { broadcastsApi } from '@/api/endpoints/broadcasts'
 import { employeesApi } from '@/api/endpoints/employees'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -36,6 +38,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { useAuth } from '@/hooks/useAuth'
 import {
   BROADCAST_TARGETS,
@@ -166,6 +169,13 @@ function BroadcastsPageContent() {
     queryFn: () => broadcastsApi.getAll(),
   })
 
+  const broadcastList = broadcasts as NotificationBroadcast[]
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    broadcastList,
+    [],
+  )
+
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => broadcastsApi.deactivate(id),
     onSuccess: () => {
@@ -204,6 +214,8 @@ function BroadcastsPageContent() {
         </Button>
       </div>
 
+      <TableRecordCount count={total} label="broadcast" />
+
       <div className="rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -228,14 +240,14 @@ function BroadcastsPageContent() {
                   ))}
                 </TableRow>
               ))
-            ) : broadcasts.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-text-secondary">
                   No broadcasts yet
                 </TableCell>
               </TableRow>
             ) : (
-              (broadcasts as NotificationBroadcast[]).map((b) => (
+              paginated.map((b) => (
                 <TableRow key={b.id}>
                   <TableCell className="font-medium">{b.title}</TableCell>
                   <TableCell className="max-w-[200px] truncate text-text-secondary">
@@ -274,6 +286,13 @@ function BroadcastsPageContent() {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       <SendBroadcastDialog open={sendOpen} onOpenChange={setSendOpen} />

@@ -14,6 +14,17 @@ export interface AuditLogEntry {
 }
 
 export const auditLogsApi = {
+  getLogins: () =>
+    api.get<
+      unknown,
+      Array<{
+        id: string
+        email: string
+        role: string
+        employee?: { fullName: string } | null
+      }>
+    >('/audit-logs/logins'),
+
   getAll: (params?: {
     actingUserId?: string
     limit?: number

@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { ApprovalTrail } from '@/components/leave/ApprovalTrail'
 import {
   ApproveRejectDialog,
@@ -15,6 +16,8 @@ import {
   type ApprovalRole,
 } from '@/components/leave/ApproveRejectDialog'
 import { StageBadge } from '@/components/leave/StageBadge'
+import { TablePagination } from '@/components/common/TablePagination'
+import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
@@ -56,6 +59,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { getHierarchyPriority } from '@/lib/employeeHierarchy'
 import { useAuthStore } from '@/store/auth.store'
 import { cn } from '@/lib/utils'
@@ -181,7 +185,10 @@ function TodayRelieversModal({
                   <TableRow key={idx}>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{row.employee.name}</p>
+                        <EmployeeNameLink
+                          employee={row.employee}
+                          name={row.employee.name}
+                        />
                         <p className="font-mono text-xs text-text-secondary">
                           {row.employee.code}
                         </p>
@@ -191,7 +198,10 @@ function TodayRelieversModal({
                     <TableCell>
                       {row.reliever ? (
                         <div>
-                          <p className="font-medium">{row.reliever.name}</p>
+                          <EmployeeNameLink
+                            employee={row.reliever}
+                            name={row.reliever.name}
+                          />
                           <p className="font-mono text-xs text-text-secondary">
                             {row.reliever.code}
                           </p>
@@ -356,6 +366,13 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
     queryFn: () => leaveApi.getAll(filters),
   })
 
+  const leaveRecords = leaves as LeaveRecord[]
+
+  const { page, setPage, totalPages, paginated, total } = usePagination(
+    leaveRecords,
+    [filters],
+  )
+
   const approvalRole: ApprovalRole | null = approveLeave
     ? canApproveLeave(user?.role, approveLeave)
     : null
@@ -414,6 +431,8 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
         </div>
       </div>
 
+      <TableRecordCount count={total} label="leave request" />
+
       <div className="rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
@@ -441,23 +460,19 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
                   ))}
                 </TableRow>
               ))
-            ) : leaves.length === 0 ? (
+            ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={10} className="h-32 text-center text-text-secondary">
                   No leave requests found
                 </TableCell>
               </TableRow>
             ) : (
-              (leaves as LeaveRecord[]).map((leave) => (
+              paginated.map((leave) => (
                 <Fragment key={leave.id}>
                   <TableRow>
                     <TableCell>
                       <div>
-                        <p className="font-medium">
-                          {leave.employee
-                            ? leave.employee.fullName
-                            : '—'}
-                        </p>
+                        <EmployeeNameLink employee={leave.employee} />
                         <p className="font-mono text-xs text-text-secondary">
                           {leave.employee?.employeeCode ?? '—'}
                         </p>
@@ -490,9 +505,9 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
                       />
                     </TableCell>
                     <TableCell>
-                      {leave.relieverRequest?.reliever
-                        ? leave.relieverRequest.reliever.fullName
-                        : '—'}
+                      <EmployeeNameLink
+                        employee={leave.relieverRequest?.reliever}
+                      />
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
@@ -540,6 +555,13 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
             )}
           </TableBody>
         </Table>
+
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+        />
       </div>
 
       <ApproveRejectDialog

@@ -19,8 +19,11 @@ import { RecruitmentPage } from '@/pages/recruitment/RecruitmentPage'
 import { BranchesPage } from '@/pages/branches/BranchesPage'
 import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
 import { ProfilePage } from '@/pages/settings/ProfilePage'
+import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
 import { UserPasswordsPage } from '@/pages/admin/UserPasswordsPage'
 import { SystemLoginsPage } from '@/pages/admin/SystemLoginsPage'
+import { ActivityTrailPage } from '@/pages/activity/ActivityTrailPage'
+import { ShiftsPage } from '@/pages/shifts/ShiftsPage'
 
 export default function App() {
   return (
@@ -153,6 +156,30 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/shifts"
+        element={
+          <ProtectedRoute>
+            <ShiftsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/activity-trail"
+        element={
+          <ProtectedRoute>
+            <ActivityTrailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/login-access"
+        element={
+          <ProtectedRoute>
+            <LoginAccessPage />
           </ProtectedRoute>
         }
       />

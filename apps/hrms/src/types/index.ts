@@ -30,6 +30,7 @@ export const GENDERS: Gender[] = ['MALE', 'FEMALE', 'OTHER']
 export interface Branch {
   id: string
   name: string
+  abbreviation?: string | null
   address?: string | null
   phone?: string | null
   projectId?: string | null
@@ -85,12 +86,12 @@ export interface Project {
 
 export interface Shift {
   id: string
-  branchId: string
+  branchId?: string | null
   name: string
   startTime: string
   endTime: string
   isActive?: boolean
-  branch?: { name: string; address?: string | null }
+  branch?: { name: string; address?: string | null; abbreviation?: string | null } | null
   _count?: { employees: number }
 }
 
@@ -121,7 +122,7 @@ export interface RelieverSession {
     fullName: string
     employeeCode: string
   }
-  branch?: { name: string; address?: string | null }
+  branch?: { name: string; address?: string | null; abbreviation?: string | null }
 }
 
 export type BroadcastTarget =
@@ -240,7 +241,7 @@ export interface Employee {
     role: string
     isActive: boolean
     branchId?: string | null
-    branch?: { name: string; address?: string | null } | null
+    branch?: { name: string; address?: string | null; abbreviation?: string | null } | null
     passwordRecord?: { plainText: string } | null
   } | null
 }
@@ -293,7 +294,7 @@ export interface BranchChangeRequest {
   employee?: {
     fullName: string
     employeeCode: string
-    currentBranch?: { name: string; address?: string | null }
+    currentBranch?: { name: string; address?: string | null; abbreviation?: string | null }
   }
 }
 
@@ -332,7 +333,7 @@ export interface EmploymentHistory {
   designation: string
   effectiveDate: string
   endDate?: string | null
-  branch?: { name: string; address?: string | null }
+  branch?: { name: string; address?: string | null; abbreviation?: string | null }
   department?: { name: string }
 }
 
@@ -500,7 +501,7 @@ export interface AttendanceLog {
     dutyStartTime?: string | null
     shift?: { name?: string; startTime?: string; endTime?: string } | null
   }
-  branch?: { name: string; address?: string | null }
+  branch?: { name: string; address?: string | null; abbreviation?: string | null }
 }
 
 export type AttendanceStatus =
@@ -584,7 +585,7 @@ export interface StipendReceipt {
   employee?: {
     fullName: string
     employeeCode: string
-    currentBranch?: { name: string; address?: string | null }
+    currentBranch?: { name: string; address?: string | null; abbreviation?: string | null }
   }
 }
 
@@ -600,7 +601,7 @@ export interface Incentive {
   employee?: {
     fullName: string
     employeeCode: string
-    currentBranch?: { name: string; address?: string | null }
+    currentBranch?: { name: string; address?: string | null; abbreviation?: string | null }
   }
 }
 

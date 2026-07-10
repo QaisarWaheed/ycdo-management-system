@@ -5,67 +5,74 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EmployeeStatus, Prisma } from '@prisma/client';
+import { inferShiftNameFromStartTime } from '../../common/shift-inference.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateShiftDto, UpdateShiftDto } from './shifts.dto';
+
+const ALLOWED_SHIFT_NAMES = ['Morning', 'Evening', 'Night', '24 Hours'];
 
 @Injectable()
 export class ShiftsService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateShiftDto) {
-    const allowedNames = ['Morning', 'Evening', 'Night', '24 Hours'];
-    if (!allowedNames.includes(dto.name)) {
+    const sibling = await this.prisma.shift.findFirst({
+      where: { startTime: dto.startTime, isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const name = sibling?.name ?? inferShiftNameFromStartTime(dto.startTime);
+
+    if (!ALLOWED_SHIFT_NAMES.includes(name)) {
       throw new BadRequestException(
         'Shift name must be Morning, Evening, Night, or 24 Hours',
       );
     }
 
-    const branch = await this.prisma.branch.findFirst({
-      where: { id: dto.branchId, isActive: true },
-    });
-
-    if (!branch) {
-      throw new NotFoundException(`Branch with id ${dto.branchId} not found`);
-    }
-
     const duplicate = await this.prisma.shift.findFirst({
-      where: { branchId: dto.branchId, name: dto.name, isActive: true },
+      where: {
+        name,
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        isActive: true,
+      },
     });
 
     if (duplicate) {
       throw new ConflictException(
-        `Shift "${dto.name}" already exists for this branch`,
+        `A shift with check-in ${dto.startTime} and checkout ${dto.endTime} already exists`,
       );
     }
 
     return this.prisma.shift.create({
-      data: dto,
-      include: { branch: { select: { name: true, address: true } } },
+      data: {
+        name,
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        branchId: null,
+      },
+      include: {
+        _count: { select: { employees: true } },
+      },
     });
   }
 
-  findAll(branchId?: string) {
-    const where: Prisma.ShiftWhereInput = { isActive: true };
-
-    if (branchId) {
-      where.branchId = branchId;
-    }
-
+  findAll(_branchId?: string) {
     return this.prisma.shift.findMany({
-      where,
-      distinct: ['name', 'branchId'],
+      where: { isActive: true },
       include: {
-        branch: { select: { name: true, address: true } },
         _count: { select: { employees: true } },
       },
-      orderBy: { startTime: 'asc' },
+      orderBy: [{ startTime: 'asc' }, { endTime: 'asc' }, { name: 'asc' }],
     });
   }
 
   async findOne(id: string) {
     const shift = await this.prisma.shift.findUnique({
       where: { id },
-      include: { branch: { select: { name: true, address: true } } },
+      include: {
+        _count: { select: { employees: true } },
+      },
     });
 
     if (!shift) {
@@ -76,21 +83,56 @@ export class ShiftsService {
   }
 
   async update(id: string, dto: UpdateShiftDto) {
-    await this.findOne(id);
+    const current = await this.findOne(id);
 
-    if (dto.branchId) {
-      const branch = await this.prisma.branch.findFirst({
-        where: { id: dto.branchId, isActive: true },
+    let nextName = dto.name ?? current.name;
+    const nextStart = dto.startTime ?? current.startTime;
+    const nextEnd = dto.endTime ?? current.endTime;
+
+    if (dto.startTime && dto.startTime !== current.startTime) {
+      const sibling = await this.prisma.shift.findFirst({
+        where: {
+          startTime: dto.startTime,
+          isActive: true,
+          id: { not: id },
+        },
+        orderBy: { createdAt: 'asc' },
       });
-      if (!branch) {
-        throw new NotFoundException(`Branch with id ${dto.branchId} not found`);
-      }
+      nextName = sibling?.name ?? inferShiftNameFromStartTime(dto.startTime);
+    }
+
+    if (dto.name && !ALLOWED_SHIFT_NAMES.includes(dto.name)) {
+      throw new BadRequestException(
+        'Shift name must be Morning, Evening, Night, or 24 Hours',
+      );
+    }
+
+    const duplicate = await this.prisma.shift.findFirst({
+      where: {
+        id: { not: id },
+        name: nextName,
+        startTime: nextStart,
+        endTime: nextEnd,
+        isActive: true,
+      },
+    });
+
+    if (duplicate) {
+      throw new ConflictException(
+        `A shift with check-in ${nextStart} and checkout ${nextEnd} already exists`,
+      );
     }
 
     return this.prisma.shift.update({
       where: { id },
-      data: dto,
-      include: { branch: { select: { name: true, address: true } } },
+      data: {
+        name: nextName,
+        ...(dto.startTime !== undefined ? { startTime: dto.startTime } : {}),
+        ...(dto.endTime !== undefined ? { endTime: dto.endTime } : {}),
+      },
+      include: {
+        _count: { select: { employees: true } },
+      },
     });
   }
 
@@ -116,14 +158,7 @@ export class ShiftsService {
     });
   }
 
-  getShiftsByBranch(branchId: string) {
-    return this.prisma.shift.findMany({
-      where: { branchId, isActive: true },
-      distinct: ['name', 'branchId'],
-      include: {
-        _count: { select: { employees: true } },
-      },
-      orderBy: { startTime: 'asc' },
-    });
+  getShiftsByBranch(_branchId: string) {
+    return this.findAll();
   }
 }

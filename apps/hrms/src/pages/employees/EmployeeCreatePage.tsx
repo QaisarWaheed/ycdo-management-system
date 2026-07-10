@@ -32,10 +32,8 @@ import {
   labelToMaritalStatus,
   MARITAL_STATUS_LABELS,
   maritalStatusToLabel,
-  SHIFT_NAME_OPTIONS,
   fatherStatusToLabel,
 } from '@/lib/searchableSelectOptions'
-import { getStartTimeOptionsForShift } from '@/lib/dutyTimes'
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
 import { DEFAULT_STIPEND_VALUES } from '@/lib/stipendUtils'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
@@ -80,7 +78,6 @@ const phoneRequired = z
   .min(1, 'Phone number is required')
   .refine((v) => /^0\d{10}$/.test(v), 'Must be 11 digits starting with 0')
 
-const SHIFT_OPTIONS = SHIFT_NAME_OPTIONS
 
 const BLOOD_GROUPS = BLOOD_GROUP_OPTIONS
 
@@ -263,7 +260,6 @@ const step2BaseSchema = z.object({
   currentDesignation: z.string().min(1, 'Designation is required'),
   joiningDate: z.string().min(1, 'Joining date is required'),
   biometricId: z.string().optional(),
-  shiftName: z.string().optional(),
   dutyTotalHours: z.number().int().min(1).max(24).optional(),
   dutyStartTime: z.string().optional(),
   dutyEndTime: z.string().optional(),
@@ -288,7 +284,8 @@ const step2Schema = step2BaseSchema.refine(dutyTimeRefine, {
 
 const existingStaffStep2Schema = step2BaseSchema
   .extend({
-    shiftName: z.string().min(1, 'Shift is required'),
+    dutyStartTime: z.string().min(1, 'Duty start time is required'),
+    dutyEndTime: z.string().min(1, 'Duty end time is required'),
   })
   .refine(dutyTimeRefine, {
     message: 'Start and end time cannot be the same',
@@ -672,7 +669,6 @@ export function EmployeeCreatePage() {
       dutyTotalHours: undefined,
       dutyStartTime: '',
       dutyEndTime: '',
-      shiftName: '',
     },
   })
 
@@ -685,25 +681,12 @@ export function EmployeeCreatePage() {
 
   const branchId = form2.watch('currentBranchId')
   const departmentId = form2.watch('currentDepartmentId')
-  const shiftName = form2.watch('shiftName')
   const selectedGender = form1.watch('gender')
   const selectedFatherStatus = form1.watch('fatherStatus')
   const selectedMaritalStatus = form1.watch('maritalStatus')
   const selectedProvince = form1.watch('province')
   const selectedPermanentProvince = form1.watch('permanentProvince')
   const selectedDistrict = form1.watch('district')
-
-  useEffect(() => {
-    if (!shiftName) return
-    const options = getStartTimeOptionsForShift(shiftName)
-    if (options.length > 0) {
-      form2.setValue('dutyStartTime', options[0].value)
-    }
-    if (shiftName === '24 Hours') {
-      form2.setValue('dutyTotalHours', 24)
-      form2.setValue('dutyEndTime', '23:59')
-    }
-  }, [shiftName, form2])
 
   const maritalOptions = useMemo(() => {
     if (selectedGender === 'MALE') {
@@ -761,7 +744,6 @@ export function EmployeeCreatePage() {
         dutyTotalHours: undefined,
         dutyStartTime: '',
         dutyEndTime: '',
-        shiftName: '',
       })
     }
   }, [prefill, form1, form2])
@@ -835,7 +817,6 @@ export function EmployeeCreatePage() {
         dutyStartTime: step2Data.dutyStartTime || undefined,
         dutyEndTime: step2Data.dutyEndTime || undefined,
         dutyTotalHours: step2Data.dutyTotalHours || undefined,
-        shiftName: step2Data.shiftName || undefined,
       })
 
       if (photoFile) {
@@ -893,7 +874,10 @@ export function EmployeeCreatePage() {
     },
     onSuccess: (employee) => {
       toast({ title: 'Employee created successfully' })
-      navigate(`/employees/${employee.id}`)
+      navigate(`/employees/${employee.id}`, {
+        replace: true,
+        state: { from: '/employees' },
+      })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -1602,31 +1586,7 @@ export function EmployeeCreatePage() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form2.control}
-                name="shiftName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Shift{isExistingStaff ? ' *' : ''}</FormLabel>
-                    <FormControl>
-                      <SearchableSelect
-                        options={[...SHIFT_OPTIONS]}
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        placeholder={
-                          isExistingStaff
-                            ? 'Select shift'
-                            : 'Select shift (optional)'
-                        }
-                        error={form2.formState.errors.shiftName?.message}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <DutyHoursFields
-                shiftName={shiftName ?? ''}
                 totalHours={form2.watch('dutyTotalHours') ?? ''}
                 startTime={form2.watch('dutyStartTime') ?? ''}
                 endTime={form2.watch('dutyEndTime') ?? ''}

@@ -14,7 +14,6 @@ export class UserPasswordsService {
     if (query.systemOnly === 'true') {
       where.user = {
         employeeId: null,
-        role: UserRole.ADMIN_MANAGER,
         ...(query.branchId ? { branchId: query.branchId } : {}),
         ...(query.projectId
           ? { branch: { projectId: query.projectId } }
@@ -23,9 +22,25 @@ export class UserPasswordsService {
     } else if (query.employeeOnly === 'true') {
       where.user = {
         employeeId: { not: null },
-        ...(query.branchId ? { branchId: query.branchId } : {}),
+        ...(query.branchId
+          ? {
+              OR: [
+                { branchId: query.branchId },
+                { employee: { currentBranchId: query.branchId } },
+              ],
+            }
+          : {}),
         ...(query.projectId
-          ? { branch: { projectId: query.projectId } }
+          ? {
+              OR: [
+                { branch: { projectId: query.projectId } },
+                {
+                  employee: {
+                    currentBranch: { projectId: query.projectId },
+                  },
+                },
+              ],
+            }
           : {}),
       };
     } else if (query.branchId || query.projectId) {

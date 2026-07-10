@@ -7,6 +7,7 @@ import { projectsApi } from '@/api/endpoints/projects'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { DateInput } from '@/components/common/DateInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { ShiftFilterDropdowns } from '@/components/employees/ShiftFilterDropdowns'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -15,11 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ShiftFilterDropdowns } from '@/components/employees/ShiftFilterDropdowns'
-import {
-  ALL_SHIFTS_AT_START,
-  resolveShiftIds,
-} from '@/lib/shiftFilterUtils'
+import { resolveShiftIds } from '@/lib/shiftFilterUtils'
 import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { getLockedBranchId } from '@/lib/branchScope'
@@ -79,14 +76,8 @@ export function createEmployeeFilters(
 
 export function employeeFiltersToParams(
   filters: EmployeeFilterState,
-  shifts: Array<{ id: string; startTime: string }> = [],
+  shifts: Pick<Shift, 'id' | 'startTime'>[] = [],
 ) {
-  const shiftIds = resolveShiftIds(
-    filters.shiftStartTime,
-    filters.shiftId,
-    shifts,
-  )
-
   return {
     projectId: filters.projectId || undefined,
     branchId: filters.branchId || undefined,
@@ -116,7 +107,11 @@ export function employeeFiltersToParams(
       filters.maritalStatus === 'Widow' ? 'true' : undefined,
     bloodGroup:
       filters.bloodGroup !== ALL_FILTER ? filters.bloodGroup : undefined,
-    shiftIds,
+    shiftIds: resolveShiftIds(
+      filters.shiftStartTime,
+      filters.shiftId,
+      shifts,
+    ),
     joinedFrom: filters.joinedFrom || undefined,
     joinedTo: filters.joinedTo || undefined,
   }
@@ -124,7 +119,7 @@ export function employeeFiltersToParams(
 
 export function employeeFiltersToAttendanceParams(
   filters: EmployeeFilterState,
-  shifts: Array<{ id: string; startTime: string }> = [],
+  shifts: Pick<Shift, 'id' | 'startTime'>[] = [],
 ) {
   const params = employeeFiltersToParams(filters, shifts)
   return {
@@ -143,7 +138,6 @@ export function employeeFiltersToAttendanceParams(
 type EmployeeFiltersBarProps = {
   filters: EmployeeFilterState
   onChange: (filters: EmployeeFilterState) => void
-  showSpecificShift?: boolean
   statusCounts?: Record<string, number>
   unassignedCount?: number
   className?: string
@@ -152,7 +146,6 @@ type EmployeeFiltersBarProps = {
 export function EmployeeFiltersBar({
   filters,
   onChange,
-  showSpecificShift = true,
   statusCounts,
   unassignedCount,
   className,
@@ -182,15 +175,14 @@ export function EmployeeFiltersBar({
       ),
   })
 
-  const { data: shifts = [] } = useQuery({
-    queryKey: ['shifts', effectiveBranchId || 'all'],
-    queryFn: () =>
-      shiftsApi.getAll(effectiveBranchId ? effectiveBranchId : undefined),
-  })
-
   const { data: filterOptions } = useQuery({
     queryKey: ['employees', 'filter-options'],
     queryFn: () => employeesApi.getFilterOptions(),
+  })
+
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts'],
+    queryFn: () => shiftsApi.getAll(),
   })
 
   const filteredBranches = useMemo(() => {
@@ -308,21 +300,16 @@ export function EmployeeFiltersBar({
           </Select>
         </div>
 
-        <div className={showSpecificShift ? 'space-y-1 sm:col-span-2' : 'space-y-1'}>
-          <ShiftFilterDropdowns
-            shifts={shifts}
-            shiftStartTime={filters.shiftStartTime}
-            shiftId={filters.shiftId}
-            showSpecificShift={showSpecificShift}
-            onShiftStartTimeChange={(startTime) =>
-              update({
-                shiftStartTime: startTime,
-                shiftId: startTime ? ALL_SHIFTS_AT_START : '',
-              })
-            }
-            onShiftIdChange={(shiftId) => update({ shiftId })}
-          />
-        </div>
+        <ShiftFilterDropdowns
+          shifts={shifts}
+          shiftStartTime={filters.shiftStartTime}
+          shiftId={filters.shiftId}
+          onShiftStartTimeChange={(shiftStartTime) =>
+            update({ shiftStartTime, shiftId: '' })
+          }
+          onShiftIdChange={(shiftId) => update({ shiftId })}
+          className="contents"
+        />
 
         <div className="space-y-1">
           <Label>Designation</Label>

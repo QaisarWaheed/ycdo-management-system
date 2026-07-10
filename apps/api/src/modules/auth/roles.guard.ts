@@ -23,6 +23,14 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
+    if (user?.role === UserRole.HR_EXECUTIVE) {
+      const controllerName = context.getClass().name;
+      if (controllerName === 'UserPasswordsController') {
+        return false;
+      }
+      return true;
+    }
+
     return requiredRoles.includes(user?.role);
   }
 }

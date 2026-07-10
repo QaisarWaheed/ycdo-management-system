@@ -6,6 +6,7 @@ import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { leaveApi } from '@/api/endpoints/leave'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { StageBadge } from '@/components/leave/StageBadge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -113,9 +114,7 @@ export function ExecutiveDashboard() {
               {recentDecisions.slice(0, 10).map((leave) => (
                 <TableRow key={leave.id}>
                   <TableCell>
-                    {leave.employee
-                      ? `${leave.employee.fullName}`
-                      : '—'}
+                    <EmployeeNameLink employee={leave.employee} />
                   </TableCell>
                   <TableCell>
                     {formatBranchLabel(leave.employee?.currentBranch)}
