@@ -69,8 +69,12 @@ const statusStyles: Record<AttendanceStatus, string> = {
 
 function formatLogShift(log: AttendanceLog): string {
   const shift = log.employee?.shift
-  if (!shift?.startTime || !shift?.endTime) return '—'
-  return formatShiftOptionLabel(shift)
+  if (!shift?.name || !shift?.startTime || !shift?.endTime) return '—'
+  return formatShiftOptionLabel({
+    name: shift.name,
+    startTime: shift.startTime,
+    endTime: shift.endTime,
+  })
 }
 
 function AttendanceStatusBadge({ status }: { status: string }) {

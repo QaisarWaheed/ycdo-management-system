@@ -57,6 +57,7 @@ import {
   DesignationEmployeesDialog,
   getDesignationEmployeeCount,
 } from '@/components/dashboard/DesignationEmployeesDialog'
+import { FaceSyncTab } from '@/components/dashboard/FaceSyncTab'
 import { SystemLoginsTab } from '@/components/dashboard/SystemLoginsTab'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { shiftsApi } from '@/api/endpoints/shifts'
@@ -2249,6 +2250,7 @@ export function ItAdminDashboard() {
               <TabsTrigger value="designations">Designations</TabsTrigger>
               <TabsTrigger value="employees">Employees</TabsTrigger>
               <TabsTrigger value="system-logins">System Logins</TabsTrigger>
+              <TabsTrigger value="face-sync">Face Sync</TabsTrigger>
             </TabsList>
             <TabsContent value="projects" className="mt-4">
               <ProjectsTab />
@@ -2264,6 +2266,9 @@ export function ItAdminDashboard() {
             </TabsContent>
             <TabsContent value="system-logins" className="mt-4">
               <SystemLoginsTab />
+            </TabsContent>
+            <TabsContent value="face-sync" className="mt-4">
+              <FaceSyncTab />
             </TabsContent>
             <TabsContent value="branches" className="mt-4">
               <BranchesTab />

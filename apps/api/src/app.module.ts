@@ -31,6 +31,7 @@ import { StipendReceiptsModule } from './modules/stipend-receipts/stipend-receip
 import { IncentivesModule } from './modules/incentives/incentives.module';
 import { UserAccessModule } from './modules/user-access/user-access.module';
 import { UserPasswordsModule } from './modules/user-passwords/user-passwords.module';
+import { FaceSyncModule } from './modules/face-sync/face-sync.module';
 import { LocationValuesModule } from './modules/location-values/location-values.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -71,6 +72,7 @@ import { PrismaModule } from './prisma/prisma.module';
     IncentivesModule,
     UserPasswordsModule,
     UserAccessModule,
+    FaceSyncModule,
     LocationValuesModule,
   ],
 })

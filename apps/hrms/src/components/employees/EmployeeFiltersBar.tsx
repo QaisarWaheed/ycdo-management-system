@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { resolveShiftIds } from '@/lib/shiftFilterUtils'
-import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
+import { EMPLOYEE_STATUSES, GENDERS, type Shift } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { getLockedBranchId } from '@/lib/branchScope'
 import { useAuth } from '@/hooks/useAuth'

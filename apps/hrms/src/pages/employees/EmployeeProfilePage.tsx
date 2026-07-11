@@ -32,6 +32,9 @@ import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { TransferDialog } from '@/components/employees/TransferDialog'
+import { FaceSyncDialog } from '@/components/employees/FaceSyncDialog'
+import { FaceSyncStatusBadge } from '@/components/dashboard/FaceSyncTab'
+import { faceSyncApi } from '@/api/endpoints/faceSync'
 import { UpdateBranchDutyDialog } from '@/components/employees/UpdateBranchDutyDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -542,6 +545,7 @@ export function EmployeeProfilePage() {
   const [editJobOpen, setEditJobOpen] = useState(false)
   const [prevEmpOpen, setPrevEmpOpen] = useState(false)
   const [incentiveOpen, setIncentiveOpen] = useState(false)
+  const [faceSyncOpen, setFaceSyncOpen] = useState(false)
   const [expandedPrevEmpId, setExpandedPrevEmpId] = useState<string | null>(
     null,
   )
@@ -549,6 +553,12 @@ export function EmployeeProfilePage() {
   const { data: employee, isLoading, isError, error } = useQuery({
     queryKey: ['employee', id],
     queryFn: () => employeesApi.getOne(id),
+    enabled: !!id,
+  })
+
+  const { data: faceSyncStats } = useQuery({
+    queryKey: ['face-sync', 'stats', id],
+    queryFn: () => faceSyncApi.getStats(id),
     enabled: !!id,
   })
 
@@ -671,6 +681,7 @@ export function EmployeeProfilePage() {
     onSuccess: () => {
       toast({ title: 'Photo updated' })
       queryClient.invalidateQueries({ queryKey: ['employee', id] })
+      queryClient.invalidateQueries({ queryKey: ['face-sync', 'stats', id] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -955,6 +966,9 @@ export function EmployeeProfilePage() {
                 : undefined
             }
           />
+          <FaceSyncStatusBadge
+            status={faceSyncStats?.latestJob?.status ?? null}
+          />
           <div>
             <h1 className="text-xl font-bold">
               {employee.fullName}
@@ -1020,6 +1034,24 @@ export function EmployeeProfilePage() {
                 <Printer className="mr-2 h-4 w-4" />
                 Print Profile
               </Button>
+            )}
+            {canManagePersonalData && (
+              <>
+                {employee.photoUrl ? (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setFaceSyncOpen(true)}
+                  >
+                    <Fingerprint className="mr-2 h-4 w-4" />
+                    Sync Face to Devices
+                  </Button>
+                ) : (
+                  <p className="text-center text-xs text-text-secondary">
+                    Upload photo first to enable face sync
+                  </p>
+                )}
+              </>
             )}
             {canManagePersonalData && (
               <Button
@@ -2018,6 +2050,21 @@ export function EmployeeProfilePage() {
         employeeId={id}
       />
 
+      <FaceSyncDialog
+        open={faceSyncOpen}
+        onOpenChange={setFaceSyncOpen}
+        employeeId={id}
+        employeeName={employee.fullName}
+        photoUrl={photoSrc}
+        lastSyncedAt={
+          faceSyncStats?.latestJob?.status === 'SYNCED'
+            ? faceSyncStats.latestJob.updatedAt
+            : null
+        }
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['face-sync', 'stats', id] })
+        }}
+      />
       <GenerateLetterDialog
         open={letterOpen}
         onOpenChange={setLetterOpen}

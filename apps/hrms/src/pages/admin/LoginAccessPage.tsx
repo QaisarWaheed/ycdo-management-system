@@ -782,7 +782,6 @@ export function LoginAccessPage() {
                           employee={{
                             id: record.employeeId!,
                             fullName: record.employee.fullName,
-                            employeeCode: record.employee.employeeCode,
                           }}
                         />
                       )}

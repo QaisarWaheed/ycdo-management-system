@@ -1129,7 +1129,7 @@ export class EmployeesService {
 
     const photoUrl = `/uploads/photos/${id}/${file.filename}`;
 
-    return this.prisma.employee.update({
+    const updated = await this.prisma.employee.update({
       where: { id },
       data: { photoUrl },
       select: {
@@ -1137,6 +1137,16 @@ export class EmployeesService {
         photoUrl: true,
       },
     });
+
+    await this.prisma.faceSyncJob.create({
+      data: {
+        employeeId: id,
+        photoUrl,
+        status: 'PENDING',
+      },
+    });
+
+    return updated;
   }
 
   async findActiveShiftEmployees(
