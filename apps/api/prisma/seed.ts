@@ -7,6 +7,10 @@ import {
   StaffType,
   UserRole,
 } from '@prisma/client';
+import {
+  buildDesignationSeedRows,
+  getDepartmentsForBranch,
+} from '../src/common/org-structure';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -190,7 +194,7 @@ const vtiBranches: BranchSeed[] = [
   { name: 'YCDO Financial Assistance for Education', address: 'Multan', phone: '0303-3700007' },
 ];
 
-const hospitalDepartments = [
+const legacyHospitalDepartments = [
   'Administration',
   'Human Resources',
   'Medical Staff',
@@ -527,23 +531,34 @@ async function ensureBranch(
 }
 
 async function ensureDepartments(branchId: string, departmentNames: string[]) {
-  for (const deptName of departmentNames) {
+  for (let i = 0; i < departmentNames.length; i++) {
+    const deptName = departmentNames[i];
     const existing = await prisma.department.findFirst({
       where: { name: deptName, branchId },
     });
 
     if (!existing) {
       await prisma.department.create({
-        data: { name: deptName, branchId },
+        data: { name: deptName, branchId, sortOrder: i + 1 },
+      });
+    } else if (existing.sortOrder !== i + 1) {
+      await prisma.department.update({
+        where: { id: existing.id },
+        data: { sortOrder: i + 1, isDeleted: false, isActive: true },
       });
     }
   }
 }
 
+async function seedOrgDepartmentsForBranch(branchId: string, branchName: string) {
+  const deptNames = getDepartmentsForBranch(branchName);
+  await ensureDepartments(branchId, deptNames);
+}
+
 async function seedProjectBranches(
   branches: BranchSeed[],
   projectId: string,
-  withDepartments: boolean,
+  withLegacyDepartments: boolean,
 ) {
   for (const branch of branches) {
     const created = await ensureBranch(
@@ -552,9 +567,10 @@ async function seedProjectBranches(
       branch.phone,
       projectId,
     );
-    if (withDepartments) {
-      await ensureDepartments(created.id, hospitalDepartments);
+    if (withLegacyDepartments) {
+      await ensureDepartments(created.id, legacyHospitalDepartments);
     }
+    await seedOrgDepartmentsForBranch(created.id, created.name);
   }
 }
 
@@ -733,27 +749,7 @@ async function main() {
   const softwareBranch = swBranch ?? (await prisma.branch.findFirst({ where: { name: { contains: 'Software House HQ' } } }));
 
   if (softwareBranch) {
-    const swDepts = ['Media House', 'Social Media', 'IT Team'];
-    for (const name of swDepts) {
-      const existing = await prisma.department.findFirst({
-        where: { name, branchId: softwareBranch.id },
-      });
-
-      if (!existing) {
-        await prisma.department.create({
-          data: {
-            name,
-            branchId: softwareBranch.id,
-            sortOrder: swDepts.indexOf(name) + 1,
-          },
-        });
-      } else if (existing.sortOrder !== swDepts.indexOf(name) + 1) {
-        await prisma.department.update({
-          where: { id: existing.id },
-          data: { sortOrder: swDepts.indexOf(name) + 1, isDeleted: false, isActive: true },
-        });
-      }
-    }
+    await seedOrgDepartmentsForBranch(softwareBranch.id, softwareBranch.name);
   }
 
   const mainBranch = await prisma.branch.findFirst({
@@ -1026,61 +1022,20 @@ async function main() {
 
   await prisma.designation.deleteMany({});
 
-  const newDesignations = [
-    { title: 'Admin Manager', category: 'Management' },
-    { title: 'Pharmacy Staff', category: 'Allied Health' },
-    { title: 'Lab Staff', category: 'Allied Health' },
-    { title: 'Admin Officer', category: 'Admin' },
-    { title: 'Doctor', category: 'Medical' },
-    { title: 'Human Resource Staff', category: 'HR' },
-    { title: 'Human Resource Manager', category: 'HR' },
-    { title: 'Staff Manager', category: 'Management' },
-    { title: 'Progress Officer', category: 'Management' },
-    { title: 'Accountant/Chief Finance Officer', category: 'Finance' },
-    { title: 'Assistant Accountant', category: 'Finance' },
-    { title: 'Finance Representative', category: 'Finance' },
-    { title: 'Admin Medicine', category: 'Admin' },
-    { title: 'Medicine Manager', category: 'Allied Health' },
-    { title: 'Medicine Store Manager', category: 'Allied Health' },
-    { title: 'Lab Admin Manager', category: 'Allied Health' },
-    { title: 'Lab Operation Manager', category: 'Allied Health' },
-    { title: 'Lab Store Manager', category: 'Allied Health' },
-    { title: 'Audit Officer', category: 'Finance' },
-    { title: 'Central Admin Officer', category: 'Admin' },
-    { title: 'Coordinator Projects', category: 'Management' },
-    { title: 'Surgeon', category: 'Medical' },
-    { title: 'Anaesthetics', category: 'Medical' },
-    { title: 'OTA', category: 'Medical' },
-    { title: 'R&D Coordinator', category: 'IT' },
-    { title: 'Biomedical Engineer', category: 'IT' },
-    { title: 'Assets Manager', category: 'Admin' },
-    { title: 'Kitchen Admin Manager', category: 'Kitchen' },
-    { title: 'Kitchen Operation Manager', category: 'Kitchen' },
-    { title: 'VTI Admin Officer', category: 'VTI' },
-    { title: 'Nurse', category: 'Nursing' },
-    { title: 'Head Nurse', category: 'Nursing' },
-    { title: 'Receptionist', category: 'Admin' },
-    { title: 'Pharmacist', category: 'Allied Health' },
-    { title: 'Lab Technician', category: 'Allied Health' },
-    { title: 'Housekeeper', category: 'Support' },
-    { title: 'Security Guard', category: 'Support' },
-    { title: 'Driver', category: 'Support' },
-    { title: 'Software Engineer', category: 'IT' },
-    { title: 'IT Officer', category: 'IT' },
-    { title: 'Social Media Officer', category: 'IT' },
-    { title: 'Graphic Designer', category: 'IT' },
-    { title: 'Vocational Trainer', category: 'VTI' },
-    { title: 'Cashier', category: 'Finance' },
-    { title: 'Data Entry Operator', category: 'Admin' },
-    { title: 'Cook', category: 'Kitchen' },
-  ];
+  const newDesignations = buildDesignationSeedRows();
 
-  for (const d of newDesignations) {
+  for (let i = 0; i < newDesignations.length; i++) {
+    const d = newDesignations[i];
     await prisma.designation.upsert({
       where: { title: d.title },
-      update: { category: d.category, isActive: true },
-      create: d,
+      update: { category: d.category, isActive: true, isDeleted: false, sortOrder: i + 1 },
+      create: { ...d, sortOrder: i + 1 },
     });
+  }
+
+  const allBranches = await prisma.branch.findMany({ select: { id: true, name: true } });
+  for (const branch of allBranches) {
+    await seedOrgDepartmentsForBranch(branch.id, branch.name);
   }
 
   const branchManagerUser = await prisma.user.findFirst({
@@ -1211,14 +1166,29 @@ async function main() {
   }
 
   const deptOrder = [
-    'Administration',
-    'Human Resources',
-    'Medical Staff',
-    'Reception',
-    'Pharmacy',
-    'Laboratory',
-    'Housekeeping',
-    'Emergency',
+    'OPD',
+    'INDOOR',
+    'ADMIN',
+    'PHARMACY',
+    'CONSULTANT',
+    'MEDICINE MANAGEMENT SYSTEM',
+    'LABORATORY MANAGEMENT SYSTEM',
+    'LABORATORY',
+    'SERGICAL DEPARTMENT',
+    'ASSISTANT',
+    'GRADE 4',
+    'REDIALOGISTICS',
+    'HUMAN RESOURCES',
+    'ACCOUNTS',
+    'KITCHEN',
+    'SOFTWARE DEPARTMENT',
+    'MEDIA & NEWS',
+    'IT',
+    'TEACHER',
+    'PRINCIPAL',
+    'VTI',
+    'SANITARY',
+    'REPAIR AND DEVELOPMENT',
   ];
 
   for (let i = 0; i < deptOrder.length; i++) {
@@ -1228,60 +1198,7 @@ async function main() {
     });
   }
 
-  const designationOrder = [
-    'Admin Manager',
-    'Staff Manager',
-    'Operations Manager',
-    'Progress Officer',
-    'Central Admin Officer',
-    'Coordinator Projects',
-    'Human Resource Manager',
-    'Human Resource Staff',
-    'Doctor',
-    'Surgeon',
-    'Anaesthetics',
-    'OTA',
-    'Admin Officer',
-    'Admin Medicine',
-    'Pharmacist',
-    'Pharmacy Staff',
-    'Medicine Manager',
-    'Medicine Store Manager',
-    'Lab Admin Manager',
-    'Lab Operation Manager',
-    'Lab Store Manager',
-    'Lab Staff',
-    'Lab Technician',
-    'Nurse',
-    'Head Nurse',
-    'Nursing Assistant',
-    'Receptionist',
-    'Data Entry Operator',
-    'Accounts Officer',
-    'Finance Manager',
-    'Audit Officer',
-    'Assistant Accountant',
-    'Finance Representative',
-    'Accountant/Chief Finance Officer',
-    'Assets Manager',
-    'Biomedical Engineer',
-    'R&D Coordinator',
-    'Vocational Trainer',
-    'VTI Admin Officer',
-    'Kitchen Admin Manager',
-    'Kitchen Operation Manager',
-    'Cook',
-    'Software Engineer',
-    'IT Officer',
-    'Social Media Officer',
-    'Graphic Designer',
-    'Security Guard',
-    'Driver',
-    'Housekeeper',
-    'Helper',
-    'Sanitation Worker',
-    'Sweeper',
-  ];
+  const designationOrder = buildDesignationSeedRows().map((d) => d.title);
 
   for (let i = 0; i < designationOrder.length; i++) {
     await prisma.designation.updateMany({

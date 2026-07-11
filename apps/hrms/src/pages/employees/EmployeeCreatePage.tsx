@@ -771,8 +771,9 @@ export function EmployeeCreatePage() {
     if (!departmentId) return undefined
     const dept = departments.find((d) => d.id === departmentId)
     if (!dept) return undefined
-    return getDesignationCategoriesForDepartment(dept.name)
-  }, [departmentId, departments])
+    const branch = branches.find((b) => b.id === branchId)
+    return getDesignationCategoriesForDepartment(dept.name, branch?.name)
+  }, [departmentId, departments, branches, branchId])
 
   const designationParams = useMemo(() => {
     if (!departmentId) return undefined

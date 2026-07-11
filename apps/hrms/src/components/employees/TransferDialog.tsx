@@ -72,10 +72,15 @@ export function TransferDialog({
 
   const selectedDepartment = departments.find((d) => d.id === departmentId)
 
+  const selectedBranch = branches.find((b) => b.id === branchId)
+
   const designationCategories = useMemo(() => {
     if (!selectedDepartment) return undefined
-    return getDesignationCategoriesForDepartment(selectedDepartment.name)
-  }, [selectedDepartment])
+    return getDesignationCategoriesForDepartment(
+      selectedDepartment.name,
+      selectedBranch?.name,
+    )
+  }, [selectedDepartment, selectedBranch])
 
   const designationParams = useMemo(() => {
     if (!departmentId) return undefined

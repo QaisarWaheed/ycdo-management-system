@@ -190,8 +190,9 @@ export function EditEmployeeDialog({
     () =>
       getDesignationCategoriesForDepartment(
         employee.currentDepartment?.name ?? '',
+        employee.currentBranch?.name,
       ),
-    [employee.currentDepartment?.name],
+    [employee.currentDepartment?.name, employee.currentBranch?.name],
   )
 
   const designationParams = useMemo(() => {
