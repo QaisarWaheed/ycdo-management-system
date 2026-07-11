@@ -28,8 +28,17 @@ const PAYROLL_READ_ROLES = [
   UserRole.HR_MANAGER,
   UserRole.HR_ADMIN_MANAGER,
   UserRole.HR_OPERATIONS_MANAGER,
+  UserRole.IT_ADMIN,
   UserRole.CHAIRMAN,
   UserRole.FOUNDER,
+];
+
+const PAYROLL_WRITE_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.HR_MANAGER,
+  UserRole.HR_ADMIN_MANAGER,
+  UserRole.HR_OPERATIONS_MANAGER,
+  UserRole.IT_ADMIN,
 ];
 
 @Controller('payroll')
@@ -37,25 +46,25 @@ const PAYROLL_READ_ROLES = [
 export class PayrollController {
   constructor(private payrollService: PayrollService) {}
   @Post('entries')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
+  @Roles(...PAYROLL_WRITE_ROLES)
   createOrGetEntry(@Body() dto: CreatePayrollEntryDto) {
     return this.payrollService.createOrGetEntry(dto);
   }
 
   @Post('deductions')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
+  @Roles(...PAYROLL_WRITE_ROLES)
   addDeduction(@Body() dto: AddDeductionDto) {
     return this.payrollService.addDeduction(dto);
   }
 
   @Post('allowances')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
+  @Roles(...PAYROLL_WRITE_ROLES)
   addAllowance(@Body() dto: AddAllowanceDto) {
     return this.payrollService.addAllowance(dto);
   }
 
   @Patch('entries/:id/status')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_OPERATIONS_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_OPERATIONS_MANAGER, UserRole.IT_ADMIN)
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollStatusDto,
@@ -82,7 +91,9 @@ export class PayrollController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.IT_ADMIN,
     UserRole.EMPLOYEE,
   )
   getEmployeePayrollHistory(@Param('employeeId') employeeId: string) {
@@ -96,19 +107,19 @@ export class PayrollController {
   }
 
   @Get('entries/:id/full')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
+  @Roles(...PAYROLL_WRITE_ROLES)
   getEntryWithAllowances(@Param('id') id: string) {
     return this.payrollService.getEntryWithAllowances(id);
   }
 
   @Get('entries/:id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
+  @Roles(...PAYROLL_WRITE_ROLES)
   findOne(@Param('id') id: string) {
     return this.payrollService.findOne(id);
   }
 
   @Post('increment')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(...PAYROLL_WRITE_ROLES)
   salaryIncrement(
     @Body() dto: SalaryIncrementDto,
     @CurrentUser() user: { id: string },

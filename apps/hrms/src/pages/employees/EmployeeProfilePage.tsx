@@ -776,6 +776,8 @@ export function EmployeeProfilePage() {
 
   const canEditJobInfo = isHrTeam || user?.role === 'IT_ADMIN'
 
+  const canEditPayroll = isHrTeam || isItTeam
+
   const canHrJobActions = isHrTeam
 
   const canEditBranchDuty =
@@ -1514,7 +1516,13 @@ export function EmployeeProfilePage() {
         <TabsContent value="payroll" className="space-y-4">
           <EmployeePayrollTab
             employeeId={id}
+            joiningDate={employee.joiningDate}
             stipendRecords={(employee.stipendRecords ?? []) as StipendRecord[]}
+            canEdit={canEditPayroll}
+            onUpdated={() => {
+              queryClient.invalidateQueries({ queryKey: ['employee', id] })
+              queryClient.invalidateQueries({ queryKey: ['payroll-history', id] })
+            }}
           />
         </TabsContent>
 
