@@ -69,7 +69,7 @@ export class FaceSyncService {
 
     const jobs = await this.prisma.faceSyncJob.findMany({
       where: {
-        status: { in: ['PENDING', 'FAILED', 'PARTIAL'] },
+        status: 'PENDING',
         results: {
           none: {
             deviceId,
@@ -91,7 +91,14 @@ export class FaceSyncService {
       take: 50,
     });
 
-    const formatted = jobs
+    const seen = new Set<string>();
+    const uniqueJobs = jobs.filter((job) => {
+      if (seen.has(job.employeeId)) return false;
+      seen.add(job.employeeId);
+      return true;
+    });
+
+    const formatted = uniqueJobs
       .map((job) => {
         const fpid = extractFpid(job.employee.biometricId);
         const photoPath = job.photoUrl || job.employee.photoUrl;
