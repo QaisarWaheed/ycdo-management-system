@@ -187,9 +187,6 @@ export class AttendanceService {
         employeeId: employee.id,
         date: dateOnly,
         checkIn: null,
-        status: {
-          in: [AttendanceStatus.ABSENT, AttendanceStatus.UNMARKED],
-        },
       },
     });
 
@@ -221,15 +218,16 @@ export class AttendanceService {
       return { type: 'CHECKIN', log };
     }
 
-    const existing = await this.prisma.attendanceLog.findFirst({
+    const alreadyCheckedIn = await this.prisma.attendanceLog.findFirst({
       where: {
         employeeId: employee.id,
         date: dateOnly,
+        checkIn: { not: null },
         type: AttendanceLogType.REGULAR,
       },
     });
 
-    if (existing?.checkIn) {
+    if (alreadyCheckedIn) {
       throw new BadRequestException('Already checked in for today');
     }
 
