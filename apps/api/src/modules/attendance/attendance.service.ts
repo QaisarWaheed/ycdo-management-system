@@ -182,16 +182,18 @@ export class AttendanceService {
     const lateMinutes = computeBiometricLateMinutes(checkTime, employee);
     let status = determineBiometricCheckInStatus(lateMinutes, employee, 0);
 
-    const existingAbsent = await this.prisma.attendanceLog.findFirst({
+    const existingPlaceholder = await this.prisma.attendanceLog.findFirst({
       where: {
         employeeId: employee.id,
         date: dateOnly,
-        status: AttendanceStatus.ABSENT,
         checkIn: null,
+        status: {
+          in: [AttendanceStatus.ABSENT, AttendanceStatus.UNMARKED],
+        },
       },
     });
 
-    if (existingAbsent) {
+    if (existingPlaceholder) {
       const log = await this.prisma.$transaction(async (tx) => {
         const effectiveStatus = await applyDisciplineRules(
           tx,
@@ -206,7 +208,7 @@ export class AttendanceService {
         }
 
         return tx.attendanceLog.update({
-          where: { id: existingAbsent.id },
+          where: { id: existingPlaceholder.id },
           data: {
             checkIn: checkTime,
             status,
@@ -229,34 +231,6 @@ export class AttendanceService {
 
     if (existing?.checkIn) {
       throw new BadRequestException('Already checked in for today');
-    }
-
-    if (existing) {
-      const log = await this.prisma.$transaction(async (tx) => {
-        const effectiveStatus = await applyDisciplineRules(
-          tx,
-          employee.id,
-          status,
-          dateOnly,
-          { lateMinutes },
-        );
-
-        if (effectiveStatus === AttendanceStatus.HALF_DAY) {
-          status = AttendanceStatus.HALF_DAY;
-        }
-
-        return tx.attendanceLog.update({
-          where: { id: existing.id },
-          data: {
-            checkIn: checkTime,
-            status,
-            source: AttendanceSource.BIOMETRIC,
-            lateMinutes,
-          },
-        });
-      });
-
-      return { type: 'CHECKIN', log };
     }
 
     const log = await this.prisma.$transaction(async (tx) => {
