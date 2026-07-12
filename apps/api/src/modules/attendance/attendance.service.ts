@@ -91,7 +91,29 @@ export class AttendanceService {
     const branchId = device?.branchId ?? employee.currentBranchId;
     const checkTime = new Date(dto.timestamp);
     const dateOnly = toPakistanDateOnly(checkTime);
-    const isCheckout = dto.punchType === 'CHECKOUT';
+
+    let punchType = dto.punchType;
+
+    if (!punchType) {
+      const todayLog = await this.prisma.attendanceLog.findFirst({
+        where: {
+          employeeId: employee.id,
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
+        },
+      });
+
+      if (!todayLog || !todayLog.checkIn) {
+        punchType = 'CHECKIN';
+      } else if (todayLog.checkIn && !todayLog.checkOut) {
+        punchType = 'CHECKOUT';
+      } else {
+        punchType = 'OVERTIME_CHECKIN';
+      }
+    }
+
+    const isCheckout =
+      punchType === 'CHECKOUT' || punchType === 'OVERTIME_CHECKIN';
 
     if (isCheckout) {
       const existing = await this.prisma.attendanceLog.findFirst({
