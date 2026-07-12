@@ -15,6 +15,7 @@ import { PKRInput } from '@/components/common/PKRInput'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { normalizeOrgName } from '@/lib/normalizeOrgName'
 import { withReturnTo } from '@/lib/backNavigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -165,9 +166,9 @@ function AcceptCandidateDialog({
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId],
-    queryFn: () => departmentsApi.getAll({ branchId }),
-    enabled: !!branchId && open,
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
+    enabled: open,
   })
 
   const { data: shifts = [] } = useQuery({
@@ -251,7 +252,10 @@ function AcceptCandidateDialog({
           </div>
           <div className="space-y-2">
             <Label>Designation *</Label>
-            <Input value={designation} onChange={(e) => setDesignation(e.target.value)} />
+            <Input
+              value={designation}
+              onChange={(e) => setDesignation(normalizeOrgName(e.target.value))}
+            />
           </div>
           <div className="space-y-2">
             <Label>Shift</Label>

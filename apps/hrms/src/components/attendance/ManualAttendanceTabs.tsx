@@ -86,8 +86,6 @@ function ManualAttendanceFilters({
   onDepartmentChange,
   onDutyStartTimeChange,
 }: ManualFiltersProps) {
-  const effectiveBranchId = lockedBranchId || branchId
-
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
     queryFn: () => branchesApi.getAll(),
@@ -95,11 +93,8 @@ function ManualAttendanceFilters({
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', effectiveBranchId || 'all'],
-    queryFn: () =>
-      departmentsApi.getAll(
-        effectiveBranchId ? { branchId: effectiveBranchId } : undefined,
-      ),
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
   })
 
   return (

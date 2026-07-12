@@ -30,7 +30,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
-import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
 import {
   BLOOD_GROUP_OPTIONS,
   GENDER_OPTIONS,
@@ -186,19 +185,10 @@ export function EditEmployeeDialog({
   const selectedPermanentProvince = form.watch('permanentProvince')
   const selectedDistrict = form.watch('district')
 
-  const designationCategories = useMemo(
-    () =>
-      getDesignationCategoriesForDepartment(
-        employee.currentDepartment?.name ?? '',
-        employee.currentBranch?.name,
-      ),
-    [employee.currentDepartment?.name, employee.currentBranch?.name],
-  )
-
   const designationParams = useMemo(() => {
-    if (!designationCategories?.length) return {}
-    return { categories: designationCategories.join(',') }
-  }, [designationCategories])
+    if (!employee.currentDepartment?.name) return {}
+    return { department: employee.currentDepartment.name }
+  }, [employee.currentDepartment?.name])
 
   const { data: designations = [] } = useQuery({
     queryKey: ['designations', designationParams],

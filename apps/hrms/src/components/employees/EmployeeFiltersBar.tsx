@@ -165,14 +165,9 @@ export function EmployeeFiltersBar({
     enabled: !lockedBranchId,
   })
 
-  const effectiveBranchId = lockedBranchId || filters.branchId
-
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', effectiveBranchId || 'all'],
-    queryFn: () =>
-      departmentsApi.getAll(
-        effectiveBranchId ? { branchId: effectiveBranchId } : undefined,
-      ),
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
   })
 
   const { data: filterOptions } = useQuery({

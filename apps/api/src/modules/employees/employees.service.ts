@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { stripPersonalEmployeeFields } from '../../common/hr-executive.util';
+import { normalizeDesignationName } from '../../common/org-structure';
 import { inferShiftNameFromDuty } from '../../common/shift-inference.util';
 import {
   ChangeType,
@@ -56,12 +57,10 @@ export class EmployeesService {
 
   async create(dto: CreateEmployeeDto, actingUser?: ActingUser) {
     this.validateCreateDto(dto);
+    dto.currentDesignation = normalizeDesignationName(dto.currentDesignation);
 
     await this.ensureBranchExists(dto.currentBranchId);
-    await this.ensureDepartmentInBranch(
-      dto.currentDepartmentId,
-      dto.currentBranchId,
-    );
+    await this.ensureDepartmentExists(dto.currentDepartmentId);
 
     if (dto.cnic) {
       const existingCnic = await this.prisma.employee.findUnique({
@@ -661,7 +660,9 @@ export class EmployeesService {
     if (sanitizedDto.gender !== undefined) data.gender = sanitizedDto.gender;
     if (sanitizedDto.biometricId !== undefined) data.biometricId = sanitizedDto.biometricId;
     if (sanitizedDto.currentDesignation !== undefined) {
-      data.currentDesignation = sanitizedDto.currentDesignation;
+      data.currentDesignation = normalizeDesignationName(
+        sanitizedDto.currentDesignation,
+      );
     }
     if (sanitizedDto.fatherContactNumber !== undefined) {
       data.fatherContactNumber = sanitizedDto.fatherContactNumber;
@@ -749,11 +750,9 @@ export class EmployeesService {
 
   async transfer(id: string, dto: TransferDto) {
     const employee = await this.findOne(id);
+    dto.currentDesignation = normalizeDesignationName(dto.currentDesignation);
     await this.ensureBranchExists(dto.currentBranchId);
-    await this.ensureDepartmentInBranch(
-      dto.currentDepartmentId,
-      dto.currentBranchId,
-    );
+    await this.ensureDepartmentExists(dto.currentDepartmentId);
 
     const effectiveDate = new Date(dto.effectiveDate);
 
@@ -949,17 +948,14 @@ export class EmployeesService {
     }
   }
 
-  private async ensureDepartmentInBranch(
-    departmentId: string,
-    branchId: string,
-  ) {
+  private async ensureDepartmentExists(departmentId: string) {
     const department = await this.prisma.department.findFirst({
-      where: { id: departmentId, branchId, isActive: true, isDeleted: false },
+      where: { id: departmentId, isActive: true, isDeleted: false },
     });
 
     if (!department) {
       throw new NotFoundException(
-        `Department with id ${departmentId} not found in branch`,
+        `Department with id ${departmentId} not found`,
       );
     }
   }
@@ -1043,10 +1039,7 @@ export class EmployeesService {
     }
 
     if (dto.currentDepartmentId) {
-      await this.ensureDepartmentInBranch(
-        dto.currentDepartmentId,
-        targetBranchId,
-      );
+      await this.ensureDepartmentExists(dto.currentDepartmentId);
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { EmployeeStatus } from '@prisma/client';
+import { normalizeDepartmentName } from '../../common/org-structure';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateDepartmentDto,
@@ -13,40 +14,42 @@ export class DepartmentsService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateDepartmentDto) {
-    await this.ensureBranchExists(dto.branchId);
+    const name = normalizeDepartmentName(dto.name);
 
-    return this.prisma.department.create({
-      data: dto,
-      include: {
-        branch: { select: { name: true, address: true } },
+    return this.prisma.department.upsert({
+      where: { name },
+      update: {
+        isActive: true,
+        isDeleted: false,
+        branchId: null,
+        ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+      },
+      create: {
+        name,
+        branchId: null,
+        sortOrder: dto.sortOrder,
       },
     });
   }
 
-  findAll(query?: DepartmentQueryDto) {
+  findAll(_query?: DepartmentQueryDto) {
     const where: Prisma.DepartmentWhereInput = {
       isActive: true,
       isDeleted: false,
     };
 
-    if (query?.branchId) {
-      where.branchId = query.branchId;
-    }
-
     return this.prisma.department.findMany({
       where,
       include: {
-        branch: { select: { name: true, address: true } },
         _count: { select: { employees: true } },
       },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
   }
 
   async findOne(id: string) {
     const department = await this.prisma.department.findFirst({
       where: { id, isDeleted: false },
-      include: { branch: true },
     });
 
     if (!department) {
@@ -59,16 +62,17 @@ export class DepartmentsService {
   async update(id: string, dto: UpdateDepartmentDto) {
     await this.findOne(id);
 
-    if (dto.branchId) {
-      await this.ensureBranchExists(dto.branchId);
+    const data: Prisma.DepartmentUpdateInput = {};
+    if (dto.name !== undefined) {
+      data.name = normalizeDepartmentName(dto.name);
+    }
+    if (dto.sortOrder !== undefined) {
+      data.sortOrder = dto.sortOrder;
     }
 
     return this.prisma.department.update({
       where: { id },
-      data: dto,
-      include: {
-        branch: { select: { name: true, address: true } },
-      },
+      data,
     });
   }
 
@@ -81,7 +85,6 @@ export class DepartmentsService {
       throw new NotFoundException(`Department with id ${id} not found`);
     }
 
-    // Only unassign currently active/appointed employees.
     const affectedEmployees = await this.prisma.employee.count({
       where: {
         currentDepartmentId: id,
@@ -107,13 +110,7 @@ export class DepartmentsService {
     return { message: 'Deleted', affectedEmployees };
   }
 
-  private async ensureBranchExists(branchId: string) {
-    const branch = await this.prisma.branch.findFirst({
-      where: { id: branchId, isActive: true },
-    });
-
-    if (!branch) {
-      throw new NotFoundException(`Branch with id ${branchId} not found`);
-    }
+  getDepartmentsByBranch(_branchId: string) {
+    return this.findAll();
   }
 }

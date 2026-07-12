@@ -19,7 +19,6 @@ import { CnicInput } from '@/components/common/CnicInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
-import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
@@ -762,24 +761,16 @@ export function EmployeeCreatePage() {
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId],
-    queryFn: () => departmentsApi.getAll({ branchId }),
-    enabled: !!branchId,
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
   })
 
-  const designationCategories = useMemo(() => {
-    if (!departmentId) return undefined
-    const dept = departments.find((d) => d.id === departmentId)
-    if (!dept) return undefined
-    const branch = branches.find((b) => b.id === branchId)
-    return getDesignationCategoriesForDepartment(dept.name, branch?.name)
-  }, [departmentId, departments, branches, branchId])
+  const selectedDepartment = departments.find((d) => d.id === departmentId)
 
   const designationParams = useMemo(() => {
-    if (!departmentId) return undefined
-    if (!designationCategories?.length) return {}
-    return { categories: designationCategories.join(',') }
-  }, [departmentId, designationCategories])
+    if (!selectedDepartment) return undefined
+    return { department: selectedDepartment.name }
+  }, [selectedDepartment])
 
   const { data: designations = [] } = useQuery({
     queryKey: ['designations', designationParams],

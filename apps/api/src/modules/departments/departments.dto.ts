@@ -6,8 +6,9 @@ export class CreateDepartmentDto {
   @IsNotEmpty()
   name: string;
 
+  @IsOptional()
   @IsUUID()
-  branchId: string;
+  branchId?: string;
 
   @IsOptional()
   @IsInt()

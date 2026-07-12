@@ -1,9 +1,7 @@
-import { resolveDesignationCategoryKeys } from '@/lib/orgStructure'
-
 export function getDesignationCategoriesForDepartment(
   departmentName: string,
-  branchName?: string,
+  _branchName?: string,
 ): string[] | undefined {
-  const keys = resolveDesignationCategoryKeys(departmentName, branchName)
-  return keys.length > 0 ? keys : undefined
+  const dept = departmentName.trim().toUpperCase()
+  return dept ? [dept] : undefined
 }

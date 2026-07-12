@@ -11,6 +11,7 @@ export interface Designation {
 export interface DesignationQueryParams {
   category?: string
   categories?: string
+  department?: string
 }
 
 export const designationsApi = {
