@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Search } from 'lucide-react'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
@@ -9,6 +10,7 @@ import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -55,6 +57,29 @@ import type { AttendanceLog, Employee } from '@/types'
 
 const REFRESH_MS = 60_000
 
+function matchesNameOrCnicSearch(
+  employee:
+    | { fullName?: string | null; cnic?: string | null }
+    | null
+    | undefined,
+  query: string,
+): boolean {
+  const q = query.trim()
+  if (!q) return true
+  if (!employee) return false
+
+  const qLower = q.toLowerCase()
+  const name = (employee.fullName ?? '').toLowerCase()
+  if (name.includes(qLower)) return true
+
+  const cnic = employee.cnic ?? ''
+  if (cnic.toLowerCase().includes(qLower)) return true
+
+  const qDigits = q.replace(/\D/g, '')
+  const cnicDigits = cnic.replace(/\D/g, '')
+  return !!(qDigits && cnicDigits.includes(qDigits))
+}
+
 function filterLogsByDutyStartTime(
   logs: AttendanceLog[],
   dutyStartTime: string,
@@ -70,10 +95,12 @@ type ManualFiltersProps = {
   departmentId: string
   dutyStartTime: string
   dutyStartOptions: string[]
+  searchQuery: string
   lockedBranchId?: string
   onBranchChange: (id: string) => void
   onDepartmentChange: (id: string) => void
   onDutyStartTimeChange: (startTime: string) => void
+  onSearchChange: (query: string) => void
 }
 
 function ManualAttendanceFilters({
@@ -81,10 +108,12 @@ function ManualAttendanceFilters({
   departmentId,
   dutyStartTime,
   dutyStartOptions,
+  searchQuery,
   lockedBranchId,
   onBranchChange,
   onDepartmentChange,
   onDutyStartTimeChange,
+  onSearchChange,
 }: ManualFiltersProps) {
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
@@ -165,6 +194,19 @@ function ManualAttendanceFilters({
           </SelectContent>
         </Select>
       </div>
+
+      <div className="space-y-1">
+        <Label>Search (Name or CNIC)</Label>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-secondary" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search by name or CNIC"
+            className="w-[220px] pl-8"
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -185,6 +227,7 @@ export function CheckInManualTab() {
   const [branchId, setBranchId] = useState(lockedBranchId ?? '')
   const [departmentId, setDepartmentId] = useState('')
   const [dutyStartTime, setDutyStartTime] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [checkInTimes, setCheckInTimes] = useState<Record<string, string>>({})
   const [markingId, setMarkingId] = useState<string | null>(null)
 
@@ -229,11 +272,13 @@ export function CheckInManualTab() {
   })
 
   const employees = useMemo(() => {
-    const filtered = filterByDutyStartTime(activeEmployees, dutyStartTime)
+    const filtered = filterByDutyStartTime(activeEmployees, dutyStartTime).filter(
+      (emp) => matchesNameOrCnicSearch(emp, searchQuery),
+    )
     return sortEmployeesByHierarchy(filtered)
-  }, [activeEmployees, dutyStartTime])
+  }, [activeEmployees, dutyStartTime, searchQuery])
 
-  const filterDeps = [effectiveBranchId, departmentId, dutyStartTime]
+  const filterDeps = [effectiveBranchId, departmentId, dutyStartTime, searchQuery]
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
     employees,
@@ -304,10 +349,12 @@ export function CheckInManualTab() {
         departmentId={departmentId}
         dutyStartTime={dutyStartTime}
         dutyStartOptions={dutyStartOptions}
+        searchQuery={searchQuery}
         lockedBranchId={lockedBranchId}
         onBranchChange={setBranchId}
         onDepartmentChange={setDepartmentId}
         onDutyStartTimeChange={setDutyStartTime}
+        onSearchChange={setSearchQuery}
       />
 
       <TableRecordCount count={total} label="employee" />
@@ -436,6 +483,7 @@ export function CheckOutManualTab() {
   const [branchId, setBranchId] = useState(lockedBranchId ?? '')
   const [departmentId, setDepartmentId] = useState('')
   const [dutyStartTime, setDutyStartTime] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [checkOutTimes, setCheckOutTimes] = useState<Record<string, string>>({})
   const [markingId, setMarkingId] = useState<string | null>(null)
 
@@ -488,12 +536,14 @@ export function CheckOutManualTab() {
     return filterLogsByDutyStartTime(
       (logs as AttendanceLog[]).filter((log) => log.checkIn && !log.checkOut),
       dutyStartTime,
-    ).sort((a, b) =>
-      (a.employee?.fullName ?? '').localeCompare(b.employee?.fullName ?? ''),
     )
-  }, [logs, dutyStartTime])
+      .filter((log) => matchesNameOrCnicSearch(log.employee, searchQuery))
+      .sort((a, b) =>
+        (a.employee?.fullName ?? '').localeCompare(b.employee?.fullName ?? ''),
+      )
+  }, [logs, dutyStartTime, searchQuery])
 
-  const filterDeps = [effectiveBranchId, departmentId, dutyStartTime]
+  const filterDeps = [effectiveBranchId, departmentId, dutyStartTime, searchQuery]
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
     pendingCheckout,
@@ -547,10 +597,12 @@ export function CheckOutManualTab() {
         departmentId={departmentId}
         dutyStartTime={dutyStartTime}
         dutyStartOptions={dutyStartOptions}
+        searchQuery={searchQuery}
         lockedBranchId={lockedBranchId}
         onBranchChange={setBranchId}
         onDepartmentChange={setDepartmentId}
         onDutyStartTimeChange={setDutyStartTime}
+        onSearchChange={setSearchQuery}
       />
 
       <TableRecordCount count={total} label="attendance record" />

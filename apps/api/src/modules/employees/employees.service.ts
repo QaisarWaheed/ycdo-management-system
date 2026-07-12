@@ -711,6 +711,18 @@ export class EmployeesService {
       }
     }
 
+    if (sanitizedDto.cnic !== undefined) {
+      if (sanitizedDto.cnic) {
+        const existingCnic = await this.prisma.employee.findFirst({
+          where: { cnic: sanitizedDto.cnic, NOT: { id } },
+        });
+        if (existingCnic) {
+          throw new ConflictException('Employee with this CNIC already exists');
+        }
+      }
+      data.cnic = sanitizedDto.cnic || null;
+    }
+
     if (sanitizedDto.biometricId) {
       const existingBiometric = await this.prisma.employee.findFirst({
         where: { biometricId: sanitizedDto.biometricId, NOT: { id } },

@@ -846,6 +846,7 @@ export class AttendanceService {
             id: true,
             fullName: true,
             employeeCode: true,
+            cnic: true,
             phone: true,
             currentDesignation: true,
             currentDepartmentId: true,

@@ -2104,6 +2104,7 @@ export function EmployeeProfilePage() {
           mode="personal"
           open={editPersonalOpen}
           onOpenChange={setEditPersonalOpen}
+          canEditCnic={isHrTeam || isItTeam}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['employee', id] })
             queryClient.invalidateQueries({ queryKey: ['employees'] })
@@ -2116,6 +2117,7 @@ export function EmployeeProfilePage() {
           mode="job"
           open={editJobOpen}
           onOpenChange={setEditJobOpen}
+          canEditCnic={isHrTeam || isItTeam}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['employee', id] })
             queryClient.invalidateQueries({ queryKey: ['employees'] })
