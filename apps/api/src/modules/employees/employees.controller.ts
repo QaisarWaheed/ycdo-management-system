@@ -14,7 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { UserRole } from '@prisma/client';
+import { Permission, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
@@ -30,12 +30,18 @@ import {
 } from './employees.dto';
 import { EmployeesService } from './employees.service';
 import { photoMulterConfig } from './photo.multer.config';
-import { assertCanEditPersonalInfo } from '../../common/hr-executive.util';
+import { PermissionsService } from '../permissions/permissions.service';
+
+/** Any system role can hit these routes; EMPLOYEES_EDIT permission is enforced. */
+const EMPLOYEE_EDIT_ROLES = Object.values(UserRole);
 
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EmployeesController {
-  constructor(private employeesService: EmployeesService) {}
+  constructor(
+    private employeesService: EmployeesService,
+    private permissionsService: PermissionsService,
+  ) {}
 
   @Post()
   @Roles(
@@ -179,22 +185,20 @@ export class EmployeesController {
   }
 
   @Patch(':id')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.HR_MANAGER,
-    UserRole.HR_ADMIN_MANAGER,
-    UserRole.HR_OPERATIONS_MANAGER,
-    UserRole.ADMIN_OFFICER,
-    UserRole.ADMIN_MANAGER,
-    UserRole.IT_ADMIN,
-    UserRole.EMPLOYEE,
-  )
-  update(
+  @Roles(...EMPLOYEE_EDIT_ROLES)
+  async update(
     @Param('id') id: string,
     @Body() dto: UpdateEmployeeDto,
-    @CurrentUser() user: { role: UserRole; employeeId?: string | null },
+    @CurrentUser()
+    user: { id: string; role: UserRole; employeeId?: string | null },
   ) {
-    if (user.role === UserRole.EMPLOYEE) {
+    const canEditEmployees = await this.permissionsService.userHasPermission(
+      user.id,
+      user.role,
+      Permission.EMPLOYEES_EDIT,
+    );
+
+    if (user.role === UserRole.EMPLOYEE && !canEditEmployees) {
       if (user.employeeId !== id) {
         throw new ForbiddenException('Access denied');
       }
@@ -203,7 +207,15 @@ export class EmployeesController {
         email: dto.email,
       });
     }
-    return this.employeesService.update(id, dto, user.role);
+
+    if (!canEditEmployees) {
+      throw new ForbiddenException(
+        'You do not have permission to edit employee personal or job information',
+      );
+    }
+
+    // Permission grant allows personal fields even for roles that are usually restricted
+    return this.employeesService.update(id, dto);
   }
 
   @Post(':id/transfer')
@@ -235,20 +247,22 @@ export class EmployeesController {
 
   @Post(':id/photo')
   @UseInterceptors(FileInterceptor('photo', photoMulterConfig))
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.HR_MANAGER,
-    UserRole.HR_ADMIN_MANAGER,
-    UserRole.ADMIN_OFFICER,
-    UserRole.ADMIN_MANAGER,
-    UserRole.IT_ADMIN,
-  )
-  uploadPhoto(
+  @Roles(...EMPLOYEE_EDIT_ROLES)
+  async uploadPhoto(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: { role: UserRole },
+    @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    assertCanEditPersonalInfo(user.role);
+    const canEditEmployees = await this.permissionsService.userHasPermission(
+      user.id,
+      user.role,
+      Permission.EMPLOYEES_EDIT,
+    );
+    if (!canEditEmployees) {
+      throw new ForbiddenException(
+        'You do not have permission to update employee photos',
+      );
+    }
     if (!file) {
       throw new BadRequestException('No photo uploaded');
     }

@@ -27,11 +27,16 @@ import {
   ApproveLeaveDto,
   HRAssignRelieverDto,
   EmergencyLeaveDto,
+  VerifiedLeaveDto,
   LeaveQueryDto,
   RequestRelieverDto,
   RespondRelieverDto,
   UpdateLeaveStatusDto,
 } from './leave.dto';
+import {
+  assertEmployeeInMedicineScope,
+  isMedicineManagerRole,
+} from '../../common/medicine-scope.util';
 
 const MAX_LEAVES_PER_YEAR = 24;
 
@@ -49,6 +54,7 @@ interface ActingUser {
   id: string;
   role: UserRole;
   employeeId?: string | null;
+  branchId?: string | null;
 }
 
 @Injectable()
@@ -688,6 +694,142 @@ export class LeaveService {
           action: 'EMERGENCY_LEAVE',
           entity: 'LeaveRecord',
           entityId: record.id,
+        },
+      });
+
+      return record;
+    });
+
+    return leave;
+  }
+
+  /**
+   * Mark leave from Manual Attendance. Instantly APPROVED — no approval chain.
+   * Also writes ON_LEAVE / HALF_DAY attendance for the date range.
+   */
+  async markVerifiedLeave(dto: VerifiedLeaveDto, actingUser: ActingUser) {
+    const allowedRoles: UserRole[] = [
+      UserRole.HR_MANAGER,
+      UserRole.HR_ADMIN_MANAGER,
+      UserRole.HR_OPERATIONS_MANAGER,
+      UserRole.SUPER_ADMIN,
+      UserRole.ADMIN_MANAGER,
+      UserRole.ADMIN_OFFICER,
+      UserRole.MEDICINE_MANAGER,
+    ];
+
+    if (!allowedRoles.includes(actingUser.role)) {
+      throw new ForbiddenException('Not authorized to mark verified leave');
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+      include: { currentDepartment: { select: { name: true } } },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with id ${dto.employeeId} not found`,
+      );
+    }
+
+    if (
+      employee.status !== EmployeeStatus.ACTIVE &&
+      employee.status !== EmployeeStatus.APPOINTED
+    ) {
+      throw new BadRequestException('Employee is not active');
+    }
+
+    if (isMedicineManagerRole(actingUser.role)) {
+      if (!assertEmployeeInMedicineScope(employee)) {
+        throw new ForbiddenException(
+          'You can only mark leave for Medicine Management System staff',
+        );
+      }
+    }
+
+    if (
+      actingUser.role === UserRole.ADMIN_MANAGER &&
+      actingUser.branchId &&
+      employee.currentBranchId !== actingUser.branchId
+    ) {
+      throw new ForbiddenException(
+        'You can only mark leave for employees in your branch',
+      );
+    }
+
+    const startDate = this.toDateOnly(new Date(dto.startDate));
+    const endDate = this.toDateOnly(new Date(dto.endDate));
+
+    if (startDate > endDate) {
+      throw new BadRequestException(
+        'Start date must be before or equal to end date',
+      );
+    }
+
+    if (
+      dto.leaveType === LeaveType.SHORT_LEAVE &&
+      startDate.getTime() !== endDate.getTime()
+    ) {
+      throw new BadRequestException('Short leave must be a single day');
+    }
+
+    const overlapping = await this.prisma.leaveRecord.findFirst({
+      where: {
+        employeeId: dto.employeeId,
+        status: { in: ACTIVE_LEAVE_STATUSES },
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
+      },
+    });
+
+    if (overlapping) {
+      throw new ConflictException(
+        'Leave dates overlap with an existing leave request',
+      );
+    }
+
+    const totalDays =
+      dto.leaveType === LeaveType.SHORT_LEAVE
+        ? 0
+        : this.calculateTotalDays(startDate, endDate);
+
+    const leave = await this.prisma.$transaction(async (tx) => {
+      const record = await tx.leaveRecord.create({
+        data: {
+          employeeId: dto.employeeId,
+          leaveType: dto.leaveType,
+          startDate,
+          endDate,
+          totalDays,
+          reason: dto.reason.trim(),
+          status: LeaveStatus.APPROVED,
+          currentStage: null,
+        },
+        include: { employee: true },
+      });
+
+      await this.markLeaveAttendance(tx, record);
+
+      await tx.notification.create({
+        data: {
+          employeeId: dto.employeeId,
+          type: 'LEAVE_VERIFIED',
+          message: `Leave has been marked and approved by attendance staff for ${this.formatDate(startDate)} to ${this.formatDate(endDate)}.`,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'LEAVE_MARKED_VERIFIED',
+          entity: 'LeaveRecord',
+          entityId: record.id,
+          changes: {
+            leaveType: dto.leaveType,
+            startDate: dto.startDate,
+            endDate: dto.endDate,
+          },
         },
       });
 

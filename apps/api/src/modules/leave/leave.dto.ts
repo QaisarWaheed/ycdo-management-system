@@ -133,3 +133,27 @@ export class EmergencyLeaveDto {
   @MinLength(10)
   emergencyReason: string;
 }
+
+/** Leave marked from Manual Attendance — immediately APPROVED, no workflow. */
+export class VerifiedLeaveDto {
+  @IsUUID()
+  @IsNotEmpty()
+  employeeId: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  startDate: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  endDate: string;
+
+  @IsEnum(LeaveType)
+  leaveType: LeaveType;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(3)
+  @MaxLength(500)
+  reason: string;
+}

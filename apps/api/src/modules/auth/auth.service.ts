@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import {
   ChangePasswordDto,
   LoginDto,
@@ -23,6 +24,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private permissionsService: PermissionsService,
   ) {}
 
   async login(dto: LoginDto) {
@@ -68,6 +70,8 @@ export class AuthService {
       branchId: user.branchId,
     };
 
+    const permissions = await this.getGrantedPermissions(user.id, user.role);
+
     return {
       access_token: this.jwtService.sign(payload),
       user: {
@@ -76,8 +80,26 @@ export class AuthService {
         role: user.role,
         employeeId: user.employeeId,
         branchId: user.branchId,
+        permissions,
       },
     };
+  }
+
+  async getMe(userId: string) {
+    const user = await this.validateUser(userId);
+    const permissions = await this.getGrantedPermissions(user.id, user.role);
+    return { ...user, permissions };
+  }
+
+  private async getGrantedPermissions(
+    userId: string,
+    role: User['role'],
+  ): Promise<string[]> {
+    const effective = await this.permissionsService.getEffectivePermissions(
+      userId,
+      role,
+    );
+    return effective.filter((p) => p.effective).map((p) => p.permission);
   }
 
   async register(dto: RegisterDto): Promise<UserWithoutPassword> {

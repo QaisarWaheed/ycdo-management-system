@@ -7,7 +7,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   LEAVE_APPLY_OTHERS: 'Apply leave on behalf of others',
   PAYROLL_MANAGE: 'Manage payroll',
   EMPLOYEES_CREATE: 'Create employees',
-  EMPLOYEES_EDIT: 'Edit employees',
+  EMPLOYEES_EDIT: 'Edit employee personal info and job info',
   DISCIPLINARY_MANAGE: 'Manage disciplinary cases',
   LETTERS_GENERATE: 'Generate letters',
   INCENTIVES_MANAGE: 'Manage incentives',

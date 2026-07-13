@@ -12,6 +12,7 @@ import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendance
 import {
   CheckInManualTab,
   CheckOutManualTab,
+  MarkLeaveManualTab,
 } from '@/components/attendance/ManualAttendanceTabs'
 import {
   createEmployeeFilters,
@@ -572,12 +573,16 @@ export function AttendancePage() {
             <TabsList>
               <TabsTrigger value="checkin">CheckIn</TabsTrigger>
               <TabsTrigger value="checkout">CheckOut</TabsTrigger>
+              <TabsTrigger value="leave">Mark Leave</TabsTrigger>
             </TabsList>
             <TabsContent value="checkin" className="mt-4">
               <CheckInManualTab />
             </TabsContent>
             <TabsContent value="checkout" className="mt-4">
               <CheckOutManualTab />
+            </TabsContent>
+            <TabsContent value="leave" className="mt-4">
+              <MarkLeaveManualTab />
             </TabsContent>
           </Tabs>
         </TabsContent>

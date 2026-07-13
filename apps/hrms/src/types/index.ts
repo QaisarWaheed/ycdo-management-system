@@ -4,6 +4,8 @@ export interface User {
   role: string
   employeeId?: string | null
   branchId?: string | null
+  /** Effective permission keys granted via role defaults + Login Access overrides */
+  permissions?: string[]
 }
 
 export interface AuthLoginResponse {

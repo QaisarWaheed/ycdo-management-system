@@ -52,10 +52,12 @@ export function EmployeesListPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const returnTo = `${location.pathname}${location.search}`
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
   const isMedicineManager = isMedicineManagerRole(user?.role)
-  const canCreateEmployee = !isMedicineManager
-  const canManageEmployee = !isMedicineManager
+  const canCreateEmployee =
+    !isMedicineManager && hasPermission('EMPLOYEES_CREATE')
+  const canManageEmployee =
+    !isMedicineManager && hasPermission('EMPLOYEES_EDIT')
   const [search, setSearch] = useState('')
   const [employeeFilters, setEmployeeFilters] = useState(() =>
     createEmployeeFilters(user),

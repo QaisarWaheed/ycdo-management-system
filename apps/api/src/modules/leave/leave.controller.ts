@@ -20,6 +20,7 @@ import {
   ApplyLeaveDto,
   ApproveLeaveDto,
   EmergencyLeaveDto,
+  VerifiedLeaveDto,
   HRAssignRelieverDto,
   LeaveQueryDto,
   RequestRelieverDto,
@@ -137,6 +138,24 @@ export class LeaveController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.leaveService.markEmergencyLeave(dto, user);
+  }
+
+  @Post('verified')
+  @Roles(
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.MEDICINE_MANAGER,
+  )
+  markVerifiedLeave(
+    @Body() dto: VerifiedLeaveDto,
+    @CurrentUser()
+    user: { id: string; role: UserRole; branchId?: string | null },
+  ) {
+    return this.leaveService.markVerifiedLeave(dto, user);
   }
 
   @Get()

@@ -527,7 +527,7 @@ function AddPreviousEmploymentDialog({
 
 export function EmployeeProfilePage() {
   const { id = '' } = useParams()
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -772,9 +772,11 @@ export function EmployeeProfilePage() {
     !!user?.role &&
     HR_JOB_ROLES.includes(user.role as (typeof HR_JOB_ROLES)[number])
 
-  const canManagePersonalData = isItTeam
+  const canEditEmployeeProfile = hasPermission('EMPLOYEES_EDIT')
 
-  const canEditJobInfo = isHrTeam || user?.role === 'IT_ADMIN'
+  const canManagePersonalData = isItTeam || canEditEmployeeProfile
+
+  const canEditJobInfo = isHrTeam || isItTeam || canEditEmployeeProfile
 
   const canEditPayroll = isHrTeam || isItTeam
 
@@ -814,10 +816,11 @@ export function EmployeeProfilePage() {
         }}
       />
 
-      {isItTeam && (
+      {(isItTeam || canEditEmployeeProfile) && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 no-print">
-          IT access — you can edit personal information, job information,
-          documents, and qualifications for this employee.
+          {isItTeam
+            ? 'IT access — you can edit personal information, job information, documents, and qualifications for this employee.'
+            : 'You have permission to edit this employee’s personal information and job information.'}
         </div>
       )}
 

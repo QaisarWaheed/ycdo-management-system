@@ -46,6 +46,14 @@ export interface EmergencyLeavePayload {
   emergencyReason: string
 }
 
+export interface VerifiedLeavePayload {
+  employeeId: string
+  startDate: string
+  endDate: string
+  leaveType: 'REGULAR' | 'SHORT_LEAVE' | 'EMERGENCY'
+  reason: string
+}
+
 export const leaveApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, LeaveRecord[]>('/leave', { params }),
@@ -83,4 +91,6 @@ export const leaveApi = {
     api.post(`/leave/${leaveId}/hr-assign-reliever`, data),
   markEmergency: (data: EmergencyLeavePayload) =>
     api.post<unknown, LeaveRecord>('/leave/emergency', data),
+  markVerified: (data: VerifiedLeavePayload) =>
+    api.post<unknown, LeaveRecord>('/leave/verified', data),
 }

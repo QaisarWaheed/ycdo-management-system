@@ -29,7 +29,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: { id: string }) {
-    return this.authService.validateUser(user.id);
+    return this.authService.getMe(user.id);
   }
 
   @Patch('change-password')
