@@ -47,6 +47,7 @@ model Branch {
   location          BranchLocation?
   biometricDevices  BiometricDevice[]
   adminUsers        User[]
+  faceSyncResults   FaceSyncResult[]
 }
 
 model BiometricDevice {
@@ -57,6 +58,33 @@ model BiometricDevice {
   createdAt DateTime @default(now())
 
   branch Branch @relation(fields: [branchId], references: [id])
+}
+
+model FaceSyncJob {
+  id         String   @id @default(uuid())
+  employeeId String
+  photoUrl   String
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee Employee         @relation(fields: [employeeId], references: [id])
+  results  FaceSyncResult[]
+}
+
+model FaceSyncResult {
+  id       String   @id @default(uuid())
+  jobId    String
+  deviceId String
+  branchId String
+  status   String
+  error    String?
+  syncedAt DateTime @default(now())
+
+  job    FaceSyncJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  branch Branch      @relation(fields: [branchId], references: [id])
+
+  @@unique([jobId, deviceId])
 }
 
 model Shift {
@@ -76,9 +104,9 @@ model Shift {
 
 model Department {
   id        String   @id @default(uuid())
-  name      String
-  branchId  String
-  branch    Branch   @relation(fields: [branchId], references: [id])
+  name      String   @unique
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
   isActive  Boolean  @default(true)
   isDeleted Boolean  @default(false)
   sortOrder Int      @default(999)
@@ -136,6 +164,7 @@ model Employee {
   incentives                 Incentive[]
   portalAttendances          PortalAttendance[]
   advanceLoanRequests        AdvanceLoanRequest[]
+  faceSyncJobs               FaceSyncJob[]
 
   // Additional personal info
   fatherStatus           String?
@@ -279,6 +308,7 @@ model AttendanceLog {
   employeeId      String
   branchId        String
   date            DateTime         @db.Date
+  type            AttendanceLogType  @default(REGULAR)
   checkIn         DateTime?
   checkOut        DateTime?
   status          AttendanceStatus
@@ -294,7 +324,12 @@ model AttendanceLog {
   employee Employee @relation(fields: [employeeId], references: [id])
   branch   Branch   @relation(fields: [branchId], references: [id])
 
-  @@unique([employeeId, date])
+  @@unique([employeeId, date, type])
+}
+
+enum AttendanceLogType {
+  REGULAR
+  OVERTIME
 }
 
 enum AttendanceStatus {

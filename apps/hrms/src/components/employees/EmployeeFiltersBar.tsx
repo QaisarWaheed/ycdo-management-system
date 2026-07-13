@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { resolveShiftIds } from '@/lib/shiftFilterUtils'
-import { EMPLOYEE_STATUSES, GENDERS } from '@/types'
+import { EMPLOYEE_STATUSES, GENDERS, type Shift } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { getLockedBranchId } from '@/lib/branchScope'
 import { useAuth } from '@/hooks/useAuth'
@@ -165,14 +165,9 @@ export function EmployeeFiltersBar({
     enabled: !lockedBranchId,
   })
 
-  const effectiveBranchId = lockedBranchId || filters.branchId
-
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', effectiveBranchId || 'all'],
-    queryFn: () =>
-      departmentsApi.getAll(
-        effectiveBranchId ? { branchId: effectiveBranchId } : undefined,
-      ),
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
   })
 
   const { data: filterOptions } = useQuery({

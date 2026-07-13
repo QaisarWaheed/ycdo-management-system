@@ -488,6 +488,7 @@ export interface AttendanceLog {
   overtimePending?: boolean
   overtimeApprovedBy?: string | null
   overtimeApprovedAt?: string | null
+  type?: 'REGULAR' | 'OVERTIME'
   source?: string
   note?: string | null
   employee?: {

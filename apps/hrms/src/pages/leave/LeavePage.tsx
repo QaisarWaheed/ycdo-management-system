@@ -199,7 +199,6 @@ function TodayRelieversModal({
                       {row.reliever ? (
                         <div>
                           <EmployeeNameLink
-                            employee={row.reliever}
                             name={row.reliever.name}
                           />
                           <p className="font-mono text-xs text-text-secondary">

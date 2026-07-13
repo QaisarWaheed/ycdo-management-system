@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { stripPersonalEmployeeFields } from '../../common/hr-executive.util';
+import { normalizeDesignationName } from '../../common/org-structure';
 import { inferShiftNameFromDuty } from '../../common/shift-inference.util';
 import {
   ChangeType,
@@ -17,7 +18,14 @@ import {
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  cloudinary,
+  isCloudinaryEnabled,
+} from '../../config/cloudinary.config';
 import { LettersService } from '../letters/letters.service';
 import {
   isWithinDutyWindow,
@@ -56,12 +64,10 @@ export class EmployeesService {
 
   async create(dto: CreateEmployeeDto, actingUser?: ActingUser) {
     this.validateCreateDto(dto);
+    dto.currentDesignation = normalizeDesignationName(dto.currentDesignation);
 
     await this.ensureBranchExists(dto.currentBranchId);
-    await this.ensureDepartmentInBranch(
-      dto.currentDepartmentId,
-      dto.currentBranchId,
-    );
+    await this.ensureDepartmentExists(dto.currentDepartmentId);
 
     if (dto.cnic) {
       const existingCnic = await this.prisma.employee.findUnique({
@@ -436,6 +442,11 @@ export class EmployeesService {
             employeeCode: { contains: filters.search, mode: 'insensitive' },
           },
           { cnic: { contains: filters.search, mode: 'insensitive' } },
+          {
+            currentBranch: {
+              name: { contains: filters.search, mode: 'insensitive' },
+            },
+          },
         ],
       });
     }
@@ -656,7 +667,9 @@ export class EmployeesService {
     if (sanitizedDto.gender !== undefined) data.gender = sanitizedDto.gender;
     if (sanitizedDto.biometricId !== undefined) data.biometricId = sanitizedDto.biometricId;
     if (sanitizedDto.currentDesignation !== undefined) {
-      data.currentDesignation = sanitizedDto.currentDesignation;
+      data.currentDesignation = normalizeDesignationName(
+        sanitizedDto.currentDesignation,
+      );
     }
     if (sanitizedDto.fatherContactNumber !== undefined) {
       data.fatherContactNumber = sanitizedDto.fatherContactNumber;
@@ -705,6 +718,18 @@ export class EmployeesService {
       }
     }
 
+    if (sanitizedDto.cnic !== undefined) {
+      if (sanitizedDto.cnic) {
+        const existingCnic = await this.prisma.employee.findFirst({
+          where: { cnic: sanitizedDto.cnic, NOT: { id } },
+        });
+        if (existingCnic) {
+          throw new ConflictException('Employee with this CNIC already exists');
+        }
+      }
+      data.cnic = sanitizedDto.cnic || null;
+    }
+
     if (sanitizedDto.biometricId) {
       const existingBiometric = await this.prisma.employee.findFirst({
         where: { biometricId: sanitizedDto.biometricId, NOT: { id } },
@@ -744,11 +769,9 @@ export class EmployeesService {
 
   async transfer(id: string, dto: TransferDto) {
     const employee = await this.findOne(id);
+    dto.currentDesignation = normalizeDesignationName(dto.currentDesignation);
     await this.ensureBranchExists(dto.currentBranchId);
-    await this.ensureDepartmentInBranch(
-      dto.currentDepartmentId,
-      dto.currentBranchId,
-    );
+    await this.ensureDepartmentExists(dto.currentDepartmentId);
 
     const effectiveDate = new Date(dto.effectiveDate);
 
@@ -944,17 +967,14 @@ export class EmployeesService {
     }
   }
 
-  private async ensureDepartmentInBranch(
-    departmentId: string,
-    branchId: string,
-  ) {
+  private async ensureDepartmentExists(departmentId: string) {
     const department = await this.prisma.department.findFirst({
-      where: { id: departmentId, branchId, isActive: true, isDeleted: false },
+      where: { id: departmentId, isActive: true, isDeleted: false },
     });
 
     if (!department) {
       throw new NotFoundException(
-        `Department with id ${departmentId} not found in branch`,
+        `Department with id ${departmentId} not found`,
       );
     }
   }
@@ -1038,10 +1058,7 @@ export class EmployeesService {
     }
 
     if (dto.currentDepartmentId) {
-      await this.ensureDepartmentInBranch(
-        dto.currentDepartmentId,
-        targetBranchId,
-      );
+      await this.ensureDepartmentExists(dto.currentDepartmentId);
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -1122,9 +1139,11 @@ export class EmployeesService {
   async uploadPhoto(id: string, file: Express.Multer.File) {
     await this.findOne(id);
 
-    const photoUrl = `/uploads/photos/${id}/${file.filename}`;
+    const photoUrl = isCloudinaryEnabled()
+      ? await this.uploadPhotoToCloudinary(id, file)
+      : `/uploads/photos/${id}/${file.filename}`;
 
-    return this.prisma.employee.update({
+    const updated = await this.prisma.employee.update({
       where: { id },
       data: { photoUrl },
       select: {
@@ -1132,6 +1151,55 @@ export class EmployeesService {
         photoUrl: true,
       },
     });
+
+    await this.prisma.faceSyncJob.create({
+      data: {
+        employeeId: id,
+        photoUrl,
+        status: 'PENDING',
+      },
+    });
+
+    return updated;
+  }
+
+  private async uploadPhotoToCloudinary(
+    employeeId: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    const tempFile = path.join(os.tmpdir(), `${employeeId}-${Date.now()}${ext}`);
+
+    try {
+      if (file.buffer?.length) {
+        fs.writeFileSync(tempFile, file.buffer);
+      } else if (file.path) {
+        fs.copyFileSync(file.path, tempFile);
+      } else {
+        throw new BadRequestException('No photo data');
+      }
+
+      const result = await cloudinary.uploader.upload(tempFile, {
+        folder: 'ycdo-hrms/employees',
+        public_id: employeeId,
+        overwrite: true,
+        resource_type: 'image',
+        transformation: [
+          { width: 800, height: 800, crop: 'limit' },
+          { quality: 'auto', fetch_format: 'auto' },
+        ],
+      });
+
+      return result.secure_url;
+    } finally {
+      if (fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+      }
+
+      if (file.path && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+    }
   }
 
   async findActiveShiftEmployees(
@@ -1380,6 +1448,9 @@ export class EmployeesService {
       }
       if (!dto.emergencyRelation) {
         throw new BadRequestException('Emergency relation is required');
+      }
+      if (!dto.cnic) {
+        throw new BadRequestException('CNIC is required');
       }
       if (!dto.dutyStartTime || !dto.dutyEndTime) {
         throw new BadRequestException('Duty hours are required');

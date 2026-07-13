@@ -6,6 +6,7 @@ import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { z } from 'zod'
 import { designationsApi } from '@/api/endpoints/designations'
 import { employeesApi } from '@/api/endpoints/employees'
+import { CnicInput, isValidCnic } from '@/components/common/CnicInput'
 import { DateInput } from '@/components/common/DateInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { PhoneInput } from '@/components/common/PhoneInput'
@@ -30,7 +31,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
-import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
 import {
   BLOOD_GROUP_OPTIONS,
   GENDER_OPTIONS,
@@ -71,6 +71,10 @@ const editSchema = z.object({
   spouseName: z.string().optional(),
   spouseContactNumber: phoneOptional,
   biometricId: z.string().optional(),
+  cnic: z
+    .string()
+    .optional()
+    .refine((v) => !v || isValidCnic(v), 'CNIC format: 12345-1234567-1'),
   joiningDate: z.string().optional(),
   currentDesignation: z.string().optional(),
 })
@@ -91,6 +95,7 @@ function buildPayload(
     if (data.joiningDate) payload.joiningDate = data.joiningDate
     if (data.currentDesignation) payload.currentDesignation = data.currentDesignation
     if (data.biometricId) payload.biometricId = data.biometricId
+    if (data.cnic) payload.cnic = data.cnic
     return payload
   }
 
@@ -128,6 +133,8 @@ function buildPayload(
     if (val) payload[key] = val
   }
 
+  if (data.cnic) payload.cnic = data.cnic
+
   return payload
 }
 
@@ -157,6 +164,7 @@ function employeeToFormValues(employee: Employee): EditFormValues {
     spouseName: employee.spouseName ?? '',
     spouseContactNumber: employee.spouseContactNumber ?? '',
     biometricId: employee.biometricId ?? '',
+    cnic: employee.cnic ?? '',
     joiningDate: toDateInput(employee.joiningDate),
     currentDesignation: employee.currentDesignation ?? '',
   }
@@ -168,12 +176,14 @@ export function EditEmployeeDialog({
   onOpenChange,
   onSuccess,
   mode = 'personal',
+  canEditCnic = false,
 }: {
   employee: Employee
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
   mode?: 'personal' | 'job'
+  canEditCnic?: boolean
 }) {
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
@@ -186,18 +196,10 @@ export function EditEmployeeDialog({
   const selectedPermanentProvince = form.watch('permanentProvince')
   const selectedDistrict = form.watch('district')
 
-  const designationCategories = useMemo(
-    () =>
-      getDesignationCategoriesForDepartment(
-        employee.currentDepartment?.name ?? '',
-      ),
-    [employee.currentDepartment?.name],
-  )
-
   const designationParams = useMemo(() => {
-    if (!designationCategories?.length) return {}
-    return { categories: designationCategories.join(',') }
-  }, [designationCategories])
+    if (!employee.currentDepartment?.name) return {}
+    return { department: employee.currentDepartment.name }
+  }, [employee.currentDepartment?.name])
 
   const { data: designations = [] } = useQuery({
     queryKey: ['designations', designationParams],
@@ -294,10 +296,33 @@ export function EditEmployeeDialog({
                     </FormItem>
                   )}
                 />
-                <div className="space-y-2">
-                  <Label>CNIC</Label>
-                  <Input value={employee.cnic ?? ''} disabled />
-                </div>
+                {canEditCnic ? (
+                  <FormField
+                    control={form.control}
+                    name="cnic"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>CNIC</FormLabel>
+                        <FormControl>
+                          <CnicInput
+                            value={field.value ?? ''}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
+                            error={!!form.formState.errors.cnic}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    <Label>CNIC</Label>
+                    <Input value={employee.cnic ?? ''} disabled />
+                  </div>
+                )}
                 <FormField
                   control={form.control}
                   name="gender"
@@ -550,6 +575,28 @@ export function EditEmployeeDialog({
                     </FormItem>
                   )}
                 />
+                {canEditCnic && (
+                  <FormField
+                    control={form.control}
+                    name="cnic"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>CNIC</FormLabel>
+                        <FormControl>
+                          <CnicInput
+                            value={field.value ?? ''}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
+                            error={!!form.formState.errors.cnic}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
               <p className="text-sm text-amber-700">
                 To change branch, department, or duty hours, use Edit Branch &

@@ -1,3 +1,5 @@
+import type { NavigateFunction } from 'react-router-dom'
+
 /** Top-level routes where a back button is not shown. */
 const ROOT_PATHS = new Set([
   '/dashboard',
@@ -38,7 +40,7 @@ export function shouldShowBackButton(pathname: string): boolean {
 }
 
 export function handleAppBack(
-  navigate: (to: number | string) => void,
+  navigate: NavigateFunction,
   pathname: string,
   fromState?: string,
 ): void {

@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AttendanceLogType,
   AttendanceSource,
   AttendanceStatus,
   EmployeeStatus,
@@ -91,117 +92,83 @@ export class AttendanceService {
     const checkTime = new Date(dto.timestamp);
     const dateOnly = toPakistanDateOnly(checkTime);
 
-    const openRelieverSession = await this.prisma.relieverSession.findFirst({
-      where: {
-        employeeId: employee.id,
-        date: dateOnly,
-        checkOut: null,
-      },
-    });
+    let punchType = dto.punchType;
 
-    if (openRelieverSession) {
-      const totalMinutes = Math.round(
-        (checkTime.getTime() - openRelieverSession.checkIn.getTime()) / 60000,
-      );
-
-      const relieverSession = await this.prisma.relieverSession.update({
-        where: { id: openRelieverSession.id },
-        data: {
-          checkOut: checkTime,
-          totalMinutes,
+    if (!punchType) {
+      const todayLog = await this.prisma.attendanceLog.findFirst({
+        where: {
+          employeeId: employee.id,
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
         },
       });
 
-      return { type: 'RELIEVER_CHECKOUT', relieverSession };
+      if (!todayLog || !todayLog.checkIn) {
+        punchType = 'CHECKIN';
+      } else if (todayLog.checkIn && !todayLog.checkOut) {
+        punchType = 'CHECKOUT';
+      } else {
+        punchType = 'OVERTIME_CHECKIN';
+      }
     }
 
-    const existing = await this.prisma.attendanceLog.findUnique({
-      where: {
-        employeeId_date: {
+    const isCheckout =
+      punchType === 'CHECKOUT' || punchType === 'OVERTIME_CHECKIN';
+
+    if (isCheckout) {
+      const existing = await this.prisma.attendanceLog.findFirst({
+        where: {
           employeeId: employee.id,
           date: dateOnly,
+          type: AttendanceLogType.REGULAR,
         },
-      },
-    });
+      });
 
-    if (!existing) {
-      const lateMinutes = computeBiometricLateMinutes(checkTime, employee);
-      let status = determineBiometricCheckInStatus(
-        lateMinutes,
-        employee,
-        0,
-      );
+      if (!existing || !existing.checkIn) {
+        throw new BadRequestException('No check-in found for today');
+      }
 
-      const log = await this.prisma.$transaction(async (tx) => {
-        const effectiveStatus = await applyDisciplineRules(
-          tx,
-          employee.id,
-          status,
-          dateOnly,
-          { lateMinutes },
-        );
+      if (existing.checkOut) {
+        const openOvertimeLog = await this.prisma.attendanceLog.findFirst({
+          where: {
+            employeeId: employee.id,
+            date: dateOnly,
+            type: AttendanceLogType.OVERTIME,
+            checkOut: null,
+          },
+        });
 
-        if (effectiveStatus === AttendanceStatus.HALF_DAY) {
-          status = AttendanceStatus.HALF_DAY;
+        if (openOvertimeLog) {
+          const overtimeMinutes = Math.round(
+            (checkTime.getTime() - openOvertimeLog.checkIn!.getTime()) / 60000,
+          );
+
+          const log = await this.prisma.attendanceLog.update({
+            where: { id: openOvertimeLog.id },
+            data: {
+              checkOut: checkTime,
+              overtimeMinutes,
+            },
+          });
+
+          return { type: 'OVERTIME_CHECKOUT', log };
         }
 
-        const created = await tx.attendanceLog.create({
+        const log = await this.prisma.attendanceLog.create({
           data: {
             employeeId: employee.id,
             branchId,
             date: dateOnly,
+            type: AttendanceLogType.OVERTIME,
             checkIn: checkTime,
-            status,
-            lateMinutes,
+            status: AttendanceStatus.PRESENT,
             source: AttendanceSource.BIOMETRIC,
           },
         });
 
-        return { log: created };
-      });
+        return { type: 'OVERTIME_CHECKIN', log };
+      }
 
-      return log.log;
-    }
-
-    if (!existing.checkIn) {
-      const lateMinutes = computeBiometricLateMinutes(checkTime, employee);
-      let status = determineBiometricCheckInStatus(
-        lateMinutes,
-        employee,
-        0,
-      );
-
-      const log = await this.prisma.$transaction(async (tx) => {
-        const effectiveStatus = await applyDisciplineRules(
-          tx,
-          employee.id,
-          status,
-          dateOnly,
-          { lateMinutes },
-        );
-
-        if (effectiveStatus === AttendanceStatus.HALF_DAY) {
-          status = AttendanceStatus.HALF_DAY;
-        }
-
-        return tx.attendanceLog.update({
-          where: { id: existing.id },
-          data: {
-            checkIn: checkTime,
-            status,
-            lateMinutes,
-            source: AttendanceSource.BIOMETRIC,
-            note: existing.note?.toLowerCase().includes('auto-marked')
-              ? null
-              : existing.note,
-          },
-        });
-      });
-
-      return log;
-    }
-
-    if (!existing.checkOut) {
       const sessionMinutes = Math.round(
         (checkTime.getTime() - existing.checkIn!.getTime()) / 60000,
       );
@@ -222,7 +189,7 @@ export class AttendanceService {
         status = AttendanceStatus.HALF_DAY;
       }
 
-      return this.prisma.attendanceLog.update({
+      const log = await this.prisma.attendanceLog.update({
         where: { id: existing.id },
         data: {
           checkOut: checkTime,
@@ -230,18 +197,90 @@ export class AttendanceService {
           status,
         },
       });
+
+      return { type: 'CHECKOUT', log };
     }
 
-    const relieverSession = await this.prisma.relieverSession.create({
-      data: {
+    const lateMinutes = computeBiometricLateMinutes(checkTime, employee);
+    let status = determineBiometricCheckInStatus(lateMinutes, employee, 0);
+
+    const existingPlaceholder = await this.prisma.attendanceLog.findFirst({
+      where: {
         employeeId: employee.id,
-        branchId,
         date: dateOnly,
-        checkIn: checkTime,
+        checkIn: null,
       },
     });
 
-    return { type: 'RELIEVER_CHECKIN', relieverSession };
+    if (existingPlaceholder) {
+      const log = await this.prisma.$transaction(async (tx) => {
+        const effectiveStatus = await applyDisciplineRules(
+          tx,
+          employee.id,
+          status,
+          dateOnly,
+          { lateMinutes },
+        );
+
+        if (effectiveStatus === AttendanceStatus.HALF_DAY) {
+          status = AttendanceStatus.HALF_DAY;
+        }
+
+        return tx.attendanceLog.update({
+          where: { id: existingPlaceholder.id },
+          data: {
+            checkIn: checkTime,
+            status,
+            source: AttendanceSource.BIOMETRIC,
+            lateMinutes,
+          },
+        });
+      });
+
+      return { type: 'CHECKIN', log };
+    }
+
+    const alreadyCheckedIn = await this.prisma.attendanceLog.findFirst({
+      where: {
+        employeeId: employee.id,
+        date: dateOnly,
+        checkIn: { not: null },
+        type: AttendanceLogType.REGULAR,
+      },
+    });
+
+    if (alreadyCheckedIn) {
+      throw new BadRequestException('Already checked in for today');
+    }
+
+    const log = await this.prisma.$transaction(async (tx) => {
+      const effectiveStatus = await applyDisciplineRules(
+        tx,
+        employee.id,
+        status,
+        dateOnly,
+        { lateMinutes },
+      );
+
+      if (effectiveStatus === AttendanceStatus.HALF_DAY) {
+        status = AttendanceStatus.HALF_DAY;
+      }
+
+      return tx.attendanceLog.create({
+        data: {
+          employeeId: employee.id,
+          branchId,
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
+          checkIn: checkTime,
+          status,
+          lateMinutes,
+          source: AttendanceSource.BIOMETRIC,
+        },
+      });
+    });
+
+    return { type: 'CHECKIN', log };
   }
 
   async markManual(
@@ -350,15 +389,17 @@ export class AttendanceService {
 
       const attendanceLog = await tx.attendanceLog.upsert({
         where: {
-          employeeId_date: {
+          employeeId_date_type: {
             employeeId: dto.employeeId,
             date: dateOnly,
+            type: AttendanceLogType.REGULAR,
           },
         },
         create: {
           employeeId: dto.employeeId,
           branchId: employee.currentBranchId,
           date: dateOnly,
+          type: AttendanceLogType.REGULAR,
           checkIn,
           checkOut,
           status,
@@ -653,6 +694,11 @@ export class AttendanceService {
         { fullName: { contains: query.search, mode: 'insensitive' } },
         { employeeCode: { contains: query.search, mode: 'insensitive' } },
         { cnic: { contains: query.search, mode: 'insensitive' } },
+        {
+          currentBranch: {
+            name: { contains: query.search, mode: 'insensitive' },
+          },
+        },
       ];
     }
 
@@ -744,9 +790,10 @@ export class AttendanceService {
 
       const existing = await this.prisma.attendanceLog.findUnique({
         where: {
-          employeeId_date: {
+          employeeId_date_type: {
             employeeId: employee.id,
             date,
+            type: AttendanceLogType.REGULAR,
           },
         },
       });
@@ -757,6 +804,7 @@ export class AttendanceService {
             employeeId: employee.id,
             branchId: employee.currentBranchId,
             date,
+            type: AttendanceLogType.REGULAR,
             status: AttendanceStatus.UNMARKED,
             source: AttendanceSource.MANUAL,
             note: AUTO_UNMARKED_NOTE,
@@ -772,7 +820,8 @@ export class AttendanceService {
   ) {
     enforceBranchScope(query, actingUser);
 
-    const employeeWhere = this.buildEmployeeFilterWhere(query);
+    const { search, ...filterQuery } = query;
+    const employeeWhere = this.buildEmployeeFilterWhere(filterQuery);
 
     const isSingleDay =
       !!query.startDate &&
@@ -790,7 +839,9 @@ export class AttendanceService {
       );
     }
 
-    const where: Prisma.AttendanceLogWhereInput = {};
+    const where: Prisma.AttendanceLogWhereInput = {
+      type: AttendanceLogType.REGULAR,
+    };
 
     if (query.employeeId) {
       where.employeeId = query.employeeId;
@@ -819,6 +870,33 @@ export class AttendanceService {
       where.employee = employeeWhere;
     }
 
+    if (search) {
+      const searchFilter: Prisma.AttendanceLogWhereInput = {
+        OR: [
+          {
+            employee: {
+              OR: [
+                { fullName: { contains: search, mode: 'insensitive' } },
+                { employeeCode: { contains: search, mode: 'insensitive' } },
+                { cnic: { contains: search, mode: 'insensitive' } },
+                {
+                  currentBranch: {
+                    name: { contains: search, mode: 'insensitive' },
+                  },
+                },
+              ],
+            },
+          },
+          { branch: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      };
+      where.AND = where.AND
+        ? Array.isArray(where.AND)
+          ? [...where.AND, searchFilter]
+          : [where.AND, searchFilter]
+        : [searchFilter];
+    }
+
     const logs = await this.prisma.attendanceLog.findMany({
       where,
       include: {
@@ -827,6 +905,7 @@ export class AttendanceService {
             id: true,
             fullName: true,
             employeeCode: true,
+            cnic: true,
             phone: true,
             currentDesignation: true,
             currentDepartmentId: true,
@@ -928,7 +1007,7 @@ export class AttendanceService {
     });
 
     const existingLogs = await this.prisma.attendanceLog.findMany({
-      where: { date: dateOnly },
+      where: { date: dateOnly, type: AttendanceLogType.REGULAR },
       select: { employeeId: true },
     });
 
@@ -985,9 +1064,10 @@ export class AttendanceService {
 
     const attendanceLog = await this.prisma.attendanceLog.findUnique({
       where: {
-        employeeId_date: {
+        employeeId_date_type: {
           employeeId,
           date: dateOnly,
+          type: AttendanceLogType.REGULAR,
         },
       },
     });
@@ -1056,7 +1136,11 @@ export class AttendanceService {
 
     const existing = await this.prisma.attendanceLog.findUnique({
       where: {
-        employeeId_date: { employeeId, date: dateOnly },
+        employeeId_date_type: {
+          employeeId,
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
+        },
       },
     });
 
@@ -1095,12 +1179,17 @@ export class AttendanceService {
 
       await tx.attendanceLog.upsert({
         where: {
-          employeeId_date: { employeeId, date: dateOnly },
+          employeeId_date_type: {
+            employeeId,
+            date: dateOnly,
+            type: AttendanceLogType.REGULAR,
+          },
         },
         create: {
           employeeId,
           branchId: employee.currentBranchId,
           date: dateOnly,
+          type: AttendanceLogType.REGULAR,
           checkIn: checkTime,
           status,
           lateMinutes,
@@ -1169,7 +1258,11 @@ export class AttendanceService {
 
     const existing = await this.prisma.attendanceLog.findUnique({
       where: {
-        employeeId_date: { employeeId, date: dateOnly },
+        employeeId_date_type: {
+          employeeId,
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
+        },
       },
     });
 

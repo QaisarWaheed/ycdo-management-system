@@ -234,6 +234,7 @@ export function ItAdminEmployeesTab() {
           mode="personal"
           open={!!editEmployee}
           onOpenChange={(open) => !open && setEditEmployee(null)}
+          canEditCnic
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['it-admin-employees'] })
             queryClient.invalidateQueries({ queryKey: ['employees'] })

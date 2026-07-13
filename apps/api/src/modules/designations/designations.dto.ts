@@ -40,4 +40,8 @@ export class DesignationQueryDto {
   @IsOptional()
   @IsString()
   categories?: string;
+
+  @IsOptional()
+  @IsString()
+  department?: string;
 }

@@ -105,6 +105,7 @@ function navItemsForRole(role?: string) {
     return [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/employees', label: 'Employees', icon: Users },
+      { to: '/payroll', label: 'Payroll', icon: Wallet },
       ...itTeamNavItems,
       { to: '/broadcasts', label: 'Broadcasts', icon: Bell },
     ]

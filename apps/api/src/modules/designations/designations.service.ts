@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EmployeeStatus, Prisma } from '@prisma/client';
+import {
+  getDesignationsForDepartment,
+  normalizeDesignationName,
+  normalizeOrgName,
+} from '../../common/org-structure';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateDesignationDto,
@@ -17,10 +22,17 @@ export class DesignationsService {
       isDeleted: false,
     };
 
-    if (query?.categories) {
+    if (query?.department) {
+      const titles = getDesignationsForDepartment(query.department);
+      if (titles.length > 0) {
+        where.title = { in: titles };
+      } else {
+        where.title = { in: [] };
+      }
+    } else if (query?.categories) {
       const categories = query.categories
         .split(',')
-        .map((c) => c.trim())
+        .map((c) => normalizeOrgName(c))
         .filter(Boolean);
       if (categories.length > 0) {
         where.OR = categories.map((category) => ({
@@ -28,42 +40,69 @@ export class DesignationsService {
         }));
       }
     } else if (query?.category) {
-      where.category = { equals: query.category, mode: 'insensitive' };
+      where.category = {
+        equals: normalizeOrgName(query.category),
+        mode: 'insensitive',
+      };
     }
 
-    return this.prisma.designation.findMany({
-      where,
-      orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
-    }).then(async (designations) => {
-      const designationsWithCounts = await Promise.all(
-        designations.map(async (d) => {
-          const employeesCount = await this.prisma.employee.count({
-            where: {
-              currentDesignation: d.title,
-              status: {
-                in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED],
+    return this.prisma.designation
+      .findMany({
+        where,
+        orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+      })
+      .then(async (designations) => {
+        const designationsWithCounts = await Promise.all(
+          designations.map(async (d) => {
+            const employeesCount = await this.prisma.employee.count({
+              where: {
+                currentDesignation: d.title,
+                status: {
+                  in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED],
+                },
               },
-            },
-          });
+            });
 
-          return {
-            ...d,
-            employees: employeesCount,
-          };
-        }),
-      );
+            return {
+              ...d,
+              employees: employeesCount,
+            };
+          }),
+        );
 
-      return designationsWithCounts;
-    });
+        return designationsWithCounts;
+      });
   }
 
   create(dto: CreateDesignationDto) {
-    return this.prisma.designation.create({ data: dto });
+    const title = normalizeDesignationName(dto.title);
+    const category = normalizeOrgName(dto.category);
+
+    return this.prisma.designation.upsert({
+      where: { title },
+      update: { category, isActive: true, isDeleted: false },
+      create: { title, category },
+    });
   }
 
   async update(id: string, dto: UpdateDesignationDto) {
     await this.ensureExists(id);
-    return this.prisma.designation.update({ where: { id }, data: dto });
+
+    const data: Prisma.DesignationUpdateInput = {};
+    if (dto.title !== undefined) {
+      data.title = normalizeDesignationName(dto.title);
+    }
+    if (dto.category !== undefined) {
+      data.category = normalizeOrgName(dto.category);
+    }
+    if (dto.sortOrder !== undefined) {
+      data.sortOrder = dto.sortOrder;
+    }
+    if (dto.isActive !== undefined) {
+      data.isActive = dto.isActive;
+    }
+
+    return this.prisma.designation.update({ where: { id }, data });
   }
 
   async deactivate(id: string) {

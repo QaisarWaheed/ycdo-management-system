@@ -47,10 +47,9 @@ const SUPER_ADMIN_ROLES = ['SUPER_ADMIN'] as const
 
 type DialogMode = 'new-checkin' | 'add-checkout' | 'edit'
 
-function apiErrorMessage(err: {
-  response?: { data?: { message?: string | string[] } }
-}) {
-  const msg = err.response?.data?.message
+function apiErrorMessage(err: unknown) {
+  const msg = (err as { response?: { data?: { message?: string | string[] } } })
+    .response?.data?.message
   return Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error')
 }
 

@@ -7,6 +7,11 @@ import {
   StaffType,
   UserRole,
 } from '@prisma/client';
+import {
+  ALL_DEPARTMENT_NAMES,
+  buildDesignationSeedRows,
+  normalizeDepartmentName,
+} from '../src/common/org-structure';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -190,17 +195,6 @@ const vtiBranches: BranchSeed[] = [
   { name: 'YCDO Financial Assistance for Education', address: 'Multan', phone: '0303-3700007' },
 ];
 
-const hospitalDepartments = [
-  'Administration',
-  'Human Resources',
-  'Medical Staff',
-  'Reception',
-  'Pharmacy',
-  'Laboratory',
-  'Housekeeping',
-  'Emergency',
-];
-
 const seedEmployees = [
   {
     fullName: 'Ahmed Khan',
@@ -208,8 +202,8 @@ const seedEmployees = [
     cnic: '36302-1234567-1',
     gender: Gender.MALE,
     joiningDate: new Date('2024-01-01'),
-    currentDesignation: 'HR Officer',
-    departmentName: 'Human Resources',
+    currentDesignation: 'HR STAFF',
+    departmentName: 'HUMAN RESOURCES',
     basicStipend: 50000,
     employeeCode: 'YCDO-2024-0001',
   },
@@ -219,8 +213,8 @@ const seedEmployees = [
     cnic: '36302-7654321-2',
     gender: Gender.FEMALE,
     joiningDate: new Date('2024-03-01'),
-    currentDesignation: 'Medical Officer',
-    departmentName: 'Medical Staff',
+    currentDesignation: 'MEDICAL OFFICER',
+    departmentName: 'OPD',
     basicStipend: 80000,
     employeeCode: 'YCDO-2024-0002',
   },
@@ -255,8 +249,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.MALE,
     phone: '03001111111',
     email: 'muhammad.usman@ycdo.org',
-    designation: 'Medical Officer',
-    deptName: 'Medical Staff',
+    designation: 'MEDICAL OFFICER',
+    deptName: 'OPD',
     branchName: 'YCDO Central Hospital',
     shiftPreference: 'Morning Shift',
     basicStipend: 85000,
@@ -276,8 +270,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.FEMALE,
     phone: '03002222222',
     email: 'ayesha.malik@ycdo.org',
-    designation: 'Head Nurse',
-    deptName: 'Medical Staff',
+    designation: 'MEDICAL OFFICER',
+    deptName: 'INDOOR',
     branchName: 'YCDO Central Hospital',
     shiftPreference: 'Evening Shift',
     basicStipend: 55000,
@@ -297,8 +291,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.MALE,
     phone: '03003333333',
     email: 'hassan.raza@ycdo.org',
-    designation: 'Receptionist',
-    deptName: 'Reception',
+    designation: 'RECEPTIONIST',
+    deptName: 'PHARMACY',
     branchName: 'YCDO Executive Hospital-I',
     shiftPreference: 'Morning Shift',
     basicStipend: 35000,
@@ -318,8 +312,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.FEMALE,
     phone: '03004444444',
     email: 'fatima.zahra@ycdo.org',
-    designation: 'Pharmacist',
-    deptName: 'Pharmacy',
+    designation: 'PHARMACY STAFF',
+    deptName: 'PHARMACY',
     branchName: 'YCDO Central Hospital',
     shiftPreference: 'Night Shift',
     basicStipend: 60000,
@@ -339,8 +333,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.MALE,
     phone: '03005555555',
     email: 'bilal.ahmed@ycdo.org',
-    designation: 'Software Engineer',
-    deptName: 'IT Team',
+    designation: 'SOFTWARE ENGINEER',
+    deptName: 'SOFTWARE DEPARTMENT',
     branchName: 'Software House HQ',
     basicStipend: 75000,
     status: EmployeeStatus.ACTIVE,
@@ -359,8 +353,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.FEMALE,
     phone: '03006666666',
     email: 'zainab.hussain@ycdo.org',
-    designation: 'Lab Technician',
-    deptName: 'Laboratory',
+    designation: 'LAB STAFF',
+    deptName: 'LABORATORY',
     branchName: 'Idrees Memorial YCDO Hospital',
     shiftPreference: 'Morning Shift',
     basicStipend: 45000,
@@ -380,8 +374,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.MALE,
     phone: '03007777777',
     email: 'omar.farooq@ycdo.org',
-    designation: 'Admin Officer',
-    deptName: 'Administration',
+    designation: 'ADMIN OFFICER',
+    deptName: 'ADMIN',
     branchName: 'YCDO Executive Hospital-II Mother & Child Care',
     basicStipend: 50000,
     status: EmployeeStatus.TRAINEE,
@@ -400,8 +394,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.FEMALE,
     phone: '03008888888',
     email: 'sana.tariq@ycdo.org',
-    designation: 'Graphic Designer',
-    deptName: 'Social Media',
+    designation: 'SOCIAL MEDIA INCHARGE',
+    deptName: 'MEDIA & NEWS',
     branchName: 'Software House HQ',
     basicStipend: 40000,
     status: EmployeeStatus.ACTIVE,
@@ -420,8 +414,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.MALE,
     phone: '03009999999',
     email: 'tariq.mehmood@ycdo.org',
-    designation: 'Housekeeper',
-    deptName: 'Housekeeping',
+    designation: 'SWEEPER',
+    deptName: 'GRADE 4',
     branchName: 'YCDO Hospital Hassan Abad',
     shiftPreference: 'Morning Shift',
     basicStipend: 25000,
@@ -441,8 +435,8 @@ const mockEmployees: MockEmployeeSeed[] = [
     gender: Gender.FEMALE,
     phone: '03010000001',
     email: 'nadia.iqbal@ycdo.org',
-    designation: 'Vocational Trainer',
-    deptName: 'Human Resources',
+    designation: 'BEAUTICIAN TEACHER',
+    deptName: 'TEACHER',
     branchName: 'YCDO VTI For Women Qasim Pur',
     basicStipend: 38000,
     status: EmployeeStatus.APPOINTED,
@@ -526,35 +520,42 @@ async function ensureBranch(
   return branch;
 }
 
-async function ensureDepartments(branchId: string, departmentNames: string[]) {
-  for (const deptName of departmentNames) {
-    const existing = await prisma.department.findFirst({
-      where: { name: deptName, branchId },
+async function ensureDepartments(departmentNames: string[]) {
+  for (let i = 0; i < departmentNames.length; i++) {
+    const name = normalizeDepartmentName(departmentNames[i]);
+    await prisma.department.upsert({
+      where: { name },
+      update: {
+        sortOrder: i + 1,
+        isDeleted: false,
+        isActive: true,
+        branchId: null,
+      },
+      create: {
+        name,
+        branchId: null,
+        sortOrder: i + 1,
+      },
     });
-
-    if (!existing) {
-      await prisma.department.create({
-        data: { name: deptName, branchId },
-      });
-    }
   }
+}
+
+async function seedGlobalDepartments() {
+  await ensureDepartments([...ALL_DEPARTMENT_NAMES]);
 }
 
 async function seedProjectBranches(
   branches: BranchSeed[],
   projectId: string,
-  withDepartments: boolean,
+  _withLegacyDepartments: boolean,
 ) {
   for (const branch of branches) {
-    const created = await ensureBranch(
+    await ensureBranch(
       branch.name,
       branch.address,
       branch.phone,
       projectId,
     );
-    if (withDepartments) {
-      await ensureDepartments(created.id, hospitalDepartments);
-    }
   }
 }
 
@@ -733,27 +734,7 @@ async function main() {
   const softwareBranch = swBranch ?? (await prisma.branch.findFirst({ where: { name: { contains: 'Software House HQ' } } }));
 
   if (softwareBranch) {
-    const swDepts = ['Media House', 'Social Media', 'IT Team'];
-    for (const name of swDepts) {
-      const existing = await prisma.department.findFirst({
-        where: { name, branchId: softwareBranch.id },
-      });
-
-      if (!existing) {
-        await prisma.department.create({
-          data: {
-            name,
-            branchId: softwareBranch.id,
-            sortOrder: swDepts.indexOf(name) + 1,
-          },
-        });
-      } else if (existing.sortOrder !== swDepts.indexOf(name) + 1) {
-        await prisma.department.update({
-          where: { id: existing.id },
-          data: { sortOrder: swDepts.indexOf(name) + 1, isDeleted: false, isActive: true },
-        });
-      }
-    }
+    // Software House uses the same global department catalog.
   }
 
   const mainBranch = await prisma.branch.findFirst({
@@ -771,7 +752,7 @@ async function main() {
 
     if (!employee) {
       const department = await prisma.department.findFirst({
-        where: { name: emp.departmentName, branchId: mainBranch.id },
+        where: { name: normalizeDepartmentName(emp.departmentName) },
       });
 
       if (!department) {
@@ -845,13 +826,6 @@ async function main() {
     }
   }
 
-  const vtiQasimPur = await prisma.branch.findFirst({
-    where: { name: { contains: 'YCDO VTI For Women Qasim Pur' } },
-  });
-  if (vtiQasimPur) {
-    await ensureDepartments(vtiQasimPur.id, ['Human Resources', 'Administration']);
-  }
-
   for (const employee of mockEmployees) {
     const existingEmp = await prisma.employee.findFirst({
       where: { cnic: employee.cnic },
@@ -866,13 +840,9 @@ async function main() {
     }
 
     const dept = await prisma.department.findFirst({
-      where: { name: employee.deptName, branchId: branch.id },
+      where: { name: normalizeDepartmentName(employee.deptName) },
     });
-    const department =
-      dept ??
-      (await prisma.department.findFirst({
-        where: { name: employee.deptName },
-      }));
+    const department = dept;
     if (!department) {
       console.log(`Dept not found: ${employee.deptName}`);
       continue;
@@ -1026,62 +996,23 @@ async function main() {
 
   await prisma.designation.deleteMany({});
 
-  const newDesignations = [
-    { title: 'Admin Manager', category: 'Management' },
-    { title: 'Pharmacy Staff', category: 'Allied Health' },
-    { title: 'Lab Staff', category: 'Allied Health' },
-    { title: 'Admin Officer', category: 'Admin' },
-    { title: 'Doctor', category: 'Medical' },
-    { title: 'Human Resource Staff', category: 'HR' },
-    { title: 'Human Resource Manager', category: 'HR' },
-    { title: 'Staff Manager', category: 'Management' },
-    { title: 'Progress Officer', category: 'Management' },
-    { title: 'Accountant/Chief Finance Officer', category: 'Finance' },
-    { title: 'Assistant Accountant', category: 'Finance' },
-    { title: 'Finance Representative', category: 'Finance' },
-    { title: 'Admin Medicine', category: 'Admin' },
-    { title: 'Medicine Manager', category: 'Allied Health' },
-    { title: 'Medicine Store Manager', category: 'Allied Health' },
-    { title: 'Lab Admin Manager', category: 'Allied Health' },
-    { title: 'Lab Operation Manager', category: 'Allied Health' },
-    { title: 'Lab Store Manager', category: 'Allied Health' },
-    { title: 'Audit Officer', category: 'Finance' },
-    { title: 'Central Admin Officer', category: 'Admin' },
-    { title: 'Coordinator Projects', category: 'Management' },
-    { title: 'Surgeon', category: 'Medical' },
-    { title: 'Anaesthetics', category: 'Medical' },
-    { title: 'OTA', category: 'Medical' },
-    { title: 'R&D Coordinator', category: 'IT' },
-    { title: 'Biomedical Engineer', category: 'IT' },
-    { title: 'Assets Manager', category: 'Admin' },
-    { title: 'Kitchen Admin Manager', category: 'Kitchen' },
-    { title: 'Kitchen Operation Manager', category: 'Kitchen' },
-    { title: 'VTI Admin Officer', category: 'VTI' },
-    { title: 'Nurse', category: 'Nursing' },
-    { title: 'Head Nurse', category: 'Nursing' },
-    { title: 'Receptionist', category: 'Admin' },
-    { title: 'Pharmacist', category: 'Allied Health' },
-    { title: 'Lab Technician', category: 'Allied Health' },
-    { title: 'Housekeeper', category: 'Support' },
-    { title: 'Security Guard', category: 'Support' },
-    { title: 'Driver', category: 'Support' },
-    { title: 'Software Engineer', category: 'IT' },
-    { title: 'IT Officer', category: 'IT' },
-    { title: 'Social Media Officer', category: 'IT' },
-    { title: 'Graphic Designer', category: 'IT' },
-    { title: 'Vocational Trainer', category: 'VTI' },
-    { title: 'Cashier', category: 'Finance' },
-    { title: 'Data Entry Operator', category: 'Admin' },
-    { title: 'Cook', category: 'Kitchen' },
-  ];
+  const newDesignations = buildDesignationSeedRows();
 
-  for (const d of newDesignations) {
+  for (let i = 0; i < newDesignations.length; i++) {
+    const d = newDesignations[i];
     await prisma.designation.upsert({
       where: { title: d.title },
-      update: { category: d.category, isActive: true },
-      create: d,
+      update: {
+        category: d.category,
+        isActive: true,
+        isDeleted: false,
+        sortOrder: i + 1,
+      },
+      create: { ...d, sortOrder: i + 1 },
     });
   }
+
+  await seedGlobalDepartments();
 
   const branchManagerUser = await prisma.user.findFirst({
     where: { email: 'branch.manager@ycdo.org' },
@@ -1210,16 +1141,7 @@ async function main() {
     });
   }
 
-  const deptOrder = [
-    'Administration',
-    'Human Resources',
-    'Medical Staff',
-    'Reception',
-    'Pharmacy',
-    'Laboratory',
-    'Housekeeping',
-    'Emergency',
-  ];
+  const deptOrder = [...ALL_DEPARTMENT_NAMES];
 
   for (let i = 0; i < deptOrder.length; i++) {
     await prisma.department.updateMany({
@@ -1228,60 +1150,7 @@ async function main() {
     });
   }
 
-  const designationOrder = [
-    'Admin Manager',
-    'Staff Manager',
-    'Operations Manager',
-    'Progress Officer',
-    'Central Admin Officer',
-    'Coordinator Projects',
-    'Human Resource Manager',
-    'Human Resource Staff',
-    'Doctor',
-    'Surgeon',
-    'Anaesthetics',
-    'OTA',
-    'Admin Officer',
-    'Admin Medicine',
-    'Pharmacist',
-    'Pharmacy Staff',
-    'Medicine Manager',
-    'Medicine Store Manager',
-    'Lab Admin Manager',
-    'Lab Operation Manager',
-    'Lab Store Manager',
-    'Lab Staff',
-    'Lab Technician',
-    'Nurse',
-    'Head Nurse',
-    'Nursing Assistant',
-    'Receptionist',
-    'Data Entry Operator',
-    'Accounts Officer',
-    'Finance Manager',
-    'Audit Officer',
-    'Assistant Accountant',
-    'Finance Representative',
-    'Accountant/Chief Finance Officer',
-    'Assets Manager',
-    'Biomedical Engineer',
-    'R&D Coordinator',
-    'Vocational Trainer',
-    'VTI Admin Officer',
-    'Kitchen Admin Manager',
-    'Kitchen Operation Manager',
-    'Cook',
-    'Software Engineer',
-    'IT Officer',
-    'Social Media Officer',
-    'Graphic Designer',
-    'Security Guard',
-    'Driver',
-    'Housekeeper',
-    'Helper',
-    'Sanitation Worker',
-    'Sweeper',
-  ];
+  const designationOrder = buildDesignationSeedRows().map((d) => d.title);
 
   for (let i = 0; i < designationOrder.length; i++) {
     await prisma.designation.updateMany({

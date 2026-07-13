@@ -24,7 +24,6 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
-import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
@@ -65,23 +64,17 @@ export function TransferDialog({
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId],
-    queryFn: () => departmentsApi.getAll({ branchId }),
-    enabled: open && !!branchId,
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
+    enabled: open,
   })
 
   const selectedDepartment = departments.find((d) => d.id === departmentId)
 
-  const designationCategories = useMemo(() => {
-    if (!selectedDepartment) return undefined
-    return getDesignationCategoriesForDepartment(selectedDepartment.name)
-  }, [selectedDepartment])
-
   const designationParams = useMemo(() => {
-    if (!departmentId) return undefined
-    if (!designationCategories?.length) return {}
-    return { categories: designationCategories.join(',') }
-  }, [departmentId, designationCategories])
+    if (!selectedDepartment) return undefined
+    return { department: selectedDepartment.name }
+  }, [selectedDepartment])
 
   const { data: designations = [] } = useQuery({
     queryKey: ['designations', designationParams],

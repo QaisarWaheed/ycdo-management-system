@@ -25,7 +25,6 @@ export const HR_EXECUTIVE_PERSONAL_FIELDS = [
   'emergencyContactNumber',
   'spouseName',
   'spouseContactNumber',
-  'cnic',
   'maritalStatus',
   'fatherStatus',
   'guardianContact',

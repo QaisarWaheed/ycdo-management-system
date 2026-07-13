@@ -47,6 +47,7 @@ import {
   normalizeDepartmentKey,
   resolveCanonicalDepartmentName,
 } from '@/lib/uniqueDepartmentNames'
+import { normalizeOrgName } from '@/lib/normalizeOrgName'
 import { ItAdminEmployeesTab } from '@/components/dashboard/ItAdminEmployeesTab'
 import {
   DepartmentEmployeesDialog,
@@ -57,6 +58,7 @@ import {
   DesignationEmployeesDialog,
   getDesignationEmployeeCount,
 } from '@/components/dashboard/DesignationEmployeesDialog'
+import { FaceSyncTab } from '@/components/dashboard/FaceSyncTab'
 import { SystemLoginsTab } from '@/components/dashboard/SystemLoginsTab'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { shiftsApi } from '@/api/endpoints/shifts'
@@ -660,32 +662,23 @@ function BranchAbbreviationsTab() {
 
 function DepartmentsTab() {
   const queryClient = useQueryClient()
-  const [branchFilter, setBranchFilter] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [editDept, setEditDept] = useState<Department | null>(null)
   const [employeesDept, setEmployeesDept] = useState<DepartmentWithEmployees | null>(
     null,
   )
   const [name, setName] = useState('')
-  const [branchId, setBranchId] = useState('')
-
-  const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn: () => branchesApi.getAll(),
-  })
 
   const { data: departments = [], isLoading } = useQuery({
-    queryKey: ['departments', branchFilter || 'all'],
-    queryFn: () =>
-      departmentsApi.getAll(branchFilter ? { branchId: branchFilter } : undefined),
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
   })
 
   const createMutation = useMutation({
-    mutationFn: () => departmentsApi.create({ name, branchId }),
+    mutationFn: () => departmentsApi.create({ name }),
     onSuccess: () => {
       toast({ title: 'Department created' })
       setName('')
-      setBranchId('')
       setCreateOpen(false)
       queryClient.invalidateQueries({ queryKey: ['departments'] })
     },
@@ -744,26 +737,7 @@ function DepartmentsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1">
-          <Label>Filter by Branch</Label>
-          <Select
-            value={branchFilter || 'all'}
-            onValueChange={(v) => setBranchFilter(v === 'all' ? '' : v)}
-          >
-            <SelectTrigger className="w-[240px]">
-              <SelectValue placeholder="All branches" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All branches</SelectItem>
-              {branches.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {formatBranchLabel(b)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="flex flex-wrap items-end justify-end gap-3">
         <Button
           className="bg-primary hover:bg-primary-dark"
           onClick={() => setCreateOpen(true)}
@@ -779,7 +753,6 @@ function DepartmentsTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Branch</TableHead>
                 <TableHead>Employees</TableHead>
                 <TableHead className="w-[140px]">Actions</TableHead>
               </TableRow>
@@ -788,7 +761,7 @@ function DepartmentsTab() {
               {isLoading ? (
                 [...Array(4)].map((_, i) => (
                   <TableRow key={i}>
-                    {[...Array(4)].map((__, j) => (
+                    {[...Array(3)].map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-5 w-full" />
                       </TableCell>
@@ -797,7 +770,7 @@ function DepartmentsTab() {
                 ))
               ) : departments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-text-secondary">
+                  <TableCell colSpan={3} className="text-center text-text-secondary">
                     No departments found
                   </TableCell>
                 </TableRow>
@@ -808,7 +781,6 @@ function DepartmentsTab() {
                   return (
                   <TableRow key={dept.id}>
                     <TableCell className="font-medium">{dept.name}</TableCell>
-                    <TableCell>{formatBranchLabel(dept.branch)}</TableCell>
                     <TableCell className="p-0">
                       <button
                         type="button"
@@ -872,33 +844,18 @@ function DepartmentsTab() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Branch</Label>
-              <Select value={branchId} onValueChange={setBranchId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {formatBranchLabel(b)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
               <Label>Department Name</Label>
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Human Resources"
+                onChange={(e) => setName(normalizeOrgName(e.target.value))}
+                placeholder="e.g. HUMAN RESOURCES"
               />
             </div>
           </div>
           <DialogFooter>
             <Button
               className="bg-primary hover:bg-primary-dark"
-              disabled={!name || !branchId || createMutation.isPending}
+              disabled={!name || createMutation.isPending}
               onClick={() => createMutation.mutate()}
             >
               {createMutation.isPending ? 'Creating...' : 'Create'}
@@ -922,7 +879,7 @@ function DepartmentsTab() {
           </DialogHeader>
           <div className="space-y-2">
             <Label>Department Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <Input value={name} onChange={(e) => setName(normalizeOrgName(e.target.value))} />
           </div>
           <DialogFooter>
             <Button
@@ -1277,8 +1234,8 @@ function DesignationForm({
         <Label>Title</Label>
         <Input
           value={title}
-          onChange={(e) => onTitleChange(e.target.value)}
-          placeholder="e.g. Nurse"
+          onChange={(e) => onTitleChange(normalizeOrgName(e.target.value))}
+          placeholder="e.g. MEDICAL OFFICER"
         />
       </div>
       <div className="space-y-2">
@@ -2249,6 +2206,7 @@ export function ItAdminDashboard() {
               <TabsTrigger value="designations">Designations</TabsTrigger>
               <TabsTrigger value="employees">Employees</TabsTrigger>
               <TabsTrigger value="system-logins">System Logins</TabsTrigger>
+              <TabsTrigger value="face-sync">Face Sync</TabsTrigger>
             </TabsList>
             <TabsContent value="projects" className="mt-4">
               <ProjectsTab />
@@ -2264,6 +2222,9 @@ export function ItAdminDashboard() {
             </TabsContent>
             <TabsContent value="system-logins" className="mt-4">
               <SystemLoginsTab />
+            </TabsContent>
+            <TabsContent value="face-sync" className="mt-4">
+              <FaceSyncTab />
             </TabsContent>
             <TabsContent value="branches" className="mt-4">
               <BranchesTab />

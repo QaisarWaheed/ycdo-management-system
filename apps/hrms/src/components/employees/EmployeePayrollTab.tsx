@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { Pencil } from 'lucide-react'
 import { advanceLoanApi } from '@/api/endpoints/advanceLoan'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { payrollApi } from '@/api/endpoints/payroll'
+import { EditPayrollDialog } from '@/components/employees/EditPayrollDialog'
 import { StatusBadge } from '@/components/employees/StatusBadge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -26,13 +29,20 @@ function money(value: number | string | null | undefined): string {
 
 type EmployeePayrollTabProps = {
   employeeId: string
+  joiningDate: string
   stipendRecords?: StipendRecord[]
+  canEdit?: boolean
+  onUpdated?: () => void
 }
 
 export function EmployeePayrollTab({
   employeeId,
+  joiningDate,
   stipendRecords = [],
+  canEdit = false,
+  onUpdated,
 }: EmployeePayrollTabProps) {
+  const [editOpen, setEditOpen] = useState(false)
   const [historyPage, setHistoryPage] = useState(0)
 
   const latestStipend = stipendRecords[0]
@@ -78,10 +88,24 @@ export function EmployeePayrollTab({
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-lg">Current Stipend Record</CardTitle>
+          {canEdit && (
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit Payroll
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
+          <p className="mb-4 text-sm">
+            <span className="text-text-secondary">Joining Date: </span>
+            <span className="font-medium">
+              {joiningDate
+                ? format(new Date(joiningDate), 'dd/MM/yyyy')
+                : '—'}
+            </span>
+          </p>
           {!latestStipend ? (
             <p className="text-sm text-text-secondary">No stipend record found</p>
           ) : (
@@ -160,6 +184,17 @@ export function EmployeePayrollTab({
           )}
         </CardContent>
       </Card>
+
+      {canEdit && (
+        <EditPayrollDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          employeeId={employeeId}
+          joiningDate={joiningDate}
+          latestStipend={latestStipend}
+          onSuccess={() => onUpdated?.()}
+        />
+      )}
 
       <Card>
         <CardHeader>

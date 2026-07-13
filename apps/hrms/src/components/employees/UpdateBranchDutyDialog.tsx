@@ -67,9 +67,9 @@ export function UpdateBranchDutyDialog({
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId],
-    queryFn: () => departmentsApi.getAll({ branchId }),
-    enabled: open && !!branchId,
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
+    enabled: open,
   })
 
   const mutation = useMutation({

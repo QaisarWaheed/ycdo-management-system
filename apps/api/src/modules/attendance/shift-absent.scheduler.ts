@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
+  AttendanceLogType,
   AttendanceSource,
   AttendanceStatus,
   EmployeeStatus,
@@ -72,6 +73,7 @@ export class ShiftAbsentScheduler {
 
     const unmarkedLogs = await this.prisma.attendanceLog.findMany({
       where: {
+        type: AttendanceLogType.REGULAR,
         date: { in: [pkToday, pkYesterday] },
         status: { in: [AttendanceStatus.UNMARKED, AttendanceStatus.ABSENT] },
         checkIn: null,
@@ -189,9 +191,10 @@ export class ShiftAbsentScheduler {
     for (const employee of employees) {
       const existing = await this.prisma.attendanceLog.findUnique({
         where: {
-          employeeId_date: {
+          employeeId_date_type: {
             employeeId: employee.id,
             date,
+            type: AttendanceLogType.REGULAR,
           },
         },
       });
@@ -202,6 +205,7 @@ export class ShiftAbsentScheduler {
             employeeId: employee.id,
             branchId: employee.currentBranchId,
             date,
+            type: AttendanceLogType.REGULAR,
             status: AttendanceStatus.UNMARKED,
             source: AttendanceSource.MANUAL,
             note,

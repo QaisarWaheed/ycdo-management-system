@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ApplicationStatus, ChangeType, EmployeeStatus, Gender, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizeDesignationName } from '../../common/org-structure';
 import {
   AcceptCandidateDto,
   ApplicationQueryDto,
@@ -122,6 +123,8 @@ export class RecruitmentService {
         'Only interview-scheduled applications can be accepted',
       );
     }
+
+    dto.selectedDesignation = normalizeDesignationName(dto.selectedDesignation);
 
     const department = await this.prisma.department.findFirst({
       where: { id: dto.selectedDeptId, isActive: true },

@@ -19,7 +19,6 @@ import { CnicInput } from '@/components/common/CnicInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
-import { getDesignationCategoriesForDepartment } from '@/lib/departmentCategoryMapping'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
@@ -154,8 +153,8 @@ const existingStaffStep1Schema = z
     guardianContact: phoneOptional,
     cnic: z
       .string()
-      .optional()
-      .refine((v) => !v || cnicRegex.test(v), 'Format: 12345-1234567-1'),
+      .min(1, 'CNIC is required')
+      .regex(cnicRegex, 'Format: 12345-1234567-1'),
     dateOfBirth: z.string().min(1, 'Date of birth is required'),
     phone: phoneRequired,
     email: z.string().email('Invalid email').optional().or(z.literal('')),
@@ -762,23 +761,16 @@ export function EmployeeCreatePage() {
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments', branchId],
-    queryFn: () => departmentsApi.getAll({ branchId }),
-    enabled: !!branchId,
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
   })
 
-  const designationCategories = useMemo(() => {
-    if (!departmentId) return undefined
-    const dept = departments.find((d) => d.id === departmentId)
-    if (!dept) return undefined
-    return getDesignationCategoriesForDepartment(dept.name)
-  }, [departmentId, departments])
+  const selectedDepartment = departments.find((d) => d.id === departmentId)
 
   const designationParams = useMemo(() => {
-    if (!departmentId) return undefined
-    if (!designationCategories?.length) return {}
-    return { categories: designationCategories.join(',') }
-  }, [departmentId, designationCategories])
+    if (!selectedDepartment) return undefined
+    return { department: selectedDepartment.name }
+  }, [selectedDepartment])
 
   const { data: designations = [] } = useQuery({
     queryKey: ['designations', designationParams],
@@ -1157,7 +1149,7 @@ export function EmployeeCreatePage() {
                 name="cnic"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>CNIC{isExistingStaff ? '' : ' *'}</FormLabel>
+                    <FormLabel>CNIC *</FormLabel>
                     <FormControl>
                       <CnicInput value={field.value ?? ''} onChange={field.onChange} />
                     </FormControl>
