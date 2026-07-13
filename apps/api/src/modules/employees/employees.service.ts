@@ -18,7 +18,14 @@ import {
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  cloudinary,
+  isCloudinaryEnabled,
+} from '../../config/cloudinary.config';
 import { LettersService } from '../letters/letters.service';
 import {
   isWithinDutyWindow,
@@ -1132,7 +1139,9 @@ export class EmployeesService {
   async uploadPhoto(id: string, file: Express.Multer.File) {
     await this.findOne(id);
 
-    const photoUrl = `/uploads/photos/${id}/${file.filename}`;
+    const photoUrl = isCloudinaryEnabled()
+      ? await this.uploadPhotoToCloudinary(id, file)
+      : `/uploads/photos/${id}/${file.filename}`;
 
     const updated = await this.prisma.employee.update({
       where: { id },
@@ -1152,6 +1161,45 @@ export class EmployeesService {
     });
 
     return updated;
+  }
+
+  private async uploadPhotoToCloudinary(
+    employeeId: string,
+    file: Express.Multer.File,
+  ): Promise<string> {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    const tempFile = path.join(os.tmpdir(), `${employeeId}-${Date.now()}${ext}`);
+
+    try {
+      if (file.buffer?.length) {
+        fs.writeFileSync(tempFile, file.buffer);
+      } else if (file.path) {
+        fs.copyFileSync(file.path, tempFile);
+      } else {
+        throw new BadRequestException('No photo data');
+      }
+
+      const result = await cloudinary.uploader.upload(tempFile, {
+        folder: 'ycdo-hrms/employees',
+        public_id: employeeId,
+        overwrite: true,
+        resource_type: 'image',
+        transformation: [
+          { width: 800, height: 800, crop: 'limit' },
+          { quality: 'auto', fetch_format: 'auto' },
+        ],
+      });
+
+      return result.secure_url;
+    } finally {
+      if (fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+      }
+
+      if (file.path && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+    }
   }
 
   async findActiveShiftEmployees(

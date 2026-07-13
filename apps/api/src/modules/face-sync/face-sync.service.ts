@@ -31,10 +31,14 @@ export class FaceSyncService {
   }
 
   async createSyncJob(employeeId: string, photoUrl: string) {
+    const resolvedPhotoUrl = photoUrl.startsWith('/uploads')
+      ? this.resolvePublicUrl(photoUrl)
+      : photoUrl;
+
     return this.prisma.faceSyncJob.create({
       data: {
         employeeId,
-        photoUrl,
+        photoUrl: resolvedPhotoUrl,
         status: 'PENDING',
       },
     });
@@ -208,13 +212,7 @@ export class FaceSyncService {
         where: { employeeId: emp.id, status: 'PENDING' },
       });
       if (!existing && emp.photoUrl) {
-        await this.prisma.faceSyncJob.create({
-          data: {
-            employeeId: emp.id,
-            photoUrl: emp.photoUrl,
-            status: 'PENDING',
-          },
-        });
+        await this.createSyncJob(emp.id, emp.photoUrl);
         created++;
       }
     }
