@@ -1,9 +1,10 @@
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { stopTypingKeyPropagation } from "@/lib/inputTypingKeyboard"
 
 const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  ({ className, type, ...props }, ref) => {
+  ({ className, type, onKeyDown, ...props }, ref) => {
     return (
       <input
         type={type}
@@ -12,6 +13,10 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className
         )}
         ref={ref}
+        onKeyDown={(e) => {
+          stopTypingKeyPropagation(e)
+          onKeyDown?.(e)
+        }}
         {...props}
       />
     )

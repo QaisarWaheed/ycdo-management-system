@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EmployeeStatus, Prisma } from '@prisma/client';
 import {
-  getDesignationsForDepartment,
   normalizeDesignationName,
   normalizeOrgName,
 } from '../../common/org-structure';
@@ -23,12 +22,8 @@ export class DesignationsService {
     };
 
     if (query?.department) {
-      const titles = getDesignationsForDepartment(query.department);
-      if (titles.length > 0) {
-        where.title = { in: titles };
-      } else {
-        where.title = { in: [] };
-      }
+      const dept = normalizeOrgName(query.department);
+      where.category = { equals: dept, mode: 'insensitive' };
     } else if (query?.categories) {
       const categories = query.categories
         .split(',')

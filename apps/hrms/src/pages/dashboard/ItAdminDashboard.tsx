@@ -47,7 +47,6 @@ import {
   normalizeDepartmentKey,
   resolveCanonicalDepartmentName,
 } from '@/lib/uniqueDepartmentNames'
-import { normalizeOrgName } from '@/lib/normalizeOrgName'
 import { ItAdminEmployeesTab } from '@/components/dashboard/ItAdminEmployeesTab'
 import {
   DepartmentEmployeesDialog,
@@ -61,6 +60,7 @@ import {
 import { FaceSyncTab } from '@/components/dashboard/FaceSyncTab'
 import { SystemLoginsTab } from '@/components/dashboard/SystemLoginsTab'
 import { PhoneInput } from '@/components/common/PhoneInput'
+import { UppercaseInput } from '@/components/common/UppercaseInput'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { locationValuesApi } from '@/api/endpoints/locationValues'
 import { biometricDevicesApi, type BiometricDevice } from '@/api/endpoints/biometricDevices'
@@ -845,9 +845,9 @@ function DepartmentsTab() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Department Name</Label>
-              <Input
+              <UppercaseInput
                 value={name}
-                onChange={(e) => setName(normalizeOrgName(e.target.value))}
+                onChange={setName}
                 placeholder="e.g. HUMAN RESOURCES"
               />
             </div>
@@ -879,7 +879,7 @@ function DepartmentsTab() {
           </DialogHeader>
           <div className="space-y-2">
             <Label>Department Name</Label>
-            <Input value={name} onChange={(e) => setName(normalizeOrgName(e.target.value))} />
+            <UppercaseInput value={name} onChange={setName} />
           </div>
           <DialogFooter>
             <Button
@@ -1232,9 +1232,9 @@ function DesignationForm({
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Title</Label>
-        <Input
+        <UppercaseInput
           value={title}
-          onChange={(e) => onTitleChange(normalizeOrgName(e.target.value))}
+          onChange={onTitleChange}
           placeholder="e.g. MEDICAL OFFICER"
         />
       </div>

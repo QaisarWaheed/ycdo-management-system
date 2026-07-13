@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -33,6 +33,7 @@ export function SearchableSelect({
   const [highlight, setHighlight] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const selectionRef = useRef<number | null>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -50,6 +51,14 @@ export function SearchableSelect({
 
   useEffect(() => {
     setHighlight(0)
+  }, [query, open])
+
+  useLayoutEffect(() => {
+    const input = inputRef.current
+    const pos = selectionRef.current
+    if (!input || pos == null || !open) return
+    input.setSelectionRange(pos, pos)
+    selectionRef.current = null
   }, [query, open])
 
   const closeDropdown = () => {
@@ -124,7 +133,6 @@ export function SearchableSelect({
       closeDropdown()
       inputRef.current?.blur()
     }
-    // Space and other typing keys are left to the input — do not preventDefault
   }
 
   return (
@@ -136,11 +144,14 @@ export function SearchableSelect({
       )}
       <Input
         ref={inputRef}
+        type="text"
+        autoComplete="off"
         value={open ? query : value}
-        placeholder={value || placeholder}
+        placeholder={placeholder}
         disabled={disabled}
         className={cn(error && 'border-destructive')}
         onChange={(e) => {
+          selectionRef.current = e.target.selectionStart
           setQuery(e.target.value)
           setOpen(true)
         }}
@@ -153,11 +164,10 @@ export function SearchableSelect({
             <p className="px-3 py-2 text-sm text-text-secondary">No matches</p>
           )}
           {filtered.map((opt, i) => (
-            <button
+            <div
               key={opt}
-              type="button"
               className={cn(
-                'w-full px-3 py-2 text-left text-sm hover:bg-gray-50',
+                'cursor-pointer px-3 py-2 text-sm hover:bg-gray-50',
                 value === opt && 'font-medium text-primary',
                 highlight === i && 'bg-gray-50',
               )}
@@ -165,13 +175,12 @@ export function SearchableSelect({
               onClick={() => selectOption(opt)}
             >
               {opt}
-            </button>
+            </div>
           ))}
           {showAddNew && (
-            <button
-              type="button"
+            <div
               className={cn(
-                'flex w-full items-center gap-1 px-3 py-2 text-left text-sm text-green-700 hover:bg-gray-50',
+                'flex cursor-pointer items-center gap-1 px-3 py-2 text-sm text-green-700 hover:bg-gray-50',
                 highlight === filtered.length && 'bg-gray-50',
               )}
               onMouseDown={(e) => e.preventDefault()}
@@ -179,7 +188,7 @@ export function SearchableSelect({
             >
               <Plus className="h-3.5 w-3.5" />
               Add &quot;{query.trim()}&quot; (press Enter)
-            </button>
+            </div>
           )}
         </div>
       )}

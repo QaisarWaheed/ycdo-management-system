@@ -12,10 +12,10 @@ import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { PKRInput } from '@/components/common/PKRInput'
+import { UppercaseInput } from '@/components/common/UppercaseInput'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
-import { normalizeOrgName } from '@/lib/normalizeOrgName'
 import { withReturnTo } from '@/lib/backNavigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -252,10 +252,7 @@ function AcceptCandidateDialog({
           </div>
           <div className="space-y-2">
             <Label>Designation *</Label>
-            <Input
-              value={designation}
-              onChange={(e) => setDesignation(normalizeOrgName(e.target.value))}
-            />
+            <UppercaseInput value={designation} onChange={setDesignation} />
           </div>
           <div className="space-y-2">
             <Label>Shift</Label>

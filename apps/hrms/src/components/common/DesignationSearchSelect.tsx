@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search } from 'lucide-react'
 import { designationsApi } from '@/api/endpoints/designations'
@@ -41,6 +41,7 @@ export function DesignationSearchSelect({
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const selectionRef = useRef<number | null>(null)
 
   const departmentFilter = departments ?? categories
 
@@ -89,6 +90,14 @@ export function DesignationSearchSelect({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  useLayoutEffect(() => {
+    const input = inputRef.current
+    const pos = selectionRef.current
+    if (!input || pos == null || !open) return
+    input.setSelectionRange(pos, pos)
+    selectionRef.current = null
+  }, [search, open])
+
   const handleFocus = () => {
     if (disabled) return
     setSearch(value ?? '')
@@ -102,6 +111,8 @@ export function DesignationSearchSelect({
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
         <Input
           ref={inputRef}
+          type="text"
+          autoComplete="off"
           placeholder={
             disabled ? 'Select department first' : value || 'Search designation...'
           }
@@ -109,6 +120,7 @@ export function DesignationSearchSelect({
           value={open ? search : (value ?? '')}
           disabled={disabled}
           onChange={(e) => {
+            selectionRef.current = e.target.selectionStart
             setSearch(e.target.value)
             setOpen(true)
           }}
@@ -139,11 +151,10 @@ export function DesignationSearchSelect({
                   {departmentName}
                 </p>
                 {items.map((d) => (
-                  <button
+                  <div
                     key={d.id}
-                    type="button"
                     className={cn(
-                      'block w-full px-3 py-2 text-left text-sm hover:bg-surface',
+                      'cursor-pointer px-3 py-2 text-sm hover:bg-surface',
                       value === d.title && 'bg-primary/10 font-medium',
                     )}
                     onMouseDown={(e) => e.preventDefault()}
@@ -154,7 +165,7 @@ export function DesignationSearchSelect({
                     }}
                   >
                     {d.title}
-                  </button>
+                  </div>
                 ))}
               </div>
             ))
