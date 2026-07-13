@@ -32,6 +32,7 @@ export function SearchableSelect({
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -51,14 +52,18 @@ export function SearchableSelect({
     setHighlight(0)
   }, [query, open])
 
+  const closeDropdown = () => {
+    setOpen(false)
+    setQuery('')
+  }
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
         containerRef.current &&
         !containerRef.current.contains(e.target as Node)
       ) {
-        setOpen(false)
-        setQuery('')
+        closeDropdown()
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -67,8 +72,8 @@ export function SearchableSelect({
 
   const selectOption = (opt: string) => {
     onChange(opt)
-    setQuery('')
-    setOpen(false)
+    closeDropdown()
+    inputRef.current?.blur()
   }
 
   const handleAddNew = async () => {
@@ -76,13 +81,20 @@ export function SearchableSelect({
     if (!trimmed || !onNewValue) return
     await Promise.resolve(onNewValue(trimmed))
     onChange(trimmed)
-    setQuery('')
-    setOpen(false)
+    closeDropdown()
+    inputRef.current?.blur()
+  }
+
+  const handleFocus = () => {
+    if (disabled) return
+    setQuery(value)
+    setOpen(true)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!open) {
       if (e.key === 'ArrowDown' || e.key === 'Enter') {
+        setQuery(value)
         setOpen(true)
       }
       return
@@ -95,20 +107,24 @@ export function SearchableSelect({
       setHighlight((h) => (h + 1) % Math.max(totalItems, 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setHighlight((h) => (h - 1 + Math.max(totalItems, 1)) % Math.max(totalItems, 1))
+      setHighlight(
+        (h) =>
+          (h - 1 + Math.max(totalItems, 1)) % Math.max(totalItems, 1),
+      )
     } else if (e.key === 'Enter') {
       e.preventDefault()
       if (showAddNew && highlight === filtered.length) {
-        handleAddNew()
+        void handleAddNew()
       } else if (filtered[highlight]) {
         selectOption(filtered[highlight])
       } else if (showAddNew) {
-        handleAddNew()
+        void handleAddNew()
       }
     } else if (e.key === 'Escape') {
-      setOpen(false)
-      setQuery('')
+      closeDropdown()
+      inputRef.current?.blur()
     }
+    // Space and other typing keys are left to the input — do not preventDefault
   }
 
   return (
@@ -119,6 +135,7 @@ export function SearchableSelect({
         </label>
       )}
       <Input
+        ref={inputRef}
         value={open ? query : value}
         placeholder={value || placeholder}
         disabled={disabled}
@@ -127,9 +144,7 @@ export function SearchableSelect({
           setQuery(e.target.value)
           setOpen(true)
         }}
-        onFocus={() => {
-          if (!disabled) setOpen(true)
-        }}
+        onFocus={handleFocus}
         onKeyDown={handleKeyDown}
       />
       {open && !disabled && (
@@ -160,7 +175,7 @@ export function SearchableSelect({
                 highlight === filtered.length && 'bg-gray-50',
               )}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={handleAddNew}
+              onClick={() => void handleAddNew()}
             >
               <Plus className="h-3.5 w-3.5" />
               Add &quot;{query.trim()}&quot; (press Enter)

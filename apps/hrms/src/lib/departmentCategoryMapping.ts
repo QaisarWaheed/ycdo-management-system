@@ -16,19 +16,32 @@ const DEPARTMENT_CATEGORY_MAP: Record<string, string[]> = {
   vocational: ['VTI'],
 }
 
+/**
+ * Categories used to load designations for a department on employee forms.
+ * Includes the department name itself (how IT stores new designations)
+ * plus legacy category labels for older records.
+ */
 export function getDesignationCategoriesForDepartment(
   departmentName: string,
-): string[] | undefined {
-  const key = departmentName.trim().toLowerCase()
-  if (DEPARTMENT_CATEGORY_MAP[key]) {
-    return DEPARTMENT_CATEGORY_MAP[key]
+): string[] {
+  const trimmed = departmentName.trim()
+  if (!trimmed) return []
+
+  const categories = new Set<string>([trimmed])
+  const key = trimmed.toLowerCase()
+
+  const exact = DEPARTMENT_CATEGORY_MAP[key]
+  if (exact) {
+    for (const category of exact) categories.add(category)
   }
 
-  for (const [dept, categories] of Object.entries(DEPARTMENT_CATEGORY_MAP)) {
+  for (const [dept, legacyCategories] of Object.entries(
+    DEPARTMENT_CATEGORY_MAP,
+  )) {
     if (key.includes(dept) || dept.includes(key)) {
-      return categories
+      for (const category of legacyCategories) categories.add(category)
     }
   }
 
-  return undefined
+  return [...categories]
 }

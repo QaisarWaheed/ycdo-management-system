@@ -31,10 +31,11 @@ export const TextOnlyInput = forwardRef<HTMLInputElement, TextOnlyInputProps>(
           } as React.ChangeEvent<HTMLInputElement>)
         }}
         onChange={(e) => {
-          onChange?.({
-            ...e,
-            target: { ...e.target, value: stripDigits(e.target.value) },
-          })
+          const stripped = stripDigits(e.target.value)
+          if (stripped !== e.target.value) {
+            e.target.value = stripped
+          }
+          onChange?.(e)
         }}
         {...props}
       />

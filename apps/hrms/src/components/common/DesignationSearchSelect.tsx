@@ -1,11 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search } from 'lucide-react'
 import { designationsApi } from '@/api/endpoints/designations'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useDebounce } from '@/hooks/useDebounce'
 import { cn } from '@/lib/utils'
 
 export interface Designation {
@@ -41,7 +40,7 @@ export function DesignationSearchSelect({
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const debouncedSearch = useDebounce(search, 300)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const departmentFilter = departments ?? categories
 
@@ -56,7 +55,7 @@ export function DesignationSearchSelect({
   })
 
   const grouped = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase()
+    const q = search.trim().toLowerCase()
     const filtered = (designations as Designation[]).filter(
       (d) =>
         !q ||
@@ -70,24 +69,55 @@ export function DesignationSearchSelect({
       map.set(d.category, list)
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
-  }, [designations, debouncedSearch])
+  }, [designations, search])
+
+  const closeDropdown = () => {
+    setOpen(false)
+    setSearch('')
+  }
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        closeDropdown()
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleFocus = () => {
+    if (disabled) return
+    setSearch(value ?? '')
+    setOpen(true)
+  }
 
   return (
     <div ref={containerRef} className={cn('relative space-y-2', className)}>
       {label && <Label>{label}</Label>}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
         <Input
-          placeholder={disabled ? 'Select department first' : value || 'Search designation...'}
+          ref={inputRef}
+          placeholder={
+            disabled ? 'Select department first' : value || 'Search designation...'
+          }
           className={cn('pl-9', error && 'border-destructive')}
-          value={open ? search : value || search}
+          value={open ? search : (value ?? '')}
           disabled={disabled}
           onChange={(e) => {
             setSearch(e.target.value)
             setOpen(true)
           }}
-          onFocus={() => {
-            if (!disabled) setOpen(true)
+          onFocus={handleFocus}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              closeDropdown()
+              inputRef.current?.blur()
+            }
           }}
         />
       </div>
@@ -116,10 +146,11 @@ export function DesignationSearchSelect({
                       'block w-full px-3 py-2 text-left text-sm hover:bg-surface',
                       value === d.title && 'bg-primary/10 font-medium',
                     )}
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       onChange(d.title)
-                      setSearch('')
-                      setOpen(false)
+                      closeDropdown()
+                      inputRef.current?.blur()
                     }}
                   >
                     {d.title}
