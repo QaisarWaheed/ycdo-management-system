@@ -1,13 +1,17 @@
 import { useMemo, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Search } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
+import { leaveApi } from '@/api/endpoints/leave'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
+import {
+  EmployeeSearchSelect,
+} from '@/components/common/EmployeeSearchSelect'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
 import {
   CheckInManualTab,
@@ -23,6 +27,13 @@ import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -35,6 +46,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePagination } from '@/hooks/usePagination'
@@ -46,6 +59,7 @@ import {
   ATTENDANCE_STATUSES,
   type AttendanceLog,
   type AttendanceStatus,
+  type Employee,
   type RelieverSession,
 } from '@/types'
 import {
@@ -96,6 +110,136 @@ function formatDuration(minutes: number) {
   return `${m} min`
 }
 
+function isAbsentStatus(status: string) {
+  return status === 'ABSENT' || status === 'UNINFORMED_ABSENT'
+}
+
+function AssignAbsentRelieverDialog({
+  log,
+  date,
+  open,
+  onOpenChange,
+}: {
+  log: AttendanceLog | null
+  date: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const queryClient = useQueryClient()
+  const [relieverId, setRelieverId] = useState('')
+  const [selectedReliever, setSelectedReliever] = useState<Employee | undefined>()
+  const [reason, setReason] = useState('Reliever assigned for absence')
+
+  const employeeName = log?.employee?.fullName ?? 'employee'
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      leaveApi.markVerified({
+        employeeId: log!.employeeId,
+        startDate: date,
+        endDate: date,
+        leaveType: 'EMERGENCY',
+        reason: reason.trim() || 'Reliever assigned for absence',
+        relieverId,
+      }),
+    onSuccess: () => {
+      toast({
+        title: 'Reliever assigned',
+        description: `${employeeName} marked on leave with covering reliever.`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
+      queryClient.invalidateQueries({ queryKey: ['leave'] })
+      setRelieverId('')
+      setSelectedReliever(undefined)
+      setReason('Reliever assigned for absence')
+      onOpenChange(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to assign reliever',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  if (!log) return null
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setRelieverId('')
+          setSelectedReliever(undefined)
+          setReason('Reliever assigned for absence')
+        }
+        onOpenChange(next)
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Assign Reliever for {employeeName}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <p>
+              <span className="text-text-secondary">Date: </span>
+              {format(new Date(`${date}T00:00:00`), 'dd/MM/yyyy')}
+            </p>
+            <p className="mt-1">
+              <span className="text-text-secondary">Status: </span>
+              {log.status.replace(/_/g, ' ')}
+            </p>
+            <p className="mt-2 text-xs text-text-secondary">
+              Marks the day as verified leave and assigns the selected reliever.
+            </p>
+          </div>
+          <EmployeeSearchSelect
+            label="Select Reliever"
+            value={relieverId}
+            onChange={(id, emp) => {
+              setRelieverId(id)
+              setSelectedReliever(emp)
+            }}
+            excludeIds={[log.employeeId]}
+          />
+          {selectedReliever?.shift && (
+            <p className="text-sm">
+              {selectedReliever.fullName} — Shift:{' '}
+              {selectedReliever.shift.startTime} to{' '}
+              {selectedReliever.shift.endTime}
+            </p>
+          )}
+          <div className="space-y-1">
+            <Label>Reason</Label>
+            <Textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              placeholder="Reason for leave / coverage..."
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={
+              !relieverId || reason.trim().length < 3 || mutation.isPending
+            }
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? 'Assigning...' : 'Assign Reliever'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function DailyLogTab({
   initialStatus = ALL,
   initialDate,
@@ -113,6 +257,7 @@ function DailyLogTab({
   )
   const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [updateLog, setUpdateLog] = useState<AttendanceLog | null>(null)
+  const [relieverLog, setRelieverLog] = useState<AttendanceLog | null>(null)
 
   const debouncedSearch = useDebounce(search, 400)
 
@@ -339,13 +484,24 @@ function DailyLogTab({
                     )}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setUpdateLog(log)}
-                    >
-                      Update
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setUpdateLog(log)}
+                      >
+                        Update
+                      </Button>
+                      {isAbsentStatus(log.status) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRelieverLog(log)}
+                        >
+                          Assign Reliever
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
                 )
@@ -370,6 +526,15 @@ function DailyLogTab({
         }}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['attendance'] })
+        }}
+      />
+
+      <AssignAbsentRelieverDialog
+        log={relieverLog}
+        date={date}
+        open={!!relieverLog}
+        onOpenChange={(open) => {
+          if (!open) setRelieverLog(null)
         }}
       />
     </div>

@@ -190,6 +190,34 @@ export class LeaveService {
         },
       });
 
+      if (dto.relieverId) {
+        if (dto.relieverId === dto.employeeId) {
+          throw new BadRequestException(
+            'Employee cannot be their own reliever',
+          );
+        }
+        const preferred = await tx.employee.findUnique({
+          where: { id: dto.relieverId },
+        });
+        if (!preferred) {
+          throw new NotFoundException('Selected reliever not found');
+        }
+        if (
+          preferred.status !== EmployeeStatus.ACTIVE &&
+          preferred.status !== EmployeeStatus.APPOINTED
+        ) {
+          throw new BadRequestException('Selected reliever is not active');
+        }
+        await tx.relieverRequest.create({
+          data: {
+            leaveRecordId: record.id,
+            requestedById: dto.employeeId,
+            relieverId: dto.relieverId,
+            status: RelieverRequestStatus.PENDING,
+          },
+        });
+      }
+
       await tx.notification.create({
         data: {
           employeeId: dto.employeeId,
@@ -366,6 +394,39 @@ export class LeaveService {
       });
 
       if (dto.action === LeaveApprovalAction.APPROVED) {
+        const withReliever = await tx.leaveRecord.findUnique({
+          where: { id: leaveId },
+          include: { relieverRequest: true },
+        });
+
+        if (withReliever?.relieverRequest) {
+          const updated = await tx.leaveRecord.update({
+            where: { id: leaveId },
+            data: {
+              status: LeaveStatus.RELIEVER_PENDING,
+              currentStage: LeaveApprovalStage.DEPARTMENT_INCHARGE,
+              deptInchargeId: actingUser.id,
+            },
+            include: this.leaveInclude(),
+          });
+
+          await tx.notification.create({
+            data: {
+              employeeId: withReliever.relieverRequest.relieverId,
+              type: 'RELIEVER_REQUEST',
+              message: `${employeeName} has requested you to be their reliever for leave from ${this.formatDate(leave.startDate)} to ${this.formatDate(leave.endDate)}. You have 8 hours to respond.`,
+            },
+          });
+
+          await this.notifyHrOperations(
+            tx,
+            `${employeeName} leave approved by Dept Incharge. Preferred reliever notified.`,
+            'LEAVE_PENDING_HR',
+          );
+
+          return updated;
+        }
+
         const updated = await tx.leaveRecord.update({
           where: { id: leaveId },
           data: {
@@ -811,6 +872,46 @@ export class LeaveService {
 
       await this.markLeaveAttendance(tx, record);
 
+      if (dto.relieverId) {
+        if (dto.relieverId === dto.employeeId) {
+          throw new BadRequestException(
+            'Employee cannot be their own reliever',
+          );
+        }
+        const preferred = await tx.employee.findUnique({
+          where: { id: dto.relieverId },
+        });
+        if (!preferred) {
+          throw new NotFoundException('Selected reliever not found');
+        }
+        if (
+          preferred.status !== EmployeeStatus.ACTIVE &&
+          preferred.status !== EmployeeStatus.APPOINTED
+        ) {
+          throw new BadRequestException('Selected reliever is not active');
+        }
+
+        await tx.relieverRequest.create({
+          data: {
+            leaveRecordId: record.id,
+            requestedById: dto.employeeId,
+            relieverId: dto.relieverId,
+            status: RelieverRequestStatus.HR_ASSIGNED,
+            hrAssigned: true,
+            hrAssignedBy: actingUser.id,
+            hrAssignedAt: new Date(),
+          },
+        });
+
+        await tx.notification.create({
+          data: {
+            employeeId: dto.relieverId,
+            type: 'HR_RELIEVER_ASSIGNED',
+            message: `You have been assigned as reliever for ${employee.fullName} from ${this.formatDate(startDate)} to ${this.formatDate(endDate)}.`,
+          },
+        });
+      }
+
       await tx.notification.create({
         data: {
           employeeId: dto.employeeId,
@@ -829,6 +930,7 @@ export class LeaveService {
             leaveType: dto.leaveType,
             startDate: dto.startDate,
             endDate: dto.endDate,
+            relieverId: dto.relieverId ?? null,
           },
         },
       });
@@ -1056,8 +1158,6 @@ export class LeaveService {
       throw new BadRequestException('Selected reliever is not active');
     }
 
-    this.assertShiftCompatible(leaveRecord.employee, reliever);
-
     const requesterName = leaveRecord.employee.fullName;
 
     const requestedById = onBehalf ? leaveRecord.employeeId : requesterId;
@@ -1189,10 +1289,11 @@ export class LeaveService {
 
     if (
       leaveRecord.status !== LeaveStatus.RELIEVER_REJECTED &&
-      leaveRecord.status !== LeaveStatus.DEPT_APPROVED
+      leaveRecord.status !== LeaveStatus.DEPT_APPROVED &&
+      leaveRecord.status !== LeaveStatus.APPROVED
     ) {
       throw new BadRequestException(
-        'HR can only assign relievers for dept-approved or reliever-rejected leave',
+        'HR can only assign relievers for dept-approved, approved, or reliever-rejected leave',
       );
     }
 
@@ -1206,8 +1307,6 @@ export class LeaveService {
         `Reliever employee with id ${dto.relieverId} not found`,
       );
     }
-
-    this.assertShiftCompatible(leaveRecord.employee, reliever);
 
     const employeeName = leaveRecord.employee.fullName;
 
@@ -1239,10 +1338,13 @@ export class LeaveService {
 
       await tx.leaveRecord.update({
         where: { id: leaveId },
-        data: {
-          status: LeaveStatus.RELIEVER_CONFIRMED,
-          currentStage: LeaveApprovalStage.HR_OPERATIONS,
-        },
+        data:
+          leaveRecord.status === LeaveStatus.APPROVED
+            ? {}
+            : {
+                status: LeaveStatus.RELIEVER_CONFIRMED,
+                currentStage: LeaveApprovalStage.HR_OPERATIONS,
+              },
       });
 
       await tx.notification.create({
@@ -1253,11 +1355,13 @@ export class LeaveService {
         },
       });
 
-      await this.notifyHrOperations(
-        tx,
-        `${employeeName} has an HR-assigned reliever (${reliever.fullName}). Awaiting final HR Operations approval.`,
-        'HR_RELIEVER_ASSIGNED',
-      );
+      if (leaveRecord.status !== LeaveStatus.APPROVED) {
+        await this.notifyHrOperations(
+          tx,
+          `${employeeName} has an HR-assigned reliever (${reliever.fullName}). Awaiting final HR Operations approval.`,
+          'HR_RELIEVER_ASSIGNED',
+        );
+      }
 
       const approved = await tx.leaveRecord.findUnique({
         where: { id: leaveId },
@@ -1425,56 +1529,6 @@ export class LeaveService {
         },
       });
     }
-  }
-
-  private assertShiftCompatible(
-    requester: { shift: { startTime: string; endTime: string } | null },
-    reliever: { shift: { startTime: string; endTime: string } | null },
-  ) {
-    if (!requester.shift || !reliever.shift) {
-      throw new BadRequestException(
-        'Both employees must have assigned shifts for reliever validation',
-      );
-    }
-
-    if (
-      this.shiftsOverlap(
-        requester.shift.startTime,
-        requester.shift.endTime,
-        reliever.shift.startTime,
-        reliever.shift.endTime,
-      )
-    ) {
-      throw new BadRequestException(
-        'Selected employee has a conflicting shift and cannot serve as reliever',
-      );
-    }
-  }
-
-  private shiftsOverlap(
-    requesterStart: string,
-    requesterEnd: string,
-    relieverStart: string,
-    relieverEnd: string,
-  ): boolean {
-    let rStart = this.parseTimeToMinutes(requesterStart);
-    let rEnd = this.parseTimeToMinutes(requesterEnd);
-    let vStart = this.parseTimeToMinutes(relieverStart);
-    let vEnd = this.parseTimeToMinutes(relieverEnd);
-
-    if (rEnd <= rStart) {
-      rEnd += 24 * 60;
-    }
-    if (vEnd <= vStart) {
-      vEnd += 24 * 60;
-    }
-
-    return vStart < rEnd && vEnd > rStart;
-  }
-
-  private parseTimeToMinutes(time: string): number {
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
   }
 
   private async notifyHrRoles(

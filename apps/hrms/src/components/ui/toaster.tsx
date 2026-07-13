@@ -55,14 +55,14 @@ export function Toaster() {
 
       {errorToasts.length > 0 && (
         <div
-          className="fixed inset-0 z-[99] bg-black/25"
+          className="fixed inset-0 z-[99] bg-black/30"
           aria-hidden="true"
         />
       )}
 
-      <ToastProvider>
+      <ToastProvider duration={8000}>
         {errorToasts.map(({ id, title, description, action, ...props }) => (
-          <Toast key={id} {...props}>
+          <Toast key={id} {...props} className="w-full max-w-md">
             <ToastContent
               title={title}
               description={description}

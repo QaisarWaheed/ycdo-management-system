@@ -52,6 +52,7 @@ export interface VerifiedLeavePayload {
   endDate: string
   leaveType: 'REGULAR' | 'SHORT_LEAVE' | 'EMERGENCY'
   reason: string
+  relieverId?: string
 }
 
 export const leaveApi = {

@@ -68,7 +68,6 @@ import {
   labelToLeaveType,
   leaveTypeToLabel,
 } from '@/lib/searchableSelectOptions'
-import { hasShiftConflict } from '@/lib/shiftUtils'
 import type { Employee, LeaveRecord } from '@/types'
 
 const ALL = 'ALL'
@@ -237,28 +236,15 @@ function HRAssignRelieverDialog({
   const [relieverId, setRelieverId] = useState('')
   const [selectedReliever, setSelectedReliever] = useState<Employee | undefined>()
 
-  const employeeId = leave?.employeeId ?? ''
-
-  const { data: requesterEmployee } = useQuery({
-    queryKey: ['employee-shift', employeeId],
-    queryFn: () => employeesApi.getOne(employeeId),
-    enabled: open && !!employeeId,
-  })
-
   const employeeName = leave?.employee
     ? leave.employee.fullName
     : ''
-
-  const shiftConflict = hasShiftConflict(
-    requesterEmployee?.shift,
-    selectedReliever?.shift,
-  )
 
   const mutation = useMutation({
     mutationFn: () =>
       leaveApi.hrAssignReliever(leave!.id, { relieverId }),
     onSuccess: () => {
-      toast({ title: 'Reliever assigned. Awaiting HR Operations approval.' })
+      toast({ title: 'Reliever assigned successfully' })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
       setRelieverId('')
       setSelectedReliever(undefined)
@@ -301,20 +287,12 @@ function HRAssignRelieverDialog({
               setRelieverId(id)
               setSelectedReliever(emp)
             }}
+            excludeIds={[leave.employeeId]}
           />
-          <p className="text-xs text-text-secondary">
-            Only shift-compatible employees will work
-          </p>
           {selectedReliever?.shift && (
             <p className="text-sm">
               {selectedReliever.fullName} — Shift:{' '}
               {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
-            </p>
-          )}
-          {shiftConflict && (
-            <p className="text-sm text-red-600">
-              This employee&apos;s shift conflicts with yours. Please select a
-              different reliever.
             </p>
           )}
         </div>
@@ -323,7 +301,7 @@ function HRAssignRelieverDialog({
             Cancel
           </Button>
           <Button
-            disabled={!relieverId || shiftConflict || mutation.isPending}
+            disabled={!relieverId || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Assigning...' : 'Assign Reliever'}
@@ -794,11 +772,6 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
     }
   }, [leaveType, startDate, form])
 
-  const shiftConflict = hasShiftConflict(
-    selectedEmployee?.shift,
-    selectedReliever?.shift,
-  )
-
   const mutation = useMutation({
     mutationFn: async (values: ApplyFormValues) => {
       const leave = await leaveApi.apply({
@@ -807,19 +780,14 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
           values.leaveType === 'SHORT_LEAVE'
             ? values.startDate
             : values.endDate,
+        ...(relieverId ? { relieverId } : {}),
       })
-      if (relieverId) {
-        await leaveApi.requestReliever(leave.id, {
-          leaveRecordId: leave.id,
-          relieverId,
-        })
-      }
       return { leave, hadReliever: !!relieverId }
     },
     onSuccess: ({ hadReliever }) => {
       toast({
         title: hadReliever
-          ? 'Leave request submitted. Reliever notification sent.'
+          ? 'Leave request submitted with preferred reliever.'
           : 'Leave request submitted. HR will assign a reliever if needed.',
       })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
@@ -983,21 +951,17 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
                 setRelieverId(id)
                 setSelectedReliever(emp)
               }}
+              excludeIds={selectedEmployeeId ? [selectedEmployeeId] : []}
             />
             <p className="text-xs text-text-secondary">
-              Select an employee to cover your duties during leave. They will have
-              8 hours to accept or reject.
+              Preferred reliever is saved with the leave request and notified after
+              department approval.
             </p>
             {selectedReliever?.shift && (
               <p className="text-sm">
                 {selectedReliever.fullName} — Shift:{' '}
-                {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
-              </p>
-            )}
-            {shiftConflict && (
-              <p className="text-sm text-red-600">
-                This employee&apos;s shift conflicts with yours. Please select a
-                different reliever.
+                {selectedReliever.shift.startTime} to{' '}
+                {selectedReliever.shift.endTime}
               </p>
             )}
           </div>
@@ -1020,7 +984,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
         <Button
           type="submit"
           className="w-full bg-primary hover:bg-primary-dark"
-          disabled={mutation.isPending || (relieverId !== '' && shiftConflict)}
+          disabled={mutation.isPending}
         >
           {mutation.isPending ? 'Submitting...' : 'Apply Leave'}
         </Button>

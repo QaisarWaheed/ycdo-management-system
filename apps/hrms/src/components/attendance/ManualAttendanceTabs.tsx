@@ -9,6 +9,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
+import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { DateInput } from '@/components/common/DateInput'
 import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
@@ -887,6 +888,8 @@ export function MarkLeaveManualTab() {
     'REGULAR' | 'SHORT_LEAVE' | 'EMERGENCY'
   >('REGULAR')
   const [reason, setReason] = useState('')
+  const [relieverId, setRelieverId] = useState('')
+  const [selectedReliever, setSelectedReliever] = useState<Employee | undefined>()
   const [markingId, setMarkingId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -973,11 +976,14 @@ export function MarkLeaveManualTab() {
         endDate: leaveType === 'SHORT_LEAVE' ? startDate : endDate,
         leaveType,
         reason: reason.trim(),
+        ...(relieverId ? { relieverId } : {}),
       }),
     onSuccess: () => {
       toast({
         title: 'Leave marked and approved',
-        description: 'No further approval is required.',
+        description: relieverId
+          ? 'Reliever has been assigned.'
+          : 'No further approval is required.',
       })
       queryClient.invalidateQueries({ queryKey: ['attendance'] })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
@@ -1071,6 +1077,26 @@ export function MarkLeaveManualTab() {
             placeholder="Verified leave reason..."
             rows={2}
           />
+        </div>
+        <div className="space-y-1 sm:col-span-2 lg:col-span-4">
+          <EmployeeSearchSelect
+            label="Reliever (Optional)"
+            value={relieverId}
+            onChange={(id, emp) => {
+              setRelieverId(id)
+              setSelectedReliever(emp)
+            }}
+          />
+          <p className="text-xs text-text-secondary">
+            Assign a covering employee when marking leave.
+          </p>
+          {selectedReliever?.shift && (
+            <p className="text-sm text-text-secondary">
+              {selectedReliever.fullName} — Shift:{' '}
+              {selectedReliever.shift.startTime} to{' '}
+              {selectedReliever.shift.endTime}
+            </p>
+          )}
         </div>
       </div>
 

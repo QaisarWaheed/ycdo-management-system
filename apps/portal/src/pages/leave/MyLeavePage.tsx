@@ -5,7 +5,6 @@ import { differenceInCalendarDays, format } from 'date-fns'
 import { AlertTriangle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi, type IncomingRelieverRequest } from '@/api/endpoints/leave'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import {
@@ -52,7 +51,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
-import { hasShiftConflict } from '@/lib/shiftUtils'
 import type { LeaveRecord } from '@/types'
 
 function LeaveStatusBadge({ status }: { status: string }) {
@@ -102,21 +100,17 @@ function RelieverSelectDialog({
   open,
   onOpenChange,
   employeeId,
-  requesterShift,
 }: {
   leave: LeaveRecord | null
   open: boolean
   onOpenChange: (open: boolean) => void
   employeeId: string
-  requesterShift?: { startTime: string; endTime: string } | null
 }) {
   const queryClient = useQueryClient()
   const [relieverId, setRelieverId] = useState('')
   const [selectedReliever, setSelectedReliever] = useState<
     RelieverCandidate | undefined
   >()
-
-  const shiftConflict = hasShiftConflict(requesterShift, selectedReliever?.shift)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -182,13 +176,6 @@ function RelieverSelectDialog({
               {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
             </p>
           )}
-
-          {shiftConflict && (
-            <p className="text-sm text-red-600">
-              This employee&apos;s shift conflicts with yours. Please select a
-              different reliever.
-            </p>
-          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -196,7 +183,7 @@ function RelieverSelectDialog({
           </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={!relieverId || shiftConflict || mutation.isPending}
+            disabled={!relieverId || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Sending...' : 'Send Request'}
@@ -454,12 +441,6 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
     RelieverCandidate | undefined
   >()
 
-  const { data: employee } = useQuery({
-    queryKey: ['employee-self', employeeId],
-    queryFn: () => employeesApi.getOne(employeeId),
-    enabled: !!employeeId,
-  })
-
   const form = useForm<ApplyFormValues>({
     resolver: zodResolver(applySchema),
     defaultValues: {
@@ -499,11 +480,9 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
     return differenceInCalendarDays(end, start) + 1
   }, [startDate, endDate, leaveType])
 
-  const shiftConflict = hasShiftConflict(employee?.shift, selectedReliever?.shift)
-
   const mutation = useMutation({
     mutationFn: async (values: ApplyFormValues) => {
-      const leave = await leaveApi.apply({
+      await leaveApi.apply({
         employeeId,
         startDate: values.startDate,
         endDate:
@@ -512,20 +491,15 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
             : values.endDate!,
         reason: values.reason,
         leaveType: values.leaveType,
+        ...(relieverId ? { relieverId } : {}),
       })
-      if (relieverId) {
-        await leaveApi.requestReliever(leave.id, {
-          leaveRecordId: leave.id,
-          relieverId,
-        })
-      }
       return { hadReliever: !!relieverId }
     },
     onSuccess: ({ hadReliever }) => {
       toast({
         title: hadReliever
-          ? 'Leave request submitted. Reliever notification sent.'
-          : 'Leave request submitted. HR will assign a reliever if needed.',
+          ? 'Leave request submitted with preferred reliever.'
+          : 'Leave request submitted. You can select a reliever after department approval.',
       })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
       queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
@@ -672,19 +646,13 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
               excludeId={employeeId}
             />
             <p className="text-xs text-text-secondary">
-              Select an employee to cover your duties during leave. They will have
-              8 hours to accept or reject.
+              Preferred reliever is saved with your request and notified after
+              department approval.
             </p>
             {selectedReliever?.shift && (
               <p className="text-sm">
                 {selectedReliever.fullName} — Shift:{' '}
                 {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
-              </p>
-            )}
-            {shiftConflict && (
-              <p className="text-sm text-red-600">
-                This employee&apos;s shift conflicts with yours. Please select a
-                different reliever.
               </p>
             )}
           </div>
@@ -715,8 +683,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
             mutation.isPending ||
             (balance !== undefined &&
               typeof daysPreview === 'number' &&
-              daysPreview > balance.remaining) ||
-            (relieverId !== '' && shiftConflict)
+              daysPreview > balance.remaining)
           }
         >
           {mutation.isPending ? 'Submitting...' : 'Submit Application'}
@@ -827,12 +794,6 @@ export function MyLeavePage() {
   const [tab, setTab] = useState('requests')
   const [relieverDialogLeave, setRelieverDialogLeave] =
     useState<LeaveRecord | null>(null)
-
-  const { data: employee } = useQuery({
-    queryKey: ['employee-self-leave', employeeId],
-    queryFn: () => employeesApi.getOne(employeeId),
-    enabled: !!employeeId,
-  })
 
   const { data: balance, isLoading: loadingBalance } = useQuery({
     queryKey: ['leave-balance', employeeId, year],
@@ -955,7 +916,6 @@ export function MyLeavePage() {
         open={!!relieverDialogLeave}
         onOpenChange={(open) => !open && setRelieverDialogLeave(null)}
         employeeId={employeeId}
-        requesterShift={employee?.shift}
       />
     </div>
   )

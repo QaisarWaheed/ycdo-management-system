@@ -37,6 +37,11 @@ export class ApplyLeaveDto {
   @IsOptional()
   @IsEnum(LeaveType)
   leaveType?: LeaveType;
+
+  /** Preferred reliever — stored now; notified after department approval. */
+  @IsOptional()
+  @IsUUID()
+  relieverId?: string;
 }
 
 export class ApproveLeaveDto {
@@ -156,4 +161,8 @@ export class VerifiedLeaveDto {
   @MinLength(3)
   @MaxLength(500)
   reason: string;
+
+  @IsOptional()
+  @IsUUID()
+  relieverId?: string;
 }
