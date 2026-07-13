@@ -11,6 +11,9 @@ export interface EmployeeOnboardingApproval {
   approverTarget: EmployeeApproverTarget
   status: EmployeeOnboardingStatus
   formSnapshot: Record<string, unknown>
+  physicalFormUrl?: string | null
+  physicalFormMimeType?: string | null
+  physicalFormFileName?: string | null
   reviewNote?: string | null
   reviewedById?: string | null
   reviewedAt?: string | null
@@ -78,6 +81,12 @@ export const employeeOnboardingApi = {
   getOne: (id: string) =>
     api.get<unknown, EmployeeOnboardingApproval>(
       `/employee-onboarding/${id}`,
+    ),
+  uploadPhysicalForm: (employeeId: string, formData: FormData) =>
+    api.post<unknown, EmployeeOnboardingApproval>(
+      `/employee-onboarding/employee/${employeeId}/physical-form`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
     ),
   approve: (id: string, reviewNote?: string) =>
     api.post<unknown, EmployeeOnboardingApproval>(

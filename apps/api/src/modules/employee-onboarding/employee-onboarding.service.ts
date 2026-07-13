@@ -141,6 +141,70 @@ export class EmployeeOnboardingService {
     return approval;
   }
 
+  async uploadPhysicalForm(
+    employeeId: string,
+    file: Express.Multer.File,
+    user: ActingUser,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Physical form file is required');
+    }
+
+    const approval = await this.prisma.employeeOnboardingApproval.findUnique({
+      where: { employeeId },
+    });
+
+    if (!approval) {
+      throw new NotFoundException(
+        'No pending onboarding approval found for this employee',
+      );
+    }
+
+    if (approval.status !== EmployeeOnboardingStatus.PENDING) {
+      throw new BadRequestException(
+        'Physical form can only be attached while the request is pending',
+      );
+    }
+
+    if (
+      user.role !== UserRole.SUPER_ADMIN &&
+      approval.submittedById !== user.id
+    ) {
+      const hrRoles: UserRole[] = [
+        UserRole.HR_MANAGER,
+        UserRole.HR_ADMIN_MANAGER,
+        UserRole.ADMIN_OFFICER,
+        UserRole.ADMIN_MANAGER,
+        UserRole.HR_EXECUTIVE,
+      ];
+      if (!hrRoles.includes(user.role as UserRole)) {
+        throw new ForbiddenException(
+          'You cannot upload a physical form for this request',
+        );
+      }
+    }
+
+    const fileUrl = `/uploads/onboarding-forms/${employeeId}/${file.filename}`;
+
+    return this.prisma.employeeOnboardingApproval.update({
+      where: { id: approval.id },
+      data: {
+        physicalFormUrl: fileUrl,
+        physicalFormMimeType: file.mimetype,
+        physicalFormFileName: file.originalname,
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            fullName: true,
+            employeeCode: true,
+          },
+        },
+      },
+    });
+  }
+
   async approve(id: string, user: ActingUser, reviewNote?: string) {
     const approval = await this.getPendingForReview(id, user);
 

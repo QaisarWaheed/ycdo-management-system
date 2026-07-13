@@ -1,16 +1,17 @@
 import { Component, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X } from 'lucide-react'
+import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X, FileUp } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import {
   APPROVER_OPTIONS,
+  employeeOnboardingApi,
   type EmployeeApproverTarget,
 } from '@/api/endpoints/employeeOnboarding'
 import { projectsApi } from '@/api/endpoints/projects'
@@ -25,6 +26,8 @@ import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationF
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { useAuth } from '@/hooks/useAuth'
+import { isMedicineManagerRole } from '@/lib/medicineScope'
 import {
   BLOOD_GROUP_OPTIONS,
   FATHER_STATUS_LABELS,
@@ -604,6 +607,14 @@ function setFormErrors(
 }
 
 export function EmployeeCreatePage() {
+  const { user } = useAuth()
+  if (isMedicineManagerRole(user?.role)) {
+    return <Navigate to="/attendance" replace />
+  }
+  return <EmployeeCreatePageForm />
+}
+
+function EmployeeCreatePageForm() {
   const navigate = useNavigate()
   const location = useLocation()
   const prefill = (location.state as { prefill?: EmployeePrefill } | null)
@@ -621,6 +632,7 @@ export function EmployeeCreatePage() {
   const [educationalCerts, setEducationalCerts] = useState<File[]>([])
   const [medicalCerts, setMedicalCerts] = useState<File[]>([])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [physicalFormFile, setPhysicalFormFile] = useState<File | null>(null)
   const [approverTarget, setApproverTarget] =
     useState<EmployeeApproverTarget | null>(null)
   const [docErrors, setDocErrors] = useState<string | null>(null)
@@ -876,6 +888,12 @@ export function EmployeeCreatePage() {
         await employeesApi.uploadPhoto(employee.id, formData)
       }
 
+      if (physicalFormFile) {
+        const formData = new FormData()
+        formData.append('file', physicalFormFile)
+        await employeeOnboardingApi.uploadPhysicalForm(employee.id, formData)
+      }
+
       const uploadFile = async (
         file: File,
         documentType: DocumentType,
@@ -1005,6 +1023,12 @@ export function EmployeeCreatePage() {
   })
 
   const onSubmit = () => {
+    if (!physicalFormFile) {
+      setStepError(
+        'Please upload the scanned/photo of the physical filled form before submitting',
+      )
+      return
+    }
     if (!approverTarget) {
       setStepError('Please select who should approve this employee')
       return
@@ -1956,16 +1980,73 @@ export function EmployeeCreatePage() {
           <div className="space-y-6">
             <h2 className="text-lg font-semibold">Submit for Approval</h2>
             <p className="text-sm text-text-secondary">
-              This is the official Employee Information Form that will be sent
-              to the selected executive. Choose who should approve this employee.
+              Upload the physical filled form (scan or photo) and review the
+              system confirmation. Both will be sent to the selected executive so
+              they can verify that HR entry matches the paper form.
             </p>
 
-            {draftFormData && (
-              <div className="overflow-x-auto rounded-lg border border-border bg-gray-100 p-4">
-                <EmployeeInformationForm
-                  data={draftFormData}
-                  showPendingApprover={!!approverTarget}
+            <div className="space-y-3 rounded-lg border border-border bg-white p-4">
+              <Label>Physical filled form (image or PDF) *</Label>
+              <p className="text-xs text-text-secondary">
+                Attach the handwritten/printed form the candidate filled. JPG,
+                PNG, or PDF — max 10 MB.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  id="physical-form-upload"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null
+                    if (file && file.size > 10 * 1024 * 1024) {
+                      setStepError('Physical form file must be 10 MB or smaller')
+                      e.target.value = ''
+                      return
+                    }
+                    setStepError(null)
+                    setPhysicalFormFile(file)
+                  }}
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    document.getElementById('physical-form-upload')?.click()
+                  }
+                >
+                  <FileUp className="mr-2 h-4 w-4" />
+                  {physicalFormFile ? 'Change file' : 'Upload physical form'}
+                </Button>
+                {physicalFormFile && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium text-text-primary">
+                      {physicalFormFile.name}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-text-secondary hover:text-red-600"
+                      onClick={() => setPhysicalFormFile(null)}
+                      aria-label="Remove physical form"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {draftFormData && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  System-generated confirmation (sent with the physical form)
+                </p>
+                <div className="overflow-x-auto rounded-lg border border-border bg-gray-100 p-4">
+                  <EmployeeInformationForm
+                    data={draftFormData}
+                    showPendingApprover={!!approverTarget}
+                  />
+                </div>
               </div>
             )}
 
@@ -2000,7 +2081,11 @@ export function EmployeeCreatePage() {
               <Button
                 type="button"
                 className="bg-primary hover:bg-primary-dark"
-                disabled={createMutation.isPending || !approverTarget}
+                disabled={
+                  createMutation.isPending ||
+                  !approverTarget ||
+                  !physicalFormFile
+                }
                 onClick={onSubmit}
               >
                 {createMutation.isPending

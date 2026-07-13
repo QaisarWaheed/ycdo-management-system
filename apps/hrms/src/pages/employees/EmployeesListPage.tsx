@@ -45,6 +45,7 @@ import {
 } from '@/lib/attendanceUtils'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
+import { isMedicineManagerRole } from '@/lib/medicineScope'
 import { withReturnTo } from '@/lib/backNavigation'
 
 export function EmployeesListPage() {
@@ -52,6 +53,9 @@ export function EmployeesListPage() {
   const location = useLocation()
   const returnTo = `${location.pathname}${location.search}`
   const { user } = useAuth()
+  const isMedicineManager = isMedicineManagerRole(user?.role)
+  const canCreateEmployee = !isMedicineManager
+  const canManageEmployee = !isMedicineManager
   const [search, setSearch] = useState('')
   const [employeeFilters, setEmployeeFilters] = useState(() =>
     createEmployeeFilters(user),
@@ -123,13 +127,15 @@ export function EmployeesListPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-text-primary">Employees</h1>
-        <Button
-          className="bg-primary hover:bg-primary-dark"
-          onClick={() => navigate('/employees/new')}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add Employee
-        </Button>
+        {canCreateEmployee && (
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            onClick={() => navigate('/employees/new')}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Employee
+          </Button>
+        )}
       </div>
 
       {unassignedCount > 0 && (
@@ -298,29 +304,36 @@ export function EmployeesListPage() {
                         >
                           View Profile
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            navigate(
-                              `/employees/${emp.id}`,
-                              withReturnTo(returnTo),
-                            )
-                          }
-                        >
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() =>
-                            setStatusDialog({ id: emp.id, status: emp.status })
-                          }
-                        >
-                          Change Status
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => setLetterDialog(emp.id)}
-                        >
-                          Generate Letter
-                        </DropdownMenuItem>
+                        {canManageEmployee && (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                navigate(
+                                  `/employees/${emp.id}`,
+                                  withReturnTo(returnTo),
+                                )
+                              }
+                            >
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setStatusDialog({
+                                  id: emp.id,
+                                  status: emp.status,
+                                })
+                              }
+                            >
+                              Change Status
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => setLetterDialog(emp.id)}
+                            >
+                              Generate Letter
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

@@ -159,8 +159,9 @@ export function MedicineManagerDashboard() {
         <CardContent className="p-4 text-sm">
           <p className="font-medium">Medicine Management System</p>
           <p className="mt-1 text-text-secondary">
-            You can mark attendance only for staff under{' '}
-            {MEDICINE_DEPARTMENT_NAME} (and related designations).
+            You can mark attendance for staff under {MEDICINE_DEPARTMENT_NAME}{' '}
+            (and related designations). Adding or editing employees is not
+            available for this role.
           </p>
         </CardContent>
       </Card>

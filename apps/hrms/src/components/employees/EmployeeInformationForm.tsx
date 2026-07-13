@@ -1,82 +1,87 @@
+import type { ReactNode } from 'react'
+import { BadgeCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type {
   EmployeeInformationFormData,
   QualificationRow,
 } from '@/lib/employeeInformationFormData'
 
-function FieldRow({
-  labelEn,
-  labelUr,
-  value,
-  className,
+function Section({
+  title,
+  children,
 }: {
-  labelEn: string
-  labelUr?: string
-  value: string
-  className?: string
+  title: string
+  children: ReactNode
 }) {
   return (
-    <div className={cn('grid grid-cols-[1fr_1.4fr] border-b border-black text-[11px]', className)}>
-      <div className="flex items-center justify-between border-r border-black px-1 py-0.5">
-        <span className="font-medium">{labelEn}</span>
-        {labelUr && <span className="text-[10px]">{labelUr}</span>}
-      </div>
-      <div className="min-h-[22px] px-1 py-0.5 font-medium">{value || '\u00A0'}</div>
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <h3 className="mb-3 border-b border-slate-100 pb-2 text-sm font-semibold tracking-wide text-slate-800">
+        {title}
+      </h3>
+      {children}
+    </section>
+  )
+}
+
+function InfoGrid({
+  items,
+}: {
+  items: { label: string; value: string }[]
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {items.map((item) => (
+        <div key={item.label} className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+            {item.label}
+          </p>
+          <p className="mt-0.5 break-words text-sm font-medium text-slate-900">
+            {item.value || '—'}
+          </p>
+        </div>
+      ))}
     </div>
   )
 }
 
-function QualTable({
-  titleEn,
-  titleUr,
+function QualList({
+  title,
   rows,
-  columns,
 }: {
-  titleEn: string
-  titleUr: string
+  title: string
   rows: QualificationRow[]
-  columns: { en: string; ur?: string; key: keyof QualificationRow }[]
 }) {
+  const filled = rows.filter((r) => r.degree || r.boardUniversity)
   return (
-    <div className="border border-black">
-      <div className="flex items-center justify-between border-b border-black bg-[#f3f3f3] px-2 py-1 text-[11px] font-semibold">
-        <span>{titleEn}</span>
-        <span>{titleUr}</span>
-      </div>
-      <table className="w-full border-collapse text-[10px]">
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                className="border border-black px-1 py-1 text-left font-semibold"
-              >
-                <div>{col.en}</div>
-                {col.ur && <div className="font-normal">{col.ur}</div>}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i}>
-              {columns.map((col) => (
-                <td
-                  key={col.key}
-                  className="h-[22px] border border-black px-1 align-top"
-                >
-                  {row[col.key] || '\u00A0'}
-                </td>
-              ))}
-            </tr>
+    <div>
+      <p className="mb-2 text-xs font-semibold text-slate-600">{title}</p>
+      {filled.length === 0 ? (
+        <p className="text-sm text-slate-400">None recorded</p>
+      ) : (
+        <ul className="space-y-2">
+          {filled.map((row, i) => (
+            <li
+              key={i}
+              className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-800"
+            >
+              <span className="font-medium">{row.degree || '—'}</span>
+              {row.boardUniversity ? (
+                <span className="text-slate-500"> · {row.boardUniversity}</span>
+              ) : null}
+              {(row.marks || row.division) && (
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  {[row.marks, row.division].filter(Boolean).join(' · ')}
+                </span>
+              )}
+            </li>
           ))}
-        </tbody>
-      </table>
+        </ul>
+      )}
     </div>
   )
 }
 
-function SignatureBox({
+function ApproverChip({
   label,
   highlight,
 }: {
@@ -86,23 +91,27 @@ function SignatureBox({
   return (
     <div
       className={cn(
-        'flex min-h-[56px] flex-col justify-end border border-black px-1 pb-1 text-center text-[9px]',
-        highlight && 'bg-amber-50 ring-2 ring-amber-400',
+        'rounded-lg border px-3 py-3 text-center text-xs font-medium',
+        highlight
+          ? 'border-amber-400 bg-amber-50 text-amber-900 ring-2 ring-amber-300'
+          : 'border-slate-200 bg-slate-50 text-slate-600',
       )}
     >
-      <div className="mb-6 border-b border-dotted border-gray-400" />
-      <span className="font-semibold">{label}</span>
+      {label}
+      {highlight && (
+        <p className="mt-1 text-[10px] font-normal text-amber-700">
+          Selected approver
+        </p>
+      )}
     </div>
   )
 }
 
-const qualColumns = [
-  { en: 'Degree/Certificate', ur: 'ڈگری/سرٹیفیکیٹ', key: 'degree' as const },
-  { en: 'Board/University', ur: 'بورڈ/یونیورسٹی', key: 'boardUniversity' as const },
-  { en: 'Marks', ur: 'نمبر', key: 'marks' as const },
-  { en: 'Division', ur: 'ڈویژن', key: 'division' as const },
-]
-
+/**
+ * System-generated HRMS confirmation record.
+ * Intentionally distinct from the paper Employee Information Form (form.pdf):
+ * modern cards, English-only, no black grid / bilingual paper layout.
+ */
 export function EmployeeInformationForm({
   data,
   className,
@@ -117,217 +126,166 @@ export function EmployeeInformationForm({
   return (
     <div
       className={cn(
-        'employee-information-form mx-auto w-full max-w-[210mm] bg-white text-black',
+        'employee-information-form mx-auto w-full max-w-[210mm] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-slate-900',
         className,
       )}
     >
-      {/* Header */}
-      <div className="mb-2 flex items-start justify-between border-b-2 border-black pb-2">
-        <div>
-          <p className="text-lg font-bold tracking-wide">YCDO</p>
-          <p className="text-[10px] text-gray-600">
-            Youth Community Development Organization
-          </p>
-        </div>
-        <div className="text-center">
-          <h1 className="text-base font-bold underline">Employee Information Form</h1>
-          <p className="text-[10px]">ملازم کی معلومات کا فارم</p>
-        </div>
-        <div className="text-right text-[11px]">
-          <p>
-            <span className="font-semibold">Code:</span> {data.code}
-          </p>
-          <p>
-            <span className="font-semibold">Page:</span> {data.page}
-          </p>
+      <div className="bg-gradient-to-r from-teal-700 to-teal-600 px-5 py-4 text-white">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+              <BadgeCheck className="h-3.5 w-3.5" />
+              System generated · HRMS
+            </div>
+            <h1 className="text-lg font-semibold tracking-tight">
+              Employee Onboarding Confirmation
+            </h1>
+            <p className="mt-0.5 text-sm text-teal-50/90">
+              Digital record of details entered by HR — compare with the
+              physical form
+            </p>
+          </div>
+          <div className="rounded-lg bg-white/10 px-3 py-2 text-right text-sm backdrop-blur-sm">
+            <p className="text-[10px] uppercase tracking-wide text-teal-100">
+              Employee code
+            </p>
+            <p className="font-semibold">{data.code || 'Pending'}</p>
+          </div>
         </div>
       </div>
 
-      <div className="mb-2 grid grid-cols-[1fr_88px] gap-2">
-        <div className="border border-black">
-          <FieldRow labelEn="Employee Name" labelUr="نام" value={data.fullName} />
-          <FieldRow labelEn="Contact" labelUr="رابطہ" value={data.phone} />
-          <FieldRow labelEn="CNIC" labelUr="شناختی کارڈ" value={data.cnic} />
-          <FieldRow labelEn="Father Name" labelUr="والد کا نام" value={data.fatherName} />
-          <FieldRow labelEn="Contact" labelUr="رابطہ" value={data.fatherContact} />
-          <FieldRow
-            labelEn="Emergency Guardian Contact No."
-            labelUr="ایمرجنسی"
-            value={data.emergencyGuardianContact}
-          />
-          <FieldRow labelEn="Spouse Name" labelUr="شریک حیات" value={data.spouseName} />
-          <FieldRow labelEn="Contact" labelUr="رابطہ" value={data.spouseContact} />
-          <FieldRow labelEn="Date of Birth" labelUr="تاریخ پیدائش" value={data.dateOfBirth} />
-          <FieldRow labelEn="Cast" labelUr="ذات" value={data.caste} />
-          <FieldRow labelEn="Date Of Joining" labelUr="تاریخ تقرر" value={data.joiningDate} />
-          <FieldRow labelEn="Email Address" labelUr="ای میل" value={data.email} />
-          <FieldRow labelEn="Domicile" labelUr="ڈومیسائل" value={data.domicile} />
-          <FieldRow labelEn="Current Address" labelUr="موجودہ پتہ" value={data.currentAddress} />
-          <FieldRow
-            labelEn="Permanent Address"
-            labelUr="مستقل پتہ"
-            value={data.permanentAddress}
-          />
-          <FieldRow labelEn="District" labelUr="ضلع" value={data.district} />
-          <FieldRow labelEn="Tehsil" labelUr="تحصیل" value={data.tehsil} />
-          <FieldRow
-            labelEn="Police Station"
-            labelUr="تھانہ"
-            value={data.policeStation}
-            className="border-b-0"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-1 items-center justify-center overflow-hidden border border-black bg-gray-50">
-            {data.photoUrl ? (
-              <img
-                src={data.photoUrl}
-                alt={data.fullName}
-                className="h-full w-full object-cover"
+      <div className="space-y-4 p-4 sm:p-5">
+        <Section title="Personal details">
+          <div className="mb-4 flex flex-col gap-4 sm:flex-row">
+            <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+              {data.photoUrl ? (
+                <img
+                  src={data.photoUrl}
+                  alt={data.fullName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                  No photo
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <InfoGrid
+                items={[
+                  { label: 'Full name', value: data.fullName },
+                  { label: 'Father name', value: data.fatherName },
+                  { label: 'CNIC', value: data.cnic },
+                  { label: 'Phone', value: data.phone },
+                  { label: 'Email', value: data.email },
+                  { label: 'Date of birth', value: data.dateOfBirth },
+                  { label: 'Gender', value: data.gender },
+                  { label: 'Marital status', value: data.maritalStatus },
+                  { label: 'Blood group', value: data.bloodGroup },
+                  { label: 'Caste', value: data.caste },
+                ]}
               />
-            ) : (
-              <span className="text-[9px] text-gray-500">Photo</span>
-            )}
-          </div>
-          <div className="border border-black px-1 py-0.5 text-[10px]">
-            <div className="flex justify-between">
-              <span>Gender</span>
-              <span>جنس</span>
             </div>
-            <div className="font-medium">{data.gender || '—'}</div>
           </div>
-          <div className="border border-black px-1 py-0.5 text-[10px]">
-            <div className="flex justify-between">
-              <span>Marital Status</span>
-              <span>ازدواجی</span>
-            </div>
-            <div className="font-medium">{data.maritalStatus || '—'}</div>
-          </div>
-          <div className="border border-black px-1 py-0.5 text-[10px]">
-            <div className="flex justify-between">
-              <span>Blood Group</span>
-              <span>بلڈ گروپ</span>
-            </div>
-            <div className="font-medium">{data.bloodGroup || '—'}</div>
-          </div>
-        </div>
-      </div>
+        </Section>
 
-      <div className="mb-2 space-y-2">
-        <QualTable
-          titleEn="Academic Qualifications"
-          titleUr="تعلیمی قابلیت"
-          rows={data.academicQualifications}
-          columns={qualColumns}
-        />
-        <QualTable
-          titleEn="Qualification Relevant To This Job"
-          titleUr="ملازمت سے متعلق"
-          rows={data.jobQualifications}
-          columns={qualColumns}
-        />
-      </div>
-
-      <div className="mb-2 border border-black">
-        <div className="flex items-center justify-between border-b border-black bg-[#f3f3f3] px-2 py-1 text-[11px] font-semibold">
-          <span>Last Job Institute</span>
-          <span>سابقہ ادارہ</span>
-        </div>
-        <table className="w-full border-collapse text-[10px]">
-          <thead>
-            <tr>
-              <th className="border border-black px-1 py-1 text-left">Name Institute</th>
-              <th className="border border-black px-1 py-1 text-left">Owner/Admin</th>
-              <th className="border border-black px-1 py-1 text-left">Contact No.</th>
-              <th className="border border-black px-1 py-1 text-left">Postal Address of Inst.</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="h-[22px] border border-black px-1">{job.organizationName || '\u00A0'}</td>
-              <td className="border border-black px-1">{job.ownerAdminName || '\u00A0'}</td>
-              <td className="border border-black px-1">{job.contactNumber || '\u00A0'}</td>
-              <td className="border border-black px-1">{job.postalAddress || '\u00A0'}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mb-2 border border-black">
-        <div className="border-b border-black bg-[#f3f3f3] px-2 py-1 text-[11px] font-semibold">
-          Experience / تجربہ
-        </div>
-        <div className="min-h-[72px] whitespace-pre-wrap px-2 py-1 text-[10px]">
-          {data.experienceNotes || '•\n•\n•'}
-        </div>
-      </div>
-
-      <div className="mb-2 grid grid-cols-2 gap-4 text-[10px]">
-        <div>
-          <p className="mb-6 border-b border-black pb-1">
-            دستخط: _______________________
-          </p>
-          <p className="leading-relaxed">
-            میں تصدیق کرتا/کرتی ہوں کہ میرے ذریعہ فراہم کردہ تمام معلومات درست ہیں۔
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="mb-1 font-semibold">Employee Signature</p>
-          <p>Date: _______________</p>
-        </div>
-      </div>
-
-      <div className="border-2 border-black p-2">
-        <p className="mb-2 text-center text-[11px] font-bold underline">
-          For Office Use Only / دفتر کے استعمال کے لیے
-        </p>
-        <div className="mb-2 grid grid-cols-3 gap-2 text-[10px]">
-          <div>
-            <span className="font-semibold">Posting Place:</span>
-            <div className="mt-0.5 min-h-[18px] border-b border-black">
-              {data.postingPlace || '\u00A0'}
-            </div>
-          </div>
-          <div>
-            <span className="font-semibold">Designation:</span>
-            <div className="mt-0.5 min-h-[18px] border-b border-black">
-              {data.designation || '\u00A0'}
-            </div>
-          </div>
-          <div>
-            <span className="font-semibold">Stipend:</span>
-            <div className="mt-0.5 min-h-[18px] border-b border-black">
-              {data.stipend || '\u00A0'}
-            </div>
-          </div>
-        </div>
-        <p className="mb-2 text-[9px] leading-relaxed">
-          براہ کرم یقینی بنائیں کہ فارم مکمل اور درست ہے۔ HR کی جانب سے جمع کرایا گیا —
-          {data.submittedBy}
-        </p>
-        <div className="mb-2 min-h-[40px] border-b border-dotted border-gray-500 text-[10px]">
-          Admin Officer Sign / افسر کا دستخط
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <SignatureBox label="HR Admin Manager" />
-          <SignatureBox label="HR Operation Manager" />
-          <SignatureBox
-            label="Chairman Admin Depart."
-            highlight={
-              showPendingApprover && data.approverTarget === 'CHAIRMAN_ADMIN'
-            }
+        <Section title="Address & domicile">
+          <InfoGrid
+            items={[
+              { label: 'Domicile', value: data.domicile },
+              { label: 'District', value: data.district },
+              { label: 'Tehsil', value: data.tehsil },
+              { label: 'Police station', value: data.policeStation },
+              { label: 'Current address', value: data.currentAddress },
+              { label: 'Permanent address', value: data.permanentAddress },
+              {
+                label: 'Emergency contact',
+                value: data.emergencyGuardianContact,
+              },
+              { label: 'Spouse', value: data.spouseName },
+              { label: 'Spouse contact', value: data.spouseContact },
+              { label: 'Father contact', value: data.fatherContact },
+            ]}
           />
-          <SignatureBox
-            label="Founder / Head of Org."
-            highlight={showPendingApprover && data.approverTarget === 'FOUNDER'}
+        </Section>
+
+        <Section title="Job placement">
+          <InfoGrid
+            items={[
+              { label: 'Joining date', value: data.joiningDate },
+              { label: 'Posting / branch', value: data.postingPlace },
+              { label: 'Designation', value: data.designation },
+              { label: 'Stipend', value: data.stipend },
+              { label: 'Submitted by', value: data.submittedBy },
+            ]}
           />
-        </div>
-        {showPendingApprover && data.approverTarget === 'PRESIDENT' && (
-          <div className="mt-2 grid grid-cols-1">
-            <SignatureBox label="President / صدر" highlight />
+        </Section>
+
+        <Section title="Qualifications">
+          <div className="space-y-4">
+            <QualList
+              title="Academic"
+              rows={data.academicQualifications}
+            />
+            <QualList
+              title="Job-relevant"
+              rows={data.jobQualifications}
+            />
           </div>
-        )}
+        </Section>
+
+        <Section title="Previous employment">
+          <InfoGrid
+            items={[
+              {
+                label: 'Organization',
+                value: job?.organizationName ?? '',
+              },
+              {
+                label: 'Owner / admin',
+                value: job?.ownerAdminName ?? '',
+              },
+              { label: 'Contact', value: job?.contactNumber ?? '' },
+              {
+                label: 'Postal address',
+                value: job?.postalAddress ?? '',
+              },
+            ]}
+          />
+          {data.experienceNotes ? (
+            <p className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              {data.experienceNotes}
+            </p>
+          ) : null}
+        </Section>
+
+        <Section title="Approval routing">
+          <p className="mb-3 text-xs text-slate-500">
+            Confirm that the physical form matches this system record before
+            approving.
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <ApproverChip label="HR Admin Manager" />
+            <ApproverChip label="HR Operations" />
+            <ApproverChip
+              label="Chairman Admin"
+              highlight={
+                showPendingApprover && data.approverTarget === 'CHAIRMAN_ADMIN'
+              }
+            />
+            <ApproverChip
+              label="Founder"
+              highlight={
+                showPendingApprover && data.approverTarget === 'FOUNDER'
+              }
+            />
+          </div>
+          {showPendingApprover && data.approverTarget === 'PRESIDENT' && (
+            <div className="mt-2">
+              <ApproverChip label="President" highlight />
+            </div>
+          )}
+        </Section>
       </div>
     </div>
   )

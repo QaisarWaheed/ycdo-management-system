@@ -241,17 +241,20 @@ enum EmployeeOnboardingStatus {
 }
 
 model EmployeeOnboardingApproval {
-  id             String                   @id @default(uuid())
-  employeeId     String                   @unique
-  submittedById  String
-  approverTarget EmployeeApproverTarget
-  status         EmployeeOnboardingStatus @default(PENDING)
-  formSnapshot   Json
-  reviewNote     String?
-  reviewedById   String?
-  reviewedAt     DateTime?
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
+  id                     String                   @id @default(uuid())
+  employeeId             String                   @unique
+  submittedById          String
+  approverTarget         EmployeeApproverTarget
+  status                 EmployeeOnboardingStatus @default(PENDING)
+  formSnapshot           Json
+  physicalFormUrl        String?
+  physicalFormMimeType   String?
+  physicalFormFileName   String?
+  reviewNote             String?
+  reviewedById           String?
+  reviewedAt             DateTime?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
 
   employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   submittedBy User     @relation("SubmittedOnboardingApprovals", fields: [submittedById], references: [id])

@@ -94,17 +94,22 @@ export function SearchableSelect({
     inputRef.current?.blur()
   }
 
-  const handleFocus = () => {
+  const openDropdown = () => {
     if (disabled) return
-    setQuery(value)
+    // Start with an empty query so the full option list shows
+    // (including "All Branches") instead of pre-filling the selected label.
+    setQuery('')
     setOpen(true)
+  }
+
+  const handleFocus = () => {
+    openDropdown()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!open) {
       if (e.key === 'ArrowDown' || e.key === 'Enter') {
-        setQuery(value)
-        setOpen(true)
+        openDropdown()
       }
       return
     }
