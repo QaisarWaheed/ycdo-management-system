@@ -19,4 +19,9 @@ export const locationValuesApi = {
     province?: string
     city?: string
   }) => api.post('/location-values', data),
+  update: (
+    id: string,
+    data: { value?: string; province?: string; city?: string },
+  ) => api.patch(`/location-values/${id}`, data),
+  delete: (id: string) => api.delete(`/location-values/${id}`),
 }

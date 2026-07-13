@@ -9,6 +9,7 @@ import { normalizeDesignationName } from '../../common/org-structure';
 import { inferShiftNameFromDuty } from '../../common/shift-inference.util';
 import {
   ChangeType,
+  EmployeeOnboardingStatus,
   EmployeeStatus,
   LetterType,
   LeaveStatus,
@@ -151,6 +152,7 @@ export class EmployeesService {
     }
 
     const employee = await this.prisma.$transaction(async (tx) => {
+      const pendingApproval = Boolean(dto.approverTarget);
       const created = await tx.employee.create({
         data: {
           ...employeeData,
@@ -161,6 +163,9 @@ export class EmployeesService {
           employeeCode,
           joiningDate,
           dateOfBirth: new Date(dto.dateOfBirth),
+          status: pendingApproval
+            ? EmployeeStatus.PENDING_APPROVAL
+            : EmployeeStatus.ACTIVE,
         },
       });
 
@@ -199,7 +204,23 @@ export class EmployeesService {
         designation: dto.currentDesignation,
         branchId: dto.currentBranchId,
         userRole: dto.userRole,
+        isActive: !pendingApproval,
       });
+
+      if (pendingApproval && dto.approverTarget && actingUser) {
+        await tx.employeeOnboardingApproval.create({
+          data: {
+            employeeId: created.id,
+            submittedById: actingUser.id,
+            approverTarget: dto.approverTarget,
+            status: EmployeeOnboardingStatus.PENDING,
+            formSnapshot: (dto.formSnapshot ?? {
+              ...dto,
+              employeeCode: created.employeeCode,
+            }) as Prisma.InputJsonValue,
+          },
+        });
+      }
 
       return created;
     });
@@ -227,7 +248,10 @@ export class EmployeesService {
 
     if (result) {
       try {
-        if (result.staffType !== StaffType.EXISTING) {
+        if (
+          result.staffType !== StaffType.EXISTING &&
+          result.status === EmployeeStatus.ACTIVE
+        ) {
           await this.lettersService.generate(
             {
               employeeId: result.id,
@@ -318,6 +342,7 @@ export class EmployeesService {
       designation?: string;
       branchId?: string;
       userRole?: string;
+      isActive?: boolean;
     },
   ) {
     const hashedPassword = await bcrypt.hash(params.employeeCode, 10);
@@ -332,7 +357,7 @@ export class EmployeesService {
         password: hashedPassword,
         role: isAdminManager ? UserRole.ADMIN_MANAGER : UserRole.EMPLOYEE,
         branchId: isAdminManager ? params.branchId : undefined,
-        isActive: true,
+        isActive: params.isActive ?? true,
         employeeId: params.employeeId,
       },
     });

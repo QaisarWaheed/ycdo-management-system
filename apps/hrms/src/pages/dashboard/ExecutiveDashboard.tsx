@@ -1,13 +1,22 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { UserCheck } from 'lucide-react'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
+import {
+  employeeOnboardingApi,
+  type EmployeeOnboardingApproval,
+} from '@/api/endpoints/employeeOnboarding'
 import { employeesApi } from '@/api/endpoints/employees'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { leaveApi } from '@/api/endpoints/leave'
+import { EmployeeOnboardingReviewDialog } from '@/components/employees/EmployeeOnboardingReviewDialog'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { StageBadge } from '@/components/leave/StageBadge'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -21,6 +30,8 @@ import type { LeaveRecord } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 export function ExecutiveDashboard() {
+  const [reviewApproval, setReviewApproval] =
+    useState<EmployeeOnboardingApproval | null>(null)
   const today = format(new Date(), 'yyyy-MM-dd')
   const year = new Date().getFullYear()
   const month = new Date().getMonth() + 1
@@ -54,6 +65,11 @@ export function ExecutiveDashboard() {
   const { data: incentives = [] } = useQuery({
     queryKey: ['incentives', year, month],
     queryFn: () => incentivesApi.getAll({ year, month }),
+  })
+
+  const { data: pendingOnboarding = [] } = useQuery({
+    queryKey: ['employee-onboarding', 'pending'],
+    queryFn: () => employeeOnboardingApi.getPending(),
   })
 
   const onLeaveToday = attendance.filter((l) => l.status === 'ON_LEAVE').length
@@ -95,6 +111,62 @@ export function ExecutiveDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {pendingOnboarding.length > 0 && (
+        <Card className="border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-primary" />
+              Pending Employee Approvals
+              <Badge className="ml-2">{pendingOnboarding.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Designation</TableHead>
+                  <TableHead>Branch</TableHead>
+                  <TableHead>Submitted</TableHead>
+                  <TableHead className="w-[120px]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingOnboarding.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      {item.employee ? (
+                        <EmployeeNameLink employee={item.employee} />
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {item.employee?.currentDesignation ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      {formatBranchLabel(item.employee?.currentBranch)}
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(item.createdAt), 'dd/MM/yyyy')}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setReviewApproval(item)}
+                      >
+                        Review
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -170,6 +242,12 @@ export function ExecutiveDashboard() {
           </p>
         </CardContent>
       </Card>
+
+      <EmployeeOnboardingReviewDialog
+        approval={reviewApproval}
+        open={!!reviewApproval}
+        onOpenChange={(open) => !open && setReviewApproval(null)}
+      />
     </div>
   )
 }

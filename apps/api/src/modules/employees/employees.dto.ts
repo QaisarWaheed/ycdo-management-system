@@ -1,6 +1,7 @@
 import { PartialType } from '@nestjs/mapped-types';
 import {
   ChangeType,
+  EmployeeApproverTarget,
   EmployeeStatus,
   Gender,
   MaritalStatus,
@@ -248,6 +249,13 @@ export class CreateEmployeeDto {
   @IsString()
   @IsIn(['ADMIN_MANAGER'])
   userRole?: string;
+
+  @IsOptional()
+  @IsEnum(EmployeeApproverTarget)
+  approverTarget?: EmployeeApproverTarget;
+
+  @IsOptional()
+  formSnapshot?: Record<string, unknown>;
 }
 
 export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {}

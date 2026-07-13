@@ -6,6 +6,7 @@ import {
   Building2,
   Calendar,
   Clock,
+  Database,
   FileText,
   Gift,
   History,
@@ -13,6 +14,7 @@ import {
   LogOut,
   MapPin,
   Shield,
+  ShieldCheck,
   Timer,
   UserPlus,
   Users,
@@ -40,6 +42,8 @@ const allNavItems = [
 ]
 
 const itTeamNavItems = [
+  { to: '/admin/master-data', label: 'Master Data', icon: Database },
+  { to: '/admin/roles', label: 'Roles & Access', icon: ShieldCheck },
   { to: '/admin/login-access', label: 'Login Access', icon: Shield },
 ]
 
@@ -95,7 +99,7 @@ function navItemsForRole(role?: string) {
     )
   }
 
-  if (role === 'CHAIRMAN' || role === 'FOUNDER') {
+  if (role === 'CHAIRMAN' || role === 'FOUNDER' || role === 'PRESIDENT') {
     return allNavItems.filter((item) =>
       ['/dashboard', '/reports', '/leave'].includes(item.to),
     )
@@ -105,9 +109,13 @@ function navItemsForRole(role?: string) {
     return [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/employees', label: 'Employees', icon: Users },
+      { to: '/attendance', label: 'Attendance', icon: Clock },
       { to: '/payroll', label: 'Payroll', icon: Wallet },
+      { to: '/shifts', label: 'Shifts', icon: Timer },
+      { to: '/branches', label: 'Branches & Projects', icon: Building2 },
       ...itTeamNavItems,
       { to: '/broadcasts', label: 'Broadcasts', icon: Bell },
+      activityTrailNavItem,
     ]
   }
 

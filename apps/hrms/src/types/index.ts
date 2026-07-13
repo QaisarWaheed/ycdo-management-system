@@ -13,6 +13,7 @@ export interface AuthLoginResponse {
 
 export type EmployeeStatus =
   | 'ACTIVE'
+  | 'PENDING_APPROVAL'
   | 'TRAINEE'
   | 'APPOINTED'
   | 'SUSPENDED'
@@ -798,6 +799,7 @@ export const LETTER_TYPES: { value: LetterType; label: string }[] = [
 
 export const EMPLOYEE_STATUSES: EmployeeStatus[] = [
   'ACTIVE',
+  'PENDING_APPROVAL',
   'TRAINEE',
   'APPOINTED',
   'ON_REST',

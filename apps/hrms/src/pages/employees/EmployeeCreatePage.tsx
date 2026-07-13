@@ -9,6 +9,10 @@ import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
+import {
+  APPROVER_OPTIONS,
+  type EmployeeApproverTarget,
+} from '@/api/endpoints/employeeOnboarding'
 import { projectsApi } from '@/api/endpoints/projects'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
@@ -36,6 +40,8 @@ import {
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
 import { DEFAULT_STIPEND_VALUES } from '@/lib/stipendUtils'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
+import { PhotoUploadField } from '@/components/employees/PhotoUploadField'
+import { EmployeeInformationForm } from '@/components/employees/EmployeeInformationForm'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -63,6 +69,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { buildFormDataFromDraft } from '@/lib/employeeInformationFormData'
 import { toast } from '@/hooks/use-toast'
 import type { DocumentType, EmployeePrefill, QualType, StaffType } from '@/types'
 
@@ -416,6 +423,7 @@ const STEPS = [
   { num: 2, label: 'Job Info' },
   { num: 3, label: 'Stipend & Documents' },
   { num: 4, label: 'Qualifications & Experience' },
+  { num: 5, label: 'Approval' },
 ]
 
 function selectFieldValue(value: string | undefined) {
@@ -618,6 +626,8 @@ export function EmployeeCreatePage() {
   const [educationalCerts, setEducationalCerts] = useState<File[]>([])
   const [medicalCerts, setMedicalCerts] = useState<File[]>([])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [approverTarget, setApproverTarget] =
+    useState<EmployeeApproverTarget | null>(null)
   const [docErrors, setDocErrors] = useState<string | null>(null)
   const [qualifications, setQualifications] = useState<QualRow[]>([])
   const [previousEmployments, setPreviousEmployments] = useState<PrevEmpRow[]>(
@@ -794,6 +804,46 @@ export function EmployeeCreatePage() {
     [departments],
   )
 
+  const photoPreviewUrl = useMemo(
+    () => (photoFile ? URL.createObjectURL(photoFile) : null),
+    [photoFile],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl)
+    }
+  }, [photoPreviewUrl])
+
+  const draftFormData = useMemo(() => {
+    if (!step1Data || !step2Data || !step3Data || !staffType) return null
+    return buildFormDataFromDraft({
+      step1: buildStep1Payload(step1Data),
+      step2: step2Data,
+      step3: step3Data,
+      staffType,
+      branchName: branches.find((b) => b.id === step2Data.currentBranchId)?.name,
+      departmentName: departments.find(
+        (d) => d.id === step2Data.currentDepartmentId,
+      )?.name,
+      qualifications,
+      previousEmployments,
+      photoPreviewUrl,
+      approverTarget: approverTarget ?? undefined,
+    })
+  }, [
+    step1Data,
+    step2Data,
+    step3Data,
+    staffType,
+    branches,
+    departments,
+    qualifications,
+    previousEmployments,
+    photoPreviewUrl,
+    approverTarget,
+  ])
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!step1Data || !step2Data || !step3Data || !staffType) {
@@ -809,6 +859,20 @@ export function EmployeeCreatePage() {
         dutyStartTime: step2Data.dutyStartTime || undefined,
         dutyEndTime: step2Data.dutyEndTime || undefined,
         dutyTotalHours: step2Data.dutyTotalHours || undefined,
+        approverTarget: approverTarget ?? undefined,
+        formSnapshot: {
+          ...buildStep1Payload(step1Data),
+          ...step2Data,
+          ...step3Data,
+          staffType,
+          branchName: branches.find((b) => b.id === step2Data.currentBranchId)
+            ?.name,
+          departmentName: departments.find(
+            (d) => d.id === step2Data.currentDepartmentId,
+          )?.name,
+          qualifications,
+          previousEmployments,
+        },
       })
 
       if (photoFile) {
@@ -865,7 +929,17 @@ export function EmployeeCreatePage() {
       return employee
     },
     onSuccess: (employee) => {
-      toast({ title: 'Employee created successfully' })
+      const approverLabel = APPROVER_OPTIONS.find(
+        (o) => o.value === approverTarget,
+      )?.label
+      toast({
+        title: approverTarget
+          ? `Sent to ${approverLabel} for approval`
+          : 'Employee created successfully',
+        description: approverTarget
+          ? 'The employee will become active after executive approval.'
+          : undefined,
+      })
       navigate(`/employees/${employee.id}`, {
         replace: true,
         state: { from: '/employees' },
@@ -936,7 +1010,17 @@ export function EmployeeCreatePage() {
   })
 
   const onSubmit = () => {
+    if (!approverTarget) {
+      setStepError('Please select who should approve this employee')
+      return
+    }
+    setStepError(null)
     createMutation.mutate()
+  }
+
+  const goToApprovalStep = () => {
+    setStepError(null)
+    setStep(5)
   }
 
   const updateQual = (key: string, field: keyof QualRow, value: string) => {
@@ -1130,6 +1214,7 @@ export function EmployeeCreatePage() {
         <Form {...form1}>
           <form onSubmit={onStep1Next} className="space-y-6">
             <h2 className="text-lg font-semibold">Personal Information</h2>
+            <PhotoUploadField file={photoFile} onChange={setPhotoFile} />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
                 control={form1.control}
@@ -1708,11 +1793,6 @@ export function EmployeeCreatePage() {
                 }
               />
 
-              <FileDropZone
-                label="Employee Photo"
-                file={photoFile}
-                onChange={setPhotoFile}
-              />
             </div>
 
             <div className="flex justify-between">
@@ -1865,13 +1945,73 @@ export function EmployeeCreatePage() {
             <Button
               type="button"
               className="bg-primary hover:bg-primary-dark"
-              disabled={createMutation.isPending}
-              onClick={onSubmit}
+              onClick={goToApprovalStep}
             >
-              {createMutation.isPending ? 'Creating...' : 'Submit'}
+              Next
             </Button>
           </div>
         </div>
+        </StepErrorBoundary>
+      )}
+
+      {step === 5 && staffType && step1Data && step2Data && step3Data && (
+        <StepErrorBoundary key="step-5" onError={setStepError}>
+          <div className="space-y-6">
+            <h2 className="text-lg font-semibold">Submit for Approval</h2>
+            <p className="text-sm text-text-secondary">
+              This is the official Employee Information Form that will be sent
+              to the selected executive. Choose who should approve this employee.
+            </p>
+
+            {draftFormData && (
+              <div className="overflow-x-auto rounded-lg border border-border bg-gray-100 p-4">
+                <EmployeeInformationForm
+                  data={draftFormData}
+                  showPendingApprover={!!approverTarget}
+                />
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <Label>Select approver *</Label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {APPROVER_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={cn(
+                      'rounded-lg border p-4 text-left transition-colors hover:bg-muted',
+                      approverTarget === option.value
+                        ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                        : 'border-border',
+                    )}
+                    onClick={() => setApproverTarget(option.value)}
+                  >
+                    <p className="font-semibold">{option.label}</p>
+                    <p className="mt-1 text-xs text-text-secondary">
+                      {option.description}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-between">
+              <Button type="button" variant="outline" onClick={() => setStep(4)}>
+                Back
+              </Button>
+              <Button
+                type="button"
+                className="bg-primary hover:bg-primary-dark"
+                disabled={createMutation.isPending || !approverTarget}
+                onClick={onSubmit}
+              >
+                {createMutation.isPending
+                  ? 'Submitting...'
+                  : 'Submit for Approval'}
+              </Button>
+            </div>
+          </div>
         </StepErrorBoundary>
       )}
     </div>

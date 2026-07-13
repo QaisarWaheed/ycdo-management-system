@@ -11,11 +11,12 @@ import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import {
-  pakistanCities,
-  pakistanDistricts,
-  pakistanProvinces,
-  punjabTehsils,
-} from '@/lib/pakistanData'
+  mergeCityOptions,
+  mergeDistrictOptions,
+  mergePoliceStationOptions,
+  mergeProvinceOptions,
+  mergeTehsilOptions,
+} from '@/lib/locationOptions'
 
 function FieldWrapper({
   label,
@@ -73,6 +74,23 @@ export function EmployeeLocationFields({
     name: 'permanentAddress',
   })
 
+  const { data: dbProvinces = [] } = useQuery({
+    queryKey: ['location-values', 'province'],
+    queryFn: () => locationValuesApi.getAll('province'),
+  })
+
+  const { data: dbCities = [] } = useQuery({
+    queryKey: ['location-values', 'city', province],
+    queryFn: () => locationValuesApi.getAll('city'),
+    enabled: !!province,
+  })
+
+  const { data: dbDistricts = [] } = useQuery({
+    queryKey: ['location-values', 'district', province],
+    queryFn: () => locationValuesApi.getAll('district'),
+    enabled: !!province,
+  })
+
   const { data: dbTehsils = [] } = useQuery({
     queryKey: ['location-values', 'tehsil', district],
     queryFn: () => locationValuesApi.getAll('tehsil', district),
@@ -84,28 +102,41 @@ export function EmployeeLocationFields({
     queryFn: () => locationValuesApi.getAll('police_station'),
   })
 
-  const tehsilOptions = useMemo(() => {
-    const staticTehsils = district ? (punjabTehsils[district] ?? []) : []
-    const fromDb = dbTehsils.map((t) => t.value)
-    return [...new Set([...staticTehsils, ...fromDb])].sort()
-  }, [district, dbTehsils])
+  const provinceOptions = useMemo(
+    () => mergeProvinceOptions(dbProvinces),
+    [dbProvinces],
+  )
+
+  const tehsilOptions = useMemo(
+    () => mergeTehsilOptions(district, dbTehsils),
+    [district, dbTehsils],
+  )
 
   const policeOptions = useMemo(
-    () => dbPoliceStations.map((p) => p.value).sort(),
+    () => mergePoliceStationOptions(dbPoliceStations),
     [dbPoliceStations],
   )
 
-  const cityOptions = province ? (pakistanCities[province] ?? []) : []
-  const districtOptions = province ? (pakistanDistricts[province] ?? []) : []
-  const permanentCityOptions = permanentProvince
-    ? (pakistanCities[permanentProvince] ?? [])
-    : []
+  const cityOptions = useMemo(
+    () => mergeCityOptions(province, dbCities),
+    [province, dbCities],
+  )
+
+  const districtOptions = useMemo(
+    () => mergeDistrictOptions(province, dbDistricts),
+    [province, dbDistricts],
+  )
+
+  const permanentCityOptions = useMemo(
+    () => mergeCityOptions(permanentProvince, dbCities),
+    [permanentProvince, dbCities],
+  )
 
   return (
     <>
       <SearchableSelect
         label={opt('Domicile', false)}
-        options={pakistanProvinces}
+        options={provinceOptions}
         value={domicile.field.value ?? ''}
         onChange={domicile.field.onChange}
         placeholder="Select province"
@@ -118,7 +149,7 @@ export function EmployeeLocationFields({
 
       <SearchableSelect
         label="Province *"
-        options={pakistanProvinces}
+        options={provinceOptions}
         value={provinceField.field.value ?? ''}
         onChange={(v) => {
           provinceField.field.onChange(v)
@@ -192,7 +223,7 @@ export function EmployeeLocationFields({
 
       <SearchableSelect
         label={opt('Province', false)}
-        options={pakistanProvinces}
+        options={provinceOptions}
         value={permanentProvinceField.field.value ?? ''}
         onChange={(v) => {
           permanentProvinceField.field.onChange(v)

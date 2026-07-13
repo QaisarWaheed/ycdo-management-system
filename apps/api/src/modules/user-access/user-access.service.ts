@@ -481,10 +481,19 @@ export class UserAccessService {
   }
 
   assignableRoles(actingRole: UserRole, user?: { employeeId?: string | null }) {
-    const base =
+    const allRoles = Object.values(UserRole) as UserRole[];
+
+    if (
+      actingRole === UserRole.IT_ADMIN ||
       actingRole === UserRole.SUPER_ADMIN
-        ? [...IT_ASSIGNABLE_ROLES, UserRole.SUPER_ADMIN]
-        : [...IT_ASSIGNABLE_ROLES];
+    ) {
+      if (user?.employeeId) {
+        return [...new Set([UserRole.EMPLOYEE, UserRole.ADMIN_MANAGER, ...allRoles])];
+      }
+      return allRoles;
+    }
+
+    const base = [...IT_ASSIGNABLE_ROLES];
 
     if (user?.employeeId) {
       return [...new Set([UserRole.EMPLOYEE, UserRole.ADMIN_MANAGER, ...base])];

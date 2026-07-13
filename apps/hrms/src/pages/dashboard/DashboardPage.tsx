@@ -191,7 +191,7 @@ function DashboardContent({ role }: { role?: string }) {
     )
   }
 
-  if (role === 'CHAIRMAN' || role === 'FOUNDER') {
+  if (role === 'CHAIRMAN' || role === 'FOUNDER' || role === 'PRESIDENT') {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-text-primary">

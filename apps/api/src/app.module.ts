@@ -14,6 +14,7 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { DesignationsModule } from './modules/designations/designations.module';
 import { DisciplinaryModule } from './modules/disciplinary/disciplinary.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { EmployeeOnboardingModule } from './modules/employee-onboarding/employee-onboarding.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { LeaveModule } from './modules/leave/leave.module';
 import { LetterRepliesModule } from './modules/letter-replies/letter-replies.module';
@@ -51,6 +52,7 @@ import { PrismaModule } from './prisma/prisma.module';
     DepartmentsModule,
     DesignationsModule,
     EmployeesModule,
+    EmployeeOnboardingModule,
     DocumentsModule,
     AttendanceModule,
     LeaveModule,

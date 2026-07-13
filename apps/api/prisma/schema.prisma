@@ -165,6 +165,7 @@ model Employee {
   portalAttendances          PortalAttendance[]
   advanceLoanRequests        AdvanceLoanRequest[]
   faceSyncJobs               FaceSyncJob[]
+  onboardingApproval       EmployeeOnboardingApproval?
 
   // Additional personal info
   fatherStatus           String?
@@ -224,6 +225,37 @@ enum EmployeeStatus {
   DISMISSED
   ON_LEAVE
   ON_REST
+  PENDING_APPROVAL
+}
+
+enum EmployeeApproverTarget {
+  PRESIDENT
+  FOUNDER
+  CHAIRMAN_ADMIN
+}
+
+enum EmployeeOnboardingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model EmployeeOnboardingApproval {
+  id             String                   @id @default(uuid())
+  employeeId     String                   @unique
+  submittedById  String
+  approverTarget EmployeeApproverTarget
+  status         EmployeeOnboardingStatus @default(PENDING)
+  formSnapshot   Json
+  reviewNote     String?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  submittedBy User     @relation("SubmittedOnboardingApprovals", fields: [submittedById], references: [id])
+  reviewedBy  User?    @relation("ReviewedOnboardingApprovals", fields: [reviewedById], references: [id])
 }
 
 model RelieverSession {
@@ -690,6 +722,8 @@ model User {
   leaveApprovals LeaveApproval[] @relation("LeaveApprovals")
   passwordRecord UserPassword?
   permissions    UserPermission[]
+  submittedOnboardingApprovals EmployeeOnboardingApproval[] @relation("SubmittedOnboardingApprovals")
+  reviewedOnboardingApprovals  EmployeeOnboardingApproval[] @relation("ReviewedOnboardingApprovals")
 }
 
 model UserPermission {
@@ -757,6 +791,7 @@ enum Permission {
 enum UserRole {
   SUPER_ADMIN
   IT_ADMIN
+  PRESIDENT
   FOUNDER
   CHAIRMAN
   HR_OPERATIONS_MANAGER
@@ -798,6 +833,7 @@ model NotificationBroadcast {
 enum BroadcastTarget {
   ALL
   SUPER_ADMIN
+  PRESIDENT
   FOUNDER
   CHAIRMAN
   HR_OPERATIONS_MANAGER

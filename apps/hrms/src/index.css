@@ -31,6 +31,23 @@
     display: block !important;
   }
 
+  .employee-information-form-print-area {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .employee-information-form {
+    max-width: none !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+  }
+
+  .employee-information-form .ring-2 {
+    box-shadow: inset 0 0 0 2px #000 !important;
+    background: transparent !important;
+  }
+
   .ml-\[260px\] {
     margin-left: 0 !important;
   }

@@ -73,6 +73,7 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
+    UserRole.PRESIDENT,
   ],
   BROADCASTS_SEND: [UserRole.IT_ADMIN],
   ORG_SETUP: [UserRole.IT_ADMIN],
@@ -81,17 +82,9 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
 export const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS) as Permission[];
 
 /** Roles IT can assign when creating or editing system logins. */
-export const IT_ASSIGNABLE_ROLES: UserRole[] = [
-  UserRole.IT_ADMIN,
-  UserRole.HR_OPERATIONS_MANAGER,
-  UserRole.HR_ADMIN_MANAGER,
-  UserRole.HR_EXECUTIVE,
-  UserRole.HR_MANAGER,
-  UserRole.ADMIN_OFFICER,
-  UserRole.ADMIN_MANAGER,
-  UserRole.FOUNDER,
-  UserRole.CHAIRMAN,
-];
+export const IT_ASSIGNABLE_ROLES: UserRole[] = Object.values(
+  UserRole,
+) as UserRole[];
 
 export function roleDefaultAllows(
   role: UserRole,
