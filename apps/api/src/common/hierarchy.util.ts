@@ -13,6 +13,7 @@ const hierarchyOrder: Record<string, number> = {
   'Senior Pharmacist': 5,
   'Pharmacy Staff': 5,
   'Medicine Manager': 5,
+  'MEDICINE MANAGER': 5,
   'Medicine Store Manager': 5,
   'Admin Medicine': 5,
 

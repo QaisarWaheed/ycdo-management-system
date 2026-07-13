@@ -57,6 +57,7 @@ export class EmployeesController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
@@ -78,6 +79,7 @@ export class EmployeesController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
@@ -111,6 +113,7 @@ export class EmployeesController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
   findActiveShift(
@@ -134,6 +137,7 @@ export class EmployeesController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.IT_ADMIN,
     UserRole.PAYROLL_OFFICER,

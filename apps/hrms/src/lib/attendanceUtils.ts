@@ -10,6 +10,28 @@ export function combineDateAndTime(date: string, time: string): string {
   return `${date}T${time}:00+05:00`
 }
 
+/**
+ * Build check-out ISO for a log. Uses the attendance date when possible;
+ * if the chosen time would be at/before check-in (overnight shift), moves
+ * to the next calendar day.
+ */
+export function combineCheckOutDateTime(
+  logDate: string,
+  checkInIso: string | null | undefined,
+  checkOut24: string,
+): string {
+  const dateOnly = logDate.slice(0, 10)
+  const sameDay = combineDateAndTime(dateOnly, checkOut24)
+  if (!checkInIso) return sameDay
+  if (new Date(sameDay).getTime() > new Date(checkInIso).getTime()) {
+    return sameDay
+  }
+  const [y, m, d] = dateOnly.split('-').map(Number)
+  const next = new Date(Date.UTC(y, m - 1, d + 1))
+  const nextDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`
+  return combineDateAndTime(nextDate, checkOut24)
+}
+
 export function calcLateMinutes(
   checkInTime: string,
   dutyStart: string,

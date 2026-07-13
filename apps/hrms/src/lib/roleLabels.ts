@@ -10,6 +10,7 @@ export const ROLE_LABELS: Record<string, string> = {
   HR_MANAGER: 'HR Manager',
   ADMIN_OFFICER: 'Admin Officer (Dept Incharge)',
   ADMIN_MANAGER: 'Admin Manager (Branch Manager)',
+  MEDICINE_MANAGER: 'Medicine Manager',
   DEPARTMENT_HEAD: 'Department Head',
   PAYROLL_OFFICER: 'Payroll Officer',
   EMPLOYEE: 'Employee (Portal)',
@@ -36,7 +37,7 @@ export const ROLE_GROUPS: { title: string; roles: string[] }[] = [
   },
   {
     title: 'Branch & Department',
-    roles: ['ADMIN_MANAGER', 'ADMIN_OFFICER', 'DEPARTMENT_HEAD'],
+    roles: ['ADMIN_MANAGER', 'ADMIN_OFFICER', 'MEDICINE_MANAGER', 'DEPARTMENT_HEAD'],
   },
   {
     title: 'Staff',

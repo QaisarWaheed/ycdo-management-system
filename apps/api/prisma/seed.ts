@@ -1039,6 +1039,7 @@ async function main() {
     { email: 'dept.incharge@ycdo.org', password: 'DeptIn@123', role: UserRole.ADMIN_OFFICER },
     { email: 'hr.operations@ycdo.org', password: 'HROps@123', role: UserRole.HR_OPERATIONS_MANAGER },
     { email: 'hr.admin@ycdo.org', password: 'HRAdmin@123', role: UserRole.HR_ADMIN_MANAGER },
+    { email: 'medicine.manager@ycdo.org', password: 'Medicine@123', role: UserRole.MEDICINE_MANAGER },
     { email: 'president@ycdo.org', password: 'President@123', role: UserRole.PRESIDENT },
     { email: 'chairman@ycdo.org', password: 'Chairman@123', role: UserRole.CHAIRMAN },
     { email: 'founder@ycdo.org', password: 'Founder@123', role: UserRole.FOUNDER },

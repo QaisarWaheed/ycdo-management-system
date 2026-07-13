@@ -52,6 +52,11 @@ import { haversineMeters } from './geo.helper';
 import { BRANCH_LABEL_SELECT } from '../../common/branch-select.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { enforceBranchScope } from '../../common/branch-scope.util';
+import {
+  assertEmployeeInMedicineScope,
+  isMedicineManagerRole,
+  medicineEmployeeWhere,
+} from '../../common/medicine-scope.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
 const AUTO_UNMARKED_NOTE = 'Auto-marked unmarked at shift start';
@@ -300,7 +305,10 @@ export class AttendanceService {
 
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
-      include: { shift: true },
+      include: {
+        shift: true,
+        currentDepartment: { select: { name: true } },
+      },
     });
 
     if (!employee) {
@@ -316,7 +324,18 @@ export class AttendanceService {
       throw new BadRequestException('Employee is not active');
     }
 
-    if (actingUser.role === UserRole.ADMIN_MANAGER) {
+    if (isMedicineManagerRole(actingUser.role)) {
+      if (!assertEmployeeInMedicineScope(employee)) {
+        throw new ForbiddenException(
+          'You can only mark attendance for Medicine Management System staff',
+        );
+      }
+    }
+
+    if (
+      actingUser.role === UserRole.ADMIN_MANAGER ||
+      isMedicineManagerRole(actingUser.role)
+    ) {
       const dutyStart =
         resolveDutyStartTime(employee) ?? '08:00';
       if (!isWithinAttendanceMarkingGrace(new Date(), dutyStart)) {
@@ -482,6 +501,8 @@ export class AttendanceService {
             fullName: true,
             employeeCode: true,
             dutyStartTime: true,
+            currentDesignation: true,
+            currentDepartment: { select: { name: true } },
             shift: { select: { startTime: true } },
           },
         },
@@ -491,6 +512,14 @@ export class AttendanceService {
 
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
+    }
+
+    if (isMedicineManagerRole(actingUser.role)) {
+      if (!assertEmployeeInMedicineScope(log.employee)) {
+        throw new ForbiddenException(
+          'You can only update attendance for Medicine Management System staff',
+        );
+      }
     }
 
     if (
@@ -822,6 +851,14 @@ export class AttendanceService {
 
     const { search, ...filterQuery } = query;
     const employeeWhere = this.buildEmployeeFilterWhere(filterQuery);
+    const medicineWhere = isMedicineManagerRole(actingUser?.role)
+      ? medicineEmployeeWhere()
+      : undefined;
+
+    const scopedEmployeeWhere: Prisma.EmployeeWhereInput | undefined =
+      employeeWhere && medicineWhere
+        ? { AND: [employeeWhere, medicineWhere] }
+        : employeeWhere ?? medicineWhere;
 
     const isSingleDay =
       !!query.startDate &&
@@ -835,7 +872,7 @@ export class AttendanceService {
     if (shouldEnsureUnmarked) {
       await this.ensureUnmarkedForActiveShiftsOnDate(
         this.toDateOnly(new Date(query.startDate!)),
-        employeeWhere,
+        scopedEmployeeWhere,
       );
     }
 
@@ -866,8 +903,8 @@ export class AttendanceService {
       };
     }
 
-    if (employeeWhere) {
-      where.employee = employeeWhere;
+    if (scopedEmployeeWhere) {
+      where.employee = scopedEmployeeWhere;
     }
 
     if (search) {

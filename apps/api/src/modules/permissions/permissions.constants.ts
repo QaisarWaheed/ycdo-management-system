@@ -24,12 +24,14 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
   ATTENDANCE_MARK: [
     UserRole.HR_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
   ],
   ATTENDANCE_EDIT: [
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
   ],
   LEAVE_APPROVE: [
     UserRole.HR_MANAGER,

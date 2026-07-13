@@ -39,6 +39,10 @@ import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { enforceBranchScope } from '../../common/branch-scope.util';
 import type { BranchScopedUser } from '../../common/branch-scope.util';
 import {
+  isMedicineManagerRole,
+  medicineEmployeeWhere,
+} from '../../common/medicine-scope.util';
+import {
   ActiveShiftQueryDto,
   ChangeStatusDto,
   CreateEmployeeDto,
@@ -383,6 +387,10 @@ export class EmployeesService {
 
     const where: Prisma.EmployeeWhereInput = {};
     const andConditions: Prisma.EmployeeWhereInput[] = [];
+
+    if (isMedicineManagerRole(actingUser?.role)) {
+      andConditions.push(medicineEmployeeWhere());
+    }
 
     if (filters.branchId) {
       where.currentBranchId = filters.branchId;
@@ -1238,6 +1246,11 @@ export class EmployeesService {
     today.setHours(0, 0, 0, 0);
     const currentMinutes = toPakistanMinutesOfDay(new Date());
 
+    const andConditions: Prisma.EmployeeWhereInput[] = [];
+    if (isMedicineManagerRole(actingUser?.role)) {
+      andConditions.push(medicineEmployeeWhere());
+    }
+
     const employees = await this.prisma.employee.findMany({
       where: {
         status: {
@@ -1251,6 +1264,7 @@ export class EmployeesService {
         ...(scopedQuery.departmentId
           ? { currentDepartmentId: scopedQuery.departmentId }
           : {}),
+        ...(andConditions.length ? { AND: andConditions } : {}),
       },
       include: {
         shift: true,

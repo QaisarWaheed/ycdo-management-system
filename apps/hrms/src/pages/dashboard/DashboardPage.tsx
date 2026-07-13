@@ -40,6 +40,7 @@ import { DeptInchargeDashboard } from '@/pages/dashboard/DeptInchargeDashboard'
 import { ExecutiveDashboard } from '@/pages/dashboard/ExecutiveDashboard'
 import { HrOperationsDashboard } from '@/pages/dashboard/HrOperationsDashboard'
 import { ItAdminDashboard } from '@/pages/dashboard/ItAdminDashboard'
+import { MedicineManagerDashboard } from '@/pages/dashboard/MedicineManagerDashboard'
 
 function todayRange() {
   const today = format(new Date(), 'yyyy-MM-dd')
@@ -169,6 +170,17 @@ function DashboardContent({ role }: { role?: string }) {
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
         <AdminManagerDashboard />
+      </div>
+    )
+  }
+
+  if (role === 'MEDICINE_MANAGER') {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-text-primary">
+          Medicine Manager Dashboard
+        </h1>
+        <MedicineManagerDashboard />
       </div>
     )
   }

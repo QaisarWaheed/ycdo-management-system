@@ -86,6 +86,12 @@ function navItemsForRole(role?: string) {
     )
   }
 
+  if (role === 'MEDICINE_MANAGER') {
+    return allNavItems.filter((item) =>
+      ['/dashboard', '/employees', '/attendance'].includes(item.to),
+    )
+  }
+
   if (role === 'HR_OPERATIONS_MANAGER') {
     return allNavItems.filter((item) =>
       [

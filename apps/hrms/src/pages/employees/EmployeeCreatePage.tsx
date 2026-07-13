@@ -426,11 +426,6 @@ const STEPS = [
   { num: 5, label: 'Approval' },
 ]
 
-function selectFieldValue(value: string | undefined) {
-  const normalized = value ?? ''
-  return normalized === '' ? undefined : normalized
-}
-
 class StepErrorBoundary extends Component<
   { children: ReactNode; onError: (message: string) => void },
   { hasError: boolean }
@@ -1588,28 +1583,30 @@ export function EmployeeCreatePage() {
                 name="currentBranchId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Branch *</FormLabel>
-                    <Select
-                      value={selectFieldValue(field.value)}
-                      onValueChange={(v) => {
-                        field.onChange(v)
-                        form2.setValue('currentDepartmentId', '')
-                        form2.setValue('currentDesignation', '')
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select branch" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {branches.map((b) => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {formatBranchLabel(b)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <SearchableSelect
+                        label="Branch *"
+                        options={branches.map((b) => formatBranchLabel(b))}
+                        value={
+                          branches.find((b) => b.id === field.value)
+                            ? formatBranchLabel(
+                                branches.find((b) => b.id === field.value)!,
+                              )
+                            : ''
+                        }
+                        onChange={(label) => {
+                          const branch = branches.find(
+                            (b) => formatBranchLabel(b) === label,
+                          )
+                          if (!branch) return
+                          field.onChange(branch.id)
+                          form2.setValue('currentDepartmentId', '')
+                          form2.setValue('currentDesignation', '')
+                        }}
+                        placeholder="Search branch..."
+                        error={form2.formState.errors.currentBranchId?.message}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1619,9 +1616,9 @@ export function EmployeeCreatePage() {
                 name="currentDepartmentId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Department *</FormLabel>
                     <FormControl>
                       <SearchableSelect
+                        label="Department *"
                         options={departmentOptions}
                         value={
                           departments.find((d) => d.id === field.value)?.name ??
@@ -1634,7 +1631,7 @@ export function EmployeeCreatePage() {
                             form2.setValue('currentDesignation', '')
                           }
                         }}
-                        placeholder="Select department"
+                        placeholder="Search department..."
                         disabled={!branchId}
                         error={form2.formState.errors.currentDepartmentId?.message}
                       />

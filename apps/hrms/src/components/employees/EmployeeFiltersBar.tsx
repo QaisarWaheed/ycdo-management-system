@@ -253,46 +253,57 @@ export function EmployeeFiltersBar({
 
         {!lockedBranchId && (
           <div className="space-y-1">
-            <Label>Branch</Label>
-            <Select
-              value={filters.branchId || 'all'}
-              onValueChange={handleBranchChange}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Branches" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Branches</SelectItem>
-                {filteredBranches.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {formatBranchLabel(b)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              label="Branch"
+              options={[
+                'All Branches',
+                ...filteredBranches.map((b) => formatBranchLabel(b)),
+              ]}
+              value={(() => {
+                if (!filters.branchId) return 'All Branches'
+                const branch = filteredBranches.find(
+                  (b) => b.id === filters.branchId,
+                )
+                return branch ? formatBranchLabel(branch) : 'All Branches'
+              })()}
+              onChange={(label) => {
+                if (label === 'All Branches') {
+                  handleBranchChange('all')
+                  return
+                }
+                const branch = filteredBranches.find(
+                  (b) => formatBranchLabel(b) === label,
+                )
+                if (branch) handleBranchChange(branch.id)
+              }}
+              placeholder="Search branch..."
+            />
           </div>
         )}
 
         <div className="space-y-1">
-          <Label>Department</Label>
-          <Select
-            value={filters.departmentId || 'all'}
-            onValueChange={(v) =>
-              update({ departmentId: v === 'all' ? '' : v })
+          <SearchableSelect
+            label="Department"
+            options={[
+              'All Departments',
+              ...departments.map((d) => d.name),
+            ]}
+            value={
+              filters.departmentId
+                ? (departments.find((d) => d.id === filters.departmentId)?.name ??
+                  '')
+                : 'All Departments'
             }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="All Departments" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departments.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={(label) => {
+              if (label === 'All Departments') {
+                update({ departmentId: '' })
+                return
+              }
+              const dept = departments.find((d) => d.name === label)
+              if (dept) update({ departmentId: dept.id })
+            }}
+            placeholder="Search department..."
+          />
         </div>
 
         <ShiftFilterDropdowns

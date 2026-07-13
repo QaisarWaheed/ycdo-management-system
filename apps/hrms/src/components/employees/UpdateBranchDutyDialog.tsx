@@ -13,14 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { toast } from '@/hooks/use-toast'
 import { formatDutyDisplay } from '@/lib/dutyTimes'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
@@ -123,27 +115,22 @@ export function UpdateBranchDutyDialog({
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label>Branch</Label>
-            <Select
-              value={branchId}
-              onValueChange={(v) => {
-                setBranchId(v)
-                setDepartmentId('')
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select branch" />
-              </SelectTrigger>
-              <SelectContent>
-                {branches.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {formatBranchLabel(b)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="Branch"
+            options={branches.map((b) => formatBranchLabel(b))}
+            value={
+              branches.find((b) => b.id === branchId)
+                ? formatBranchLabel(branches.find((b) => b.id === branchId)!)
+                : ''
+            }
+            onChange={(label) => {
+              const branch = branches.find((b) => formatBranchLabel(b) === label)
+              if (!branch) return
+              setBranchId(branch.id)
+              setDepartmentId('')
+            }}
+            placeholder="Search branch..."
+          />
 
           <SearchableSelect
             label="Department"
@@ -155,7 +142,7 @@ export function UpdateBranchDutyDialog({
                 setDepartmentId(dept.id)
               }
             }}
-            placeholder="Select department"
+            placeholder="Search department..."
             disabled={!branchId}
             error={
               employee.currentDepartmentId == null && !departmentId

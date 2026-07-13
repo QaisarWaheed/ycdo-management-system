@@ -12,6 +12,7 @@ import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { PKRInput } from '@/components/common/PKRInput'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { UppercaseInput } from '@/components/common/UppercaseInput'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
@@ -213,43 +214,34 @@ function AcceptCandidateDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Branch *</Label>
-            <Select
-              value={branchId}
-              onValueChange={(v) => {
-                setBranchId(v)
-                setDeptId('')
-                setShiftId('')
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select branch" />
-              </SelectTrigger>
-              <SelectContent>
-                {branches.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {formatBranchLabel(b)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Department *</Label>
-            <Select value={deptId} onValueChange={setDeptId} disabled={!branchId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="Branch *"
+            options={branches.map((b) => formatBranchLabel(b))}
+            value={
+              branches.find((b) => b.id === branchId)
+                ? formatBranchLabel(branches.find((b) => b.id === branchId)!)
+                : ''
+            }
+            onChange={(label) => {
+              const branch = branches.find((b) => formatBranchLabel(b) === label)
+              if (!branch) return
+              setBranchId(branch.id)
+              setDeptId('')
+              setShiftId('')
+            }}
+            placeholder="Search branch..."
+          />
+          <SearchableSelect
+            label="Department *"
+            options={departments.map((d) => d.name)}
+            value={departments.find((d) => d.id === deptId)?.name ?? ''}
+            onChange={(name) => {
+              const dept = departments.find((d) => d.name === name)
+              if (dept) setDeptId(dept.id)
+            }}
+            placeholder="Search department..."
+            disabled={!branchId}
+          />
           <div className="space-y-2">
             <Label>Designation *</Label>
             <UppercaseInput value={designation} onChange={setDesignation} />

@@ -15,13 +15,6 @@ import {
 import { DateInput } from '@/components/common/DateInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
@@ -127,27 +120,22 @@ export function TransferDialog({
         </DialogHeader>
 
         <div className="grid gap-4">
-          <div className="space-y-2">
-            <Label>New Branch *</Label>
-            <Select
-              value={branchId}
-              onValueChange={(v) => {
-                setBranchId(v)
-                setDepartmentId('')
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select branch" />
-              </SelectTrigger>
-              <SelectContent>
-                {branches.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {formatBranchLabel(b)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="New Branch *"
+            options={branches.map((b) => formatBranchLabel(b))}
+            value={
+              branches.find((b) => b.id === branchId)
+                ? formatBranchLabel(branches.find((b) => b.id === branchId)!)
+                : ''
+            }
+            onChange={(label) => {
+              const branch = branches.find((b) => formatBranchLabel(b) === label)
+              if (!branch) return
+              setBranchId(branch.id)
+              setDepartmentId('')
+            }}
+            placeholder="Search branch..."
+          />
 
           <SearchableSelect
             label="New Department *"
@@ -160,7 +148,7 @@ export function TransferDialog({
                 setDesignation('')
               }
             }}
-            placeholder="Select department"
+            placeholder="Search department..."
             disabled={!branchId}
           />
 

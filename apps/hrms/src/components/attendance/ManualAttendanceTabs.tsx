@@ -7,6 +7,7 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
+import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Button } from '@/components/ui/button'
@@ -31,9 +32,15 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { getLockedBranchId } from '@/lib/branchScope'
+import {
+  isMedicineDepartmentName,
+  isMedicineManagerRole,
+  MEDICINE_DEPARTMENT_NAME,
+} from '@/lib/medicineScope'
 import { useAuth } from '@/hooks/useAuth'
 import {
   calcLateMinutes,
+  combineCheckOutDateTime,
   combineDateAndTime,
   filterByDutyStartTime,
   formatEmployeeDutyLabel,
@@ -51,6 +58,8 @@ import {
   currentPakistanTime24,
   formatDateTimeTime,
   formatDurationSince,
+  formatPakistanDate,
+  pakistanDateOffset,
   todayPakistan,
 } from '@/lib/timeFormat'
 import type { AttendanceLog, Employee } from '@/types'
@@ -97,6 +106,7 @@ type ManualFiltersProps = {
   dutyStartOptions: string[]
   searchQuery: string
   lockedBranchId?: string
+  medicineOnly?: boolean
   onBranchChange: (id: string) => void
   onDepartmentChange: (id: string) => void
   onDutyStartTimeChange: (startTime: string) => void
@@ -110,6 +120,7 @@ function ManualAttendanceFilters({
   dutyStartOptions,
   searchQuery,
   lockedBranchId,
+  medicineOnly,
   onBranchChange,
   onDepartmentChange,
   onDutyStartTimeChange,
@@ -126,51 +137,68 @@ function ManualAttendanceFilters({
     queryFn: () => departmentsApi.getAll(),
   })
 
+  const visibleDepartments = medicineOnly
+    ? departments.filter((d) => isMedicineDepartmentName(d.name))
+    : departments
+
+  const branchOptions = branches.map((b) => formatBranchLabel(b))
+  const selectedBranchLabel =
+    branches.find((b) => b.id === branchId)?.name != null
+      ? formatBranchLabel(branches.find((b) => b.id === branchId)!)
+      : ''
+
+  const departmentOptions = [
+    ...(medicineOnly ? [] : ['All Departments']),
+    ...visibleDepartments.map((d) => d.name),
+  ]
+  const selectedDepartmentLabel = medicineOnly
+    ? MEDICINE_DEPARTMENT_NAME
+    : departmentId
+      ? (visibleDepartments.find((d) => d.id === departmentId)?.name ?? '')
+      : 'All Departments'
+
   return (
     <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-white p-4">
       {!lockedBranchId && (
-        <div className="space-y-1">
-          <Label>Branch *</Label>
-          <Select
-            value={branchId}
-            onValueChange={(v) => {
-              onBranchChange(v)
-              onDepartmentChange('')
+        <div className="w-[220px]">
+          <SearchableSelect
+            label="Branch *"
+            options={branchOptions}
+            value={selectedBranchLabel}
+            onChange={(label) => {
+              const branch = branches.find((b) => formatBranchLabel(b) === label)
+              if (!branch) return
+              onBranchChange(branch.id)
+              if (!medicineOnly) onDepartmentChange('')
               onDutyStartTimeChange('')
             }}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select branch" />
-            </SelectTrigger>
-            <SelectContent>
-              {branches.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {formatBranchLabel(b)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            placeholder="Search branch..."
+          />
         </div>
       )}
 
-      <div className="space-y-1">
-        <Label>Department</Label>
-        <Select
-          value={departmentId || 'all'}
-          onValueChange={(v) => onDepartmentChange(v === 'all' ? '' : v)}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="All" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Departments</SelectItem>
-            {departments.map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                {d.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="w-[240px]">
+        {medicineOnly ? (
+          <div className="space-y-2">
+            <Label>Department</Label>
+            <Input value={MEDICINE_DEPARTMENT_NAME} disabled />
+          </div>
+        ) : (
+          <SearchableSelect
+            label="Department"
+            options={departmentOptions}
+            value={selectedDepartmentLabel}
+            onChange={(label) => {
+              if (label === 'All Departments') {
+                onDepartmentChange('')
+                return
+              }
+              const dept = visibleDepartments.find((d) => d.name === label)
+              if (dept) onDepartmentChange(dept.id)
+            }}
+            placeholder="Search department..."
+          />
+        )}
       </div>
 
       <div className="space-y-1">
@@ -216,6 +244,7 @@ export function CheckInManualTab() {
   const { user } = useAuth()
   const lockedBranchId = getLockedBranchId(user)
   const isAdminManager = user?.role === 'ADMIN_MANAGER'
+  const isMedicineManager = isMedicineManagerRole(user?.role)
   const today = todayPakistan()
   const [, setTick] = useState(0)
 
@@ -231,20 +260,49 @@ export function CheckInManualTab() {
   const [checkInTimes, setCheckInTimes] = useState<Record<string, string>>({})
   const [markingId, setMarkingId] = useState<string | null>(null)
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
+    enabled: isMedicineManager,
+  })
+
+  const medicineDeptId = useMemo(
+    () =>
+      departments.find((d) => isMedicineDepartmentName(d.name))?.id ?? '',
+    [departments],
+  )
+
   useEffect(() => {
     if (lockedBranchId) {
       setBranchId(lockedBranchId)
     }
   }, [lockedBranchId])
 
+  useEffect(() => {
+    if (isMedicineManager && medicineDeptId) {
+      setDepartmentId(medicineDeptId)
+    }
+  }, [isMedicineManager, medicineDeptId])
+
   const effectiveBranchId = lockedBranchId || branchId
+  const effectiveDepartmentId = isMedicineManager
+    ? medicineDeptId || departmentId
+    : departmentId
 
   const { data: branchEmployees = [] } = useQuery({
-    queryKey: ['employees', effectiveBranchId, 'duty-times'],
+    queryKey: [
+      'employees',
+      effectiveBranchId,
+      'duty-times',
+      effectiveDepartmentId,
+    ],
     queryFn: () =>
-      employeesApi.getAll(
-        effectiveBranchId ? { branchId: effectiveBranchId } : undefined,
-      ),
+      employeesApi.getAll({
+        ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
+        ...(effectiveDepartmentId
+          ? { departmentId: effectiveDepartmentId }
+          : {}),
+      }),
     enabled: !!effectiveBranchId,
   })
 
@@ -258,14 +316,14 @@ export function CheckInManualTab() {
       'active-shift-checkin',
       today,
       effectiveBranchId,
-      departmentId,
+      effectiveDepartmentId,
     ],
     queryFn: () =>
       employeesApi.getActiveShift({
         date: today,
         time: currentPakistanTime24(),
         branchId: effectiveBranchId || undefined,
-        departmentId: departmentId || undefined,
+        departmentId: effectiveDepartmentId || undefined,
       }),
     enabled: !!effectiveBranchId,
     refetchInterval: REFRESH_MS,
@@ -278,12 +336,19 @@ export function CheckInManualTab() {
     return sortEmployeesByHierarchy(filtered)
   }, [activeEmployees, dutyStartTime, searchQuery])
 
-  const filterDeps = [effectiveBranchId, departmentId, dutyStartTime, searchQuery]
+  const filterDeps = [
+    effectiveBranchId,
+    effectiveDepartmentId,
+    dutyStartTime,
+    searchQuery,
+  ]
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
     employees,
     filterDeps,
   )
+
+  const graceLockedRole = isAdminManager || isMedicineManager
 
   const markMutation = useMutation({
     mutationFn: async ({
@@ -332,10 +397,17 @@ export function CheckInManualTab() {
 
   return (
     <div className="space-y-4">
-      {isAdminManager && (
+      {graceLockedRole && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           You can only mark attendance during the 15-minute grace period after
           shift start. Contact HR for late attendance marking.
+        </div>
+      )}
+
+      {isMedicineManager && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+          Showing only <strong>{MEDICINE_DEPARTMENT_NAME}</strong> staff for the
+          selected branch.
         </div>
       )}
 
@@ -346,11 +418,12 @@ export function CheckInManualTab() {
 
       <ManualAttendanceFilters
         branchId={branchId}
-        departmentId={departmentId}
+        departmentId={effectiveDepartmentId}
         dutyStartTime={dutyStartTime}
         dutyStartOptions={dutyStartOptions}
         searchQuery={searchQuery}
         lockedBranchId={lockedBranchId}
+        medicineOnly={isMedicineManager}
         onBranchChange={setBranchId}
         onDepartmentChange={setDepartmentId}
         onDutyStartTimeChange={setDutyStartTime}
@@ -399,14 +472,14 @@ export function CheckInManualTab() {
                 const dutyStart =
                   getEmployeeDutyStartTime(emp) || '08:00'
                 const withinGrace =
-                  !isAdminManager || isWithinGrace(dutyStart)
+                  !graceLockedRole || isWithinGrace(dutyStart)
                 const graceRemaining = graceMinutesRemaining(dutyStart)
 
                 return (
                 <TableRow
                   key={emp.id}
                   className={cn(
-                    isAdminManager &&
+                    graceLockedRole &&
                       (withinGrace
                         ? 'bg-green-50/60'
                         : 'bg-muted/40 opacity-60'),
@@ -421,7 +494,7 @@ export function CheckInManualTab() {
                   <TableCell>{emp.currentDesignation ?? '—'}</TableCell>
                   <TableCell className="text-sm text-text-secondary">
                     {formatEmployeeDutyLabel(emp)}
-                    {isAdminManager && withinGrace && (
+                    {graceLockedRole && withinGrace && (
                       <p className="mt-1 text-xs font-medium text-green-700">
                         Grace ends in {graceRemaining} minute
                         {graceRemaining === 1 ? '' : 's'}
@@ -434,7 +507,7 @@ export function CheckInManualTab() {
                       onChange={(v) =>
                         setCheckInTimes((prev) => ({ ...prev, [emp.id]: v }))
                       }
-                      disabled={isAdminManager && !withinGrace}
+                      disabled={graceLockedRole && !withinGrace}
                     />
                   </TableCell>
                   <TableCell>
@@ -443,10 +516,10 @@ export function CheckInManualTab() {
                       className="bg-primary hover:bg-primary-dark"
                       disabled={
                         markingId === emp.id ||
-                        (isAdminManager && !withinGrace)
+                        (graceLockedRole && !withinGrace)
                       }
                       title={
-                        isAdminManager && !withinGrace
+                        graceLockedRole && !withinGrace
                           ? 'Grace period ended. Contact HR.'
                           : undefined
                       }
@@ -473,11 +546,19 @@ export function CheckInManualTab() {
   )
 }
 
+/** How far back to include open check-ins (covers overnight / multi-day shifts). */
+const PENDING_CHECKOUT_LOOKBACK_DAYS = 7
+
 export function CheckOutManualTab() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const lockedBranchId = getLockedBranchId(user)
+  const isMedicineManager = isMedicineManagerRole(user?.role)
   const today = todayPakistan()
+  const checkoutLookbackStart = pakistanDateOffset(
+    -PENDING_CHECKOUT_LOOKBACK_DAYS,
+    today,
+  )
   const [, setTick] = useState(0)
 
   const [branchId, setBranchId] = useState(lockedBranchId ?? '')
@@ -498,14 +579,43 @@ export function CheckOutManualTab() {
     }
   }, [lockedBranchId])
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.getAll(),
+    enabled: isMedicineManager,
+  })
+
+  const medicineDeptId = useMemo(
+    () =>
+      departments.find((d) => isMedicineDepartmentName(d.name))?.id ?? '',
+    [departments],
+  )
+
+  useEffect(() => {
+    if (isMedicineManager && medicineDeptId) {
+      setDepartmentId(medicineDeptId)
+    }
+  }, [isMedicineManager, medicineDeptId])
+
   const effectiveBranchId = lockedBranchId || branchId
+  const effectiveDepartmentId = isMedicineManager
+    ? medicineDeptId || departmentId
+    : departmentId
 
   const { data: branchEmployees = [] } = useQuery({
-    queryKey: ['employees', effectiveBranchId, 'duty-times'],
+    queryKey: [
+      'employees',
+      effectiveBranchId,
+      'duty-times',
+      effectiveDepartmentId,
+    ],
     queryFn: () =>
-      employeesApi.getAll(
-        effectiveBranchId ? { branchId: effectiveBranchId } : undefined,
-      ),
+      employeesApi.getAll({
+        ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
+        ...(effectiveDepartmentId
+          ? { departmentId: effectiveDepartmentId }
+          : {}),
+      }),
     enabled: !!effectiveBranchId,
   })
 
@@ -517,16 +627,17 @@ export function CheckOutManualTab() {
   const { data: logs = [], isLoading } = useQuery({
     queryKey: [
       'manual-checkout',
+      checkoutLookbackStart,
       today,
       effectiveBranchId,
-      departmentId,
+      effectiveDepartmentId,
     ],
     queryFn: () =>
       attendanceApi.getAll({
-        startDate: today,
+        startDate: checkoutLookbackStart,
         endDate: today,
         branchId: effectiveBranchId || undefined,
-        departmentId: departmentId || undefined,
+        departmentId: effectiveDepartmentId || undefined,
       }),
     enabled: !!effectiveBranchId,
     refetchInterval: REFRESH_MS,
@@ -538,12 +649,22 @@ export function CheckOutManualTab() {
       dutyStartTime,
     )
       .filter((log) => matchesNameOrCnicSearch(log.employee, searchQuery))
-      .sort((a, b) =>
-        (a.employee?.fullName ?? '').localeCompare(b.employee?.fullName ?? ''),
-      )
+      .sort((a, b) => {
+        const aIn = a.checkIn ? new Date(a.checkIn).getTime() : 0
+        const bIn = b.checkIn ? new Date(b.checkIn).getTime() : 0
+        if (aIn !== bIn) return aIn - bIn
+        return (a.employee?.fullName ?? '').localeCompare(
+          b.employee?.fullName ?? '',
+        )
+      })
   }, [logs, dutyStartTime, searchQuery])
 
-  const filterDeps = [effectiveBranchId, departmentId, dutyStartTime, searchQuery]
+  const filterDeps = [
+    effectiveBranchId,
+    effectiveDepartmentId,
+    dutyStartTime,
+    searchQuery,
+  ]
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
     pendingCheckout,
@@ -559,7 +680,7 @@ export function CheckOutManualTab() {
       checkOut24: string
     }) => {
       return attendanceApi.update(log.id, {
-        checkOut: combineDateAndTime(today, checkOut24),
+        checkOut: combineCheckOutDateTime(log.date, log.checkIn, checkOut24),
       })
     },
     onSuccess: () => {
@@ -588,17 +709,18 @@ export function CheckOutManualTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">
-        Employees checked in today who have not yet checked out. Refreshes every
-        60 seconds.
+        All employees with an open check-in (including overnight duties from
+        previous days). Refreshes every 60 seconds.
       </p>
 
       <ManualAttendanceFilters
         branchId={branchId}
-        departmentId={departmentId}
+        departmentId={effectiveDepartmentId}
         dutyStartTime={dutyStartTime}
         dutyStartOptions={dutyStartOptions}
         searchQuery={searchQuery}
         lockedBranchId={lockedBranchId}
+        medicineOnly={isMedicineManager}
         onBranchChange={setBranchId}
         onDepartmentChange={setDepartmentId}
         onDutyStartTimeChange={setDutyStartTime}
@@ -613,6 +735,7 @@ export function CheckOutManualTab() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Code</TableHead>
+              <TableHead>Duty Date</TableHead>
               <TableHead>Check In</TableHead>
               <TableHead>Duration</TableHead>
               <TableHead>Check Out Time</TableHead>
@@ -622,14 +745,14 @@ export function CheckOutManualTab() {
           <TableBody>
             {!effectiveBranchId ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-text-secondary">
+                <TableCell colSpan={7} className="text-text-secondary">
                   Select a branch to load employees
                 </TableCell>
               </TableRow>
             ) : isLoading ? (
               [...Array(4)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(6)].map((__, j) => (
+                  {[...Array(7)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -638,7 +761,7 @@ export function CheckOutManualTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-text-secondary">
+                <TableCell colSpan={7} className="text-text-secondary">
                   No employees pending check-out
                 </TableCell>
               </TableRow>
@@ -653,6 +776,9 @@ export function CheckOutManualTab() {
                   </TableCell>
                   <TableCell className="font-mono text-sm">
                     {log.employee?.employeeCode ?? '—'}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-sm">
+                    {formatPakistanDate(log.date)}
                   </TableCell>
                   <TableCell>{formatDateTimeTime(log.checkIn)}</TableCell>
                   <TableCell className="text-sm text-text-secondary">

@@ -23,6 +23,39 @@ export function todayPakistan(): string {
   return `${y}-${mo}-${d}`
 }
 
+/** Shift a yyyy-MM-dd calendar date by N days (Pakistan civil date). */
+export function pakistanDateOffset(days: number, from = todayPakistan()): string {
+  const [y, m, d] = from.split('-').map(Number)
+  const next = new Date(Date.UTC(y, m - 1, d + days))
+  const yy = next.getUTCFullYear()
+  const mm = String(next.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(next.getUTCDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+/** Display yyyy-MM-dd (or ISO date) as DD MMM YYYY */
+export function formatPakistanDate(value?: string | null): string {
+  if (!value) return '—'
+  const date = value.slice(0, 10)
+  const [y, m, d] = date.split('-').map(Number)
+  if (!y || !m || !d) return date
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ]
+  return `${String(d).padStart(2, '0')} ${months[m - 1]} ${y}`
+}
+
 export function to12Hour(time: string): string {
   if (!time) return '—'
   const [h, m] = time.split(':').map(Number)

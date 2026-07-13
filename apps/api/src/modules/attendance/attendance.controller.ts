@@ -61,6 +61,7 @@ export class AttendanceController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.HR_EXECUTIVE,
     UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.IT_ADMIN,
   )
@@ -92,6 +93,7 @@ export class AttendanceController {
     UserRole.HR_EXECUTIVE,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
     UserRole.IT_ADMIN,
   )
   updateAttendance(
@@ -191,6 +193,7 @@ export class AttendanceController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
     UserRole.CHAIRMAN,
