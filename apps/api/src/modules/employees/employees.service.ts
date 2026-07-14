@@ -130,6 +130,10 @@ export class EmployeesService {
       fineDeduction,
       healthDeduction,
       shiftName: _shiftName,
+      approverTarget: _approverTarget,
+      formSnapshot: _formSnapshot,
+      userRole: _userRole,
+      staffType: _staffType,
       ...employeeData
     } = dto;
     const lumpsumTotal = this.calculateLumpsumTotal({
@@ -158,7 +162,7 @@ export class EmployeesService {
     const employee = await this.prisma.$transaction(async (tx) => {
       const staffType = dto.staffType ?? StaffType.NEW;
       const pendingApproval =
-        Boolean(dto.approverTarget) && staffType === StaffType.NEW;
+        staffType === StaffType.NEW && Boolean(dto.approverTarget);
       const created = await tx.employee.create({
         data: {
           ...employeeData,

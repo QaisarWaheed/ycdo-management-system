@@ -105,13 +105,13 @@ const STAFF_TYPE_OPTIONS: {
   {
     value: 'EXISTING',
     label: 'Existing Staff',
-    description: 'Already worked at YCDO — created as active, no approval',
+    description: 'No approval — created as active immediately',
     icon: Users,
   },
   {
     value: 'INTERNEE',
-    label: 'Internee',
-    description: 'Intern or trainee — created as active, no approval',
+    label: 'Trainee / Internee',
+    description: 'No approval — created as active immediately',
     icon: GraduationCap,
   },
 ]
@@ -723,7 +723,10 @@ function EmployeeCreatePageForm() {
   }, [selectedGender])
 
   const isExistingStaff = staffType === 'EXISTING'
+  /** Only brand-new staff go through executive approval. */
   const requiresApproval = staffType === 'NEW'
+  const skipsApproval =
+    staffType === 'EXISTING' || staffType === 'INTERNEE'
 
   useEffect(() => {
     if (step >= 1 && !staffType) {
@@ -732,10 +735,19 @@ function EmployeeCreatePageForm() {
   }, [step, staffType])
 
   useEffect(() => {
-    if (step === 5 && staffType && staffType !== 'NEW') {
+    if (step === 5 && skipsApproval) {
       setStep(4)
+      setApproverTarget(null)
+      setPhysicalFormFile(null)
     }
-  }, [step, staffType])
+  }, [step, skipsApproval])
+
+  useEffect(() => {
+    if (skipsApproval) {
+      setApproverTarget(null)
+      setPhysicalFormFile(null)
+    }
+  }, [skipsApproval])
 
   useEffect(() => {
     if (prefill) {
@@ -875,6 +887,9 @@ function EmployeeCreatePageForm() {
         throw new Error('Missing form data')
       }
 
+      const shouldSendForApproval =
+        staffType === 'NEW' && !!approverTarget
+
       const employee = await employeesApi.create({
         ...buildStep1Payload(step1Data),
         ...step2Data,
@@ -884,9 +899,7 @@ function EmployeeCreatePageForm() {
         dutyStartTime: step2Data.dutyStartTime || undefined,
         dutyEndTime: step2Data.dutyEndTime || undefined,
         dutyTotalHours: step2Data.dutyTotalHours || undefined,
-        ...(requiresApproval && approverTarget
-          ? { approverTarget }
-          : {}),
+        ...(shouldSendForApproval ? { approverTarget } : {}),
         formSnapshot: {
           ...buildStep1Payload(step1Data),
           ...step2Data,
@@ -908,7 +921,7 @@ function EmployeeCreatePageForm() {
         await employeesApi.uploadPhoto(employee.id, formData)
       }
 
-      if (requiresApproval && physicalFormFile) {
+      if (shouldSendForApproval && physicalFormFile) {
         const formData = new FormData()
         formData.append('file', physicalFormFile)
         await employeeOnboardingApi.uploadPhysicalForm(employee.id, formData)
@@ -962,17 +975,18 @@ function EmployeeCreatePageForm() {
       return employee
     },
     onSuccess: (employee) => {
+      const sentForApproval = staffType === 'NEW' && !!approverTarget
       const approverLabel = APPROVER_OPTIONS.find(
         (o) => o.value === approverTarget,
       )?.label
       toast({
-        title:
-          requiresApproval && approverTarget
-            ? `Sent to ${approverLabel} for approval`
-            : 'Employee created successfully',
-        description:
-          requiresApproval && approverTarget
-            ? 'The employee will become active after executive approval.'
+        title: sentForApproval
+          ? `Sent to ${approverLabel} for approval`
+          : 'Employee created successfully',
+        description: sentForApproval
+          ? 'The employee will become active after executive approval.'
+          : staffType === 'EXISTING' || staffType === 'INTERNEE'
+            ? 'No approval required — employee is active now.'
             : undefined,
       })
       navigate(`/employees/${employee.id}`, {
@@ -1045,28 +1059,41 @@ function EmployeeCreatePageForm() {
   })
 
   const onSubmit = () => {
-    if (requiresApproval) {
-      if (!physicalFormFile) {
-        setStepError(
-          'Please upload the scanned/photo of the physical filled form before submitting',
-        )
-        return
-      }
-      if (!approverTarget) {
-        setStepError('Please select who should approve this employee')
-        return
-      }
+    if (staffType !== 'NEW') {
+      setStepError(null)
+      createMutation.mutate()
+      return
+    }
+    if (!physicalFormFile) {
+      setStepError(
+        'Please upload the scanned/photo of the physical filled form before submitting',
+      )
+      return
+    }
+    if (!approverTarget) {
+      setStepError('Please select who should approve this employee')
+      return
     }
     setStepError(null)
     createMutation.mutate()
   }
 
   const finishWithoutApproval = () => {
+    if (staffType !== 'EXISTING' && staffType !== 'INTERNEE') {
+      setStep(5)
+      return
+    }
+    setApproverTarget(null)
+    setPhysicalFormFile(null)
     setStepError(null)
     createMutation.mutate()
   }
 
   const goToApprovalStep = () => {
+    if (staffType !== 'NEW') {
+      finishWithoutApproval()
+      return
+    }
     setStepError(null)
     setStep(5)
   }
@@ -1214,7 +1241,14 @@ function EmployeeCreatePageForm() {
                 <button
                   key={option.value}
                   type="button"
-                  onClick={() => setStaffType(option.value)}
+                  onClick={() => {
+                    setStaffType(option.value)
+                    if (option.value !== 'NEW') {
+                      setApproverTarget(null)
+                      setPhysicalFormFile(null)
+                      if (step === 5) setStep(4)
+                    }
+                  }}
                   className={cn(
                     'flex flex-col items-center gap-3 rounded-lg border-2 p-6 text-center transition-colors',
                     selected
@@ -1998,15 +2032,19 @@ function EmployeeCreatePageForm() {
               type="button"
               className="bg-primary hover:bg-primary-dark"
               disabled={createMutation.isPending}
-              onClick={
-                requiresApproval ? goToApprovalStep : finishWithoutApproval
-              }
+              onClick={() => {
+                if (staffType === 'EXISTING' || staffType === 'INTERNEE') {
+                  finishWithoutApproval()
+                } else {
+                  goToApprovalStep()
+                }
+              }}
             >
               {createMutation.isPending
                 ? 'Creating...'
-                : requiresApproval
-                  ? 'Next'
-                  : 'Create Employee'}
+                : staffType === 'EXISTING' || staffType === 'INTERNEE'
+                  ? 'Create Employee'
+                  : 'Next'}
             </Button>
           </div>
         </div>
@@ -2014,8 +2052,7 @@ function EmployeeCreatePageForm() {
       )}
 
       {step === 5 &&
-        requiresApproval &&
-        staffType &&
+        staffType === 'NEW' &&
         step1Data &&
         step2Data &&
         step3Data && (
