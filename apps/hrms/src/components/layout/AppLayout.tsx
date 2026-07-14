@@ -17,6 +17,7 @@ const pageTitles: Record<string, string> = {
   '/disciplinary': 'Disciplinary',
   '/recruitment': 'Recruitment',
   '/broadcasts': 'Broadcasts',
+  '/rule-book': 'Rule Book & Flow',
   '/branches': 'Branches & Projects',
   '/settings/profile': 'Profile Settings',
 }

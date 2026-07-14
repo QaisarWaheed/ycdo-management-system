@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   BarChart3,
   Bell,
+  BookOpen,
   Building2,
   Calendar,
   Clock,
@@ -57,6 +58,12 @@ const shiftsNavItem = {
   to: '/shifts',
   label: 'Shifts',
   icon: Timer,
+}
+
+const ruleBookNavItem = {
+  to: '/rule-book',
+  label: 'Rule Book & Flow',
+  icon: BookOpen,
 }
 
 function navItemsForRole(role?: string) {
@@ -131,7 +138,7 @@ function navItemsForRole(role?: string) {
 export function Sidebar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const navItems = navItemsForRole(user?.role)
+  const navItems = [...navItemsForRole(user?.role), ruleBookNavItem]
 
   const handleLogout = () => {
     logout()

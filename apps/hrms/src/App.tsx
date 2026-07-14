@@ -26,6 +26,7 @@ import { UserPasswordsPage } from '@/pages/admin/UserPasswordsPage'
 import { SystemLoginsPage } from '@/pages/admin/SystemLoginsPage'
 import { ActivityTrailPage } from '@/pages/activity/ActivityTrailPage'
 import { ShiftsPage } from '@/pages/shifts/ShiftsPage'
+import { RuleBookPage } from '@/pages/rule-book/RuleBookPage'
 
 export default function App() {
   return (
@@ -158,6 +159,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/rule-book"
+        element={
+          <ProtectedRoute>
+            <RuleBookPage />
           </ProtectedRoute>
         }
       />
