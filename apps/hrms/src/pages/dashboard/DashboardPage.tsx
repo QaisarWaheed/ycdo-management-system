@@ -278,16 +278,12 @@ function AdminDashboard() {
   })
 
   const {
-    data: relieverSessions = [],
+    data: todayRelievers = [],
     isLoading: loadingRelievers,
     isError: errorRelievers,
   } = useQuery({
-    queryKey: ['reliever-sessions', 'today', today],
-    queryFn: () =>
-      attendanceApi.listRelieverSessions({
-        startDate: today.startDate,
-        endDate: today.endDate,
-      }),
+    queryKey: ['leave', 'today-relievers'],
+    queryFn: () => leaveApi.getTodayRelievers(),
   })
 
   const attendanceLogs = (attendance ?? []) as AttendanceLog[]
@@ -370,13 +366,13 @@ function AdminDashboard() {
         />
         <StatCard
           label="Reliever"
-          value={relieverSessions.length}
-          icon={Clock}
+          value={todayRelievers.length}
+          icon={Users}
           loading={loadingRelievers}
           error={errorRelievers}
           iconBg="bg-indigo-100 text-indigo-700"
-          subtitle="Sessions today"
-          to="/attendance?tab=reliever"
+          subtitle="Assigned today"
+          to="/leave?tab=relievers"
         />
         <StatCard
           label="Pending Leaves"

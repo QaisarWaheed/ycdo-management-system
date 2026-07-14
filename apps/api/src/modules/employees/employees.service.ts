@@ -156,13 +156,15 @@ export class EmployeesService {
     }
 
     const employee = await this.prisma.$transaction(async (tx) => {
-      const pendingApproval = Boolean(dto.approverTarget);
+      const staffType = dto.staffType ?? StaffType.NEW;
+      const pendingApproval =
+        Boolean(dto.approverTarget) && staffType === StaffType.NEW;
       const created = await tx.employee.create({
         data: {
           ...employeeData,
           email: loginEmail,
           biometricId,
-          staffType: dto.staffType ?? StaffType.NEW,
+          staffType,
           shiftId: resolvedShiftId,
           employeeCode,
           joiningDate,

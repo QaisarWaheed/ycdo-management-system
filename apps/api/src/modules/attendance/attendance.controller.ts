@@ -22,6 +22,7 @@ import {
   AttendanceQueryDto,
   BackfillAbsentDto,
   BiometricPushDto,
+  ImportAttendanceDto,
   ManualAttendanceDto,
   MarkAbsenteesDto,
   PortalCheckDto,
@@ -231,6 +232,20 @@ export class AttendanceController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
   markAbsentees(@Body() dto: MarkAbsenteesDto) {
     return this.attendanceService.markAbsentees(dto.date);
+  }
+
+  @Post('import')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+  )
+  importRecord(
+    @Body() dto: ImportAttendanceDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.attendanceService.importRecord(dto, user.id);
   }
 
   @Post('backfill-absent')

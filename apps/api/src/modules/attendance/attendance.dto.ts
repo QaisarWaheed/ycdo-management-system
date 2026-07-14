@@ -1,4 +1,4 @@
-import { AttendanceStatus, EmployeeStatus, Gender, ProjectType } from '@prisma/client';
+import { AttendanceLogType, AttendanceStatus, AttendanceSource, EmployeeStatus, Gender, ProjectType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsDateString,
@@ -212,6 +212,40 @@ export class UpdateAttendanceDto {
   @IsOptional()
   @IsString()
   note?: string;
+}
+
+export class ImportAttendanceDto {
+  @IsUUID()
+  @IsNotEmpty()
+  employeeId: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  date: string;
+
+  @IsOptional()
+  @IsDateString()
+  checkIn?: string;
+
+  @IsOptional()
+  @IsDateString()
+  checkOut?: string;
+
+  @IsEnum(AttendanceStatus)
+  @IsNotEmpty()
+  status: AttendanceStatus;
+
+  @IsEnum(AttendanceSource)
+  @IsNotEmpty()
+  source: AttendanceSource;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @IsOptional()
+  @IsEnum(AttendanceLogType)
+  type?: AttendanceLogType;
 }
 
 export class RelieverSessionsQueryDto {

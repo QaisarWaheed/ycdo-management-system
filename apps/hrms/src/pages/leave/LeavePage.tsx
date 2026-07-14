@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { differenceInCalendarDays, format } from 'date-fns'
 import { AlertTriangle, Users } from 'lucide-react'
 import { useForm } from 'react-hook-form'
+import { useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
@@ -994,8 +995,18 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
 }
 
 export function LeavePage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState('requests')
   const [todayOpen, setTodayOpen] = useState(false)
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'relievers') {
+      setTodayOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('tab')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   return (
     <div className="space-y-6">

@@ -99,19 +99,19 @@ const STAFF_TYPE_OPTIONS: {
   {
     value: 'NEW',
     label: 'New Staff',
-    description: 'Adding a new employee to YCDO',
+    description: 'Requires executive approval before becoming active',
     icon: UserPlus,
   },
   {
     value: 'EXISTING',
     label: 'Existing Staff',
-    description: 'Staff member already worked at YCDO before',
+    description: 'Already worked at YCDO — created as active, no approval',
     icon: Users,
   },
   {
     value: 'INTERNEE',
     label: 'Internee',
-    description: 'Adding an intern or trainee',
+    description: 'Intern or trainee — created as active, no approval',
     icon: GraduationCap,
   },
 ]
@@ -429,6 +429,10 @@ const STEPS = [
   { num: 5, label: 'Approval' },
 ]
 
+function getVisibleSteps(requiresApproval: boolean) {
+  return requiresApproval ? STEPS : STEPS.filter((s) => s.num !== 5)
+}
+
 class StepErrorBoundary extends Component<
   { children: ReactNode; onError: (message: string) => void },
   { hasError: boolean }
@@ -450,11 +454,18 @@ class StepErrorBoundary extends Component<
   }
 }
 
-function StepIndicator({ step }: { step: number }) {
+function StepIndicator({
+  step,
+  requiresApproval,
+}: {
+  step: number
+  requiresApproval: boolean
+}) {
+  const steps = getVisibleSteps(requiresApproval)
   return (
     <div className="mb-8">
       <div className="flex items-center justify-center">
-        {STEPS.map((s, i) => (
+        {steps.map((s, i) => (
           <div key={s.num} className="flex items-center">
             <div className="flex flex-col items-center gap-1">
               <div
@@ -480,7 +491,7 @@ function StepIndicator({ step }: { step: number }) {
                 {s.label}
               </span>
             </div>
-            {i < STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <div
                 className={cn(
                   'mx-1 h-0.5 w-8 sm:mx-2 sm:w-16',
@@ -712,10 +723,17 @@ function EmployeeCreatePageForm() {
   }, [selectedGender])
 
   const isExistingStaff = staffType === 'EXISTING'
+  const requiresApproval = staffType === 'NEW'
 
   useEffect(() => {
     if (step >= 1 && !staffType) {
       setStep(0)
+    }
+  }, [step, staffType])
+
+  useEffect(() => {
+    if (step === 5 && staffType && staffType !== 'NEW') {
+      setStep(4)
     }
   }, [step, staffType])
 
@@ -866,7 +884,9 @@ function EmployeeCreatePageForm() {
         dutyStartTime: step2Data.dutyStartTime || undefined,
         dutyEndTime: step2Data.dutyEndTime || undefined,
         dutyTotalHours: step2Data.dutyTotalHours || undefined,
-        approverTarget: approverTarget ?? undefined,
+        ...(requiresApproval && approverTarget
+          ? { approverTarget }
+          : {}),
         formSnapshot: {
           ...buildStep1Payload(step1Data),
           ...step2Data,
@@ -888,7 +908,7 @@ function EmployeeCreatePageForm() {
         await employeesApi.uploadPhoto(employee.id, formData)
       }
 
-      if (physicalFormFile) {
+      if (requiresApproval && physicalFormFile) {
         const formData = new FormData()
         formData.append('file', physicalFormFile)
         await employeeOnboardingApi.uploadPhysicalForm(employee.id, formData)
@@ -946,12 +966,14 @@ function EmployeeCreatePageForm() {
         (o) => o.value === approverTarget,
       )?.label
       toast({
-        title: approverTarget
-          ? `Sent to ${approverLabel} for approval`
-          : 'Employee created successfully',
-        description: approverTarget
-          ? 'The employee will become active after executive approval.'
-          : undefined,
+        title:
+          requiresApproval && approverTarget
+            ? `Sent to ${approverLabel} for approval`
+            : 'Employee created successfully',
+        description:
+          requiresApproval && approverTarget
+            ? 'The employee will become active after executive approval.'
+            : undefined,
       })
       navigate(`/employees/${employee.id}`, {
         replace: true,
@@ -1023,16 +1045,23 @@ function EmployeeCreatePageForm() {
   })
 
   const onSubmit = () => {
-    if (!physicalFormFile) {
-      setStepError(
-        'Please upload the scanned/photo of the physical filled form before submitting',
-      )
-      return
+    if (requiresApproval) {
+      if (!physicalFormFile) {
+        setStepError(
+          'Please upload the scanned/photo of the physical filled form before submitting',
+        )
+        return
+      }
+      if (!approverTarget) {
+        setStepError('Please select who should approve this employee')
+        return
+      }
     }
-    if (!approverTarget) {
-      setStepError('Please select who should approve this employee')
-      return
-    }
+    setStepError(null)
+    createMutation.mutate()
+  }
+
+  const finishWithoutApproval = () => {
     setStepError(null)
     createMutation.mutate()
   }
@@ -1226,7 +1255,9 @@ function EmployeeCreatePageForm() {
         </div>
       )}
 
-      {step >= 1 && <StepIndicator step={step} />}
+      {step >= 1 && (
+        <StepIndicator step={step} requiresApproval={requiresApproval} />
+      )}
 
       {step === 1 && staffType && (
         <StepErrorBoundary key="step-1" onError={setStepError}>
@@ -1966,16 +1997,28 @@ function EmployeeCreatePageForm() {
             <Button
               type="button"
               className="bg-primary hover:bg-primary-dark"
-              onClick={goToApprovalStep}
+              disabled={createMutation.isPending}
+              onClick={
+                requiresApproval ? goToApprovalStep : finishWithoutApproval
+              }
             >
-              Next
+              {createMutation.isPending
+                ? 'Creating...'
+                : requiresApproval
+                  ? 'Next'
+                  : 'Create Employee'}
             </Button>
           </div>
         </div>
         </StepErrorBoundary>
       )}
 
-      {step === 5 && staffType && step1Data && step2Data && step3Data && (
+      {step === 5 &&
+        requiresApproval &&
+        staffType &&
+        step1Data &&
+        step2Data &&
+        step3Data && (
         <StepErrorBoundary key="step-5" onError={setStepError}>
           <div className="space-y-6">
             <h2 className="text-lg font-semibold">Submit for Approval</h2>

@@ -22,6 +22,7 @@ import {
   ApproveOvertimeDto,
   AttendanceQueryDto,
   BiometricPushDto,
+  ImportAttendanceDto,
   ManualAttendanceDto,
   MarkAbsenteesDto,
   PortalCheckDto,
@@ -1416,5 +1417,67 @@ export class AttendanceService {
     const result = new Date(date);
     result.setHours(0, 0, 0, 0);
     return result;
+  }
+
+  async importRecord(
+    dto: ImportAttendanceDto,
+    actingUserId: string,
+  ) {
+    const dateOnly = toPakistanDateOnly(
+      new Date(`${dto.date}T00:00:00+05:00`),
+    );
+    const type = dto.type ?? AttendanceLogType.REGULAR;
+
+    const existing = await this.prisma.attendanceLog.findFirst({
+      where: { employeeId: dto.employeeId, date: dateOnly, type },
+    });
+
+    if (existing) {
+      return this.prisma.attendanceLog.update({
+        where: { id: existing.id },
+        data: {
+          checkIn: dto.checkIn
+            ? parseAttendanceDateTime(dto.checkIn)
+            : existing.checkIn,
+          checkOut: dto.checkOut
+            ? parseAttendanceDateTime(dto.checkOut)
+            : existing.checkOut,
+          status: dto.status,
+          note: dto.note,
+          source: AttendanceSource.MANUAL,
+        },
+      });
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+      select: { currentBranchId: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with id ${dto.employeeId} not found`,
+      );
+    }
+
+    if (!employee.currentBranchId) {
+      throw new BadRequestException(
+        'Employee has no branch assignment for attendance import',
+      );
+    }
+
+    return this.prisma.attendanceLog.create({
+      data: {
+        employeeId: dto.employeeId,
+        branchId: employee.currentBranchId,
+        date: dateOnly,
+        type,
+        checkIn: dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : null,
+        checkOut: dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : null,
+        status: dto.status,
+        source: AttendanceSource.MANUAL,
+        note: dto.note,
+      },
+    });
   }
 }
