@@ -32,11 +32,24 @@ export function formatDutyDisplay(
   end?: string | null,
 ): string {
   if (!start || !end) return 'Not assigned'
+  const startNorm = start.trim().substring(0, 5)
+  const endNorm = end.trim().substring(0, 5)
   const startLabel =
-    dutyTimeOptions.find((o) => o.value === start)?.label ?? to12Hour(start)
+    dutyTimeOptions.find((o) => o.value === startNorm)?.label ?? to12Hour(startNorm)
   const endLabel =
-    dutyTimeOptions.find((o) => o.value === end)?.label ?? to12Hour(end)
+    dutyTimeOptions.find((o) => o.value === endNorm)?.label ?? to12Hour(endNorm)
   return `${startLabel} - ${endLabel}`
+}
+
+/** Prefer shift model times; fall back to employee duty fields. */
+export function formatEmployeeShiftDisplay(employee: {
+  dutyStartTime?: string | null
+  dutyEndTime?: string | null
+  shift?: { startTime?: string; endTime?: string; name?: string } | null
+}): string {
+  const start = employee.shift?.startTime ?? employee.dutyStartTime
+  const end = employee.shift?.endTime ?? employee.dutyEndTime
+  return formatDutyDisplay(start, end)
 }
 
 export function timeToMinutes(time: string): number {

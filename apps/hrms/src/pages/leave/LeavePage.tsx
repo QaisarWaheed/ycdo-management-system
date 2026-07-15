@@ -6,7 +6,6 @@ import { AlertTriangle, Users } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
-import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { ApprovalTrail } from '@/components/leave/ApprovalTrail'
@@ -62,6 +61,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { getHierarchyPriority } from '@/lib/employeeHierarchy'
+import { formatShiftOptionLabel } from '@/lib/shiftFilterUtils'
 import { useAuthStore } from '@/store/auth.store'
 import { cn } from '@/lib/utils'
 import {
@@ -288,12 +288,16 @@ function HRAssignRelieverDialog({
               setRelieverId(id)
               setSelectedReliever(emp)
             }}
-            excludeIds={[leave.employeeId]}
+            excludeIds={leave.employeeId ? [leave.employeeId] : []}
           />
           {selectedReliever?.shift && (
             <p className="text-sm">
               {selectedReliever.fullName} — Shift:{' '}
-              {selectedReliever.shift.startTime} to {selectedReliever.shift.endTime}
+              {formatShiftOptionLabel({
+                name: selectedReliever.shift.name ?? '',
+                startTime: selectedReliever.shift.startTime ?? '',
+                endTime: selectedReliever.shift.endTime ?? '',
+              })}
             </p>
           )}
         </div>
@@ -729,7 +733,6 @@ type ApplyFormValues = z.infer<typeof applySchema>
 function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
   const queryClient = useQueryClient()
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>()
   const [relieverId, setRelieverId] = useState('')
   const [selectedReliever, setSelectedReliever] = useState<Employee | undefined>()
 
@@ -794,7 +797,8 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['leave'] })
       form.reset()
       setSelectedEmployeeId('')
-      setSelectedEmployee(undefined)
+      setRelieverId('')
+      setSelectedReliever(undefined)
       setRelieverId('')
       setSelectedReliever(undefined)
       onSuccess()
@@ -822,10 +826,10 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
             <FormItem>
               <EmployeeSearchSelect
                 value={field.value}
-                onChange={(id, emp) => {
+                onChange={(id) => {
                   field.onChange(id)
                   setSelectedEmployeeId(id)
-                  setSelectedEmployee(emp)
+                  form.setValue('employeeId', id)
                   setRelieverId('')
                   setSelectedReliever(undefined)
                 }}
@@ -961,8 +965,11 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
             {selectedReliever?.shift && (
               <p className="text-sm">
                 {selectedReliever.fullName} — Shift:{' '}
-                {selectedReliever.shift.startTime} to{' '}
-                {selectedReliever.shift.endTime}
+                {formatShiftOptionLabel({
+                  name: selectedReliever.shift.name ?? '',
+                  startTime: selectedReliever.shift.startTime ?? '',
+                  endTime: selectedReliever.shift.endTime ?? '',
+                })}
               </p>
             )}
           </div>

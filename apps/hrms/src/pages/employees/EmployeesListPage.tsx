@@ -39,11 +39,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePagination } from '@/hooks/usePagination'
 import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
-import {
-  getEmployeeDutyEndTime,
-  getEmployeeDutyStartTime,
-} from '@/lib/attendanceUtils'
-import { formatDutyDisplay } from '@/lib/dutyTimes'
+import { formatEmployeeShiftDisplay } from '@/lib/dutyTimes'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import { isMedicineManagerRole } from '@/lib/medicineScope'
 import { withReturnTo } from '@/lib/backNavigation'
@@ -272,10 +268,7 @@ export function EmployeesListPage() {
                       <div>
                         <p className="font-medium">{emp.shift.name}</p>
                         <p className="text-xs text-text-secondary">
-                          {formatDutyDisplay(
-                            getEmployeeDutyStartTime(emp),
-                            getEmployeeDutyEndTime(emp),
-                          )}
+                          {formatEmployeeShiftDisplay(emp)}
                         </p>
                       </div>
                     ) : (

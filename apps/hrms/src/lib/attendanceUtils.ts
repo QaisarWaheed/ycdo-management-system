@@ -76,14 +76,14 @@ export function getEmployeeDutyStartTime(employee: {
   dutyStartTime?: string | null
   shift?: { startTime?: string } | null
 }): string {
-  return employee.dutyStartTime ?? employee.shift?.startTime ?? ''
+  return employee.shift?.startTime ?? employee.dutyStartTime ?? ''
 }
 
 export function getEmployeeDutyEndTime(employee: {
   dutyEndTime?: string | null
   shift?: { endTime?: string } | null
 }): string {
-  return employee.dutyEndTime ?? employee.shift?.endTime ?? ''
+  return employee.shift?.endTime ?? employee.dutyEndTime ?? ''
 }
 
 export function isWithinDutyWindow(

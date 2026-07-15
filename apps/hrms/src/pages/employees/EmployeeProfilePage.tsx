@@ -69,7 +69,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
-import { formatDutyDisplay } from '@/lib/dutyTimes'
+import { formatEmployeeShiftDisplay } from '@/lib/dutyTimes'
 import { formatDateTimeTime } from '@/lib/timeFormat'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { maritalStatusToLabel } from '@/lib/searchableSelectOptions'
@@ -938,9 +938,7 @@ export function EmployeeProfilePage() {
           </div>
           <div className="print-field">
             <div className="print-label">Duty Hours</div>
-            {employee.dutyStartTime && employee.dutyEndTime
-              ? formatDutyDisplay(employee.dutyStartTime, employee.dutyEndTime)
-              : '—'}
+            {formatEmployeeShiftDisplay(employee)}
           </div>
         </div>
 
@@ -1002,7 +1000,7 @@ export function EmployeeProfilePage() {
           <StatusBadge status={employee.status} />
           <p
             className={`flex w-full items-center justify-center gap-1.5 text-sm ${
-              employee.dutyStartTime && employee.dutyEndTime
+              employee.shift?.startTime || employee.dutyStartTime
                 ? 'text-text-primary'
                 : 'text-text-secondary'
             }`}
@@ -1010,9 +1008,7 @@ export function EmployeeProfilePage() {
             <Clock className="h-4 w-4 shrink-0" />
             <span>
               Duty:{' '}
-              {employee.dutyStartTime && employee.dutyEndTime
-                ? formatDutyDisplay(employee.dutyStartTime, employee.dutyEndTime)
-                : 'Not assigned'}
+              {formatEmployeeShiftDisplay(employee)}
             </span>
           </p>
           <div className="w-full space-y-2 text-left text-sm">

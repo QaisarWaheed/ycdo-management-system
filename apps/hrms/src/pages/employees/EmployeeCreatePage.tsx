@@ -631,7 +631,7 @@ function EmployeeCreatePageForm() {
   const prefill = (location.state as { prefill?: EmployeePrefill } | null)
     ?.prefill
 
-  const [step, setStep] = useState(0)
+  const [step, setStep] = useState<number>(0)
   const [staffType, setStaffType] = useState<StaffType | null>(null)
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [stepError, setStepError] = useState<string | null>(null)
@@ -1246,7 +1246,7 @@ function EmployeeCreatePageForm() {
                     if (option.value !== 'NEW') {
                       setApproverTarget(null)
                       setPhysicalFormFile(null)
-                      if (step === 5) setStep(4)
+                      setStep((s) => (s === 5 ? 4 : s))
                     }
                   }}
                   className={cn(

@@ -58,10 +58,12 @@ export function formatPakistanDate(value?: string | null): string {
 
 export function to12Hour(time: string): string {
   if (!time) return '—'
-  const [h, m] = time.split(':').map(Number)
-  const period = h < 12 ? 'AM' : 'PM'
-  const hour = h === 0 ? 12 : h > 12 ? h - 12 : h
-  return `${hour}:${String(m).padStart(2, '0')} ${period}`
+  const normalized = time.trim().substring(0, 5)
+  const [hours, minutes] = normalized.split(':').map(Number)
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return '—'
+  const period = hours >= 12 ? 'PM' : 'AM'
+  const displayHour = hours % 12 || 12
+  return `${String(displayHour).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${period}`
 }
 
 export function to24Hour(h: number, m: number, period: string): string {

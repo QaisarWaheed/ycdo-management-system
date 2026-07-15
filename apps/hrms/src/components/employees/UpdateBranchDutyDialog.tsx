@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
-import { formatDutyDisplay } from '@/lib/dutyTimes'
+import { formatEmployeeShiftDisplay } from '@/lib/dutyTimes'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
 import type { Employee } from '@/types'
@@ -108,7 +108,7 @@ export function UpdateBranchDutyDialog({
             </p>
             <p>
               <span className="text-text-secondary">Current Duty: </span>
-              {formatDutyDisplay(employee.dutyStartTime, employee.dutyEndTime)}
+              {formatEmployeeShiftDisplay(employee)}
               {employee.dutyTotalHours
                 ? ` (${employee.dutyTotalHours}h/day)`
                 : ''}

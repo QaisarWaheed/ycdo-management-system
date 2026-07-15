@@ -4,7 +4,8 @@ import { to12Hour } from '@/lib/timeFormat'
 export const ALL_SHIFTS_AT_START = '__all_at_start__'
 
 export function formatShiftTime(time: string): string {
-  return to12Hour(time)
+  if (!time) return '--'
+  return to12Hour(time.trim().substring(0, 5))
 }
 
 /** @deprecated Use formatShiftTime */

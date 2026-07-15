@@ -41,8 +41,8 @@ import { todayPakistan } from '@/lib/timeFormat'
 import type { Employee } from '@/types'
 
 function formatEmployeeShift(emp: MutualSwapEmployee): string {
-  const start = emp.dutyStartTime ?? emp.shift?.startTime
-  const end = emp.dutyEndTime ?? emp.shift?.endTime
+  const start = emp.shift?.startTime ?? emp.dutyStartTime
+  const end = emp.shift?.endTime ?? emp.dutyEndTime
   if (!start || !end) return '—'
   return formatShiftOptionLabel({
     name: emp.shift?.name ?? '',

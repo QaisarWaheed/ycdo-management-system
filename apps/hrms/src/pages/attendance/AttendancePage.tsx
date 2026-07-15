@@ -115,7 +115,7 @@ function AssignAbsentRelieverDialog({
   const mutation = useMutation({
     mutationFn: () =>
       leaveApi.markVerified({
-        employeeId: log!.employeeId,
+        employeeId: log!.employeeId!,
         startDate: date,
         endDate: date,
         leaveType: 'EMERGENCY',
@@ -183,13 +183,16 @@ function AssignAbsentRelieverDialog({
               setRelieverId(id)
               setSelectedReliever(emp)
             }}
-            excludeIds={[log.employeeId]}
+            excludeIds={log?.employeeId ? [log.employeeId] : []}
           />
           {selectedReliever?.shift && (
             <p className="text-sm">
               {selectedReliever.fullName} — Shift:{' '}
-              {selectedReliever.shift.startTime} to{' '}
-              {selectedReliever.shift.endTime}
+              {formatShiftOptionLabel({
+                name: selectedReliever.shift.name ?? '',
+                startTime: selectedReliever.shift.startTime ?? '',
+                endTime: selectedReliever.shift.endTime ?? '',
+              })}
             </p>
           )}
           <div className="space-y-1">
@@ -208,7 +211,10 @@ function AssignAbsentRelieverDialog({
           </Button>
           <Button
             disabled={
-              !relieverId || reason.trim().length < 3 || mutation.isPending
+              !relieverId ||
+              !log?.employeeId ||
+              reason.trim().length < 3 ||
+              mutation.isPending
             }
             onClick={() => mutation.mutate()}
           >

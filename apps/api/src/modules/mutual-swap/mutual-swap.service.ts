@@ -5,10 +5,6 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  resolveShiftEndTime,
-  resolveShiftStartTime,
-} from '../attendance/attendance-biometric.util';
-import {
   parseAttendanceDateTime,
   toPakistanDateOnly,
 } from '../attendance/attendance-late.util';
@@ -51,6 +47,12 @@ function designationsAllowSwap(
   return false;
 }
 
+/** Normalize "09:00:00" / "09:00" → "09:00" for exact string match. */
+function normalizeTime(time?: string | null): string {
+  if (!time) return '';
+  return time.trim().substring(0, 5);
+}
+
 @Injectable()
 export class MutualSwapService {
   constructor(private prisma: PrismaService) {}
@@ -62,11 +64,6 @@ export class MutualSwapService {
   private parseShiftTime(time: string, dateStr: string): Date {
     const date = dateStr.includes('T') ? dateStr.split('T')[0]! : dateStr;
     return parseAttendanceDateTime(`${date}T${time}`);
-  }
-
-  private shiftTimesMatch(a: string | null, b: string | null): boolean {
-    if (!a || !b) return false;
-    return a.trim() === b.trim();
   }
 
   private assertDesignationSwap(
@@ -127,12 +124,12 @@ export class MutualSwapService {
       throw new BadRequestException('Covered employee has no shift assigned');
     }
 
-    const coveringShiftEnd = resolveShiftEndTime(coveringEmployee);
-    const coveredShiftStart = resolveShiftStartTime(coveredEmployee);
+    const coveringEnd = normalizeTime(coveringEmployee.shift?.endTime);
+    const coveredStart = normalizeTime(coveredEmployee.shift?.startTime);
 
-    if (!this.shiftTimesMatch(coveringShiftEnd, coveredShiftStart)) {
+    if (coveringEnd !== coveredStart) {
       throw new BadRequestException(
-        `Shifts must be consecutive. ${coveringEmployee.fullName} ends at ${coveringShiftEnd ?? '—'} but ${coveredEmployee.fullName} starts at ${coveredShiftStart ?? '—'}`,
+        `Shifts must be consecutive. ${coveringEmployee.fullName}'s shift ends at ${coveringEnd} but ${coveredEmployee.fullName}'s shift starts at ${coveredStart}`,
       );
     }
 
@@ -159,11 +156,15 @@ export class MutualSwapService {
     }
 
     const coveredShift = coveredEmployee.shift;
-    const coveredStart = resolveShiftStartTime(coveredEmployee)!;
-    const coveredEnd = resolveShiftEndTime(coveredEmployee)!;
 
-    const overtimeStart = this.parseShiftTime(coveredStart, dto.date);
-    let overtimeEnd = this.parseShiftTime(coveredEnd, dto.date);
+    const overtimeStart = this.parseShiftTime(
+      normalizeTime(coveredShift.startTime),
+      dto.date,
+    );
+    let overtimeEnd = this.parseShiftTime(
+      normalizeTime(coveredShift.endTime),
+      dto.date,
+    );
     if (overtimeEnd <= overtimeStart) {
       overtimeEnd = new Date(overtimeEnd);
       overtimeEnd.setDate(overtimeEnd.getDate() + 1);
@@ -285,37 +286,27 @@ export class MutualSwapService {
       throw new BadRequestException('Covered employee has no shift assigned');
     }
 
-    const coveredStart = resolveShiftStartTime(coveredEmployee);
-    if (!coveredStart) {
-      return [];
-    }
+    const coveredStartTime = normalizeTime(coveredEmployee.shift?.startTime);
 
-    const candidates = await this.prisma.employee.findMany({
+    const allEmployees = await this.prisma.employee.findMany({
       where: {
         currentBranchId: coveredEmployee.currentBranchId,
         status: { in: ['ACTIVE', 'APPOINTED'] },
         id: { not: coveredEmployeeId },
         shiftId: { not: null },
       },
-      select: {
-        id: true,
-        fullName: true,
-        employeeCode: true,
-        dutyStartTime: true,
-        dutyEndTime: true,
-        currentDesignation: true,
-        shift: true,
-      },
+      include: { shift: true },
     });
 
-    return candidates.filter(
-      (emp) =>
-        this.shiftTimesMatch(resolveShiftEndTime(emp), coveredStart) &&
-        designationsAllowSwap(
-          emp.currentDesignation,
-          coveredEmployee.currentDesignation,
-        ),
-    );
+    return allEmployees.filter((emp) => {
+      if (!emp.shift) return false;
+      const empEndTime = normalizeTime(emp.shift.endTime);
+      if (empEndTime !== coveredStartTime) return false;
+      return designationsAllowSwap(
+        emp.currentDesignation,
+        coveredEmployee.currentDesignation,
+      );
+    });
   }
 
   async getSwaps(filters: {
@@ -339,8 +330,6 @@ export class MutualSwapService {
           select: {
             fullName: true,
             employeeCode: true,
-            dutyStartTime: true,
-            dutyEndTime: true,
             shift: true,
           },
         },
@@ -348,8 +337,6 @@ export class MutualSwapService {
           select: {
             fullName: true,
             employeeCode: true,
-            dutyStartTime: true,
-            dutyEndTime: true,
             shift: true,
           },
         },

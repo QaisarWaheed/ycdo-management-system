@@ -56,7 +56,7 @@ import {
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import { cn } from '@/lib/utils'
-import { formatShiftTime } from '@/lib/shiftFilterUtils'
+import { formatShiftOptionLabel, formatShiftTime } from '@/lib/shiftFilterUtils'
 import {
   LEAVE_TYPE_OPTIONS,
   labelToLeaveType,
@@ -1093,8 +1093,11 @@ export function MarkLeaveManualTab() {
           {selectedReliever?.shift && (
             <p className="text-sm text-text-secondary">
               {selectedReliever.fullName} — Shift:{' '}
-              {selectedReliever.shift.startTime} to{' '}
-              {selectedReliever.shift.endTime}
+              {formatShiftOptionLabel({
+                name: selectedReliever.shift.name ?? '',
+                startTime: selectedReliever.shift.startTime ?? '',
+                endTime: selectedReliever.shift.endTime ?? '',
+              })}
             </p>
           )}
         </div>

@@ -115,6 +115,18 @@ export class EmployeesService {
       );
     }
 
+    let syncedDutyStart = dto.dutyStartTime;
+    let syncedDutyEnd = dto.dutyEndTime;
+    if (resolvedShiftId) {
+      const shift = await this.prisma.shift.findUnique({
+        where: { id: resolvedShiftId },
+      });
+      if (shift) {
+        syncedDutyStart = syncedDutyStart ?? shift.startTime;
+        syncedDutyEnd = syncedDutyEnd ?? shift.endTime;
+      }
+    }
+
     const employeeCode = await generateEmployeeCode(this.prisma);
     const biometricId = dto.biometricId ?? (await this.generateBiometricId());
     const joiningDate = new Date(dto.joiningDate);
@@ -169,6 +181,8 @@ export class EmployeesService {
           biometricId,
           staffType,
           shiftId: resolvedShiftId,
+          dutyStartTime: syncedDutyStart,
+          dutyEndTime: syncedDutyEnd,
           employeeCode,
           joiningDate,
           dateOfBirth: new Date(dto.dateOfBirth),
@@ -789,6 +803,25 @@ export class EmployeesService {
       );
       if (shiftId) {
         data.shift = { connect: { id: shiftId } };
+        const shift = await this.prisma.shift.findUnique({
+          where: { id: shiftId },
+        });
+        if (shift) {
+          data.dutyStartTime =
+            sanitizedDto.dutyStartTime ?? shift.startTime;
+          data.dutyEndTime = sanitizedDto.dutyEndTime ?? shift.endTime;
+        }
+      }
+    }
+
+    if (sanitizedDto.shiftId !== undefined) {
+      if (sanitizedDto.shiftId) {
+        const shift = await this.ensureShiftExists(sanitizedDto.shiftId);
+        data.shift = { connect: { id: shift.id } };
+        data.dutyStartTime = shift.startTime;
+        data.dutyEndTime = shift.endTime;
+      } else {
+        data.shift = { disconnect: true };
       }
     }
 
@@ -905,6 +938,8 @@ export class EmployeesService {
     if (!shift) {
       throw new NotFoundException(`Shift with id ${shiftId} not found`);
     }
+
+    return shift;
   }
 
   private async assignShiftFromDuty(
@@ -1144,6 +1179,13 @@ export class EmployeesService {
         );
         if (shiftId) {
           data.shift = { connect: { id: shiftId } };
+          const shift = await this.prisma.shift.findUnique({
+            where: { id: shiftId },
+          });
+          if (shift) {
+            data.dutyStartTime = nextStart ?? shift.startTime;
+            data.dutyEndTime = nextEnd ?? shift.endTime;
+          }
         }
       }
 
