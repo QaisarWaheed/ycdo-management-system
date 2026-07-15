@@ -4,7 +4,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { stripPersonalEmployeeFields } from '../../common/hr-executive.util';
 import { normalizeDesignationName } from '../../common/org-structure';
 import { inferShiftNameFromDuty } from '../../common/shift-inference.util';
 import {
@@ -677,13 +676,10 @@ export class EmployeesService {
   async update(
     id: string,
     dto: UpdateEmployeeDto,
-    actingRole?: UserRole | string,
   ) {
     await this.findOne(id);
 
-    const sanitizedDto = actingRole
-      ? stripPersonalEmployeeFields(dto, actingRole)
-      : dto;
+    const sanitizedDto = dto;
 
     if (sanitizedDto.currentBranchId !== undefined || sanitizedDto.currentDepartmentId !== undefined) {
       throw new BadRequestException(
