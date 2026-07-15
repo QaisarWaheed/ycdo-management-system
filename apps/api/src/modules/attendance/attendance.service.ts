@@ -101,20 +101,27 @@ export class AttendanceService {
     let punchType = dto.punchType;
 
     if (!punchType) {
-      const todayLog = await this.prisma.attendanceLog.findFirst({
-        where: {
-          employeeId: employee.id,
-          date: dateOnly,
-          type: AttendanceLogType.REGULAR,
-        },
-      });
+      const openRegular = await this.findOpenRegularLog(
+        employee.id,
+        dateOnly,
+      );
 
-      if (!todayLog || !todayLog.checkIn) {
-        punchType = 'CHECKIN';
-      } else if (todayLog.checkIn && !todayLog.checkOut) {
+      if (openRegular) {
         punchType = 'CHECKOUT';
       } else {
-        punchType = 'OVERTIME_CHECKIN';
+        const todayLog = await this.prisma.attendanceLog.findFirst({
+          where: {
+            employeeId: employee.id,
+            date: dateOnly,
+            type: AttendanceLogType.REGULAR,
+          },
+        });
+
+        if (!todayLog?.checkIn) {
+          punchType = 'CHECKIN';
+        } else {
+          punchType = 'OVERTIME_CHECKIN';
+        }
       }
     }
 
@@ -122,7 +129,45 @@ export class AttendanceService {
       punchType === 'CHECKOUT' || punchType === 'OVERTIME_CHECKIN';
 
     if (isCheckout) {
-      const existing = await this.prisma.attendanceLog.findFirst({
+      const openRegular = await this.findOpenRegularLog(
+        employee.id,
+        dateOnly,
+      );
+
+      if (openRegular) {
+        const sessionMinutes = Math.round(
+          (checkTime.getTime() - openRegular.checkIn!.getTime()) / 60000,
+        );
+        const overtimeMinutes = computeBiometricOvertimeMinutes(
+          openRegular.checkIn!,
+          checkTime,
+          employee,
+        );
+
+        const lateMinutes = openRegular.lateMinutes ?? 0;
+        let status = openRegular.status;
+        const derivedStatus = determineBiometricCheckInStatus(
+          lateMinutes,
+          employee,
+          sessionMinutes,
+        );
+        if (derivedStatus === AttendanceStatus.HALF_DAY) {
+          status = AttendanceStatus.HALF_DAY;
+        }
+
+        const log = await this.prisma.attendanceLog.update({
+          where: { id: openRegular.id },
+          data: {
+            checkOut: checkTime,
+            overtimeMinutes,
+            status,
+          },
+        });
+
+        return { type: 'CHECKOUT', log };
+      }
+
+      const todayRegular = await this.prisma.attendanceLog.findFirst({
         where: {
           employeeId: employee.id,
           date: dateOnly,
@@ -130,11 +175,11 @@ export class AttendanceService {
         },
       });
 
-      if (!existing || !existing.checkIn) {
+      if (!todayRegular?.checkIn) {
         throw new BadRequestException('No check-in found for today');
       }
 
-      if (existing.checkOut) {
+      if (todayRegular.checkOut) {
         const openOvertimeLog = await this.prisma.attendanceLog.findFirst({
           where: {
             employeeId: employee.id,
@@ -175,36 +220,7 @@ export class AttendanceService {
         return { type: 'OVERTIME_CHECKIN', log };
       }
 
-      const sessionMinutes = Math.round(
-        (checkTime.getTime() - existing.checkIn!.getTime()) / 60000,
-      );
-      const overtimeMinutes = computeBiometricOvertimeMinutes(
-        existing.checkIn!,
-        checkTime,
-        employee,
-      );
-
-      const lateMinutes = existing.lateMinutes ?? 0;
-      let status = existing.status;
-      const derivedStatus = determineBiometricCheckInStatus(
-        lateMinutes,
-        employee,
-        sessionMinutes,
-      );
-      if (derivedStatus === AttendanceStatus.HALF_DAY) {
-        status = AttendanceStatus.HALF_DAY;
-      }
-
-      const log = await this.prisma.attendanceLog.update({
-        where: { id: existing.id },
-        data: {
-          checkOut: checkTime,
-          overtimeMinutes,
-          status,
-        },
-      });
-
-      return { type: 'CHECKOUT', log };
+      throw new BadRequestException('No open check-in found to check out');
     }
 
     const lateMinutes = computeBiometricLateMinutes(checkTime, employee);
@@ -1417,6 +1433,42 @@ export class AttendanceService {
     const result = new Date(date);
     result.setHours(0, 0, 0, 0);
     return result;
+  }
+
+  /** Pakistan calendar date one day before `dateOnly` (UTC date parts). */
+  private pakistanYesterday(dateOnly: Date): Date {
+    const yesterday = new Date(dateOnly);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    return yesterday;
+  }
+
+  /**
+   * Open REGULAR session for checkout: today's log first, then yesterday
+   * (night shift check-in before midnight, checkout after).
+   */
+  private findOpenRegularLog(employeeId: string, dateOnly: Date) {
+    return this.prisma.attendanceLog
+      .findFirst({
+        where: {
+          employeeId,
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
+          checkIn: { not: null },
+          checkOut: null,
+        },
+      })
+      .then((todayOpen) => {
+        if (todayOpen) return todayOpen;
+        return this.prisma.attendanceLog.findFirst({
+          where: {
+            employeeId,
+            date: this.pakistanYesterday(dateOnly),
+            type: AttendanceLogType.REGULAR,
+            checkIn: { not: null },
+            checkOut: null,
+          },
+        });
+      });
   }
 
   async importRecord(
