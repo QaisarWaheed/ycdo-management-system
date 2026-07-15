@@ -12,12 +12,13 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { UserRole } from '@prisma/client';
+import { Permission, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { assertCanEditPersonalInfo } from '../../common/hr-executive.util';
+import { HR_PERSONAL_EDIT_ROLES } from '../../common/hr-executive.util';
+import { PermissionsService } from '../permissions/permissions.service';
 import { UploadDocumentDto } from './documents.dto';
 import { DocumentsService } from './documents.service';
 import { multerConfig } from './multer.config';
@@ -25,25 +26,30 @@ import { multerConfig } from './multer.config';
 @Controller('employees/:id/documents')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DocumentsController {
-  constructor(private documentsService: DocumentsService) {}
+  constructor(
+    private documentsService: DocumentsService,
+    private permissionsService: PermissionsService,
+  ) {}
 
   @Post()
   @UseInterceptors(FileInterceptor('file', multerConfig))
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.HR_MANAGER,
-    UserRole.HR_ADMIN_MANAGER,
-    UserRole.ADMIN_OFFICER,
-    UserRole.ADMIN_MANAGER,
-    UserRole.IT_ADMIN,
-  )
-  upload(
+  @Roles(...HR_PERSONAL_EDIT_ROLES)
+  async upload(
     @Param('id') id: string,
     @Body() dto: UploadDocumentDto,
     @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: { role: UserRole },
+    @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    assertCanEditPersonalInfo(user.role);
+    const canEdit = await this.permissionsService.userHasPermission(
+      user.id,
+      user.role,
+      Permission.EMPLOYEES_EDIT,
+    );
+    if (!canEdit) {
+      throw new ForbiddenException(
+        'You do not have permission to upload employee documents',
+      );
+    }
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
@@ -54,6 +60,7 @@ export class DocumentsController {
   @Get()
   @Roles(
     UserRole.SUPER_ADMIN,
+    UserRole.HR_EXECUTIVE,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
@@ -73,12 +80,21 @@ export class DocumentsController {
   }
 
   @Delete(':documentId')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.IT_ADMIN)
-  delete(
+  @Roles(...HR_PERSONAL_EDIT_ROLES)
+  async delete(
     @Param('documentId') documentId: string,
-    @CurrentUser() user: { role: UserRole },
+    @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    assertCanEditPersonalInfo(user.role);
+    const canEdit = await this.permissionsService.userHasPermission(
+      user.id,
+      user.role,
+      Permission.EMPLOYEES_EDIT,
+    );
+    if (!canEdit) {
+      throw new ForbiddenException(
+        'You do not have permission to delete employee documents',
+      );
+    }
     return this.documentsService.delete(documentId);
   }
 }

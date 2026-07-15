@@ -774,7 +774,7 @@ export function EmployeeProfilePage() {
 
   const canEditEmployeeProfile = hasPermission('EMPLOYEES_EDIT')
 
-  const canManagePersonalData = isItTeam || canEditEmployeeProfile
+  const canManagePersonalData = isItTeam || isHrTeam || canEditEmployeeProfile
 
   const canEditJobInfo = isHrTeam || isItTeam || canEditEmployeeProfile
 
@@ -816,11 +816,13 @@ export function EmployeeProfilePage() {
         }}
       />
 
-      {(isItTeam || canEditEmployeeProfile) && (
+      {(isItTeam || isHrTeam || canEditEmployeeProfile) && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 no-print">
           {isItTeam
             ? 'IT access — you can edit personal information, job information, documents, and qualifications for this employee.'
-            : 'You have permission to edit this employee’s personal information and job information.'}
+            : isHrTeam
+              ? 'HR access — you can edit personal information, job information, documents, and qualifications for this employee.'
+              : 'You have permission to edit this employee’s personal information and job information.'}
         </div>
       )}
 
