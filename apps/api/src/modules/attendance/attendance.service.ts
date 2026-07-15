@@ -33,6 +33,7 @@ import {
   computeBiometricLateMinutes,
   computeBiometricOvertimeMinutes,
   determineBiometricCheckInStatus,
+  is24HourShift,
   toPakistanDateOnly,
 } from './attendance-biometric.util';
 import { applyDisciplineRules } from './discipline.helper';
@@ -97,18 +98,12 @@ export class AttendanceService {
     const branchId = device?.branchId ?? employee.currentBranchId;
     const checkTime = new Date(dto.timestamp);
     const dateOnly = toPakistanDateOnly(checkTime);
+    const twentyFourHour = is24HourShift(employee);
 
     let punchType = dto.punchType;
 
     if (!punchType) {
-      const openRegular = await this.findOpenRegularLog(
-        employee.id,
-        dateOnly,
-      );
-
-      if (openRegular) {
-        punchType = 'CHECKOUT';
-      } else {
+      if (twentyFourHour) {
         const todayLog = await this.prisma.attendanceLog.findFirst({
           where: {
             employeeId: employee.id,
@@ -116,11 +111,29 @@ export class AttendanceService {
             type: AttendanceLogType.REGULAR,
           },
         });
+        punchType = todayLog?.checkIn ? 'CHECKOUT' : 'CHECKIN';
+      } else {
+        const openRegular = await this.findOpenRegularLog(
+          employee.id,
+          dateOnly,
+        );
 
-        if (!todayLog?.checkIn) {
-          punchType = 'CHECKIN';
+        if (openRegular) {
+          punchType = 'CHECKOUT';
         } else {
-          punchType = 'OVERTIME_CHECKIN';
+          const todayLog = await this.prisma.attendanceLog.findFirst({
+            where: {
+              employeeId: employee.id,
+              date: dateOnly,
+              type: AttendanceLogType.REGULAR,
+            },
+          });
+
+          if (!todayLog?.checkIn) {
+            punchType = 'CHECKIN';
+          } else {
+            punchType = 'OVERTIME_CHECKIN';
+          }
         }
       }
     }
@@ -129,6 +142,13 @@ export class AttendanceService {
       punchType === 'CHECKOUT' || punchType === 'OVERTIME_CHECKIN';
 
     if (isCheckout) {
+      if (twentyFourHour) {
+        return {
+          type: 'CHECKOUT_IGNORED',
+          message: '24-hour shift - checkout not required',
+        };
+      }
+
       const openRegular = await this.findOpenRegularLog(
         employee.id,
         dateOnly,
@@ -223,19 +243,61 @@ export class AttendanceService {
       throw new BadRequestException('No open check-in found to check out');
     }
 
-    const lateMinutes = computeBiometricLateMinutes(checkTime, employee);
-    let status = determineBiometricCheckInStatus(lateMinutes, employee, 0);
+    const lateMinutes = twentyFourHour
+      ? 0
+      : computeBiometricLateMinutes(checkTime, employee);
+    let status = twentyFourHour
+      ? AttendanceStatus.PRESENT
+      : determineBiometricCheckInStatus(lateMinutes, employee, 0);
 
-    const existingPlaceholder = await this.prisma.attendanceLog.findFirst({
+    // Any REGULAR row for today (scheduler/import may have created one first)
+    const anyExisting = await this.prisma.attendanceLog.findFirst({
       where: {
         employeeId: employee.id,
         date: dateOnly,
-        checkIn: null,
+        type: AttendanceLogType.REGULAR,
       },
     });
 
-    if (existingPlaceholder) {
+    if (anyExisting) {
+      if (anyExisting.checkIn) {
+        throw new BadRequestException('Already checked in for today');
+      }
+
       const log = await this.prisma.$transaction(async (tx) => {
+        if (!twentyFourHour) {
+          const effectiveStatus = await applyDisciplineRules(
+            tx,
+            employee.id,
+            status,
+            dateOnly,
+            { lateMinutes },
+          );
+
+          if (effectiveStatus === AttendanceStatus.HALF_DAY) {
+            status = AttendanceStatus.HALF_DAY;
+          }
+        }
+
+        return tx.attendanceLog.update({
+          where: { id: anyExisting.id },
+          data: {
+            checkIn: checkTime,
+            status,
+            source: AttendanceSource.BIOMETRIC,
+            lateMinutes,
+            note: twentyFourHour
+              ? '24-hour shift check-in'
+              : anyExisting.note,
+          },
+        });
+      });
+
+      return { type: 'CHECKIN', log };
+    }
+
+    const log = await this.prisma.$transaction(async (tx) => {
+      if (!twentyFourHour) {
         const effectiveStatus = await applyDisciplineRules(
           tx,
           employee.id,
@@ -247,45 +309,6 @@ export class AttendanceService {
         if (effectiveStatus === AttendanceStatus.HALF_DAY) {
           status = AttendanceStatus.HALF_DAY;
         }
-
-        return tx.attendanceLog.update({
-          where: { id: existingPlaceholder.id },
-          data: {
-            checkIn: checkTime,
-            status,
-            source: AttendanceSource.BIOMETRIC,
-            lateMinutes,
-          },
-        });
-      });
-
-      return { type: 'CHECKIN', log };
-    }
-
-    const alreadyCheckedIn = await this.prisma.attendanceLog.findFirst({
-      where: {
-        employeeId: employee.id,
-        date: dateOnly,
-        checkIn: { not: null },
-        type: AttendanceLogType.REGULAR,
-      },
-    });
-
-    if (alreadyCheckedIn) {
-      throw new BadRequestException('Already checked in for today');
-    }
-
-    const log = await this.prisma.$transaction(async (tx) => {
-      const effectiveStatus = await applyDisciplineRules(
-        tx,
-        employee.id,
-        status,
-        dateOnly,
-        { lateMinutes },
-      );
-
-      if (effectiveStatus === AttendanceStatus.HALF_DAY) {
-        status = AttendanceStatus.HALF_DAY;
       }
 
       return tx.attendanceLog.create({
@@ -298,6 +321,7 @@ export class AttendanceService {
           status,
           lateMinutes,
           source: AttendanceSource.BIOMETRIC,
+          note: twentyFourHour ? '24-hour shift check-in' : undefined,
         },
       });
     });

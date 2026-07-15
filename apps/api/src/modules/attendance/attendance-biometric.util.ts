@@ -46,6 +46,47 @@ export function isOvernightShift(
   return parseTimeToMinutes(endTime) < parseTimeToMinutes(startTime);
 }
 
+/**
+ * 24-hour duty: check-in only (PRESENT / ABSENT). No late, half-day,
+ * uninformed-absent, or checkout.
+ */
+export function is24HourShift(employee: {
+  dutyStartTime?: string | null;
+  dutyEndTime?: string | null;
+  dutyTotalHours?: number | null;
+  shift?: { name?: string | null; startTime: string; endTime: string } | null;
+}): boolean {
+  if (employee.dutyTotalHours != null && employee.dutyTotalHours >= 20) {
+    return true;
+  }
+
+  if (employee.shift?.name?.toLowerCase().includes('24')) {
+    return true;
+  }
+
+  const start = employee.dutyStartTime ?? employee.shift?.startTime ?? null;
+  const end = employee.dutyEndTime ?? employee.shift?.endTime ?? null;
+  if (!start || !end) return false;
+
+  if (start === end) return true;
+
+  const startMin = parseTimeToMinutes(start);
+  const endMin = parseTimeToMinutes(end);
+  let duration = endMin - startMin;
+  if (duration <= 0) {
+    duration += 24 * 60;
+  }
+  return duration >= 20 * 60;
+}
+
+export function is24HourShiftRecord(shift: {
+  name?: string | null;
+  startTime: string;
+  endTime: string;
+}): boolean {
+  return is24HourShift({ shift });
+}
+
 export function computeBiometricLateMinutes(
   checkIn: Date,
   employee: {

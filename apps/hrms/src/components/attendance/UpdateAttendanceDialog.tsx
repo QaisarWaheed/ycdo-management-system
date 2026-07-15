@@ -33,12 +33,10 @@ import {
 import { formatDateTimeTime, toPakistanTime24 } from '@/lib/timeFormat'
 import { cn } from '@/lib/utils'
 import { ATTENDANCE_STATUSES, type AttendanceLog, type AttendanceStatus } from '@/types'
+import { attendanceStatusStyles } from '@/components/attendance/AttendanceStatusBadge'
 
 const statusStyles: Record<string, string> = {
-  PRESENT: 'bg-green-100 text-green-800 border-green-200',
-  LATE: 'bg-amber-100 text-amber-800 border-amber-200',
-  HALF_DAY: 'bg-blue-100 text-blue-800 border-blue-200',
-  UNMARKED: 'bg-slate-100 text-slate-700 border-slate-200',
+  ...attendanceStatusStyles,
 }
 
 function isPendingAttendanceStatus(status: string) {

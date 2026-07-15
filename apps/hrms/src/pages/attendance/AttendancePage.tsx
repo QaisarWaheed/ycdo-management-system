@@ -13,6 +13,7 @@ import {
   EmployeeSearchSelect,
 } from '@/components/common/EmployeeSearchSelect'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
+import { AttendanceStatusBadge } from '@/components/attendance/AttendanceStatusBadge'
 import {
   CheckInManualTab,
   CheckOutManualTab,
@@ -55,10 +56,10 @@ import { getLogLateMinutes } from '@/lib/attendanceUtils'
 import { formatShiftOptionLabel } from '@/lib/shiftFilterUtils'
 import { formatDateTimeTime, todayPakistan } from '@/lib/timeFormat'
 import { cn } from '@/lib/utils'
+import { MutualSwapTab } from '@/pages/attendance/MutualSwapTab'
 import {
   ATTENDANCE_STATUSES,
   type AttendanceLog,
-  type AttendanceStatus,
   type Employee,
   type RelieverSession,
 } from '@/types'
@@ -72,16 +73,6 @@ import {
 
 const ALL = 'ALL'
 
-const statusStyles: Record<AttendanceStatus, string> = {
-  PRESENT: 'bg-green-100 text-green-800 border-green-200',
-  ABSENT: 'bg-red-100 text-red-800 border-red-200',
-  UNMARKED: 'bg-slate-100 text-slate-700 border-slate-200',
-  LATE: 'bg-amber-100 text-amber-800 border-amber-200',
-  HALF_DAY: 'bg-blue-100 text-blue-800 border-blue-200',
-  ON_LEAVE: 'bg-purple-100 text-purple-800 border-purple-200',
-  UNINFORMED_ABSENT: 'bg-red-200 text-red-900 border-red-300',
-}
-
 function formatLogShift(log: AttendanceLog): string {
   const shift = log.employee?.shift
   if (!shift?.name || !shift?.startTime || !shift?.endTime) return '—'
@@ -90,17 +81,6 @@ function formatLogShift(log: AttendanceLog): string {
     startTime: shift.startTime,
     endTime: shift.endTime,
   })
-}
-
-function AttendanceStatusBadge({ status }: { status: string }) {
-  const style =
-    statusStyles[status as AttendanceStatus] ??
-    'bg-gray-100 text-gray-700 border-gray-200'
-  return (
-    <Badge variant="outline" className={style}>
-      {status.replace(/_/g, ' ')}
-    </Badge>
-  )
 }
 
 function formatDuration(minutes: number) {
@@ -447,7 +427,7 @@ function DailyLogTab({
                     {formatDateTimeTime(log.checkOut)}
                   </TableCell>
                   <TableCell>
-                    <AttendanceStatusBadge status={log.status} />
+                    <AttendanceStatusBadge status={log.status} note={log.note} />
                   </TableCell>
                   <TableCell
                     className={cn(
@@ -722,6 +702,7 @@ export function AttendancePage() {
         <TabsList>
           <TabsTrigger value="daily">Daily Log</TabsTrigger>
           <TabsTrigger value="reliever">Reliever</TabsTrigger>
+          <TabsTrigger value="mutual-swap">Mutual Swap</TabsTrigger>
           <TabsTrigger value="manual">Mark Manual</TabsTrigger>
         </TabsList>
 
@@ -731,6 +712,10 @@ export function AttendancePage() {
 
         <TabsContent value="reliever" className="mt-4">
           <RelieverSessionsTab />
+        </TabsContent>
+
+        <TabsContent value="mutual-swap" className="mt-4">
+          <MutualSwapTab />
         </TabsContent>
 
         <TabsContent value="manual" className="mt-4 space-y-4">

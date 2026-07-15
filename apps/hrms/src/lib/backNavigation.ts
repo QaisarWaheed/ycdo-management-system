@@ -15,6 +15,7 @@ const ROOT_PATHS = new Set([
   '/recruitment',
   '/broadcasts',
   '/rule-book',
+  '/branch-contacts',
   '/branches',
   '/settings/profile',
   '/shifts',

@@ -34,6 +34,7 @@ import { UserAccessModule } from './modules/user-access/user-access.module';
 import { UserPasswordsModule } from './modules/user-passwords/user-passwords.module';
 import { FaceSyncModule } from './modules/face-sync/face-sync.module';
 import { LocationValuesModule } from './modules/location-values/location-values.module';
+import { MutualSwapModule } from './modules/mutual-swap/mutual-swap.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -76,6 +77,7 @@ import { PrismaModule } from './prisma/prisma.module';
     UserAccessModule,
     FaceSyncModule,
     LocationValuesModule,
+    MutualSwapModule,
   ],
 })
 export class AppModule {}

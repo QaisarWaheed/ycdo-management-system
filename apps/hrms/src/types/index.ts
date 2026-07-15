@@ -515,6 +515,7 @@ export type AttendanceStatus =
   | 'HALF_DAY'
   | 'ON_LEAVE'
   | 'UNINFORMED_ABSENT'
+  | 'SWAP_COVERED'
 
 export type PayrollStatus = 'PENDING' | 'PROCESSED' | 'PAID'
 
@@ -616,6 +617,7 @@ export const ATTENDANCE_STATUSES: AttendanceStatus[] = [
   'HALF_DAY',
   'ON_LEAVE',
   'UNINFORMED_ABSENT',
+  'SWAP_COVERED',
 ]
 
 export const DEDUCTION_TYPES: { value: DeductionType; label: string }[] = [

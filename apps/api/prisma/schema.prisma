@@ -48,6 +48,7 @@ model Branch {
   biometricDevices  BiometricDevice[]
   adminUsers        User[]
   faceSyncResults   FaceSyncResult[]
+  mutualSwaps       MutualSwap[]
 }
 
 model BiometricDevice {
@@ -96,8 +97,9 @@ model Shift {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  branch    Branch?    @relation(fields: [branchId], references: [id])
-  employees Employee[]
+  branch      Branch?      @relation(fields: [branchId], references: [id])
+  employees   Employee[]
+  mutualSwaps MutualSwap[]
 
   @@unique([name, startTime, endTime])
 }
@@ -166,6 +168,8 @@ model Employee {
   advanceLoanRequests        AdvanceLoanRequest[]
   faceSyncJobs               FaceSyncJob[]
   onboardingApproval       EmployeeOnboardingApproval?
+  coveringSwaps              MutualSwap[] @relation("CoveringSwaps")
+  coveredSwaps               MutualSwap[] @relation("CoveredSwaps")
 
   // Additional personal info
   fatherStatus           String?
@@ -376,6 +380,7 @@ enum AttendanceStatus {
   ON_LEAVE
   HOLIDAY
   UNINFORMED_ABSENT
+  SWAP_COVERED
 }
 
 enum AttendanceSource {
@@ -727,6 +732,31 @@ model User {
   permissions    UserPermission[]
   submittedOnboardingApprovals EmployeeOnboardingApproval[] @relation("SubmittedOnboardingApprovals")
   reviewedOnboardingApprovals  EmployeeOnboardingApproval[] @relation("ReviewedOnboardingApprovals")
+  mutualSwapsCreated           MutualSwap[]
+}
+
+model MutualSwap {
+  id                 String   @id @default(uuid())
+  date               DateTime @db.Date
+
+  coveringEmployeeId String
+  coveringEmployee   Employee @relation("CoveringSwaps", fields: [coveringEmployeeId], references: [id])
+
+  coveredEmployeeId  String
+  coveredEmployee    Employee @relation("CoveredSwaps", fields: [coveredEmployeeId], references: [id])
+
+  coveredShiftId     String
+  coveredShift       Shift    @relation(fields: [coveredShiftId], references: [id])
+
+  branchId           String
+  branch             Branch   @relation(fields: [branchId], references: [id])
+
+  status             String   @default("ACTIVE")
+  note               String?
+  createdById        String
+  createdBy          User     @relation(fields: [createdById], references: [id])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model UserPermission {

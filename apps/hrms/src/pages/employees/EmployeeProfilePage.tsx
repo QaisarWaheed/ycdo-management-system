@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
+import { AttendanceStatusBadge } from '@/components/attendance/AttendanceStatusBadge'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
@@ -1505,7 +1506,12 @@ export function EmployeeProfilePage() {
                               ? formatDateTimeTime(log.checkOut)
                               : '—'}
                           </TableCell>
-                          <TableCell>{log.status}</TableCell>
+                          <TableCell>
+                            <AttendanceStatusBadge
+                              status={log.status}
+                              note={log.note}
+                            />
+                          </TableCell>
                           <TableCell>{log.lateMinutes ?? 0}</TableCell>
                           <TableCell>{log.source ?? '—'}</TableCell>
                         </TableRow>

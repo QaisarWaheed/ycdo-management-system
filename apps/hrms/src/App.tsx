@@ -27,6 +27,7 @@ import { SystemLoginsPage } from '@/pages/admin/SystemLoginsPage'
 import { ActivityTrailPage } from '@/pages/activity/ActivityTrailPage'
 import { ShiftsPage } from '@/pages/shifts/ShiftsPage'
 import { RuleBookPage } from '@/pages/rule-book/RuleBookPage'
+import { BranchContactsPage } from '@/pages/branch-contacts/BranchContactsPage'
 
 export default function App() {
   return (
@@ -151,6 +152,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <BranchesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/branch-contacts"
+        element={
+          <ProtectedRoute>
+            <BranchContactsPage />
           </ProtectedRoute>
         }
       />

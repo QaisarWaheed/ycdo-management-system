@@ -19,6 +19,7 @@ const pageTitles: Record<string, string> = {
   '/broadcasts': 'Broadcasts',
   '/rule-book': 'Rule Book & Flow',
   '/branches': 'Branches & Projects',
+  '/branch-contacts': 'Branch Contacts',
   '/settings/profile': 'Profile Settings',
 }
 

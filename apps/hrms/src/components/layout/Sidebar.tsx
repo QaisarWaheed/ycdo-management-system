@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   LogOut,
   MapPin,
+  Phone,
   Shield,
   ShieldCheck,
   Timer,
@@ -32,6 +33,7 @@ const allNavItems = [
   { to: '/attendance', label: 'Attendance', icon: Clock },
   { to: '/branch-change-request', label: 'Branch Change Request', icon: MapPin },
   { to: '/leave', label: 'Leave', icon: Calendar },
+  { to: '/branch-contacts', label: 'Branch Contacts', icon: Phone },
   { to: '/payroll', label: 'Payroll', icon: Wallet },
   { to: '/incentives', label: 'Incentives', icon: Gift },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
@@ -89,13 +91,13 @@ function navItemsForRole(role?: string) {
 
   if (role === 'ADMIN_MANAGER' || role === 'ADMIN_OFFICER') {
     return allNavItems.filter((item) =>
-      ['/dashboard', '/employees', '/attendance', '/leave'].includes(item.to),
+      ['/dashboard', '/employees', '/attendance', '/leave', '/branch-contacts'].includes(item.to),
     )
   }
 
   if (role === 'MEDICINE_MANAGER') {
     return allNavItems.filter((item) =>
-      ['/dashboard', '/employees', '/attendance'].includes(item.to),
+      ['/dashboard', '/employees', '/attendance', '/branch-contacts'].includes(item.to),
     )
   }
 
@@ -106,6 +108,7 @@ function navItemsForRole(role?: string) {
         '/employees',
         '/attendance',
         '/leave',
+        '/branch-contacts',
         '/letters',
         '/disciplinary',
       ].includes(item.to),
@@ -123,6 +126,7 @@ function navItemsForRole(role?: string) {
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/employees', label: 'Employees', icon: Users },
       { to: '/attendance', label: 'Attendance', icon: Clock },
+      { to: '/branch-contacts', label: 'Branch Contacts', icon: Phone },
       { to: '/payroll', label: 'Payroll', icon: Wallet },
       { to: '/shifts', label: 'Shifts', icon: Timer },
       { to: '/branches', label: 'Branches & Projects', icon: Building2 },

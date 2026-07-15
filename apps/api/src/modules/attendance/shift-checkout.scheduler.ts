@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  is24HourShift,
   isOvernightShift,
   resolveShiftEndTime,
   resolveShiftStartTime,
@@ -58,6 +59,10 @@ export class ShiftCheckoutScheduler {
 
     for (const log of openLogs) {
       if (!log.checkIn) continue;
+
+      if (is24HourShift(log.employee)) {
+        continue;
+      }
 
       const endTime = resolveShiftEndTime(log.employee);
       if (!endTime) continue;
