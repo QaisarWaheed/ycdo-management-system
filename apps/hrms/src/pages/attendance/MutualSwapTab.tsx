@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns'
 import { ArrowLeftRight, Plus } from 'lucide-react'
@@ -77,13 +77,62 @@ function CreateSwapDialog({
   const [coveredEmployeeId, setCoveredEmployeeId] = useState('')
   const [coveredEmployee, setCoveredEmployee] = useState<Employee | undefined>()
   const [coveringEmployeeId, setCoveringEmployeeId] = useState('')
+  const [eligibleCovering, setEligibleCovering] = useState<MutualSwapEmployee[]>(
+    [],
+  )
+  const [loadingEligible, setLoadingEligible] = useState(false)
   const [note, setNote] = useState('')
 
-  const { data: eligible = [], isLoading: loadingEligible } = useQuery({
-    queryKey: ['mutual-swap-eligible', coveredEmployeeId, date],
-    queryFn: () => mutualSwapApi.getEligibleCovering(coveredEmployeeId, date),
-    enabled: open && !!coveredEmployeeId,
-  })
+  useEffect(() => {
+    if (!open) return
+    setDate(defaultDate)
+  }, [open, defaultDate])
+
+  useEffect(() => {
+    if (!open || !coveredEmployeeId) {
+      setEligibleCovering([])
+      setLoadingEligible(false)
+      return
+    }
+
+    let cancelled = false
+    setLoadingEligible(true)
+
+    mutualSwapApi
+      .getEligibleCovering(coveredEmployeeId, date)
+      .then((employees) => {
+        // Debug: confirm eligible-covering payload reaches the UI
+        console.log('[MutualSwap] eligible-covering response', {
+          coveredEmployeeId,
+          date,
+          count: employees.length,
+          employees,
+        })
+        if (cancelled) return
+        setEligibleCovering(employees)
+        if (employees.length === 1) {
+          setCoveringEmployeeId(employees[0]!.id)
+        }
+      })
+      .catch((err: unknown) => {
+        console.error('[MutualSwap] eligible-covering failed', err)
+        if (cancelled) return
+        setEligibleCovering([])
+        toast({
+          title: 'Failed to load covering employees',
+          description:
+            err instanceof Error ? err.message : 'Could not load eligible staff',
+          variant: 'destructive',
+        })
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEligible(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, coveredEmployeeId, date])
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -100,6 +149,7 @@ function CreateSwapDialog({
       setCoveredEmployeeId('')
       setCoveredEmployee(undefined)
       setCoveringEmployeeId('')
+      setEligibleCovering([])
       setNote('')
     },
     onError: (err: Error) => {
@@ -113,6 +163,20 @@ function CreateSwapDialog({
 
   const canSubmit =
     !!coveringEmployeeId && !!coveredEmployeeId && !!date && !createMutation.isPending
+
+  const handleCoveredChange = (id: string, emp?: Employee) => {
+    // Always use employee UUID (id), never employeeCode
+    const employeeUuid = emp?.id ?? id
+    console.log('[MutualSwap] Employee Being Covered selected', {
+      id: employeeUuid,
+      employeeCode: emp?.employeeCode,
+      fullName: emp?.fullName,
+    })
+    setCoveredEmployeeId(employeeUuid)
+    setCoveredEmployee(emp)
+    setCoveringEmployeeId('')
+    setEligibleCovering([])
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -130,11 +194,7 @@ function CreateSwapDialog({
           <EmployeeSearchSelect
             label="Employee Being Covered"
             value={coveredEmployeeId}
-            onChange={(id, emp) => {
-              setCoveredEmployeeId(id)
-              setCoveredEmployee(emp)
-              setCoveringEmployeeId('')
-            }}
+            onChange={handleCoveredChange}
           />
           {coveredEmployee && (
             <p className="text-sm text-text-secondary">
@@ -162,17 +222,20 @@ function CreateSwapDialog({
               </p>
             ) : loadingEligible ? (
               <Skeleton className="h-10 w-full" />
-            ) : eligible.length === 0 ? (
+            ) : eligibleCovering.length === 0 ? (
               <p className="rounded-md border border-dashed p-3 text-sm text-amber-700">
                 No employees with consecutive shift found
               </p>
             ) : (
-              <Select value={coveringEmployeeId} onValueChange={setCoveringEmployeeId}>
+              <Select
+                value={coveringEmployeeId || undefined}
+                onValueChange={setCoveringEmployeeId}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select covering employee" />
                 </SelectTrigger>
                 <SelectContent>
-                  {eligible.map((emp) => (
+                  {eligibleCovering.map((emp) => (
                     <SelectItem key={emp.id} value={emp.id}>
                       {emp.fullName} ({emp.employeeCode}) —{' '}
                       {formatEmployeeShift(emp)}

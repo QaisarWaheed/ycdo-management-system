@@ -40,24 +40,34 @@ export interface MutualSwapFilters {
   employeeId?: string
 }
 
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : []
+}
+
 export const mutualSwapApi = {
   create: (payload: CreateMutualSwapPayload) =>
-    api
-      .post<{ swap: MutualSwapRecord; message: string }>('/mutual-swap', payload)
-      .then((r) => r.data),
+    api.post<
+      unknown,
+      { swap: MutualSwapRecord; message: string }
+    >('/mutual-swap', payload),
 
-  getEligibleCovering: (coveredEmployeeId: string, date?: string) =>
-    api
-      .get<MutualSwapEmployee[]>('/mutual-swap/eligible-covering', {
+  getEligibleCovering: async (coveredEmployeeId: string, date?: string) => {
+    const data = await api.get<unknown, MutualSwapEmployee[]>(
+      '/mutual-swap/eligible-covering',
+      {
         params: { coveredEmployeeId, date },
-      })
-      .then((r) => r.data),
+      },
+    )
+    return asArray<MutualSwapEmployee>(data)
+  },
 
-  getAll: (filters?: MutualSwapFilters) =>
-    api
-      .get<MutualSwapRecord[]>('/mutual-swap', { params: filters })
-      .then((r) => r.data),
+  getAll: async (filters?: MutualSwapFilters) => {
+    const data = await api.get<unknown, MutualSwapRecord[]>('/mutual-swap', {
+      params: filters,
+    })
+    return asArray<MutualSwapRecord>(data)
+  },
 
   cancel: (id: string) =>
-    api.patch<{ message: string }>(`/mutual-swap/${id}/cancel`).then((r) => r.data),
+    api.patch<unknown, { message: string }>(`/mutual-swap/${id}/cancel`),
 }

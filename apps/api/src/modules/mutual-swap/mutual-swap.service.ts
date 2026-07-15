@@ -10,43 +10,6 @@ import {
 } from '../attendance/attendance-late.util';
 import { CreateMutualSwapDto } from './mutual-swap.dto';
 
-const EXEMPT_DESIGNATIONS = [
-  'PHARMACIST',
-  'PHARMACY',
-  'RECEPTIONIST',
-  'RECEPTION',
-  'FRONT DESK',
-  'DISPENSER',
-];
-
-function normalizeDesignation(designation?: string | null): string {
-  return designation?.toUpperCase() || '';
-}
-
-function isExemptDesignation(designation?: string | null): boolean {
-  const normalized = normalizeDesignation(designation);
-  return EXEMPT_DESIGNATIONS.some((d) => normalized.includes(d));
-}
-
-function designationsAllowSwap(
-  coveringDesignation?: string | null,
-  coveredDesignation?: string | null,
-): boolean {
-  const coveringIsExempt = isExemptDesignation(coveringDesignation);
-  const coveredIsExempt = isExemptDesignation(coveredDesignation);
-
-  if (coveringIsExempt && coveredIsExempt) {
-    return true;
-  }
-  if (!coveringIsExempt && !coveredIsExempt) {
-    return (
-      normalizeDesignation(coveringDesignation) ===
-      normalizeDesignation(coveredDesignation)
-    );
-  }
-  return false;
-}
-
 /** Normalize "09:00:00" / "09:00" → "09:00" for exact string match. */
 function normalizeTime(time?: string | null): string {
   if (!time) return '';
@@ -64,41 +27,6 @@ export class MutualSwapService {
   private parseShiftTime(time: string, dateStr: string): Date {
     const date = dateStr.includes('T') ? dateStr.split('T')[0]! : dateStr;
     return parseAttendanceDateTime(`${date}T${time}`);
-  }
-
-  private assertDesignationSwap(
-    coveringEmployee: { fullName: string; currentDesignation?: string | null },
-    coveredEmployee: { fullName: string; currentDesignation?: string | null },
-  ): void {
-    const coveringDesignation = normalizeDesignation(
-      coveringEmployee.currentDesignation,
-    );
-    const coveredDesignation = normalizeDesignation(
-      coveredEmployee.currentDesignation,
-    );
-    const coveringIsExempt = isExemptDesignation(
-      coveringEmployee.currentDesignation,
-    );
-    const coveredIsExempt = isExemptDesignation(
-      coveredEmployee.currentDesignation,
-    );
-
-    if (coveringIsExempt && coveredIsExempt) {
-      return;
-    }
-
-    if (!coveringIsExempt && !coveredIsExempt) {
-      if (coveringDesignation !== coveredDesignation) {
-        throw new BadRequestException(
-          `Designation mismatch. ${coveringEmployee.fullName} is ${coveringEmployee.currentDesignation ?? '—'} but ${coveredEmployee.fullName} is ${coveredEmployee.currentDesignation ?? '—'}. Mutual swap requires same designation.`,
-        );
-      }
-      return;
-    }
-
-    throw new BadRequestException(
-      'Designation mismatch. Pharmacy and reception staff can only swap with other pharmacy/reception staff.',
-    );
   }
 
   async createSwap(dto: CreateMutualSwapDto, actingUserId: string) {
@@ -124,6 +52,15 @@ export class MutualSwapService {
       throw new BadRequestException('Covered employee has no shift assigned');
     }
 
+    if (
+      coveringEmployee.currentDepartmentId !==
+      coveredEmployee.currentDepartmentId
+    ) {
+      throw new BadRequestException(
+        'Department mismatch. Both employees must be in the same department.',
+      );
+    }
+
     const coveringEnd = normalizeTime(coveringEmployee.shift?.endTime);
     const coveredStart = normalizeTime(coveredEmployee.shift?.startTime);
 
@@ -132,8 +69,6 @@ export class MutualSwapService {
         `Shifts must be consecutive. ${coveringEmployee.fullName}'s shift ends at ${coveringEnd} but ${coveredEmployee.fullName}'s shift starts at ${coveredStart}`,
       );
     }
-
-    this.assertDesignationSwap(coveringEmployee, coveredEmployee);
 
     const dateOnly = this.parseDateOnly(dto.date);
 
@@ -301,11 +236,9 @@ export class MutualSwapService {
     return allEmployees.filter((emp) => {
       if (!emp.shift) return false;
       const empEndTime = normalizeTime(emp.shift.endTime);
-      if (empEndTime !== coveredStartTime) return false;
-      return designationsAllowSwap(
-        emp.currentDesignation,
-        coveredEmployee.currentDesignation,
-      );
+      const sameDept =
+        emp.currentDepartmentId === coveredEmployee.currentDepartmentId;
+      return empEndTime === coveredStartTime && sameDept;
     });
   }
 
