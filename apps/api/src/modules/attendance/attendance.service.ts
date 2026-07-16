@@ -96,7 +96,9 @@ export class AttendanceService {
       : null;
 
     const branchId = device?.branchId ?? employee.currentBranchId;
-    const checkTime = new Date(dto.timestamp);
+    // Agent sends PKT wall-clock time; naive ISO strings are parsed as +05:00
+    // so the stored UTC value is correct regardless of server timezone.
+    const checkTime = parseAttendanceDateTime(dto.timestamp);
     const dateOnly = toPakistanDateOnly(checkTime);
     const twentyFourHour = is24HourShift(employee);
 

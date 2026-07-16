@@ -1,4 +1,4 @@
-import { Camera } from 'lucide-react'
+import { Camera, Venus } from 'lucide-react'
 import { useState } from 'react'
 import { getEmployeeInitials } from '@/lib/employeeDisplayName'
 import { cn } from '@/lib/utils'
@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 interface EmployeeAvatarProps {
   fullName: string
   photoUrl?: string | null
+  hideProfilePhoto?: boolean
   size?: 'sm' | 'md' | 'lg'
   className?: string
   onPhotoClick?: () => void
@@ -20,18 +21,32 @@ const sizeClasses = {
 export function EmployeeAvatar({
   fullName,
   photoUrl,
+  hideProfilePhoto = false,
   size = 'md',
   className,
   onPhotoClick,
 }: EmployeeAvatarProps) {
   const [imgError, setImgError] = useState(false)
   const initials = getEmployeeInitials({ fullName })
-  const showPhoto = photoUrl && !imgError
+  const showPhoto = photoUrl && !imgError && !hideProfilePhoto
   const displayName = fullName.trim() || 'Employee'
 
   return (
     <div className={cn('relative inline-flex', className)}>
-      {showPhoto ? (
+      {hideProfilePhoto ? (
+        <div className="flex items-center gap-2">
+          <div
+            className={cn(
+              'flex items-center justify-center rounded-full bg-slate-200 text-slate-600',
+              sizeClasses[size],
+            )}
+            aria-label="Female Staff"
+          >
+            <Venus className={size === 'sm' ? 'h-5 w-5' : 'h-8 w-8'} />
+          </div>
+          <span className="text-sm font-medium text-slate-600">Female Staff</span>
+        </div>
+      ) : showPhoto ? (
         <img
           src={photoUrl}
           alt={displayName}
@@ -51,7 +66,7 @@ export function EmployeeAvatar({
           {initials}
         </div>
       )}
-      {onPhotoClick && (
+      {onPhotoClick && !hideProfilePhoto && (
         <button
           type="button"
           onClick={onPhotoClick}

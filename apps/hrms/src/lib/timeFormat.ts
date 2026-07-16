@@ -98,11 +98,24 @@ export function parseAMPM(timeStr: string): string {
   return `${String(h).padStart(2, '0')}:${m}`
 }
 
+/** Format a UTC ISO datetime as hh:mm AM/PM in Pakistan time (Asia/Karachi) */
+export function formatPKT(utcDate?: string | Date | null): string {
+  if (!utcDate) return '--'
+  const date = typeof utcDate === 'string' ? new Date(utcDate) : utcDate
+  if (Number.isNaN(date.getTime())) return '--'
+  return date.toLocaleTimeString('en-PK', {
+    timeZone: 'Asia/Karachi',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
 /** Format ISO datetime or HH:mm string for display (Pakistan time) */
 export function formatDateTimeTime(value?: string | null): string {
   if (!value) return '—'
   if (value.includes('T')) {
-    return to12Hour(toPakistanTime24(value))
+    return formatPKT(value)
   }
   if (/^\d{2}:\d{2}$/.test(value)) {
     return to12Hour(value)

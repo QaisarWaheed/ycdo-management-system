@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { formatPKT } from '@/lib/timeFormat'
 import {
   AlertTriangle,
   BarChart3,
@@ -323,8 +324,8 @@ function useReports(): ReportDef[] {
               : '—',
             branch: formatBranchLabel(l.branch),
             status: l.status,
-            checkIn: l.checkIn ? format(new Date(l.checkIn), 'HH:mm') : '—',
-            checkOut: l.checkOut ? format(new Date(l.checkOut), 'HH:mm') : '—',
+            checkIn: l.checkIn ? formatPKT(l.checkIn) : '—',
+            checkOut: l.checkOut ? formatPKT(l.checkOut) : '—',
           }))
         },
       },

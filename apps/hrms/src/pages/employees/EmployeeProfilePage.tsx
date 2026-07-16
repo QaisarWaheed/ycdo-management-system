@@ -965,6 +965,7 @@ export function EmployeeProfilePage() {
           <EmployeeAvatar
             fullName={employee.fullName}
             photoUrl={photoSrc}
+            hideProfilePhoto={employee.hideProfilePhoto}
             size="lg"
             onPhotoClick={
               canManagePersonalData
@@ -984,7 +985,7 @@ export function EmployeeProfilePage() {
             </Badge>
             <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-text-secondary">
               <Fingerprint className="h-3.5 w-3.5" />
-              <span>Biometric ID: {employee.biometricId ?? 'Not assigned'}</span>
+              <span>Biometric ID: {employee.biometricId ?? 'Auto-assigned'}</span>
             </p>
           </div>
           <p className="text-text-secondary">{employee.currentDesignation ?? '—'}</p>
@@ -1041,7 +1042,7 @@ export function EmployeeProfilePage() {
             )}
             {canManagePersonalData && (
               <>
-                {employee.photoUrl ? (
+                {employee.photoUrl || employee.hasPrivatePhoto ? (
                   <Button
                     variant="outline"
                     className="w-full"
@@ -2071,6 +2072,7 @@ export function EmployeeProfilePage() {
         employeeId={id}
         employeeName={employee.fullName}
         photoUrl={photoSrc}
+        hasPrivatePhoto={employee.hasPrivatePhoto}
         lastSyncedAt={
           faceSyncStats?.latestJob?.status === 'SYNCED'
             ? faceSyncStats.latestJob.updatedAt

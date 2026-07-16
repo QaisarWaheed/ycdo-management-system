@@ -34,6 +34,10 @@ export interface Employee {
   currentBranch?: { name: string; address?: string | null }
   currentDepartment?: { name: string }
   shift?: { name: string; startTime: string; endTime: string } | null
+  photoUrl?: string | null
+  privatePhotoUrl?: string | null
+  hideProfilePhoto?: boolean
+  hasPrivatePhoto?: boolean
   stipendRecords?: { basicStipend: number | string; effectiveFrom: string }[]
   documents?: EmployeeDocument[]
 }

@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { EmployeeStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { cloudinary } from '../../config/cloudinary.config';
 import { ReportResultDto } from './face-sync.dto';
 
 function extractFpid(biometricId: string | null | undefined): string | null {
@@ -30,10 +31,37 @@ export class FaceSyncService {
     return `${base.replace(/\/$/, '')}${path}`;
   }
 
+  private getSignedPrivatePhotoUrl(employeeId: string): string {
+    return cloudinary.utils.private_download_url(
+      `ycdo-hrms/private-biometric/private_${employeeId}`,
+      'jpg',
+      {
+        resource_type: 'image',
+        type: 'authenticated',
+        expires_at: Math.floor(Date.now() / 1000) + 10 * 60,
+        attachment: false,
+      },
+    );
+  }
+
   async createSyncJob(employeeId: string, photoUrl: string) {
-    const resolvedPhotoUrl = photoUrl.startsWith('/uploads')
-      ? this.resolvePublicUrl(photoUrl)
-      : photoUrl;
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { photoUrl: true, privatePhotoUrl: true },
+    });
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${employeeId} not found`);
+    }
+
+    const selectedPhotoUrl =
+      employee.privatePhotoUrl || photoUrl || employee.photoUrl;
+    if (!selectedPhotoUrl) {
+      throw new BadRequestException('Employee has no photo uploaded');
+    }
+
+    const resolvedPhotoUrl = selectedPhotoUrl.startsWith('/uploads')
+      ? this.resolvePublicUrl(selectedPhotoUrl)
+      : selectedPhotoUrl;
 
     return this.prisma.faceSyncJob.create({
       data: {
@@ -47,18 +75,26 @@ export class FaceSyncService {
   async createSyncJobForEmployee(employeeId: string) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
-      select: { id: true, photoUrl: true, fullName: true },
+      select: {
+        id: true,
+        photoUrl: true,
+        privatePhotoUrl: true,
+        fullName: true,
+      },
     });
 
     if (!employee) {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    if (!employee.photoUrl) {
+    if (!employee.privatePhotoUrl && !employee.photoUrl) {
       throw new BadRequestException('Employee has no photo uploaded');
     }
 
-    return this.createSyncJob(employeeId, employee.photoUrl);
+    return this.createSyncJob(
+      employeeId,
+      employee.privatePhotoUrl || employee.photoUrl!,
+    );
   }
 
   async getPendingJobs(deviceId: string) {
@@ -88,6 +124,7 @@ export class FaceSyncService {
             fullName: true,
             biometricId: true,
             photoUrl: true,
+            privatePhotoUrl: true,
           },
         },
       },
@@ -105,7 +142,10 @@ export class FaceSyncService {
     const formatted = uniqueJobs
       .map((job) => {
         const fpid = extractFpid(job.employee.biometricId);
-        const photoPath = job.photoUrl || job.employee.photoUrl;
+        const hasPrivatePhoto = Boolean(job.employee.privatePhotoUrl);
+        const photoPath = hasPrivatePhoto
+          ? this.getSignedPrivatePhotoUrl(job.employee.id)
+          : job.photoUrl || job.employee.photoUrl;
         if (!fpid || !photoPath) return null;
 
         return {
@@ -114,7 +154,9 @@ export class FaceSyncService {
           fullName: job.employee.fullName,
           biometricId: job.employee.biometricId,
           fpid,
-          photoUrl: this.resolvePublicUrl(photoPath),
+          photoUrl: hasPrivatePhoto
+            ? photoPath
+            : this.resolvePublicUrl(photoPath),
         };
       })
       .filter((job): job is NonNullable<typeof job> => job !== null);
@@ -194,7 +236,10 @@ export class FaceSyncService {
   async syncAllEmployees(_actingUserId: string) {
     const employees = await this.prisma.employee.findMany({
       where: {
-        photoUrl: { not: null },
+        OR: [
+          { privatePhotoUrl: { not: null } },
+          { photoUrl: { not: null } },
+        ],
         status: {
           in: [
             EmployeeStatus.ACTIVE,
@@ -203,7 +248,7 @@ export class FaceSyncService {
           ],
         },
       },
-      select: { id: true, photoUrl: true },
+      select: { id: true, photoUrl: true, privatePhotoUrl: true },
     });
 
     let created = 0;
@@ -211,8 +256,9 @@ export class FaceSyncService {
       const existing = await this.prisma.faceSyncJob.findFirst({
         where: { employeeId: emp.id, status: 'PENDING' },
       });
-      if (!existing && emp.photoUrl) {
-        await this.createSyncJob(emp.id, emp.photoUrl);
+      const photoUrl = emp.privatePhotoUrl || emp.photoUrl;
+      if (!existing && photoUrl) {
+        await this.createSyncJob(emp.id, photoUrl);
         created++;
       }
     }
@@ -263,6 +309,8 @@ export class FaceSyncService {
             fullName: true,
             employeeCode: true,
             photoUrl: true,
+            privatePhotoUrl: true,
+            hideProfilePhoto: true,
           },
         },
         results: {
@@ -273,24 +321,37 @@ export class FaceSyncService {
       },
     });
 
-    return jobs.map((job) => ({
-      id: job.id,
-      employeeId: job.employeeId,
-      photoUrl: job.photoUrl,
-      status: job.status,
-      createdAt: job.createdAt,
-      updatedAt: job.updatedAt,
-      employee: job.employee,
-      results: job.results,
-      successCount: job.results.filter((r) => r.status === 'SUCCESS').length,
-      deviceCount,
-    }));
+    return jobs.map((job) => {
+      const hasPrivatePhoto = Boolean(job.employee.privatePhotoUrl);
+      return {
+        id: job.id,
+        employeeId: job.employeeId,
+        photoUrl: hasPrivatePhoto ? null : job.photoUrl,
+        status: job.status,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+        employee: {
+          id: job.employee.id,
+          fullName: job.employee.fullName,
+          employeeCode: job.employee.employeeCode,
+          photoUrl: hasPrivatePhoto ? null : job.employee.photoUrl,
+          hideProfilePhoto: job.employee.hideProfilePhoto,
+          hasPrivatePhoto,
+        },
+        results: job.results,
+        successCount: job.results.filter((r) => r.status === 'SUCCESS').length,
+        deviceCount,
+      };
+    });
   }
 
   async countEmployeesWithPhotos() {
     return this.prisma.employee.count({
       where: {
-        photoUrl: { not: null },
+        OR: [
+          { privatePhotoUrl: { not: null } },
+          { photoUrl: { not: null } },
+        ],
         status: {
           in: [
             EmployeeStatus.ACTIVE,

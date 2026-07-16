@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ExternalLink, Pencil, X } from 'lucide-react'
+import { ExternalLink, Pencil, ShieldCheck, Upload, X } from 'lucide-react'
 import { employeesApi } from '@/api/endpoints/employees'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -33,6 +33,7 @@ export function MyProfilePage() {
   const [editing, setEditing] = useState(false)
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
+  const [privatePhoto, setPrivatePhoto] = useState<File | null>(null)
 
   const { data: employee, isLoading } = useQuery({
     queryKey: ['employee-profile', employeeId],
@@ -74,7 +75,38 @@ export function MyProfilePage() {
     },
   })
 
+  const privatePhotoMutation = useMutation({
+    mutationFn: () => {
+      if (!privatePhoto) throw new Error('Select a photo first')
+      return employeesApi.uploadPrivatePhoto(employeeId, privatePhoto)
+    },
+    onSuccess: () => {
+      toast({ title: 'Private biometric photo uploaded' })
+      setPrivatePhoto(null)
+      queryClient.invalidateQueries({ queryKey: ['employee-profile', employeeId] })
+    },
+    onError: (err: { response?: { data?: { message?: string } }; message?: string }) =>
+      toast({
+        title: 'Upload failed',
+        description: err.response?.data?.message ?? err.message,
+        variant: 'destructive',
+      }),
+  })
+
+  const photoPrivacyMutation = useMutation({
+    mutationFn: (hide: boolean) =>
+      employeesApi.setProfilePhotoHidden(employeeId, hide),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['employee-profile', employeeId] }),
+    onError: () =>
+      toast({
+        title: 'Could not update photo privacy',
+        variant: 'destructive',
+      }),
+  })
+
   const displayName = employee?.fullName ?? user?.email ?? 'Employee'
+  const isFemale = employee?.gender?.toUpperCase() === 'FEMALE'
 
   const initials = employee
     ? employee.fullName
@@ -144,6 +176,9 @@ export function MyProfilePage() {
         <TabsList>
           <TabsTrigger value="personal">Personal Info</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
+          {isFemale && (
+            <TabsTrigger value="privacy">Privacy & Biometric</TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="personal" className="mt-4">
@@ -360,6 +395,97 @@ export function MyProfilePage() {
             </Table>
           </div>
         </TabsContent>
+
+        {isFemale && (
+          <TabsContent value="privacy" className="mt-4">
+            <Card className="border-border shadow-sm">
+              <CardContent className="space-y-6 p-6">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
+                  <div>
+                    <h3 className="font-semibold">Private biometric photo</h3>
+                    <p className="text-sm text-text-secondary">
+                      This authenticated photo is visible only to you and is
+                      used solely for biometric face sync.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                  <Avatar className="h-24 w-24">
+                    {employee.privatePhotoUrl && (
+                      <AvatarImage
+                        src={employee.privatePhotoUrl}
+                        alt="Private biometric photo"
+                      />
+                    )}
+                    <AvatarFallback className="bg-slate-200 text-slate-600">
+                      {employee.hasPrivatePhoto ? 'Private' : 'No photo'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="private-photo">Upload private photo</Label>
+                      <Input
+                        id="private-photo"
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null
+                          if (file && file.size > 5 * 1024 * 1024) {
+                            toast({
+                              title: 'Photo must be 5MB or smaller',
+                              variant: 'destructive',
+                            })
+                            event.target.value = ''
+                            setPrivatePhoto(null)
+                            return
+                          }
+                          setPrivatePhoto(file)
+                        }}
+                      />
+                      <p className="mt-1 text-xs text-text-secondary">
+                        JPG or PNG, maximum 5MB. Use a clear, front-facing photo.
+                      </p>
+                    </div>
+                    <Button
+                      disabled={!privatePhoto || privatePhotoMutation.isPending}
+                      onClick={() => privatePhotoMutation.mutate()}
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      {employee.hasPrivatePhoto
+                        ? 'Replace Private Photo'
+                        : 'Upload Private Photo'}
+                    </Button>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 accent-primary"
+                    checked={Boolean(employee.hideProfilePhoto)}
+                    disabled={photoPrivacyMutation.isPending}
+                    onChange={(event) =>
+                      photoPrivacyMutation.mutate(event.target.checked)
+                    }
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      Hide my profile photo from other staff
+                    </span>
+                    <span className="block text-sm text-text-secondary">
+                      Other staff will see a Female Staff placeholder. Your
+                      private biometric photo is never shown to them.
+                    </span>
+                  </span>
+                </label>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

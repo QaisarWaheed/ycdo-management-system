@@ -24,16 +24,21 @@ import {
   ChangeStatusDto,
   CreateEmployeeDto,
   EmployeeQueryDto,
+  ToggleHideProfilePhotoDto,
   TransferDto,
   UpdateBranchDutyDto,
   UpdateEmployeeDto,
 } from './employees.dto';
 import { EmployeesService } from './employees.service';
 import { photoMulterConfig } from './photo.multer.config';
+import { privatePhotoMulterConfig } from './private-photo.multer.config';
 import { PermissionsService } from '../permissions/permissions.service';
 
 /** Any system role can hit these routes; EMPLOYEES_EDIT permission is enforced. */
 const EMPLOYEE_EDIT_ROLES = Object.values(UserRole);
+const BIOMETRIC_REFERENCE_ROLES = Object.values(UserRole).filter(
+  (role) => role !== UserRole.EMPLOYEE,
+);
 
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -136,6 +141,30 @@ export class EmployeesController {
     return this.employeesService.backfillUsers();
   }
 
+  @Get('biometric-id-stats')
+  @Roles(UserRole.IT_ADMIN, UserRole.SUPER_ADMIN)
+  getBiometricIdStats() {
+    return this.employeesService.getBiometricIdStats();
+  }
+
+  @Get('biometric-ids')
+  @Roles(...BIOMETRIC_REFERENCE_ROLES)
+  getBiometricIdReference() {
+    return this.employeesService.getBiometricIdReference();
+  }
+
+  @Post('generate-biometric-ids')
+  @Roles(UserRole.IT_ADMIN, UserRole.SUPER_ADMIN)
+  generateBiometricIds(@CurrentUser() user: { id: string }) {
+    return this.employeesService.generateAllBiometricIds(user.id);
+  }
+
+  @Post('sync-duty-times')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
+  syncDutyTimes() {
+    return this.employeesService.syncDutyTimesFromShifts();
+  }
+
   @Get(':id')
   @Roles(
     UserRole.SUPER_ADMIN,
@@ -153,12 +182,13 @@ export class EmployeesController {
   )
   findOne(
     @Param('id') id: string,
-    @CurrentUser() user: { role: UserRole; employeeId?: string | null },
+    @CurrentUser()
+    user: { id: string; role: UserRole; employeeId?: string | null },
   ) {
     if (user.role === UserRole.EMPLOYEE && user.employeeId !== id) {
       throw new ForbiddenException('Access denied');
     }
-    return this.employeesService.findOne(id);
+    return this.employeesService.findOne(id, user);
   }
 
   @Get(':id/working-hours')
@@ -267,6 +297,34 @@ export class EmployeesController {
       throw new BadRequestException('No photo uploaded');
     }
     return this.employeesService.uploadPhoto(id, file);
+  }
+
+  @Post(':id/private-photo')
+  @UseInterceptors(FileInterceptor('photo', privatePhotoMulterConfig))
+  @Roles(...EMPLOYEE_EDIT_ROLES)
+  uploadPrivatePhoto(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: { id: string },
+  ) {
+    if (!file) {
+      throw new BadRequestException('No private photo uploaded');
+    }
+    return this.employeesService.uploadPrivatePhoto(id, file, user.id);
+  }
+
+  @Patch(':id/hide-photo')
+  @Roles(...EMPLOYEE_EDIT_ROLES)
+  toggleHideProfilePhoto(
+    @Param('id') id: string,
+    @Body() dto: ToggleHideProfilePhotoDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.employeesService.toggleHideProfilePhoto(
+      id,
+      dto.hide,
+      user.id,
+    );
   }
 
   @Delete(':id')

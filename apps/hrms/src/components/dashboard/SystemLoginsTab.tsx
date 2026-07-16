@@ -215,6 +215,7 @@ export function SystemLoginsTab() {
               <TableRow>
                 <TableHead>Branch</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Biometric ID</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Password</TableHead>
                 <TableHead>Last Updated</TableHead>
@@ -225,7 +226,7 @@ export function SystemLoginsTab() {
               {isLoading ? (
                 [...Array(5)].map((_, i) => (
                   <TableRow key={i}>
-                    {[...Array(6)].map((__, j) => (
+                    {[...Array(7)].map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-5 w-full" />
                       </TableCell>
@@ -234,7 +235,7 @@ export function SystemLoginsTab() {
                 ))
               ) : paginated.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-text-secondary">
+                  <TableCell colSpan={7} className="text-center text-text-secondary">
                     No system login accounts found
                   </TableCell>
                 </TableRow>
@@ -247,6 +248,9 @@ export function SystemLoginsTab() {
                         : '—'}
                     </TableCell>
                     <TableCell className="font-medium">{record.user.email}</TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {record.user.employee?.biometricId ?? '—'}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline">
                         {record.user.role.replace(/_/g, ' ')}

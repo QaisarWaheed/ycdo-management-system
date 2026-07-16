@@ -228,6 +228,7 @@ export function UserPasswordsPage() {
               <TableRow>
                 <TableHead>Employee</TableHead>
                 <TableHead>Code</TableHead>
+                <TableHead>Biometric ID</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
@@ -240,7 +241,7 @@ export function UserPasswordsPage() {
               {isLoading ? (
                 [...Array(5)].map((_, i) => (
                   <TableRow key={i}>
-                    {[...Array(8)].map((__, j) => (
+                    {[...Array(9)].map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-5 w-full" />
                       </TableCell>
@@ -249,7 +250,7 @@ export function UserPasswordsPage() {
                 ))
               ) : paginated.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-text-secondary">
+                  <TableCell colSpan={9} className="text-center text-text-secondary">
                     No employee login accounts found
                   </TableCell>
                 </TableRow>
@@ -261,6 +262,9 @@ export function UserPasswordsPage() {
                     </TableCell>
                     <TableCell className="font-mono text-sm">
                       {record.user.employee?.employeeCode ?? '—'}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {record.user.employee?.biometricId ?? '—'}
                     </TableCell>
                     <TableCell>
                       {record.user.branch

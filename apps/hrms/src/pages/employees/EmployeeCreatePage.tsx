@@ -268,7 +268,6 @@ const step2BaseSchema = z.object({
   currentDepartmentId: z.string().min(1, 'Department is required'),
   currentDesignation: z.string().min(1, 'Designation is required'),
   joiningDate: z.string().min(1, 'Joining date is required'),
-  biometricId: z.string().optional(),
   dutyTotalHours: z.number().int().min(1).max(24).optional(),
   dutyStartTime: z.string().optional(),
   dutyEndTime: z.string().optional(),
@@ -692,7 +691,6 @@ function EmployeeCreatePageForm() {
       currentDepartmentId: '',
       currentDesignation: '',
       joiningDate: '',
-      biometricId: '',
       dutyTotalHours: undefined,
       dutyStartTime: '',
       dutyEndTime: '',
@@ -786,7 +784,6 @@ function EmployeeCreatePageForm() {
         currentDepartmentId: '',
         currentDesignation: prefill.currentDesignation ?? '',
         joiningDate: '',
-        biometricId: '',
         dutyTotalHours: undefined,
         dutyStartTime: '',
         dutyEndTime: '',
@@ -895,7 +892,6 @@ function EmployeeCreatePageForm() {
         ...step2Data,
         ...step3Data,
         staffType,
-        biometricId: step2Data.biometricId || undefined,
         dutyStartTime: step2Data.dutyStartTime || undefined,
         dutyEndTime: step2Data.dutyEndTime || undefined,
         dutyTotalHours: step2Data.dutyTotalHours || undefined,
@@ -1787,19 +1783,10 @@ function EmployeeCreatePageForm() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form2.control}
-                name="biometricId"
-                render={({ field }) => (
-                  <FormItem className="sm:col-span-2">
-                    <FormLabel>Biometric ID</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2 sm:col-span-2">
+                <FormLabel>Biometric ID</FormLabel>
+                <Input value="Auto-assigned after creation" disabled readOnly />
+              </div>
             </div>
             <div className="flex justify-between">
               <Button type="button" variant="outline" onClick={() => setStep(1)}>

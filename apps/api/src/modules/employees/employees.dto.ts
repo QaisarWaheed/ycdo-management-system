@@ -11,6 +11,7 @@ import {
 import { Type } from 'class-transformer';
 import {
   IsBooleanString,
+  IsBoolean,
   IsDateString,
   IsEmail,
   IsEnum,
@@ -77,10 +78,6 @@ export class CreateEmployeeDto {
   @IsString()
   @IsNotEmpty()
   currentDesignation: string;
-
-  @IsOptional()
-  @IsString()
-  biometricId?: string;
 
   @IsOptional()
   @IsUUID()
@@ -259,6 +256,11 @@ export class CreateEmployeeDto {
 }
 
 export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {}
+
+export class ToggleHideProfilePhotoDto {
+  @IsBoolean()
+  hide: boolean;
+}
 
 export class ChangeStatusDto {
   @IsEnum(EmployeeStatus)

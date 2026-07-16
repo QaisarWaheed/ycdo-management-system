@@ -59,6 +59,7 @@ import {
 } from '@/components/dashboard/DesignationEmployeesDialog'
 import { FaceSyncTab } from '@/components/dashboard/FaceSyncTab'
 import { SystemLoginsTab } from '@/components/dashboard/SystemLoginsTab'
+import { BiometricIdManagement } from '@/components/dashboard/BiometricIdManagement'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { UppercaseInput } from '@/components/common/UppercaseInput'
 import { shiftsApi } from '@/api/endpoints/shifts'
@@ -2206,6 +2207,7 @@ export function ItAdminDashboard() {
               <TabsTrigger value="designations">Designations</TabsTrigger>
               <TabsTrigger value="employees">Employees</TabsTrigger>
               <TabsTrigger value="system-logins">System Logins</TabsTrigger>
+              <TabsTrigger value="biometric-ids">Biometric IDs</TabsTrigger>
               <TabsTrigger value="face-sync">Face Sync</TabsTrigger>
             </TabsList>
             <TabsContent value="projects" className="mt-4">
@@ -2222,6 +2224,9 @@ export function ItAdminDashboard() {
             </TabsContent>
             <TabsContent value="system-logins" className="mt-4">
               <SystemLoginsTab />
+            </TabsContent>
+            <TabsContent value="biometric-ids" className="mt-4">
+              <BiometricIdManagement />
             </TabsContent>
             <TabsContent value="face-sync" className="mt-4">
               <FaceSyncTab />

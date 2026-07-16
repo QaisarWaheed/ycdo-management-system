@@ -220,6 +220,9 @@ export interface Employee {
   policeStation?: string | null
   bloodGroup?: string | null
   photoUrl?: string | null
+  privatePhotoUrl?: string | null
+  hideProfilePhoto?: boolean
+  hasPrivatePhoto?: boolean
   status: EmployeeStatus
   joiningDate: string
   currentDesignation: string | null

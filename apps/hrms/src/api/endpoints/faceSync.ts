@@ -23,7 +23,7 @@ export interface FaceSyncStats {
 export interface FaceSyncJob {
   id: string
   employeeId: string
-  photoUrl: string
+  photoUrl: string | null
   status: FaceSyncJobStatus
   createdAt: string
   updatedAt: string
@@ -34,6 +34,8 @@ export interface FaceSyncJob {
     fullName: string
     employeeCode: string
     photoUrl?: string | null
+    hideProfilePhoto?: boolean
+    hasPrivatePhoto?: boolean
   }
   results: Array<{
     id: string

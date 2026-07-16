@@ -15,10 +15,14 @@ import {
 } from './recruitment.dto';
 import * as bcrypt from 'bcryptjs';
 import { generateEmployeeCode } from '../employees/employee-code.helper';
+import { EmployeesService } from '../employees/employees.service';
 
 @Injectable()
 export class RecruitmentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private employeesService: EmployeesService,
+  ) {}
 
   async submit(dto: SubmitApplicationDto) {
     const existing = await this.prisma.jobApplication.findFirst({
@@ -250,7 +254,14 @@ export class RecruitmentService {
       return employee;
     });
 
-    return { employee: result, temporaryPassword: employeeCode };
+    const biometricId = await this.employeesService.autoAssignBiometricId(
+      result.id,
+    );
+
+    return {
+      employee: { ...result, biometricId: String(biometricId) },
+      temporaryPassword: employeeCode,
+    };
   }
 
   private generatePlaceholderCnic(applicationId: string): string {

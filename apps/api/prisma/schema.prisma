@@ -181,6 +181,8 @@ model Employee {
   spouseName             String?
   spouseContactNumber    String?
   photoUrl               String?
+  privatePhotoUrl        String?
+  hideProfilePhoto       Boolean        @default(false)
   caste                  String?
   domicile               String?
   currentAddress         String?

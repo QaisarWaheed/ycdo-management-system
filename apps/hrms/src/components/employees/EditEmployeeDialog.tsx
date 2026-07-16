@@ -70,7 +70,6 @@ const editSchema = z.object({
   emergencyContactNumber: phoneOptional,
   spouseName: z.string().optional(),
   spouseContactNumber: phoneOptional,
-  biometricId: z.string().optional(),
   cnic: z
     .string()
     .optional()
@@ -94,7 +93,6 @@ function buildPayload(
     const payload: Record<string, unknown> = {}
     if (data.joiningDate) payload.joiningDate = data.joiningDate
     if (data.currentDesignation) payload.currentDesignation = data.currentDesignation
-    if (data.biometricId) payload.biometricId = data.biometricId
     if (data.cnic) payload.cnic = data.cnic
     return payload
   }
@@ -163,7 +161,6 @@ function employeeToFormValues(employee: Employee): EditFormValues {
     emergencyContactNumber: employee.emergencyContactNumber ?? '',
     spouseName: employee.spouseName ?? '',
     spouseContactNumber: employee.spouseContactNumber ?? '',
-    biometricId: employee.biometricId ?? '',
     cnic: employee.cnic ?? '',
     joiningDate: toDateInput(employee.joiningDate),
     currentDesignation: employee.currentDesignation ?? '',
@@ -562,19 +559,14 @@ export function EditEmployeeDialog({
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="biometricId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Biometric ID</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="space-y-2">
+                  <FormLabel>Biometric ID</FormLabel>
+                  <Input
+                    value={employee.biometricId ?? 'Auto-assigned'}
+                    disabled
+                    readOnly
+                  />
+                </div>
                 {canEditCnic && (
                   <FormField
                     control={form.control}

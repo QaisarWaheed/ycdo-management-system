@@ -20,6 +20,7 @@ interface FaceSyncDialogProps {
   employeeId: string
   employeeName: string
   photoUrl?: string | null
+  hasPrivatePhoto?: boolean
   lastSyncedAt?: string | null
   onSuccess?: () => void
 }
@@ -30,6 +31,7 @@ export function FaceSyncDialog({
   employeeId,
   employeeName,
   photoUrl,
+  hasPrivatePhoto = false,
   lastSyncedAt,
   onSuccess,
 }: FaceSyncDialogProps) {
@@ -68,7 +70,14 @@ export function FaceSyncDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {photoUrl && (
+          {hasPrivatePhoto ? (
+            <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-800">
+              Private photo on file ✓
+              <span className="mt-1 block font-normal">
+                Using private biometric photo for face sync. Preview is hidden.
+              </span>
+            </div>
+          ) : photoUrl ? (
             <div className="flex justify-center">
               <img
                 src={photoUrl}
@@ -76,7 +85,7 @@ export function FaceSyncDialog({
                 className="h-32 w-32 rounded-lg border object-cover"
               />
             </div>
-          )}
+          ) : null}
 
           <p className="text-sm text-text-secondary">
             {lastSyncedAt

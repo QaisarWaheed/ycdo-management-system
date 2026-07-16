@@ -187,7 +187,9 @@ export function FaceSyncTab() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {resolveFileUrl(job.photoUrl) ? (
+                      {job.employee.hasPrivatePhoto ? (
+                        <Badge variant="outline">Private</Badge>
+                      ) : resolveFileUrl(job.photoUrl) ? (
                         <img
                           src={resolveFileUrl(job.photoUrl)}
                           alt=""

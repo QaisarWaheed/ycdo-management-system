@@ -71,6 +71,7 @@ export class UserPasswordsService {
               select: {
                 fullName: true,
                 employeeCode: true,
+                biometricId: true,
               },
             },
             branch: {

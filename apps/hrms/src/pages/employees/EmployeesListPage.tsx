@@ -13,6 +13,7 @@ import {
 } from '@/components/employees/EmployeeFiltersBar'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,7 @@ import { formatEmployeeShiftDisplay } from '@/lib/dutyTimes'
 import { sortEmployeesByHierarchy } from '@/lib/employeeHierarchy'
 import { isMedicineManagerRole } from '@/lib/medicineScope'
 import { withReturnTo } from '@/lib/backNavigation'
+import { resolveFileUrl } from '@/lib/resolveFileUrl'
 
 export function EmployeesListPage() {
   const navigate = useNavigate()
@@ -197,6 +199,7 @@ export function EmployeesListPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Code</TableHead>
+              <TableHead>Biometric ID</TableHead>
               <TableHead>Full Name</TableHead>
               <TableHead>Designation</TableHead>
               <TableHead>Department</TableHead>
@@ -210,7 +213,7 @@ export function EmployeesListPage() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(8)].map((__, j) => (
+                  {[...Array(9)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -219,7 +222,7 @@ export function EmployeesListPage() {
               ))
             ) : isError ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-48 text-center">
+                <TableCell colSpan={9} className="h-48 text-center">
                   <div className="flex flex-col items-center gap-2 text-red-600">
                     <Users className="h-10 w-10 opacity-40" />
                     <p>Failed to load employees</p>
@@ -232,7 +235,7 @@ export function EmployeesListPage() {
               </TableRow>
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-48 text-center">
+                <TableCell colSpan={9} className="h-48 text-center">
                   <div className="flex flex-col items-center gap-2 text-text-secondary">
                     <Users className="h-10 w-10 opacity-40" />
                     <p>No employees found</p>
@@ -247,8 +250,22 @@ export function EmployeesListPage() {
                       {emp.employeeCode}
                     </Badge>
                   </TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {emp.biometricId ?? '—'}
+                  </TableCell>
                   <TableCell>
-                    <EmployeeNameLink employee={emp} className="font-semibold" />
+                    <div className="flex items-center gap-3">
+                      <EmployeeAvatar
+                        fullName={emp.fullName}
+                        photoUrl={resolveFileUrl(emp.photoUrl)}
+                        hideProfilePhoto={emp.hideProfilePhoto}
+                        size="sm"
+                      />
+                      <EmployeeNameLink
+                        employee={emp}
+                        className="font-semibold"
+                      />
+                    </div>
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {emp.currentDesignation ?? '—'}

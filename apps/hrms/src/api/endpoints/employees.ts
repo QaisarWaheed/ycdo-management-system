@@ -21,6 +21,27 @@ export interface EmployeeStats {
   unassigned: number
 }
 
+export interface BiometricIdStats {
+  total: number
+  assigned: number
+  unassigned: number
+}
+
+export interface GenerateBiometricIdsResult {
+  message: string
+  total: number
+  range: string
+}
+
+export interface BiometricIdReference {
+  employeeCode: string
+  fullName: string
+  biometricId: string
+  currentDesignation: string | null
+  currentBranchName: string | null
+  status: string
+}
+
 export const employeesApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, Employee[]>('/employees', { params }),
@@ -29,6 +50,14 @@ export const employeesApi = {
       params: { ...params, count: 'true' },
     }),
   getStats: () => api.get<unknown, EmployeeStats>('/employees/stats'),
+  getBiometricIdStats: () =>
+    api.get<unknown, BiometricIdStats>('/employees/biometric-id-stats'),
+  getBiometricIds: () =>
+    api.get<unknown, BiometricIdReference[]>('/employees/biometric-ids'),
+  generateBiometricIds: () =>
+    api.post<unknown, GenerateBiometricIdsResult>(
+      '/employees/generate-biometric-ids',
+    ),
   getFilterOptions: () =>
     api.get<unknown, { designations: string[]; districts: string[] }>(
       '/employees/filter-options',

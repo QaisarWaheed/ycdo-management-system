@@ -9,6 +9,7 @@ import {
   Clock,
   Database,
   FileText,
+  Fingerprint,
   Gift,
   History,
   LayoutDashboard,
@@ -60,6 +61,12 @@ const shiftsNavItem = {
   to: '/shifts',
   label: 'Shifts',
   icon: Timer,
+}
+
+const biometricIdsNavItem = {
+  to: '/biometric-ids',
+  label: 'Biometric IDs',
+  icon: Fingerprint,
 }
 
 const ruleBookNavItem = {
@@ -142,7 +149,18 @@ function navItemsForRole(role?: string) {
 export function Sidebar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const navItems = [...navItemsForRole(user?.role), ruleBookNavItem]
+  const roleNavItems = navItemsForRole(user?.role)
+  const employeeIndex = roleNavItems.findIndex((item) => item.to === '/employees')
+  const insertionIndex =
+    employeeIndex >= 0
+      ? employeeIndex + 1
+      : Math.max(1, roleNavItems.findIndex((item) => item.to === '/dashboard') + 1)
+  const navItems = [
+    ...roleNavItems.slice(0, insertionIndex),
+    biometricIdsNavItem,
+    ...roleNavItems.slice(insertionIndex),
+    ruleBookNavItem,
+  ]
 
   const handleLogout = () => {
     logout()

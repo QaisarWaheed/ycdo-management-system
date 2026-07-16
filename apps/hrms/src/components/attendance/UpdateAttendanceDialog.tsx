@@ -34,6 +34,8 @@ import { formatDateTimeTime, toPakistanTime24 } from '@/lib/timeFormat'
 import { cn } from '@/lib/utils'
 import { ATTENDANCE_STATUSES, type AttendanceLog, type AttendanceStatus } from '@/types'
 import { attendanceStatusStyles } from '@/components/attendance/AttendanceStatusBadge'
+import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
+import { resolveFileUrl } from '@/lib/resolveFileUrl'
 
 const statusStyles: Record<string, string> = {
   ...attendanceStatusStyles,
@@ -177,6 +179,14 @@ export function UpdateAttendanceDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {employeeDetail && (
+            <EmployeeAvatar
+              fullName={employeeDetail.fullName}
+              photoUrl={resolveFileUrl(employeeDetail.photoUrl)}
+              hideProfilePhoto={employeeDetail.hideProfilePhoto}
+              size="sm"
+            />
+          )}
           <div className="rounded-lg border border-border bg-surface p-3 text-sm space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-text-secondary">Current Status:</span>

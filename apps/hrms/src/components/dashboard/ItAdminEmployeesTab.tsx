@@ -119,6 +119,7 @@ export function ItAdminEmployeesTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Code</TableHead>
+              <TableHead>Biometric ID</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Dept</TableHead>
@@ -131,7 +132,7 @@ export function ItAdminEmployeesTab() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(7)].map((__, j) => (
+                  {[...Array(8)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -140,7 +141,7 @@ export function ItAdminEmployeesTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-text-secondary">
+                <TableCell colSpan={8} className="text-text-secondary">
                   No employees found
                 </TableCell>
               </TableRow>
@@ -149,6 +150,9 @@ export function ItAdminEmployeesTab() {
                 <TableRow key={emp.id}>
                   <TableCell className="font-mono text-sm">
                     {emp.employeeCode}
+                  </TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {emp.biometricId ?? '—'}
                   </TableCell>
                   <TableCell>
                     <EmployeeNameLink employee={emp} />

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -27,6 +28,7 @@ import {
   isCloudinaryEnabled,
 } from '../../config/cloudinary.config';
 import { LettersService } from '../letters/letters.service';
+import { FaceSyncService } from '../face-sync/face-sync.service';
 import {
   isWithinDutyWindow,
   resolveDutyEndTime,
@@ -64,6 +66,7 @@ export class EmployeesService {
   constructor(
     private prisma: PrismaService,
     private lettersService: LettersService,
+    private faceSyncService: FaceSyncService,
   ) {}
 
   async create(dto: CreateEmployeeDto, actingUser?: ActingUser) {
@@ -91,17 +94,6 @@ export class EmployeesService {
       }
     }
 
-    if (dto.biometricId) {
-      const existingBiometric = await this.prisma.employee.findUnique({
-        where: { biometricId: dto.biometricId },
-      });
-      if (existingBiometric) {
-        throw new ConflictException(
-          'Employee with this biometric ID already exists',
-        );
-      }
-    }
-
     if (dto.shiftId) {
       await this.ensureShiftExists(dto.shiftId);
     }
@@ -117,18 +109,30 @@ export class EmployeesService {
 
     let syncedDutyStart = dto.dutyStartTime;
     let syncedDutyEnd = dto.dutyEndTime;
+    let syncedDutyHours = dto.dutyTotalHours;
     if (resolvedShiftId) {
       const shift = await this.prisma.shift.findUnique({
         where: { id: resolvedShiftId },
       });
       if (shift) {
-        syncedDutyStart = syncedDutyStart ?? shift.startTime;
-        syncedDutyEnd = syncedDutyEnd ?? shift.endTime;
+        // Explicit shift selection wins over manually entered duty times
+        if (dto.shiftId) {
+          syncedDutyStart = shift.startTime;
+          syncedDutyEnd = shift.endTime;
+          syncedDutyHours =
+            this.calculateShiftHours(shift.startTime, shift.endTime) ??
+            syncedDutyHours;
+        } else {
+          syncedDutyStart = syncedDutyStart ?? shift.startTime;
+          syncedDutyEnd = syncedDutyEnd ?? shift.endTime;
+          syncedDutyHours =
+            syncedDutyHours ??
+            this.calculateShiftHours(syncedDutyStart, syncedDutyEnd);
+        }
       }
     }
 
     const employeeCode = await generateEmployeeCode(this.prisma);
-    const biometricId = dto.biometricId ?? (await this.generateBiometricId());
     const joiningDate = new Date(dto.joiningDate);
     const {
       basicStipend,
@@ -178,11 +182,11 @@ export class EmployeesService {
         data: {
           ...employeeData,
           email: loginEmail,
-          biometricId,
           staffType,
           shiftId: resolvedShiftId,
           dutyStartTime: syncedDutyStart,
           dutyEndTime: syncedDutyEnd,
+          dutyTotalHours: syncedDutyHours,
           employeeCode,
           joiningDate,
           dateOfBirth: new Date(dto.dateOfBirth),
@@ -247,6 +251,8 @@ export class EmployeesService {
 
       return created;
     });
+
+    await this.autoAssignBiometricId(employee.id);
 
     const result = await this.prisma.employee.findUnique({
       where: { id: employee.id },
@@ -401,6 +407,47 @@ export class EmployeesService {
     return `${day}/${month}/${year}`;
   }
 
+  private privatePhotoPublicId(employeeId: string): string {
+    return `ycdo-hrms/private-biometric/private_${employeeId}`;
+  }
+
+  private getSignedPrivatePhotoUrl(employeeId: string): string {
+    return cloudinary.utils.private_download_url(
+      this.privatePhotoPublicId(employeeId),
+      'jpg',
+      {
+        resource_type: 'image',
+        type: 'authenticated',
+        expires_at: Math.floor(Date.now() / 1000) + 10 * 60,
+        attachment: false,
+      },
+    );
+  }
+
+  private filterEmployeeForRole<
+    T extends {
+      id: string;
+      photoUrl?: string | null;
+      privatePhotoUrl?: string | null;
+      hideProfilePhoto?: boolean;
+      user?: { id: string } | null;
+    },
+  >(employee: T, currentUserId?: string, _currentUserRole?: string) {
+    const isOwner = employee.user?.id === currentUserId;
+    const hasPrivatePhoto = Boolean(employee.privatePhotoUrl);
+
+    return {
+      ...employee,
+      photoUrl:
+        employee.hideProfilePhoto && !isOwner ? null : employee.photoUrl,
+      privatePhotoUrl:
+        isOwner && hasPrivatePhoto
+          ? this.getSignedPrivatePhotoUrl(employee.id)
+          : undefined,
+      hasPrivatePhoto,
+    };
+  }
+
   async findAll(filters: EmployeeFilters, actingUser?: ActingUser) {
     enforceBranchScope(filters, actingUser);
 
@@ -533,6 +580,11 @@ export class EmployeesService {
         joiningDate: true,
         dutyStartTime: true,
         dutyEndTime: true,
+        gender: true,
+        photoUrl: true,
+        privatePhotoUrl: true,
+        hideProfilePhoto: true,
+        user: { select: { id: true } },
         currentBranch: {
           select: {
             id: true,
@@ -550,12 +602,21 @@ export class EmployeesService {
       },
     });
 
-    return employees.sort((a, b) => {
-      const aPriority = getHierarchyPriority(a.currentDesignation);
-      const bPriority = getHierarchyPriority(b.currentDesignation);
-      if (aPriority !== bPriority) return aPriority - bPriority;
-      return (a.fullName ?? '').localeCompare(b.fullName ?? '');
-    });
+    return employees
+      .sort((a, b) => {
+        const aPriority = getHierarchyPriority(a.currentDesignation);
+        const bPriority = getHierarchyPriority(b.currentDesignation);
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return (a.fullName ?? '').localeCompare(b.fullName ?? '');
+      })
+      .map((employee) => {
+        const { user: _user, ...filtered } = this.filterEmployeeForRole(
+          employee,
+          actingUser?.id,
+          actingUser?.role,
+        );
+        return filtered;
+      });
   }
 
   async getStats() {
@@ -640,7 +701,7 @@ export class EmployeesService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, actingUser?: Pick<ActingUser, 'id' | 'role'>) {
     const isEmployeeCode = id.startsWith('YCDO-');
     const employee = await this.prisma.employee.findUnique({
       where: isEmployeeCode ? { employeeCode: id } : { id },
@@ -674,7 +735,6 @@ export class EmployeesService {
             isActive: true,
             branchId: true,
             branch: { select: { name: true, address: true } },
-            passwordRecord: { select: { plainText: true } },
           },
         },
       },
@@ -684,7 +744,11 @@ export class EmployeesService {
       throw new NotFoundException(`Employee not found`);
     }
 
-    return employee;
+    return this.filterEmployeeForRole(
+      employee,
+      actingUser?.id,
+      actingUser?.role,
+    );
   }
 
   async update(
@@ -714,7 +778,6 @@ export class EmployeesService {
       data.joiningDate = new Date(sanitizedDto.joiningDate);
     }
     if (sanitizedDto.gender !== undefined) data.gender = sanitizedDto.gender;
-    if (sanitizedDto.biometricId !== undefined) data.biometricId = sanitizedDto.biometricId;
     if (sanitizedDto.currentDesignation !== undefined) {
       data.currentDesignation = normalizeDesignationName(
         sanitizedDto.currentDesignation,
@@ -779,17 +842,6 @@ export class EmployeesService {
       data.cnic = sanitizedDto.cnic || null;
     }
 
-    if (sanitizedDto.biometricId) {
-      const existingBiometric = await this.prisma.employee.findFirst({
-        where: { biometricId: sanitizedDto.biometricId, NOT: { id } },
-      });
-      if (existingBiometric) {
-        throw new ConflictException(
-          'Employee with this biometric ID already exists',
-        );
-      }
-    }
-
     if (
       sanitizedDto.dutyStartTime !== undefined ||
       sanitizedDto.dutyEndTime !== undefined ||
@@ -810,6 +862,12 @@ export class EmployeesService {
           data.dutyStartTime =
             sanitizedDto.dutyStartTime ?? shift.startTime;
           data.dutyEndTime = sanitizedDto.dutyEndTime ?? shift.endTime;
+          data.dutyTotalHours =
+            sanitizedDto.dutyTotalHours ??
+            this.calculateShiftHours(
+              data.dutyStartTime as string,
+              data.dutyEndTime as string,
+            );
         }
       }
     }
@@ -820,6 +878,10 @@ export class EmployeesService {
         data.shift = { connect: { id: shift.id } };
         data.dutyStartTime = shift.startTime;
         data.dutyEndTime = shift.endTime;
+        data.dutyTotalHours = this.calculateShiftHours(
+          shift.startTime,
+          shift.endTime,
+        );
       } else {
         data.shift = { disconnect: true };
       }
@@ -940,6 +1002,51 @@ export class EmployeesService {
     }
 
     return shift;
+  }
+
+  private calculateShiftHours(
+    startTime?: string | null,
+    endTime?: string | null,
+  ): number | undefined {
+    const start = parseInt(startTime?.split(':')[0] ?? '', 10);
+    const end = parseInt(endTime?.split(':')[0] ?? '', 10);
+    if (Number.isNaN(start) || Number.isNaN(end)) return undefined;
+    let hours = end - start;
+    if (hours <= 0) hours += 24; // cross midnight
+    return hours;
+  }
+
+  async syncDutyTimesFromShifts() {
+    const employees = await this.prisma.employee.findMany({
+      where: { shiftId: { not: null } },
+      select: {
+        id: true,
+        shift: { select: { startTime: true, endTime: true } },
+      },
+    });
+
+    let updated = 0;
+    for (const emp of employees) {
+      if (!emp.shift) continue;
+      await this.prisma.employee.update({
+        where: { id: emp.id },
+        data: {
+          dutyStartTime: emp.shift.startTime,
+          dutyEndTime: emp.shift.endTime,
+          dutyTotalHours: this.calculateShiftHours(
+            emp.shift.startTime,
+            emp.shift.endTime,
+          ),
+        },
+      });
+      updated++;
+    }
+
+    return {
+      message: `Synced duty times for ${updated} employees`,
+      updated,
+      total: employees.length,
+    };
   }
 
   private async assignShiftFromDuty(
@@ -1185,6 +1292,12 @@ export class EmployeesService {
           if (shift) {
             data.dutyStartTime = nextStart ?? shift.startTime;
             data.dutyEndTime = nextEnd ?? shift.endTime;
+            data.dutyTotalHours =
+              nextHours ??
+              this.calculateShiftHours(
+                data.dutyStartTime as string,
+                data.dutyEndTime as string,
+              );
           }
         }
       }
@@ -1238,6 +1351,104 @@ export class EmployeesService {
     });
 
     return updated;
+  }
+
+  async uploadPrivatePhoto(
+    id: string,
+    file: Express.Multer.File,
+    actingUserId: string,
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        gender: true,
+        user: { select: { id: true } },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${id} not found`);
+    }
+    if (employee.user?.id !== actingUserId) {
+      throw new ForbiddenException(
+        'Only the employee can upload their private biometric photo',
+      );
+    }
+    if (String(employee.gender).toUpperCase() !== 'FEMALE') {
+      throw new BadRequestException(
+        'Private biometric photos are available only to female staff',
+      );
+    }
+    if (!isCloudinaryEnabled()) {
+      throw new BadRequestException(
+        'Private biometric photo storage is not configured',
+      );
+    }
+
+    const tempFile = path.join(
+      os.tmpdir(),
+      `private-${id}-${Date.now()}.upload`,
+    );
+
+    try {
+      fs.writeFileSync(tempFile, file.buffer);
+      const upload = await cloudinary.uploader.upload(tempFile, {
+        folder: 'ycdo-hrms/private-biometric',
+        public_id: `private_${id}`,
+        overwrite: true,
+        invalidate: true,
+        resource_type: 'image',
+        type: 'authenticated',
+        format: 'jpg',
+        transformation: [
+          { width: 1200, height: 1200, crop: 'limit' },
+          { quality: 'auto:good' },
+        ],
+      });
+
+      await this.prisma.employee.update({
+        where: { id },
+        data: { privatePhotoUrl: upload.secure_url },
+      });
+      await this.faceSyncService.createSyncJob(id, upload.secure_url);
+
+      return {
+        id,
+        hasPrivatePhoto: true,
+        privatePhotoUrl: this.getSignedPrivatePhotoUrl(id),
+      };
+    } finally {
+      if (fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+      }
+    }
+  }
+
+  async toggleHideProfilePhoto(
+    id: string,
+    hide: boolean,
+    actingUserId: string,
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id },
+      select: { user: { select: { id: true } } },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${id} not found`);
+    }
+    if (employee.user?.id !== actingUserId) {
+      throw new ForbiddenException(
+        'Only the employee can change profile photo privacy',
+      );
+    }
+
+    return this.prisma.employee.update({
+      where: { id },
+      data: { hideProfilePhoto: hide },
+      select: { id: true, hideProfilePhoto: true },
+    });
   }
 
   private async uploadPhotoToCloudinary(
@@ -1341,15 +1552,134 @@ export class EmployeesService {
       .map(({ attendanceLogs: _a, leaveRecords: _l, ...emp }) => emp);
   }
 
-  private async generateBiometricId(): Promise<string> {
-    const lastEmployee = await this.prisma.employee.findFirst({
-      orderBy: { createdAt: 'desc' },
+  async getNextBiometricId(): Promise<number> {
+    const employees = await this.prisma.employee.findMany({
       where: { biometricId: { not: null } },
+      select: { biometricId: true },
     });
-    const lastNum = lastEmployee?.biometricId
-      ? parseInt(lastEmployee.biometricId.replace('BIO', ''), 10)
-      : 0;
-    return `BIO${String(lastNum + 1).padStart(4, '0')}`;
+
+    const maxId = employees.reduce((max, employee) => {
+      const value = Number.parseInt(employee.biometricId || '0', 10);
+      return Number.isNaN(value) ? max : Math.max(max, value);
+    }, 0);
+
+    const nextId = maxId + 1;
+    if (nextId > 99999) {
+      throw new BadRequestException(
+        'Biometric ID limit reached (max 99999)',
+      );
+    }
+    return nextId;
+  }
+
+  async autoAssignBiometricId(employeeId: string): Promise<number> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const nextId = await this.getNextBiometricId();
+      try {
+        await this.prisma.employee.update({
+          where: { id: employeeId },
+          data: { biometricId: String(nextId) },
+        });
+        return nextId;
+      } catch (error) {
+        const isDuplicate =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002';
+        if (!isDuplicate || attempt === 4) {
+          throw error;
+        }
+      }
+    }
+
+    throw new ConflictException('Could not allocate a unique biometric ID');
+  }
+
+  async getBiometricIdStats() {
+    const [total, assigned] = await this.prisma.$transaction([
+      this.prisma.employee.count(),
+      this.prisma.employee.count({
+        where: { biometricId: { not: null } },
+      }),
+    ]);
+
+    return {
+      total,
+      assigned,
+      unassigned: total - assigned,
+    };
+  }
+
+  async getBiometricIdReference() {
+    const employees = await this.prisma.employee.findMany({
+      where: { biometricId: { not: null } },
+      select: {
+        employeeCode: true,
+        fullName: true,
+        biometricId: true,
+        currentDesignation: true,
+        status: true,
+        currentBranch: { select: { name: true } },
+      },
+      orderBy: [{ currentBranchId: 'asc' }, { fullName: 'asc' }],
+    });
+
+    return employees.map(({ currentBranch, ...employee }) => ({
+      ...employee,
+      currentBranchName: currentBranch?.name ?? null,
+    }));
+  }
+
+  async generateAllBiometricIds(actingUserId: string) {
+    const total = await this.prisma.employee.count();
+    if (total > 99999) {
+      throw new BadRequestException(
+        'Biometric ID limit reached (max 99999)',
+      );
+    }
+
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.employee.updateMany({
+          data: { biometricId: null },
+        });
+
+        const employees = await tx.employee.findMany({
+          orderBy: [{ joiningDate: 'asc' }, { createdAt: 'asc' }],
+          select: { id: true },
+        });
+
+        let counter = 1;
+        for (const employee of employees) {
+          await tx.employee.update({
+            where: { id: employee.id },
+            data: { biometricId: String(counter) },
+          });
+          counter += 1;
+        }
+
+        return {
+          message: `Biometric IDs generated for ${employees.length} employees`,
+          total: employees.length,
+          range: employees.length > 0 ? `1 - ${counter - 1}` : 'No employees',
+        };
+      },
+      { timeout: 60_000 },
+    );
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actingUserId,
+        action: 'BIOMETRIC_IDS_REGENERATED',
+        entity: 'Employee',
+        entityId: 'ALL',
+        changes: {
+          total: result.total,
+          range: result.range,
+        },
+      },
+    });
+
+    return result;
   }
 
   private calculateLumpsumTotal(params: {
