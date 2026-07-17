@@ -223,7 +223,10 @@ export function Sidebar() {
         <div className="mb-3 px-2">
           <p className="truncate text-xs text-white/60">{user?.email}</p>
           <p className="text-xs text-white/50">
-            {user?.role?.replace(/_/g, ' ')}
+            {(user?.roles?.length ? user.roles : [user?.role])
+              .filter(Boolean)
+              .map((role) => String(role).replace(/_/g, ' '))
+              .join(' · ')}
           </p>
         </div>
         <Button

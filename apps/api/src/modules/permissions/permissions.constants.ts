@@ -101,3 +101,10 @@ export function roleDefaultAllows(
   const allowedRoles = ROLE_PERMISSION_DEFAULTS[permission] ?? [];
   return allowedRoles.includes(role);
 }
+
+export function rolesDefaultAllow(
+  roles: UserRole[],
+  permission: Permission,
+): boolean {
+  return roles.some((role) => roleDefaultAllows(role, permission));
+}

@@ -20,6 +20,8 @@ export interface UserAccessRecord {
   id: string
   email: string
   role: string
+  roles?: string[]
+  additionalRoles?: string[]
   isActive: boolean
   branchId?: string | null
   employeeId?: string | null
@@ -130,6 +132,7 @@ export const userAccessApi = {
     data: {
       isActive?: boolean
       role?: string
+      additionalRoles?: string[]
       branchId?: string | null
       permissions?: PermissionOverrideInput[]
     },

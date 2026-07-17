@@ -28,11 +28,13 @@ import {
   TransferDto,
   UpdateBranchDutyDto,
   UpdateEmployeeDto,
+  UpdateEmployeeRolesDto,
 } from './employees.dto';
 import { EmployeesService } from './employees.service';
 import { photoMulterConfig } from './photo.multer.config';
 import { privatePhotoMulterConfig } from './private-photo.multer.config';
 import { PermissionsService } from '../permissions/permissions.service';
+import { ROLE_ASSIGNERS } from '../../common/user-roles.util';
 
 /** Any system role can hit these routes; EMPLOYEES_EDIT permission is enforced. */
 const EMPLOYEE_EDIT_ROLES = Object.values(UserRole);
@@ -183,9 +185,17 @@ export class EmployeesController {
   findOne(
     @Param('id') id: string,
     @CurrentUser()
-    user: { id: string; role: UserRole; employeeId?: string | null },
+    user: {
+      id: string;
+      role: UserRole;
+      roles?: UserRole[];
+      employeeId?: string | null;
+    },
   ) {
-    if (user.role === UserRole.EMPLOYEE && user.employeeId !== id) {
+    const roles = user.roles?.length ? user.roles : [user.role];
+    const portalOnly =
+      roles.length === 1 && roles[0] === UserRole.EMPLOYEE;
+    if (portalOnly && user.employeeId !== id) {
       throw new ForbiddenException('Access denied');
     }
     return this.employeesService.findOne(id, user);
@@ -311,6 +321,16 @@ export class EmployeesController {
       throw new BadRequestException('No private photo uploaded');
     }
     return this.employeesService.uploadPrivatePhoto(id, file, user.id);
+  }
+
+  @Patch(':id/roles')
+  @Roles(...ROLE_ASSIGNERS)
+  updateEmployeeRoles(
+    @Param('id') id: string,
+    @Body() dto: UpdateEmployeeRolesDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.employeesService.updateEmployeeRoles(id, dto, user);
   }
 
   @Patch(':id/hide-photo')

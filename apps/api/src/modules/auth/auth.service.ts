@@ -6,9 +6,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { User } from '@prisma/client';
+import { User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  buildEffectiveRoles,
+  canAccessHrms,
+} from '../../common/user-roles.util';
 import { PermissionsService } from '../permissions/permissions.service';
 import {
   ChangePasswordDto,
@@ -30,6 +34,7 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
+      include: { additionalRoles: { select: { role: true } } },
     });
 
     if (!user) {
@@ -45,10 +50,15 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (dto.client === 'hrms' && user.employeeId) {
-      throw new ForbiddenException(
-        'Employee accounts cannot sign in to HRMS. Use the Employee Portal.',
-      );
+    const roles = buildEffectiveRoles(user.role, user.additionalRoles);
+
+    if (dto.client === 'hrms') {
+      // Employee-linked accounts may use HRMS only when they hold a staff/system role.
+      if (user.employeeId && !canAccessHrms(roles)) {
+        throw new ForbiddenException(
+          'Employee accounts without staff roles cannot sign in to HRMS. Use the Employee Portal.',
+        );
+      }
     }
 
     if (dto.client === 'portal' && !user.employeeId) {
@@ -66,6 +76,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      roles,
       employeeId: user.employeeId,
       branchId: user.branchId,
     };
@@ -78,6 +89,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
+        roles,
         employeeId: user.employeeId,
         branchId: user.branchId,
         permissions,
@@ -87,8 +99,9 @@ export class AuthService {
 
   async getMe(userId: string) {
     const user = await this.validateUser(userId);
+    const roles = await this.permissionsService.getUserEffectiveRoles(userId);
     const permissions = await this.getGrantedPermissions(user.id, user.role);
-    return { ...user, permissions };
+    return { ...user, roles, permissions };
   }
 
   private async getGrantedPermissions(

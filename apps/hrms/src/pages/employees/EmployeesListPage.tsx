@@ -14,6 +14,10 @@ import {
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
+import {
+  getEmployeeSystemRoles,
+  RoleBadges,
+} from '@/components/employees/RoleBadges'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -202,6 +206,7 @@ export function EmployeesListPage() {
               <TableHead>Biometric ID</TableHead>
               <TableHead>Full Name</TableHead>
               <TableHead>Designation</TableHead>
+              <TableHead>System Roles</TableHead>
               <TableHead>Department</TableHead>
               <TableHead>Shift</TableHead>
               <TableHead>Status</TableHead>
@@ -222,7 +227,7 @@ export function EmployeesListPage() {
               ))
             ) : isError ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-48 text-center">
+                <TableCell colSpan={10} className="h-48 text-center">
                   <div className="flex flex-col items-center gap-2 text-red-600">
                     <Users className="h-10 w-10 opacity-40" />
                     <p>Failed to load employees</p>
@@ -235,7 +240,7 @@ export function EmployeesListPage() {
               </TableRow>
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-48 text-center">
+                <TableCell colSpan={10} className="h-48 text-center">
                   <div className="flex flex-col items-center gap-2 text-text-secondary">
                     <Users className="h-10 w-10 opacity-40" />
                     <p>No employees found</p>
@@ -269,6 +274,9 @@ export function EmployeesListPage() {
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {emp.currentDesignation ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    <RoleBadges roles={getEmployeeSystemRoles(emp)} />
                   </TableCell>
                   <TableCell>
                     <div>

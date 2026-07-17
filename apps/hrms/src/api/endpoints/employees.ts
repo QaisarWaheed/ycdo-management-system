@@ -86,6 +86,10 @@ export const employeesApi = {
     api.get<unknown, WorkingHoursSummary>(`/employees/${id}/working-hours`),
   updateBranchDuty: (id: string, data: Record<string, unknown>) =>
     api.patch(`/employees/${id}/branch-duty`, data),
+  updateRoles: (
+    id: string,
+    data: { primaryRole?: string; additionalRoles: string[] },
+  ) => api.patch<unknown, Employee>(`/employees/${id}/roles`, data),
   getActiveShift: (params: {
     date: string
     time: string

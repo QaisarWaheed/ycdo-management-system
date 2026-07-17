@@ -13,6 +13,8 @@ import {
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { RoleBadges } from '@/components/employees/RoleBadges'
+import { RoleMultiSelect } from '@/components/employees/RoleMultiSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -85,6 +87,7 @@ function ManageAccessDialog({
     Record<AppPermission, PermissionMode>
   >({} as Record<AppPermission, PermissionMode>)
   const [role, setRole] = useState('')
+  const [additionalRoles, setAdditionalRoles] = useState<string[]>([])
   const [isActive, setIsActive] = useState(true)
   const [branchId, setBranchId] = useState('')
 
@@ -107,6 +110,7 @@ function ManageAccessDialog({
   useEffect(() => {
     if (!user || !open) return
     setRole(user.role)
+    setAdditionalRoles(user.additionalRoles ?? [])
     setIsActive(user.isActive)
     setBranchId(user.branchId ?? '')
     const modes = {} as Record<AppPermission, PermissionMode>
@@ -119,6 +123,7 @@ function ManageAccessDialog({
   useEffect(() => {
     if (!open) {
       setRole('')
+      setAdditionalRoles([])
       setNewPassword('')
       setPermissionModes({} as Record<AppPermission, PermissionMode>)
     }
@@ -135,6 +140,7 @@ function ManageAccessDialog({
 
       return userAccessApi.update(userId!, {
         role,
+        additionalRoles: additionalRoles.filter((value) => value !== role),
         isActive,
         branchId: branchId || null,
         permissions,
@@ -207,20 +213,17 @@ function ManageAccessDialog({
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select value={role} onValueChange={setRole}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(user.assignableRoles ?? meta?.assignableRoles ?? []).map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {r.replace(/_/g, ' ')}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-2 sm:col-span-2">
+                <RoleMultiSelect
+                  primaryRole={role}
+                  additionalRoles={additionalRoles}
+                  assignableRoles={
+                    user.assignableRoles ?? meta?.assignableRoles ?? []
+                  }
+                  onPrimaryChange={setRole}
+                  onAdditionalChange={setAdditionalRoles}
+                  disabled={saveMutation.isPending}
+                />
               </div>
 
               <div className="space-y-2">
@@ -795,9 +798,13 @@ export function LoginAccessPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">
-                        {record.role.replace(/_/g, ' ')}
-                      </Badge>
+                      <RoleBadges
+                        roles={
+                          record.roles?.length
+                            ? record.roles
+                            : [record.role]
+                        }
+                      />
                     </TableCell>
                     <TableCell>
                       <Badge

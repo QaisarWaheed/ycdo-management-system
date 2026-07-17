@@ -732,9 +732,22 @@ model User {
   leaveApprovals LeaveApproval[] @relation("LeaveApprovals")
   passwordRecord UserPassword?
   permissions    UserPermission[]
+  additionalRoles UserAdditionalRole[]
   submittedOnboardingApprovals EmployeeOnboardingApproval[] @relation("SubmittedOnboardingApprovals")
   reviewedOnboardingApprovals  EmployeeOnboardingApproval[] @relation("ReviewedOnboardingApprovals")
   mutualSwapsCreated           MutualSwap[]
+}
+
+model UserAdditionalRole {
+  id        String   @id @default(uuid())
+  userId    String
+  role      UserRole
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@index([userId])
 }
 
 model MutualSwap {

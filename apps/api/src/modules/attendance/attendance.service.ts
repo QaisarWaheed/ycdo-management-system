@@ -54,6 +54,7 @@ import { haversineMeters } from './geo.helper';
 import { BRANCH_LABEL_SELECT } from '../../common/branch-select.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { enforceBranchScope } from '../../common/branch-scope.util';
+import { buildEffectiveRoles } from '../../common/user-roles.util';
 import {
   assertEmployeeInMedicineScope,
   isMedicineManagerRole,
@@ -1004,6 +1005,12 @@ export class AttendanceService {
             shift: {
               select: { name: true, startTime: true, endTime: true },
             },
+            user: {
+              select: {
+                role: true,
+                additionalRoles: { select: { role: true } },
+              },
+            },
           },
         },
         branch: { select: BRANCH_LABEL_SELECT },
@@ -1011,7 +1018,28 @@ export class AttendanceService {
       orderBy: { date: 'desc' },
     });
 
-    return logs.sort((a, b) => {
+    return logs
+      .map((log) => ({
+        ...log,
+        employee: log.employee
+          ? {
+              ...log.employee,
+              user: log.employee.user
+                ? {
+                    role: log.employee.user.role,
+                    additionalRoles: log.employee.user.additionalRoles.map(
+                      (entry) => entry.role,
+                    ),
+                    roles: buildEffectiveRoles(
+                      log.employee.user.role,
+                      log.employee.user.additionalRoles,
+                    ),
+                  }
+                : null,
+            }
+          : log.employee,
+      }))
+      .sort((a, b) => {
       const aPriority = getHierarchyPriority(
         a.employee?.currentDesignation ?? '',
       );

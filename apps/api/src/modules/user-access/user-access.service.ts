@@ -13,6 +13,7 @@ import {
   roleDefaultAllows,
 } from '../permissions/permissions.constants';
 import { PermissionsService } from '../permissions/permissions.service';
+import { buildEffectiveRoles } from '../../common/user-roles.util';
 import {
   CreateSystemLoginDto,
   ResetLoginPasswordDto,
@@ -123,9 +124,21 @@ export class UserAccessService {
         permissions: {
           select: { permission: true, granted: true },
         },
+        additionalRoles: {
+          select: { role: true },
+        },
       },
       orderBy: [{ email: 'asc' }],
-    });
+    }).then((users) =>
+      users.map((user) => ({
+        ...user,
+        additionalRoles: user.additionalRoles.map((entry) => entry.role),
+        roles: buildEffectiveRoles(
+          user.role,
+          user.additionalRoles.map((entry) => entry.role),
+        ),
+      })),
+    );
   }
 
   async getSummary() {
@@ -245,6 +258,9 @@ export class UserAccessService {
         permissions: {
           select: { permission: true, granted: true },
         },
+        additionalRoles: {
+          select: { role: true },
+        },
       },
     });
 
@@ -252,11 +268,16 @@ export class UserAccessService {
       throw new NotFoundException(`User with id ${userId} not found`);
     }
 
+    const additionalRoles = user.additionalRoles.map((entry) => entry.role);
+    const roles = buildEffectiveRoles(user.role, additionalRoles);
+
     const effectivePermissions =
       await this.permissionsService.getEffectivePermissions(user.id, user.role);
 
     return {
       ...user,
+      additionalRoles,
+      roles,
       effectivePermissions,
       assignableRoles: this.assignableRoles(actingRole, user),
     };
@@ -284,10 +305,20 @@ export class UserAccessService {
     if (dto.role) {
       this.assertAssignableRole(dto.role, actingRole, user);
     }
+    if (dto.additionalRoles?.length) {
+      for (const role of dto.additionalRoles) {
+        this.assertAssignableRole(role, actingRole, user);
+      }
+    }
 
     if (userId === actingUserId && dto.isActive === false) {
       throw new BadRequestException('You cannot disable your own account');
     }
+
+    const nextPrimary = dto.role ?? user.role;
+    const nextAdditional = dto.additionalRoles
+      ? [...new Set(dto.additionalRoles)].filter((role) => role !== nextPrimary)
+      : undefined;
 
     await this.prisma.$transaction(async (tx) => {
       if (
@@ -303,6 +334,15 @@ export class UserAccessService {
             ...(dto.branchId !== undefined ? { branchId: dto.branchId } : {}),
           },
         });
+      }
+
+      if (nextAdditional !== undefined) {
+        await tx.userAdditionalRole.deleteMany({ where: { userId } });
+        if (nextAdditional.length) {
+          await tx.userAdditionalRole.createMany({
+            data: nextAdditional.map((role) => ({ userId, role })),
+          });
+        }
       }
 
       if (dto.permissions?.length) {
@@ -339,6 +379,7 @@ export class UserAccessService {
           changes: {
             isActive: dto.isActive,
             role: dto.role,
+            additionalRoles: nextAdditional,
             branchId: dto.branchId,
             permissions: dto.permissions?.map((p) => ({
               permission: p.permission,

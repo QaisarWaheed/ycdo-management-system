@@ -51,7 +51,13 @@ import {
   TransferDto,
   UpdateBranchDutyDto,
   UpdateEmployeeDto,
+  UpdateEmployeeRolesDto,
 } from './employees.dto';
+import {
+  buildEffectiveRoles,
+  canAssignRoles,
+} from '../../common/user-roles.util';
+import { PermissionsService } from '../permissions/permissions.service';
 
 export type EmployeeFilters = EmployeeQueryDto;
 
@@ -67,7 +73,30 @@ export class EmployeesService {
     private prisma: PrismaService,
     private lettersService: LettersService,
     private faceSyncService: FaceSyncService,
+    private permissionsService: PermissionsService,
   ) {}
+
+  private serializeUserRoles(
+    user?: {
+      id: string;
+      role?: UserRole;
+      email?: string;
+      isActive?: boolean;
+      branchId?: string | null;
+      branch?: unknown;
+      additionalRoles?: Array<{ role: UserRole }>;
+    } | null,
+  ) {
+    if (!user?.role) return user ?? null;
+    const additional = (user.additionalRoles ?? []).map((entry) => entry.role);
+    const roles = buildEffectiveRoles(user.role, additional);
+    const { additionalRoles: _ignored, ...rest } = user;
+    return {
+      ...rest,
+      additionalRoles: additional,
+      roles,
+    };
+  }
 
   async create(dto: CreateEmployeeDto, actingUser?: ActingUser) {
     this.validateCreateDto(dto);
@@ -430,7 +459,11 @@ export class EmployeesService {
       photoUrl?: string | null;
       privatePhotoUrl?: string | null;
       hideProfilePhoto?: boolean;
-      user?: { id: string } | null;
+      user?: {
+        id: string;
+        role?: UserRole;
+        additionalRoles?: Array<{ role: UserRole }>;
+      } | null;
     },
   >(employee: T, currentUserId?: string, _currentUserRole?: string) {
     const isOwner = employee.user?.id === currentUserId;
@@ -438,6 +471,7 @@ export class EmployeesService {
 
     return {
       ...employee,
+      user: this.serializeUserRoles(employee.user),
       photoUrl:
         employee.hideProfilePhoto && !isOwner ? null : employee.photoUrl,
       privatePhotoUrl:
@@ -584,7 +618,13 @@ export class EmployeesService {
         photoUrl: true,
         privatePhotoUrl: true,
         hideProfilePhoto: true,
-        user: { select: { id: true } },
+        user: {
+          select: {
+            id: true,
+            role: true,
+            additionalRoles: { select: { role: true } },
+          },
+        },
         currentBranch: {
           select: {
             id: true,
@@ -610,7 +650,7 @@ export class EmployeesService {
         return (a.fullName ?? '').localeCompare(b.fullName ?? '');
       })
       .map((employee) => {
-        const { user: _user, ...filtered } = this.filterEmployeeForRole(
+        const filtered = this.filterEmployeeForRole(
           employee,
           actingUser?.id,
           actingUser?.role,
@@ -735,6 +775,7 @@ export class EmployeesService {
             isActive: true,
             branchId: true,
             branch: { select: { name: true, address: true } },
+            additionalRoles: { select: { role: true } },
           },
         },
       },
@@ -1423,6 +1464,105 @@ export class EmployeesService {
         fs.unlinkSync(tempFile);
       }
     }
+  }
+
+  async updateEmployeeRoles(
+    employeeId: string,
+    dto: UpdateEmployeeRolesDto,
+    actingUser: { id: string; role: UserRole },
+  ) {
+    const actorRoles =
+      await this.permissionsService.getUserEffectiveRoles(actingUser.id);
+    if (!canAssignRoles(actorRoles.length ? actorRoles : [actingUser.role])) {
+      throw new ForbiddenException(
+        'Only HR, IT, or Super Admin can assign roles',
+      );
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        user: {
+          select: {
+            id: true,
+            role: true,
+            additionalRoles: { select: { role: true } },
+          },
+        },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${employeeId} not found`);
+    }
+    if (!employee.user) {
+      throw new BadRequestException(
+        'Employee does not have a login account yet',
+      );
+    }
+
+    const primaryRole = dto.primaryRole ?? employee.user.role;
+    const additionalRoles = [...new Set(dto.additionalRoles ?? [])].filter(
+      (role) => role !== primaryRole,
+    );
+    const allRoles = buildEffectiveRoles(primaryRole, additionalRoles);
+
+    if (!allRoles.length) {
+      throw new BadRequestException('At least one role is required');
+    }
+
+    const actorIsSuperAdmin = actorRoles.includes(UserRole.SUPER_ADMIN);
+    if (
+      allRoles.includes(UserRole.SUPER_ADMIN) &&
+      !actorIsSuperAdmin
+    ) {
+      throw new ForbiddenException(
+        'Only Super Admin can assign the Super Admin role',
+      );
+    }
+    if (
+      employee.user.role === UserRole.SUPER_ADMIN &&
+      primaryRole !== UserRole.SUPER_ADMIN &&
+      !actorIsSuperAdmin
+    ) {
+      throw new ForbiddenException(
+        'Only Super Admin can change a Super Admin primary role',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: employee.user!.id },
+        data: { role: primaryRole },
+      });
+      await tx.userAdditionalRole.deleteMany({
+        where: { userId: employee.user!.id },
+      });
+      if (additionalRoles.length) {
+        await tx.userAdditionalRole.createMany({
+          data: additionalRoles.map((role) => ({
+            userId: employee.user!.id,
+            role,
+          })),
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'UPDATE_EMPLOYEE_ROLES',
+          entity: 'User',
+          entityId: employee.user!.id,
+          changes: {
+            employeeId,
+            primaryRole,
+            additionalRoles,
+          },
+        },
+      });
+    });
+
+    return this.findOne(employeeId, actingUser);
   }
 
   async toggleHideProfilePhoto(

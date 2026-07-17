@@ -7,9 +7,11 @@ import {
   MaritalStatus,
   ProjectType,
   StaffType,
+  UserRole,
 } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBooleanString,
   IsBoolean,
   IsDateString,
@@ -260,6 +262,16 @@ export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {}
 export class ToggleHideProfilePhotoDto {
   @IsBoolean()
   hide: boolean;
+}
+
+export class UpdateEmployeeRolesDto {
+  @IsOptional()
+  @IsEnum(UserRole)
+  primaryRole?: UserRole;
+
+  @IsArray()
+  @IsEnum(UserRole, { each: true })
+  additionalRoles: UserRole[];
 }
 
 export class ChangeStatusDto {

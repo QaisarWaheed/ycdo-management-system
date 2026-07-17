@@ -59,6 +59,11 @@ export class UpdateUserAccessDto {
   role?: UserRole;
 
   @IsOptional()
+  @IsArray()
+  @IsEnum(UserRole, { each: true })
+  additionalRoles?: UserRole[];
+
+  @IsOptional()
   @IsUUID()
   branchId?: string | null;
 

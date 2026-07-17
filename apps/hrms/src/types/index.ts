@@ -2,6 +2,8 @@ export interface User {
   id: string
   email: string
   role: string
+  /** All effective roles including primary + additional */
+  roles?: string[]
   employeeId?: string | null
   branchId?: string | null
   /** Effective permission keys granted via role defaults + Login Access overrides */
@@ -243,9 +245,11 @@ export interface Employee {
   previousEmployments?: PreviousEmployment[]
   user?: {
     id: string
-    email: string
+    email?: string
     role: string
-    isActive: boolean
+    roles?: string[]
+    additionalRoles?: string[]
+    isActive?: boolean
     branchId?: string | null
     branch?: { name: string; address?: string | null; abbreviation?: string | null } | null
     passwordRecord?: { plainText: string } | null
@@ -506,6 +510,11 @@ export interface AttendanceLog {
     currentDepartment?: { name: string } | null
     dutyStartTime?: string | null
     shift?: { name?: string; startTime?: string; endTime?: string } | null
+    user?: {
+      role?: string
+      roles?: string[]
+      additionalRoles?: string[]
+    } | null
   }
   branch?: { name: string; address?: string | null; abbreviation?: string | null }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
@@ -11,7 +11,11 @@ import { DateInput } from '@/components/common/DateInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
+import { getEmployeeSystemRoles } from '@/components/employees/RoleBadges'
+import { RoleMultiSelect } from '@/components/employees/RoleMultiSelect'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/hooks/useAuth'
+import { ROLE_GROUPS } from '@/lib/roleLabels'
 import {
   Dialog,
   DialogContent,
@@ -174,6 +178,7 @@ export function EditEmployeeDialog({
   onSuccess,
   mode = 'personal',
   canEditCnic = false,
+  canAssignRoles = false,
 }: {
   employee: Employee
   open: boolean
@@ -181,11 +186,23 @@ export function EditEmployeeDialog({
   onSuccess: () => void
   mode?: 'personal' | 'job'
   canEditCnic?: boolean
+  canAssignRoles?: boolean
 }) {
+  const { hasRole } = useAuth()
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
     defaultValues: employeeToFormValues(employee),
   })
+
+  const initialRoles = getEmployeeSystemRoles(employee)
+  const [primaryRole, setPrimaryRole] = useState(
+    employee.user?.role ?? initialRoles[0] ?? 'EMPLOYEE',
+  )
+  const [additionalRoles, setAdditionalRoles] = useState(
+    (employee.user?.additionalRoles ?? initialRoles.filter(
+      (role) => role !== (employee.user?.role ?? initialRoles[0]),
+    )) as string[],
+  )
 
   const watchedDesignation = form.watch('currentDesignation')
 
@@ -204,6 +221,12 @@ export function EditEmployeeDialog({
     enabled: open,
   })
 
+  const assignableRoles = useMemo(() => {
+    const all = ROLE_GROUPS.flatMap((group) => group.roles)
+    if (hasRole(['SUPER_ADMIN'])) return all
+    return all.filter((role) => role !== 'SUPER_ADMIN')
+  }, [hasRole])
+
   const designationOptions = useMemo(() => {
     const titles = [
       ...new Set(designations.map((d: { title: string }) => d.title)),
@@ -220,12 +243,26 @@ export function EditEmployeeDialog({
   useEffect(() => {
     if (open) {
       form.reset(employeeToFormValues(employee))
+      const roles = getEmployeeSystemRoles(employee)
+      const primary = employee.user?.role ?? roles[0] ?? 'EMPLOYEE'
+      setPrimaryRole(primary)
+      setAdditionalRoles(
+        employee.user?.additionalRoles ??
+          roles.filter((role) => role !== primary),
+      )
     }
   }, [open, employee, form])
 
   const mutation = useMutation({
-    mutationFn: (data: EditFormValues) =>
-      employeesApi.update(employee.id, buildPayload(data, mode)),
+    mutationFn: async (data: EditFormValues) => {
+      await employeesApi.update(employee.id, buildPayload(data, mode))
+      if (mode === 'job' && canAssignRoles && employee.user) {
+        await employeesApi.updateRoles(employee.id, {
+          primaryRole,
+          additionalRoles: additionalRoles.filter((role) => role !== primaryRole),
+        })
+      }
+    },
     onSuccess: () => {
       toast({
         title:
@@ -594,6 +631,31 @@ export function EditEmployeeDialog({
                 To change branch, department, or duty hours, use Edit Branch &
                 Duty.
               </p>
+              {canAssignRoles && employee.user && (
+                <div className="space-y-3 rounded-lg border border-border p-4">
+                  <div>
+                    <p className="text-sm font-semibold">System roles</p>
+                    <p className="text-xs text-text-secondary">
+                      Additional roles grant combined HRMS permissions. Primary
+                      role controls the default dashboard view.
+                    </p>
+                  </div>
+                  <RoleMultiSelect
+                    primaryRole={primaryRole}
+                    additionalRoles={additionalRoles}
+                    assignableRoles={assignableRoles}
+                    onPrimaryChange={setPrimaryRole}
+                    onAdditionalChange={setAdditionalRoles}
+                    disabled={mutation.isPending}
+                  />
+                </div>
+              )}
+              {canAssignRoles && !employee.user && (
+                <p className="text-sm text-amber-700">
+                  Create a login account for this employee before assigning
+                  system roles.
+                </p>
+              )}
             </div>
             )}
 

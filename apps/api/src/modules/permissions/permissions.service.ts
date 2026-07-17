@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Permission, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { buildEffectiveRoles } from '../../common/user-roles.util';
 import {
   ALL_PERMISSIONS,
   PERMISSION_LABELS,
   roleDefaultAllows,
+  rolesDefaultAllow,
 } from './permissions.constants';
 
 export type PermissionOverride = {
@@ -23,12 +25,27 @@ export type EffectivePermission = {
 export class PermissionsService {
   constructor(private prisma: PrismaService) {}
 
+  async getUserEffectiveRoles(userId: string): Promise<UserRole[]> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        role: true,
+        additionalRoles: { select: { role: true } },
+      },
+    });
+    if (!user) return [];
+    return buildEffectiveRoles(user.role, user.additionalRoles);
+  }
+
   async userHasPermission(
     userId: string,
     role: UserRole,
     permission: Permission,
   ): Promise<boolean> {
-    if (role === UserRole.SUPER_ADMIN) return true;
+    const effectiveRoles = await this.getUserEffectiveRoles(userId);
+    const roles = effectiveRoles.length ? effectiveRoles : [role];
+
+    if (roles.includes(UserRole.SUPER_ADMIN)) return true;
 
     const override = await this.prisma.userPermission.findUnique({
       where: {
@@ -38,13 +55,22 @@ export class PermissionsService {
 
     if (override) return override.granted;
 
-    return roleDefaultAllows(role, permission);
+    return rolesDefaultAllow(roles, permission);
   }
 
   async getEffectivePermissions(
     userId: string,
     role: UserRole,
+    additionalRoles?: UserRole[],
   ): Promise<EffectivePermission[]> {
+    let roles: UserRole[];
+    if (additionalRoles) {
+      roles = buildEffectiveRoles(role, additionalRoles);
+    } else {
+      roles = await this.getUserEffectiveRoles(userId);
+      if (!roles.length) roles = [role];
+    }
+
     const overrides = await this.prisma.userPermission.findMany({
       where: { userId },
     });
@@ -70,7 +96,7 @@ export class PermissionsService {
           source: 'override_deny' as const,
         };
       }
-      const effective = roleDefaultAllows(role, permission);
+      const effective = rolesDefaultAllow(roles, permission);
       return {
         permission,
         label: PERMISSION_LABELS[permission],

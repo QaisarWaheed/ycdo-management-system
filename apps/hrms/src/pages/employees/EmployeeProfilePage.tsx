@@ -31,6 +31,10 @@ import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
+import {
+  getEmployeeSystemRoles,
+  RoleBadges,
+} from '@/components/employees/RoleBadges'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { TransferDialog } from '@/components/employees/TransferDialog'
@@ -96,6 +100,14 @@ const HR_JOB_ROLES = [
   'HR_OPERATIONS_MANAGER',
 ] as const
 const ATTENDANCE_EDIT_ROLES = [
+  'SUPER_ADMIN',
+  'IT_ADMIN',
+  'HR_EXECUTIVE',
+  'HR_MANAGER',
+  'HR_ADMIN_MANAGER',
+  'HR_OPERATIONS_MANAGER',
+] as const
+const ROLE_ASSIGNER_ROLES = [
   'SUPER_ADMIN',
   'IT_ADMIN',
   'HR_EXECUTIVE',
@@ -538,7 +550,7 @@ function AddPreviousEmploymentDialog({
 
 export function EmployeeProfilePage() {
   const { id = '' } = useParams()
-  const { user, hasPermission } = useAuth()
+  const { user, hasPermission, hasRole } = useAuth()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -592,11 +604,7 @@ export function EmployeeProfilePage() {
     queryFn: () => attendanceApi.getAll({ employeeId: id, month, year }),
     enabled: !!id,
   })
-  const canEditAttendance =
-    !!user?.role &&
-    ATTENDANCE_EDIT_ROLES.includes(
-      user.role as (typeof ATTENDANCE_EDIT_ROLES)[number],
-    )
+  const canEditAttendance = hasRole([...ATTENDANCE_EDIT_ROLES])
 
   const { data: leaves = [], isLoading: loadingLeaves } = useQuery({
     queryKey: ['leave', id],
@@ -782,13 +790,9 @@ export function EmployeeProfilePage() {
   const documents = (employee.documents ?? []) as EmployeeDocument[]
   const overtimeHours = ((attendanceSummary?.overtimeMinutes ?? 0) / 60).toFixed(1)
 
-  const isItTeam =
-    !!user?.role &&
-    IT_PROFILE_ROLES.includes(user.role as (typeof IT_PROFILE_ROLES)[number])
+  const isItTeam = hasRole([...IT_PROFILE_ROLES])
 
-  const isHrTeam =
-    !!user?.role &&
-    HR_JOB_ROLES.includes(user.role as (typeof HR_JOB_ROLES)[number])
+  const isHrTeam = hasRole([...HR_JOB_ROLES])
 
   const canEditEmployeeProfile = hasPermission('EMPLOYEES_EDIT')
 
@@ -796,12 +800,16 @@ export function EmployeeProfilePage() {
 
   const canEditJobInfo = isHrTeam || isItTeam || canEditEmployeeProfile
 
+  const canAssignRoles = hasRole([...ROLE_ASSIGNER_ROLES])
+
   const canEditPayroll = isHrTeam || isItTeam
 
   const canHrJobActions = isHrTeam
 
   const canEditBranchDuty =
     canHrJobActions && user?.employeeId !== employee.id
+
+  const systemRoles = getEmployeeSystemRoles(employee)
 
   const hasPersonalInfo =
     employee.bloodGroup ||
@@ -938,6 +946,12 @@ export function EmployeeProfilePage() {
             {employee.currentDesignation ?? '—'}
           </div>
           <div className="print-field">
+            <div className="print-label">System Roles</div>
+            {systemRoles.length
+              ? systemRoles.map((role) => role.replace(/_/g, ' ')).join(', ')
+              : '—'}
+          </div>
+          <div className="print-field">
             <div className="print-label">Department</div>
             {employee.currentDepartment?.name ?? '—'}
           </div>
@@ -1006,6 +1020,12 @@ export function EmployeeProfilePage() {
             </p>
           </div>
           <p className="text-text-secondary">{employee.currentDesignation ?? '—'}</p>
+          {systemRoles.length > 0 && (
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-xs text-text-secondary">System roles</p>
+              <RoleBadges roles={systemRoles} />
+            </div>
+          )}
           <p className="text-sm">
             <span className="font-medium">
               {employee.currentDepartment?.name ?? '—'}
@@ -2177,6 +2197,7 @@ export function EmployeeProfilePage() {
           open={editJobOpen}
           onOpenChange={setEditJobOpen}
           canEditCnic={isHrTeam || isItTeam}
+          canAssignRoles={canAssignRoles}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['employee', id] })
             queryClient.invalidateQueries({ queryKey: ['employees'] })
