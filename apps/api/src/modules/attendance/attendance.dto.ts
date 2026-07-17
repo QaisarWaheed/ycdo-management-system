@@ -42,11 +42,11 @@ export class ManualAttendanceDto {
 
   @IsOptional()
   @IsDateString()
-  checkIn?: string;
+  checkIn?: string | null;
 
   @IsOptional()
   @IsDateString()
-  checkOut?: string;
+  checkOut?: string | null;
 
   @IsEnum(AttendanceStatus)
   @IsNotEmpty()

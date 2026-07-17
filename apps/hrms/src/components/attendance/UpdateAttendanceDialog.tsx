@@ -120,13 +120,11 @@ export function UpdateAttendanceDialog({
         note: note || undefined,
       }
 
-      if (checkIn) {
-        payload.checkIn = combineDateAndTime(date, checkIn)
-      }
-
-      if (checkIn && checkOut) {
-        payload.checkOut = combineDateAndTime(date, checkOut)
-      }
+      payload.checkIn = checkIn
+        ? combineDateAndTime(date, checkIn)
+        : null
+      payload.checkOut =
+        checkIn && checkOut ? combineDateAndTime(date, checkOut) : null
 
       if (statusOverride) {
         payload.status = status
@@ -211,7 +209,26 @@ export function UpdateAttendanceDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Check In</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Check In</Label>
+                {checkIn && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto px-2 py-1 text-xs text-red-600 hover:text-red-700"
+                    onClick={() => {
+                      setCheckIn('')
+                      setCheckOut('')
+                      setLateMinutes(0)
+                      setOvertimeMinutes(0)
+                      setStatusOverride(true)
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
               <TimeInput12Hour value={checkIn} onChange={setCheckIn} />
               {isPendingAttendanceStatus(log.status) && !checkIn && (
                 <p className="text-xs text-text-secondary">
@@ -220,7 +237,23 @@ export function UpdateAttendanceDialog({
               )}
             </div>
             <div className="space-y-2">
-              <Label>Check Out</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Check Out</Label>
+                {checkOut && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto px-2 py-1 text-xs text-red-600 hover:text-red-700"
+                    onClick={() => {
+                      setCheckOut('')
+                      setOvertimeMinutes(0)
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
               <TimeInput12Hour
                 value={checkOut}
                 onChange={setCheckOut}

@@ -614,6 +614,16 @@ export class AttendanceService {
     if (dto.checkOut !== undefined) {
       data.checkOut = dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : null;
     }
+    if (dto.checkIn === null) {
+      // A checkout without a check-in is invalid; clear the full session.
+      data.checkOut = null;
+      data.lateMinutes = 0;
+      data.overtimeMinutes = 0;
+      data.overtimePending = false;
+    } else if (dto.checkOut === null) {
+      data.overtimeMinutes = 0;
+      data.overtimePending = false;
+    }
 
     const effectiveCheckIn =
       dto.checkIn !== undefined
