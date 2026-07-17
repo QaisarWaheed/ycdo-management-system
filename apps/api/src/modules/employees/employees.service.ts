@@ -641,26 +641,21 @@ export class EmployeesService {
       where.AND = andConditions;
     }
 
-    if (actingUser?.id) {
-      const scopedWhere =
-        await this.accessScopeService.narrowEmployeeWhereForActor(
+    const scopedWhere = actingUser?.id
+      ? await this.accessScopeService.narrowEmployeeWhereForActor(
           actingUser.id,
           actingUser.role as UserRole,
           where,
-        );
-      Object.keys(where).forEach(
-        (key) => delete (where as Record<string, unknown>)[key],
-      );
-      Object.assign(where, scopedWhere);
-    }
+        )
+      : where;
 
     if (filters.count === 'true') {
-      const count = await this.prisma.employee.count({ where });
+      const count = await this.prisma.employee.count({ where: scopedWhere });
       return { count };
     }
 
     const employees = await this.prisma.employee.findMany({
-      where,
+      where: scopedWhere,
       select: {
         id: true,
         employeeCode: true,
