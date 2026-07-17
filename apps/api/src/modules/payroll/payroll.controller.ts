@@ -16,6 +16,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import {
   AddDeductionDto,
   AddAllowanceDto,
+  ApplyOvertimeDto,
   CreatePayrollEntryDto,
   PayrollQueryDto,
   SalaryIncrementDto,
@@ -41,6 +42,14 @@ const PAYROLL_WRITE_ROLES = [
   UserRole.IT_ADMIN,
 ];
 
+const OVERTIME_APPLY_ROLES = [
+  UserRole.SUPER_ADMIN,
+  UserRole.HR_MANAGER,
+  UserRole.HR_ADMIN_MANAGER,
+  UserRole.HR_OPERATIONS_MANAGER,
+  UserRole.HR_EXECUTIVE,
+];
+
 @Controller('payroll')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PayrollController {
@@ -64,6 +73,29 @@ export class PayrollController {
   @Roles(...PAYROLL_WRITE_ROLES)
   addAllowance(@Body() dto: AddAllowanceDto) {
     return this.payrollService.addAllowance(dto);
+  }
+
+  @Get('overtime-preview/:employeeId')
+  @Roles(...OVERTIME_APPLY_ROLES)
+  getOvertimePreview(
+    @Param('employeeId') employeeId: string,
+    @Query('month') month: string,
+    @Query('year') year: string,
+  ) {
+    return this.payrollService.getOvertimePreview(
+      employeeId,
+      Number(month),
+      Number(year),
+    );
+  }
+
+  @Post('apply-overtime')
+  @Roles(...OVERTIME_APPLY_ROLES)
+  applyOvertime(
+    @Body() dto: ApplyOvertimeDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.applyOvertime(dto, user);
   }
 
   @Patch('entries/:id/status')

@@ -9,6 +9,24 @@ export interface CreatePayrollEntryPayload {
   totalAllowances?: number
 }
 
+export interface OvertimePreview {
+  employeeId: string
+  month: number
+  year: number
+  basicStipend: number
+  dailyHours: number
+  daysInMonth: number
+  monthlyWorkingHours: number
+  overtimeMinutes: number
+  overtimeHours: number
+  hourlyRate: number
+  amount: number
+  alreadyApplied: boolean
+  existingAmount: number | null
+  payrollEntryId: string | null
+  payrollStatus: string | null
+}
+
 export interface StipendIncrementPayload {
   employeeId: string
   basicStipend: number
@@ -72,4 +90,16 @@ export const payrollApi = {
   },
   increment: (data: StipendIncrementPayload) =>
     api.post('/payroll/increment', data),
+
+  getOvertimePreview: (employeeId: string, month: number, year: number) =>
+    api.get<unknown, OvertimePreview>(
+      `/payroll/overtime-preview/${employeeId}`,
+      { params: { month, year } },
+    ),
+
+  applyOvertime: (data: {
+    employeeId: string
+    month: number
+    year: number
+  }) => api.post('/payroll/apply-overtime', data),
 }

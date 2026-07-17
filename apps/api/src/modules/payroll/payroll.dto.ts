@@ -90,6 +90,25 @@ export class AddAllowanceDto {
   hours?: number;
 }
 
+export class ApplyOvertimeDto {
+  @IsUUID()
+  @IsNotEmpty()
+  employeeId: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsNotEmpty()
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  @IsNotEmpty()
+  year: number;
+}
+
 export class UpdatePayrollStatusDto {
   @IsEnum(PayrollStatus)
   @IsNotEmpty()

@@ -802,6 +802,7 @@ export function EmployeeProfilePage() {
   const canAssignRoles = hasRole([...ROLE_ASSIGNER_ROLES])
 
   const canEditPayroll = isHrTeam || isItTeam
+  const canApplyOvertime = isHrTeam
 
   const canHrJobActions = isHrTeam
 
@@ -1611,6 +1612,7 @@ export function EmployeeProfilePage() {
             joiningDate={employee.joiningDate}
             stipendRecords={(employee.stipendRecords ?? []) as StipendRecord[]}
             canEdit={canEditPayroll}
+            canApplyOvertime={canApplyOvertime}
             onUpdated={() => {
               queryClient.invalidateQueries({ queryKey: ['employee', id] })
               queryClient.invalidateQueries({ queryKey: ['payroll-history', id] })

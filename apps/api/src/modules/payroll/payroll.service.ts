@@ -7,12 +7,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Permission, PayrollStatus, Prisma, UserRole } from '@prisma/client';
+import {
+  AllowanceType,
+  Permission,
+  PayrollStatus,
+  Prisma,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import {
   AddDeductionDto,
   AddAllowanceDto,
+  ApplyOvertimeDto,
   CreatePayrollEntryDto,
   PayrollQueryDto,
   SalaryIncrementDto,
@@ -231,6 +238,243 @@ export class PayrollService {
     });
   }
 
+  /**
+   * Hourly rate = basicStipend / (daily duty hours × days in month).
+   * Overtime pay = recorded OT hours × hourly rate.
+   */
+  async getOvertimePreview(employeeId: string, month: number, year: number) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: {
+        stipendRecords: {
+          where: { effectiveTo: null },
+          orderBy: { effectiveFrom: 'desc' },
+          take: 1,
+        },
+        shift: { select: { startTime: true, endTime: true } },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${employeeId} not found`);
+    }
+
+    const stipend = employee.stipendRecords[0];
+    if (!stipend) {
+      throw new BadRequestException(
+        'No active stipend record found for this employee',
+      );
+    }
+
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+    const daysInMonth = monthEnd.getDate();
+
+    const otAgg = await this.prisma.attendanceLog.aggregate({
+      where: {
+        employeeId,
+        date: { gte: monthStart, lte: monthEnd },
+        overtimeMinutes: { gt: 0 },
+        // Only approved / non-pending overtime is payable.
+        overtimePending: false,
+      },
+      _sum: { overtimeMinutes: true },
+    });
+
+    const overtimeMinutes = otAgg._sum.overtimeMinutes ?? 0;
+    const overtimeHours =
+      Math.round((overtimeMinutes / 60) * 100) / 100;
+
+    const dailyHours = this.resolveDailyDutyHours(employee);
+    const monthlyWorkingHours = dailyHours * daysInMonth;
+    const basicStipend = Number(stipend.basicStipend);
+    const hourlyRate =
+      monthlyWorkingHours > 0
+        ? Math.round((basicStipend / monthlyWorkingHours) * 100) / 100
+        : 0;
+    const amount =
+      Math.round(overtimeHours * hourlyRate * 100) / 100;
+
+    const existingEntry = await this.prisma.payrollEntry.findFirst({
+      where: {
+        month,
+        year,
+        stipendRecord: { employeeId },
+      },
+      include: {
+        allowances: {
+          where: { type: AllowanceType.OVERTIME },
+        },
+      },
+    });
+
+    const existingOvertime = existingEntry?.allowances[0] ?? null;
+
+    return {
+      employeeId,
+      month,
+      year,
+      basicStipend,
+      dailyHours,
+      daysInMonth,
+      monthlyWorkingHours,
+      overtimeMinutes,
+      overtimeHours,
+      hourlyRate,
+      amount,
+      alreadyApplied: Boolean(existingOvertime),
+      existingAmount: existingOvertime
+        ? Number(existingOvertime.amount)
+        : null,
+      payrollEntryId: existingEntry?.id ?? null,
+      payrollStatus: existingEntry?.status ?? null,
+    };
+  }
+
+  async applyOvertime(
+    dto: ApplyOvertimeDto,
+    actingUser: { id: string; role: UserRole },
+  ) {
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUser.id,
+      actingUser.role,
+      Permission.PAYROLL_MANAGE,
+      dto.employeeId,
+    );
+
+    const preview = await this.getOvertimePreview(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+    );
+
+    if (preview.overtimeMinutes <= 0) {
+      throw new BadRequestException(
+        'No overtime hours recorded for this employee in the selected month',
+      );
+    }
+
+    if (preview.amount <= 0) {
+      throw new BadRequestException(
+        'Calculated overtime amount is zero; check base stipend and duty hours',
+      );
+    }
+
+    if (
+      preview.payrollStatus === PayrollStatus.PROCESSED ||
+      preview.payrollStatus === PayrollStatus.PAID
+    ) {
+      throw new BadRequestException(
+        'Cannot apply overtime to a processed or paid payroll entry',
+      );
+    }
+
+    const entry = await this.createOrGetEntry(
+      {
+        employeeId: dto.employeeId,
+        month: dto.month,
+        year: dto.year,
+      },
+      actingUser,
+    );
+
+    const monthLabel = new Date(dto.year, dto.month - 1, 1).toLocaleString(
+      'en-US',
+      { month: 'long', year: 'numeric' },
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.payrollEntry.findUnique({
+        where: { id: entry.id },
+        include: { allowances: true },
+      });
+      if (!current) {
+        throw new NotFoundException('Payroll entry not found');
+      }
+
+      const existingOt = current.allowances.find(
+        (a) => a.type === AllowanceType.OVERTIME,
+      );
+
+      let totalAllowances = Number(current.totalAllowances);
+      let netStipend = Number(current.netStipend);
+
+      if (existingOt) {
+        totalAllowances -= Number(existingOt.amount);
+        netStipend -= Number(existingOt.amount);
+        await tx.allowance.delete({ where: { id: existingOt.id } });
+      }
+
+      await tx.allowance.create({
+        data: {
+          payrollEntryId: entry.id,
+          type: AllowanceType.OVERTIME,
+          hours: preview.overtimeHours,
+          amount: preview.amount,
+          description: `Overtime ${preview.overtimeHours}h @ PKR ${preview.hourlyRate}/hr (${monthLabel})`,
+        },
+      });
+
+      totalAllowances += preview.amount;
+      netStipend += preview.amount;
+
+      const updated = await tx.payrollEntry.update({
+        where: { id: entry.id },
+        data: {
+          totalAllowances,
+          netStipend,
+        },
+        include: { deductions: true, allowances: true },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'PAYROLL_OVERTIME_APPLIED',
+          entity: 'PayrollEntry',
+          entityId: entry.id,
+          changes: {
+            employeeId: dto.employeeId,
+            month: dto.month,
+            year: dto.year,
+            overtimeHours: preview.overtimeHours,
+            hourlyRate: preview.hourlyRate,
+            amount: preview.amount,
+            replaced: Boolean(existingOt),
+          },
+        },
+      });
+
+      return {
+        ...updated,
+        overtime: preview,
+      };
+    });
+  }
+
+  private resolveDailyDutyHours(employee: {
+    dutyTotalHours?: number | null;
+    dutyStartTime?: string | null;
+    dutyEndTime?: string | null;
+    shift?: { startTime: string; endTime: string } | null;
+  }): number {
+    if (employee.dutyTotalHours && employee.dutyTotalHours > 0) {
+      return employee.dutyTotalHours;
+    }
+
+    const start = employee.dutyStartTime ?? employee.shift?.startTime;
+    const end = employee.dutyEndTime ?? employee.shift?.endTime;
+    if (start && end) {
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      let minutes = eh * 60 + (em || 0) - (sh * 60 + (sm || 0));
+      if (minutes <= 0) minutes += 24 * 60;
+      return Math.round((minutes / 60) * 100) / 100;
+    }
+
+    return 8;
+  }
+
   async getEntryWithAllowances(entryId: string) {
     const entry = await this.prisma.payrollEntry.findUnique({
       where: { id: entryId },
@@ -393,7 +637,7 @@ export class PayrollService {
       where: {
         stipendRecord: { employeeId },
       },
-      include: { deductions: true },
+      include: { deductions: true, allowances: true },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     });
   }
