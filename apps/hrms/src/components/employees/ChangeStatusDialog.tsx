@@ -37,8 +37,9 @@ export function ChangeStatusDialog({
   const [status, setStatus] = useState<EmployeeStatus>('ACTIVE')
   const [reason, setReason] = useState('')
 
+  // ON_LEAVE is managed through leave records, not manual status changes.
   const availableStatuses = EMPLOYEE_STATUSES.filter(
-    (s) => s !== currentStatus && s !== 'DISMISSED',
+    (s) => s !== currentStatus && s !== 'DISMISSED' && s !== 'ON_LEAVE',
   )
 
   const statusOptions = availableStatuses.map(enumValueToLabel)
@@ -48,7 +49,7 @@ export function ChangeStatusDialog({
   useEffect(() => {
     if (open) {
       const next = EMPLOYEE_STATUSES.filter(
-        (s) => s !== currentStatus && s !== 'DISMISSED',
+        (s) => s !== currentStatus && s !== 'DISMISSED' && s !== 'ON_LEAVE',
       )
       if (next.length > 0) setStatus(next[0])
     }

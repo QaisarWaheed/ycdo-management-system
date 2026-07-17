@@ -16,10 +16,7 @@ import {
   HospitalScopeSelect,
   type SelectedScope,
 } from '@/components/employees/HospitalScopeSelect'
-import { RoleMultiSelect } from '@/components/employees/RoleMultiSelect'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/hooks/useAuth'
-import { ROLE_GROUPS } from '@/lib/roleLabels'
 import {
   Dialog,
   DialogContent,
@@ -192,15 +189,11 @@ export function EditEmployeeDialog({
   canEditCnic?: boolean
   canAssignRoles?: boolean
 }) {
-  const { hasRole } = useAuth()
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
     defaultValues: employeeToFormValues(employee),
   })
 
-  const [primaryRole, setPrimaryRole] = useState(
-    employee.user?.role ?? 'EMPLOYEE',
-  )
   const [managerScopes, setManagerScopes] = useState<SelectedScope[]>(
     (employee.user?.managerScopes ?? []).map((scope) => ({
       projectId: scope.projectId,
@@ -233,13 +226,6 @@ export function EditEmployeeDialog({
     enabled: open && canAssignRoles,
   })
 
-  const assignableRoles = useMemo(() => {
-    if (accessMeta?.assignableRoles?.length) return accessMeta.assignableRoles
-    const all = ROLE_GROUPS.flatMap((group) => group.roles)
-    if (hasRole(['SUPER_ADMIN'])) return all
-    return all.filter((role) => role !== 'SUPER_ADMIN')
-  }, [accessMeta?.assignableRoles, hasRole])
-
   const designationOptions = useMemo(() => {
     const titles = [
       ...new Set(designations.map((d: { title: string }) => d.title)),
@@ -256,7 +242,6 @@ export function EditEmployeeDialog({
   useEffect(() => {
     if (open) {
       form.reset(employeeToFormValues(employee))
-      setPrimaryRole(employee.user?.role ?? 'EMPLOYEE')
       setManagerScopes(
         (employee.user?.managerScopes ?? []).map((scope) => ({
           projectId: scope.projectId,
@@ -273,7 +258,6 @@ export function EditEmployeeDialog({
       await employeesApi.update(employee.id, buildPayload(data, mode))
       if (mode === 'job' && canAssignRoles && employee.user) {
         await employeesApi.updateRoles(employee.id, {
-          primaryRole,
           managerScopes: managerScopes.map((scope) => ({
             projectId: scope.projectId,
             departmentId: scope.departmentId,
@@ -652,28 +636,12 @@ export function EditEmployeeDialog({
               </p>
               {canAssignRoles && employee.user && (
                 <div className="space-y-3 rounded-lg border border-border p-4">
-                  <div>
-                    <p className="text-sm font-semibold">Access & scopes</p>
-                    <p className="text-xs text-text-secondary">
-                      Primary role controls the default dashboard. Hospital
-                      scopes grant department access and list the employee in
-                      those staff views.
-                    </p>
-                  </div>
-                  <RoleMultiSelect
-                    primaryRole={primaryRole}
-                    assignableRoles={assignableRoles}
-                    onPrimaryChange={setPrimaryRole}
+                  <HospitalScopeSelect
+                    options={accessMeta?.hospitalScopeOptions ?? []}
+                    value={managerScopes}
+                    onChange={setManagerScopes}
                     disabled={mutation.isPending}
                   />
-                  <div className="rounded-md border border-border p-3">
-                    <HospitalScopeSelect
-                      options={accessMeta?.hospitalScopeOptions ?? []}
-                      value={managerScopes}
-                      onChange={setManagerScopes}
-                      disabled={mutation.isPending}
-                    />
-                  </div>
                 </div>
               )}
               {canAssignRoles && !employee.user && (

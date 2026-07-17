@@ -298,18 +298,21 @@ function AdminDashboard() {
 
   const recentEmployees = ((employees ?? []) as Employee[]).slice(0, 5)
   const recentLeaves = ((leaves ?? []) as LeaveRecord[]).slice(0, 5)
+  const workforceCount = ((employees ?? []) as Employee[]).filter(
+    (emp) => emp.status === 'ACTIVE' || emp.status === 'ON_LEAVE',
+  ).length
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         <StatCard
           label="Total Employees"
-          value={(employees ?? []).length}
+          value={workforceCount}
           icon={Users}
           loading={loadingEmployees}
           error={errorEmployees}
           iconBg="bg-primary/10 text-primary"
-          subtitle="Active workforce"
+          subtitle="Active & on-leave staff"
           to="/employees"
         />
         <StatCard

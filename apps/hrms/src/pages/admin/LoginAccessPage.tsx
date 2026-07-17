@@ -18,7 +18,6 @@ import {
   type SelectedScope,
 } from '@/components/employees/HospitalScopeSelect'
 import { RoleBadges } from '@/components/employees/RoleBadges'
-import { RoleMultiSelect } from '@/components/employees/RoleMultiSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -90,7 +89,6 @@ function ManageAccessDialog({
   const [permissionModes, setPermissionModes] = useState<
     Record<AppPermission, PermissionMode>
   >({} as Record<AppPermission, PermissionMode>)
-  const [role, setRole] = useState('')
   const [managerScopes, setManagerScopes] = useState<SelectedScope[]>([])
   const [isActive, setIsActive] = useState(true)
   const [branchId, setBranchId] = useState('')
@@ -113,7 +111,6 @@ function ManageAccessDialog({
 
   useEffect(() => {
     if (!user || !open) return
-    setRole(user.role)
     setManagerScopes(
       (user.managerScopes ?? []).map((scope) => ({
         projectId: scope.projectId,
@@ -133,7 +130,6 @@ function ManageAccessDialog({
 
   useEffect(() => {
     if (!open) {
-      setRole('')
       setManagerScopes([])
       setNewPassword('')
       setPermissionModes({} as Record<AppPermission, PermissionMode>)
@@ -150,7 +146,6 @@ function ManageAccessDialog({
         }) ?? []
 
       return userAccessApi.update(userId!, {
-        role,
         managerScopes: managerScopes.map((scope) => ({
           projectId: scope.projectId,
           departmentId: scope.departmentId,
@@ -196,7 +191,6 @@ function ManageAccessDialog({
 
   const handleClose = (v: boolean) => {
     if (!v) {
-      setRole('')
       setNewPassword('')
       setPermissionModes({} as Record<AppPermission, PermissionMode>)
     }
@@ -228,17 +222,6 @@ function ManageAccessDialog({
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
-                <RoleMultiSelect
-                  primaryRole={role}
-                  assignableRoles={
-                    user.assignableRoles ?? meta?.assignableRoles ?? []
-                  }
-                  onPrimaryChange={setRole}
-                  disabled={saveMutation.isPending}
-                />
-              </div>
-
               <div className="space-y-2 sm:col-span-2 rounded-lg border border-border p-3">
                 <HospitalScopeSelect
                   options={

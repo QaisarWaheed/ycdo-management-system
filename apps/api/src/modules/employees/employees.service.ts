@@ -664,6 +664,7 @@ export class EmployeesService {
         dutyStartTime: true,
         dutyEndTime: true,
         gender: true,
+        biometricId: true,
         photoUrl: true,
         privatePhotoUrl: true,
         hideProfilePhoto: true,

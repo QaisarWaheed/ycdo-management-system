@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { HospitalScopeOption, ManagerScopeInput } from '@/api/endpoints/userAccess'
 
@@ -27,7 +26,6 @@ export function HospitalScopeSelect({
   onChange,
   disabled,
 }: HospitalScopeSelectProps) {
-  const [search, setSearch] = useState('')
   const [projectId, setProjectId] = useState(options[0]?.id ?? '')
   const [departmentId, setDepartmentId] = useState('')
   const [designationId, setDesignationId] = useState('')
@@ -38,16 +36,6 @@ export function HospitalScopeSelect({
   const selectedDepartment =
     departments.find((d) => d.id === departmentId) ?? null
   const designations = selectedDepartment?.designations ?? []
-
-  const filteredDepartments = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return departments
-    return departments.filter(
-      (dept) =>
-        dept.name.toLowerCase().includes(term) ||
-        dept.designations.some((d) => d.title.toLowerCase().includes(term)),
-    )
-  }, [departments, search])
 
   const addScope = () => {
     if (!selectedProject || !selectedDepartment) return
@@ -90,35 +78,24 @@ export function HospitalScopeSelect({
         </p>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div className="space-y-1">
-          <Label className="text-xs">Hospital project</Label>
-          <select
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={selectedProject?.id ?? ''}
-            disabled={disabled}
-            onChange={(event) => {
-              setProjectId(event.target.value)
-              setDepartmentId('')
-              setDesignationId('')
-            }}
-          >
-            {options.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Search departments</Label>
-          <Input
-            value={search}
-            disabled={disabled}
-            placeholder="OPD, Pharmacy..."
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Hospital project</Label>
+        <select
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          value={selectedProject?.id ?? ''}
+          disabled={disabled}
+          onChange={(event) => {
+            setProjectId(event.target.value)
+            setDepartmentId('')
+            setDesignationId('')
+          }}
+        >
+          {options.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
@@ -134,7 +111,7 @@ export function HospitalScopeSelect({
             }}
           >
             <option value="">Select department</option>
-            {filteredDepartments.map((dept) => (
+            {departments.map((dept) => (
               <option key={dept.id} value={dept.id}>
                 {dept.name}
               </option>

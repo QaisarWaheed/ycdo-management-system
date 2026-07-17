@@ -109,11 +109,11 @@ export function AdminManagerDashboard() {
   const { data: employeeCount, isLoading: loadingEmployees } = useQuery({
     queryKey: ['employees', 'count', branchId],
     queryFn: async () => {
-      const res = await employeesApi.getCount({
-        branchId,
-        status: 'ACTIVE',
-      })
-      return res.count
+      const [active, onLeave] = await Promise.all([
+        employeesApi.getCount({ branchId, status: 'ACTIVE' }),
+        employeesApi.getCount({ branchId, status: 'ON_LEAVE' }),
+      ])
+      return active.count + onLeave.count
     },
     enabled: !!branchId,
   })
