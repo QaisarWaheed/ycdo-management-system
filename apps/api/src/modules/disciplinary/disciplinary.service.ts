@@ -9,9 +9,12 @@ import {
   EmployeeStatus,
   InquiryOutcome,
   LetterType,
+  Permission,
   Prisma,
+  UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import { LettersService } from '../letters/letters.service';
 import {
   CreateDisciplinaryDto,
@@ -25,9 +28,21 @@ export class DisciplinaryService {
   constructor(
     private prisma: PrismaService,
     private lettersService: LettersService,
+    private accessScopeService: AccessScopeService,
   ) {}
 
-  async create(dto: CreateDisciplinaryDto, actingUserId: string) {
+  async create(
+    dto: CreateDisciplinaryDto,
+    actingUserId: string,
+    actingRole: UserRole = UserRole.HR_MANAGER,
+  ) {
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUserId,
+      actingRole,
+      Permission.DISCIPLINARY_MANAGE,
+      dto.employeeId,
+    );
+
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
@@ -101,7 +116,10 @@ export class DisciplinaryService {
     return action;
   }
 
-  findAll(query: DisciplinaryQueryDto) {
+  async findAll(
+    query: DisciplinaryQueryDto,
+    actingUser?: { id: string; role: UserRole },
+  ) {
     const where: Prisma.DisciplinaryActionWhereInput = {};
 
     if (query.employeeId) {
@@ -121,6 +139,15 @@ export class DisciplinaryService {
         gte: new Date(query.startDate),
         lte: new Date(query.endDate),
       };
+    }
+
+    if (actingUser?.id) {
+      where.employee =
+        await this.accessScopeService.narrowEmployeeWhereForActor(
+          actingUser.id,
+          actingUser.role,
+          {},
+        );
     }
 
     return this.prisma.disciplinaryAction.findMany({

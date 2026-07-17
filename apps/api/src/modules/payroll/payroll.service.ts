@@ -7,8 +7,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PayrollStatus, Prisma } from '@prisma/client';
+import { Permission, PayrollStatus, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import {
   AddDeductionDto,
   AddAllowanceDto,
@@ -20,9 +21,24 @@ import {
 
 @Injectable()
 export class PayrollService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accessScopeService: AccessScopeService,
+  ) {}
 
-  async createOrGetEntry(dto: CreatePayrollEntryDto) {
+  async createOrGetEntry(
+    dto: CreatePayrollEntryDto,
+    actingUser?: { id: string; role: UserRole },
+  ) {
+    if (actingUser?.id) {
+      await this.accessScopeService.assertEmployeeAccess(
+        actingUser.id,
+        actingUser.role,
+        Permission.PAYROLL_MANAGE,
+        dto.employeeId,
+      );
+    }
+
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
@@ -262,7 +278,10 @@ export class PayrollService {
     };
   }
 
-  findAll(query: PayrollQueryDto) {
+  async findAll(
+    query: PayrollQueryDto,
+    actingUser?: { id: string; role: UserRole },
+  ) {
     const year = query.year ?? new Date().getFullYear();
     const where: Prisma.PayrollEntryWhereInput = { year };
 
@@ -274,7 +293,7 @@ export class PayrollService {
       where.status = query.status;
     }
 
-    const employeeFilter: Prisma.EmployeeWhereInput = {};
+    let employeeFilter: Prisma.EmployeeWhereInput = {};
 
     if (query.employeeId) {
       employeeFilter.id = query.employeeId;
@@ -286,6 +305,15 @@ export class PayrollService {
 
     if (query.departmentId) {
       employeeFilter.currentDepartmentId = query.departmentId;
+    }
+
+    if (actingUser?.id) {
+      employeeFilter =
+        await this.accessScopeService.narrowEmployeeWhereForActor(
+          actingUser.id,
+          actingUser.role,
+          employeeFilter,
+        );
     }
 
     if (Object.keys(employeeFilter).length > 0) {

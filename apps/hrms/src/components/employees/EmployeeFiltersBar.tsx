@@ -50,7 +50,8 @@ export const EMPTY_EMPLOYEE_FILTERS: EmployeeFilterState = {
   branchId: '',
   departmentId: '',
   designation: '',
-  employeeStatus: ALL_FILTER,
+  // Active is the primary selection; users can switch to other statuses.
+  employeeStatus: 'ACTIVE',
   district: ALL_FILTER,
   gender: ALL_FILTER,
   maritalStatus: ALL_FILTER,

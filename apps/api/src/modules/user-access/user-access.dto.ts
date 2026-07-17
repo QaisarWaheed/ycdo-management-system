@@ -49,6 +49,18 @@ export class PermissionOverrideDto {
   granted?: boolean | null;
 }
 
+export class ManagerScopeInputDto {
+  @IsUUID()
+  projectId: string;
+
+  @IsUUID()
+  departmentId: string;
+
+  @IsOptional()
+  @IsUUID()
+  designationId?: string | null;
+}
+
 export class UpdateUserAccessDto {
   @IsOptional()
   @IsBoolean()
@@ -62,6 +74,12 @@ export class UpdateUserAccessDto {
   @IsArray()
   @IsEnum(UserRole, { each: true })
   additionalRoles?: UserRole[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ManagerScopeInputDto)
+  managerScopes?: ManagerScopeInputDto[];
 
   @IsOptional()
   @IsUUID()

@@ -1,10 +1,11 @@
 import { Global, Module } from '@nestjs/common';
+import { AccessScopeService } from './access-scope.service';
 import { PermissionsService } from './permissions.service';
 
-// Global because RolesGuard (used in most modules) depends on PermissionsService.
+// Global because RolesGuard and most domain modules depend on these services.
 @Global()
 @Module({
-  providers: [PermissionsService],
-  exports: [PermissionsService],
+  providers: [PermissionsService, AccessScopeService],
+  exports: [PermissionsService, AccessScopeService],
 })
 export class PermissionsModule {}

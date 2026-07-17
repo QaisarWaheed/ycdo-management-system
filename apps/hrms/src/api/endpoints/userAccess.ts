@@ -16,12 +16,38 @@ export type AppPermission =
   | 'BROADCASTS_SEND'
   | 'ORG_SETUP'
 
+export interface ManagerScopeInput {
+  projectId: string
+  departmentId: string
+  designationId?: string | null
+}
+
+export interface ManagerScopeView extends ManagerScopeInput {
+  id?: string
+  projectName?: string
+  departmentName?: string
+  designationTitle?: string | null
+  label: string
+}
+
+export interface HospitalScopeOption {
+  id: string
+  name: string
+  type: string
+  departments: {
+    id: string
+    name: string
+    designations: { id: string; title: string }[]
+  }[]
+}
+
 export interface UserAccessRecord {
   id: string
   email: string
   role: string
   roles?: string[]
   additionalRoles?: string[]
+  managerScopes?: ManagerScopeView[]
   isActive: boolean
   branchId?: string | null
   employeeId?: string | null
@@ -64,6 +90,8 @@ export interface EffectivePermission {
 export interface UserAccessDetail extends UserAccessRecord {
   effectivePermissions: EffectivePermission[]
   assignableRoles: string[]
+  additionalAssignableRoles?: string[]
+  hospitalScopeOptions?: HospitalScopeOption[]
 }
 
 export interface LoginAccessSummary {
@@ -107,7 +135,9 @@ export const userAccessApi = {
       {
         permissions: { permission: AppPermission; label: string }[]
         assignableRoles: string[]
+        additionalAssignableRoles?: string[]
         permissionLabels: Record<AppPermission, string>
+        hospitalScopeOptions?: HospitalScopeOption[]
       }
     >('/user-access/meta'),
 
@@ -133,6 +163,7 @@ export const userAccessApi = {
       isActive?: boolean
       role?: string
       additionalRoles?: string[]
+      managerScopes?: ManagerScopeInput[]
       branchId?: string | null
       permissions?: PermissionOverrideInput[]
     },

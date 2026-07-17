@@ -27,6 +27,7 @@ import {
   RespondRelieverDto,
   UpdateLeaveStatusDto,
 } from './leave.dto';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import { LeaveService } from './leave.service';
 
 const LEAVE_READ_ROLES = [
@@ -45,7 +46,10 @@ const LEAVE_READ_ROLES = [
 @Controller('leave')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class LeaveController {
-  constructor(private leaveService: LeaveService) {}
+  constructor(
+    private leaveService: LeaveService,
+    private accessScopeService: AccessScopeService,
+  ) {}
 
   @Post()
   @Roles(
@@ -160,16 +164,24 @@ export class LeaveController {
 
   @Get()
   @Roles(...LEAVE_READ_ROLES)
-  findAll(
+  async findAll(
     @Query() query: LeaveQueryDto,
     @CurrentUser()
     user: {
+      id: string;
       role: UserRole;
+      roles?: UserRole[];
       employeeId?: string | null;
       branchId?: string | null;
     },
   ) {
-    if (user.role === UserRole.EMPLOYEE) {
+    const effectiveRoles = user.roles?.length ? user.roles : [user.role];
+    const isPortalOnly =
+      effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE;
+    const hasManagerScopes =
+      await this.accessScopeService.userHasManagerScopes(user.id);
+
+    if (isPortalOnly && !hasManagerScopes) {
       if (!user.employeeId) {
         throw new ForbiddenException('Employee profile required');
       }

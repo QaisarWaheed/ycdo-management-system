@@ -16,6 +16,9 @@ export const ROLE_LABELS: Record<string, string> = {
   EMPLOYEE: 'Employee (Portal)',
 }
 
+/** Executive roles may be primary only — never additional. */
+export const EXECUTIVE_ROLES = ['PRESIDENT', 'FOUNDER', 'CHAIRMAN'] as const
+
 export const ROLE_GROUPS: { title: string; roles: string[] }[] = [
   {
     title: 'Executive',
@@ -47,4 +50,8 @@ export const ROLE_GROUPS: { title: string; roles: string[] }[] = [
 
 export function formatRole(role: string) {
   return ROLE_LABELS[role] ?? role.replace(/_/g, ' ')
+}
+
+export function isExecutiveRole(role: string) {
+  return (EXECUTIVE_ROLES as readonly string[]).includes(role)
 }

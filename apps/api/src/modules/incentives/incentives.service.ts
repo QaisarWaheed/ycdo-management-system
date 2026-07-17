@@ -6,10 +6,13 @@ import {
 import {
   AllowanceType,
   EmployeeStatus,
+  Permission,
   PayrollStatus,
   Prisma,
+  UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import {
   CreateIncentiveDto,
   incentiveAllowanceDescription,
@@ -19,12 +22,26 @@ import {
 
 @Injectable()
 export class IncentivesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accessScopeService: AccessScopeService,
+  ) {}
 
-  async create(dto: CreateIncentiveDto, addedById: string) {
+  async create(
+    dto: CreateIncentiveDto,
+    addedById: string,
+    actingRole: UserRole = UserRole.HR_MANAGER,
+  ) {
     if (!dto.reason?.trim()) {
       throw new BadRequestException('Reason is required for incentives');
     }
+
+    await this.accessScopeService.assertEmployeeAccess(
+      addedById,
+      actingRole,
+      Permission.INCENTIVES_MANAGE,
+      dto.employeeId,
+    );
 
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
@@ -109,7 +126,10 @@ export class IncentivesService {
     });
   }
 
-  findAll(query: IncentiveQueryDto) {
+  async findAll(
+    query: IncentiveQueryDto,
+    actingUser?: { id: string; role: UserRole },
+  ) {
     const where: Prisma.IncentiveWhereInput = {};
 
     if (query.employeeId) {
@@ -124,8 +144,20 @@ export class IncentivesService {
       where.year = query.year;
     }
 
+    let employeeWhere: Prisma.EmployeeWhereInput = {};
     if (query.branchId) {
-      where.employee = { currentBranchId: query.branchId };
+      employeeWhere.currentBranchId = query.branchId;
+    }
+    if (actingUser?.id) {
+      employeeWhere =
+        await this.accessScopeService.narrowEmployeeWhereForActor(
+          actingUser.id,
+          actingUser.role,
+          employeeWhere,
+        );
+    }
+    if (Object.keys(employeeWhere).length > 0) {
+      where.employee = employeeWhere;
     }
 
     return this.prisma.incentive.findMany({

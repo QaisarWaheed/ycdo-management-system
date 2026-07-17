@@ -39,3 +39,32 @@ export function RoleBadges({
     </div>
   )
 }
+
+export function ManagerScopeBadges({
+  scopes,
+  className,
+  emptyLabel,
+}: {
+  scopes?: Array<{ label: string; id?: string }> | null
+  className?: string
+  emptyLabel?: string
+}) {
+  if (!scopes?.length) {
+    if (!emptyLabel) return null
+    return <span className="text-text-secondary">{emptyLabel}</span>
+  }
+
+  return (
+    <div className={cn('flex flex-wrap gap-1', className)}>
+      {scopes.map((scope) => (
+        <Badge
+          key={scope.id ?? scope.label}
+          variant="secondary"
+          className="text-xs font-medium"
+        >
+          {scope.label}
+        </Badge>
+      ))}
+    </div>
+  )
+}

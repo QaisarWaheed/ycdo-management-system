@@ -29,6 +29,7 @@ import {
   RelieverSessionsQueryDto,
   UpdateAttendanceDto,
 } from './attendance.dto';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import { AttendanceService } from './attendance.service';
 import { ShiftAbsentScheduler } from './shift-absent.scheduler';
 
@@ -38,6 +39,7 @@ export class AttendanceController {
     private attendanceService: AttendanceService,
     private shiftAbsentScheduler: ShiftAbsentScheduler,
     private configService: ConfigService,
+    private accessScopeService: AccessScopeService,
   ) {}
 
   @Post('biometric-push')
@@ -203,16 +205,24 @@ export class AttendanceController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.IT_ADMIN,
   )
-  findAll(
+  async findAll(
     @Query() query: AttendanceQueryDto,
     @CurrentUser()
     user: {
+      id: string;
       role: UserRole;
+      roles?: UserRole[];
       employeeId?: string | null;
       branchId?: string | null;
     },
   ) {
-    if (user.role === UserRole.EMPLOYEE) {
+    const effectiveRoles = user.roles?.length ? user.roles : [user.role];
+    const isPortalOnly =
+      effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE;
+    const hasManagerScopes =
+      await this.accessScopeService.userHasManagerScopes(user.id);
+
+    if (isPortalOnly && !hasManagerScopes) {
       if (!user.employeeId) {
         throw new ForbiddenException('Employee profile required');
       }

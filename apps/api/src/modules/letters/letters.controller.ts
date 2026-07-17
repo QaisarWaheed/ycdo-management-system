@@ -17,21 +17,30 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import { GenerateLetterDto, LetterQueryDto } from './letters.dto';
 import { LettersService } from './letters.service';
 
 @Controller('letters')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class LettersController {
-  constructor(private lettersService: LettersService) {}
+  constructor(
+    private lettersService: LettersService,
+    private accessScopeService: AccessScopeService,
+  ) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
   generate(
     @Body() dto: GenerateLetterDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    return this.lettersService.generate(dto, user.id);
+    return this.lettersService.generate(dto, user.id, user.role);
   }
 
   @Get()
@@ -41,22 +50,38 @@ export class LettersController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
     UserRole.EMPLOYEE,
   )
-  findAll(
+  async findAll(
     @Query() query: LetterQueryDto,
-    @CurrentUser() user: { role: UserRole; employeeId?: string | null },
+    @CurrentUser()
+    user: {
+      id: string;
+      role: UserRole;
+      roles?: UserRole[];
+      employeeId?: string | null;
+    },
   ) {
-    if (user.role === UserRole.EMPLOYEE) {
+    const effectiveRoles = user.roles?.length ? user.roles : [user.role];
+    const isPortalOnly =
+      effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE;
+    const hasManagerScopes =
+      await this.accessScopeService.userHasManagerScopes(user.id);
+
+    if (isPortalOnly && !hasManagerScopes) {
       if (!user.employeeId) {
         throw new ForbiddenException('Employee profile required');
       }
-      return this.lettersService.findAll({
-        ...query,
-        employeeId: user.employeeId,
-      });
+      return this.lettersService.findAll(
+        {
+          ...query,
+          employeeId: user.employeeId,
+        },
+        user,
+      );
     }
-    return this.lettersService.findAll(query);
+    return this.lettersService.findAll(query, user);
   }
 
   @Get(':id/pdf')

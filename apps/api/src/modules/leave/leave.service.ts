@@ -22,6 +22,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { enforceBranchScope } from '../../common/branch-scope.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import {
   ApplyLeaveDto,
   ApproveLeaveDto,
@@ -59,7 +60,10 @@ interface ActingUser {
 
 @Injectable()
 export class LeaveService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accessScopeService: AccessScopeService,
+  ) {}
 
   async apply(dto: ApplyLeaveDto) {
     const employee = await this.prisma.employee.findUnique({
@@ -609,9 +613,13 @@ export class LeaveService {
     return leave;
   }
 
-  findAll(
+  async findAll(
     query: LeaveQueryDto,
-    actingUser?: { role: UserRole | string; branchId?: string | null },
+    actingUser?: {
+      id?: string;
+      role: UserRole | string;
+      branchId?: string | null;
+    },
   ) {
     enforceBranchScope(query, actingUser);
 
@@ -638,8 +646,20 @@ export class LeaveService {
       };
     }
 
+    let employeeWhere: Prisma.EmployeeWhereInput = {};
     if (query.branchId) {
-      where.employee = { currentBranchId: query.branchId };
+      employeeWhere.currentBranchId = query.branchId;
+    }
+    if (actingUser?.id) {
+      employeeWhere =
+        await this.accessScopeService.narrowEmployeeWhereForActor(
+          actingUser.id,
+          actingUser.role as UserRole,
+          employeeWhere,
+        );
+    }
+    if (Object.keys(employeeWhere).length > 0) {
+      where.employee = employeeWhere;
     }
 
     if (query.currentStage) {

@@ -28,6 +28,7 @@ import {
   Matches,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 export class CreateEmployeeDto {
@@ -264,6 +265,18 @@ export class ToggleHideProfilePhotoDto {
   hide: boolean;
 }
 
+export class ManagerScopeInputDto {
+  @IsUUID()
+  projectId: string;
+
+  @IsUUID()
+  departmentId: string;
+
+  @IsOptional()
+  @IsUUID()
+  designationId?: string | null;
+}
+
 export class UpdateEmployeeRolesDto {
   @IsOptional()
   @IsEnum(UserRole)
@@ -272,6 +285,12 @@ export class UpdateEmployeeRolesDto {
   @IsArray()
   @IsEnum(UserRole, { each: true })
   additionalRoles: UserRole[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ManagerScopeInputDto)
+  managerScopes?: ManagerScopeInputDto[];
 }
 
 export class ChangeStatusDto {

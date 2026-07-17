@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UserRole } from '@prisma/client';
 import { ROLES_KEY } from './roles.decorator';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { hasAnyRole } from '../../common/user-roles.util';
 
@@ -10,6 +11,7 @@ export class RolesGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
     private permissionsService: PermissionsService,
+    private accessScopeService: AccessScopeService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -45,6 +47,19 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    return hasAnyRole(effectiveRoles, requiredRoles);
+    if (hasAnyRole(effectiveRoles, requiredRoles)) {
+      return true;
+    }
+
+    // Hospital manager scopes grant Admin Officer route capability;
+    // row-level checks still enforce department/designation matching.
+    if (
+      requiredRoles.includes(UserRole.ADMIN_OFFICER) &&
+      (await this.accessScopeService.userHasManagerScopes(user.id))
+    ) {
+      return true;
+    }
+
+    return false;
   }
 }

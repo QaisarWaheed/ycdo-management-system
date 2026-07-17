@@ -17,6 +17,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import {
   ApproveOvertimeDto,
@@ -77,6 +78,7 @@ export class AttendanceService {
   constructor(
     private prisma: PrismaService,
     private permissionsService: PermissionsService,
+    private accessScopeService: AccessScopeService,
   ) {}
 
   async biometricPush(dto: BiometricPushDto) {
@@ -534,11 +536,12 @@ export class AttendanceService {
     dto: UpdateAttendanceDto,
     actingUser: { id: string; role: UserRole },
   ) {
-    const canEdit = await this.permissionsService.userHasPermission(
-      actingUser.id,
-      actingUser.role,
-      Permission.ATTENDANCE_EDIT,
-    );
+    const canEdit =
+      await this.accessScopeService.userHasPermissionOrScopedCapability(
+        actingUser.id,
+        actingUser.role,
+        Permission.ATTENDANCE_EDIT,
+      );
     if (!canEdit) {
       throw new ForbiddenException(
         'You do not have permission to edit attendance',
@@ -550,6 +553,7 @@ export class AttendanceService {
       include: {
         employee: {
           select: {
+            id: true,
             fullName: true,
             employeeCode: true,
             dutyStartTime: true,
@@ -565,6 +569,13 @@ export class AttendanceService {
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
+
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUser.id,
+      actingUser.role,
+      Permission.ATTENDANCE_EDIT,
+      log.employeeId,
+    );
 
     if (isMedicineManagerRole(actingUser.role)) {
       if (!assertEmployeeInMedicineScope(log.employee)) {
@@ -897,20 +908,49 @@ export class AttendanceService {
 
   async findAll(
     query: AttendanceQueryDto,
-    actingUser?: { role: UserRole | string; branchId?: string | null },
+    actingUser?: {
+      id?: string;
+      role: UserRole | string;
+      branchId?: string | null;
+    },
   ) {
     enforceBranchScope(query, actingUser);
 
     const { search, ...filterQuery } = query;
-    const employeeWhere = this.buildEmployeeFilterWhere(filterQuery);
+    let employeeWhere = this.buildEmployeeFilterWhere(filterQuery) ?? {};
+
+    // Active and on-leave staff remain attendance-eligible. Suspended,
+    // terminated, resigned, dismissed, and other statuses stay hidden.
+    // The UI's default ACTIVE selection intentionally includes ON_LEAVE here.
+    if (
+      !query.employeeId &&
+      (!filterQuery.employeeStatus ||
+        filterQuery.employeeStatus === EmployeeStatus.ACTIVE)
+    ) {
+      employeeWhere.status = {
+        in: [EmployeeStatus.ACTIVE, EmployeeStatus.ON_LEAVE],
+      };
+    }
+
+    if (actingUser?.id) {
+      employeeWhere =
+        await this.accessScopeService.narrowEmployeeWhereForActor(
+          actingUser.id,
+          actingUser.role as UserRole,
+          employeeWhere,
+        );
+    }
     const medicineWhere = isMedicineManagerRole(actingUser?.role)
       ? medicineEmployeeWhere()
       : undefined;
 
+    const hasEmployeeFilter = Object.keys(employeeWhere).length > 0;
     const scopedEmployeeWhere: Prisma.EmployeeWhereInput | undefined =
-      employeeWhere && medicineWhere
+      hasEmployeeFilter && medicineWhere
         ? { AND: [employeeWhere, medicineWhere] }
-        : employeeWhere ?? medicineWhere;
+        : hasEmployeeFilter
+          ? employeeWhere
+          : medicineWhere;
 
     const isSingleDay =
       !!query.startDate &&

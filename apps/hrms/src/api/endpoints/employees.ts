@@ -88,7 +88,15 @@ export const employeesApi = {
     api.patch(`/employees/${id}/branch-duty`, data),
   updateRoles: (
     id: string,
-    data: { primaryRole?: string; additionalRoles: string[] },
+    data: {
+      primaryRole?: string
+      additionalRoles: string[]
+      managerScopes?: {
+        projectId: string
+        departmentId: string
+        designationId?: string | null
+      }[]
+    },
   ) => api.patch<unknown, Employee>(`/employees/${id}/roles`, data),
   getActiveShift: (params: {
     date: string

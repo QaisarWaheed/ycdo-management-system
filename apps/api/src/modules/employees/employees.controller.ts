@@ -151,8 +151,10 @@ export class EmployeesController {
 
   @Get('biometric-ids')
   @Roles(...BIOMETRIC_REFERENCE_ROLES)
-  getBiometricIdReference() {
-    return this.employeesService.getBiometricIdReference();
+  getBiometricIdReference(
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.employeesService.getBiometricIdReference(user);
   }
 
   @Post('generate-biometric-ids')

@@ -47,8 +47,11 @@ export class PayrollController {
   constructor(private payrollService: PayrollService) {}
   @Post('entries')
   @Roles(...PAYROLL_WRITE_ROLES)
-  createOrGetEntry(@Body() dto: CreatePayrollEntryDto) {
-    return this.payrollService.createOrGetEntry(dto);
+  createOrGetEntry(
+    @Body() dto: CreatePayrollEntryDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.createOrGetEntry(dto, user);
   }
 
   @Post('deductions')
@@ -102,8 +105,11 @@ export class PayrollController {
 
   @Get('entries')
   @Roles(...PAYROLL_READ_ROLES)
-  findAll(@Query() query: PayrollQueryDto) {
-    return this.payrollService.findAll(query);
+  findAll(
+    @Query() query: PayrollQueryDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.findAll(query, user);
   }
 
   @Get('entries/:id/full')

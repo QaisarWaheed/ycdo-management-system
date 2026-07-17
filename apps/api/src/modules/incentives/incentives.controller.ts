@@ -29,9 +29,9 @@ export class IncentivesController {
   )
   create(
     @Body() dto: CreateIncentiveDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    return this.incentivesService.create(dto, user.id);
+    return this.incentivesService.create(dto, user.id, user.role);
   }
 
   @Get()
@@ -45,8 +45,11 @@ export class IncentivesController {
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
   )
-  findAll(@Query() query: IncentiveQueryDto) {
-    return this.incentivesService.findAll(query);
+  findAll(
+    @Query() query: IncentiveQueryDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.incentivesService.findAll(query, user);
   }
 
   @Get('employee/:employeeId')

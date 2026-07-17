@@ -57,6 +57,7 @@ import {
   buildEffectiveRoles,
   canAssignRoles,
 } from '../../common/user-roles.util';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 
 export type EmployeeFilters = EmployeeQueryDto;
@@ -74,6 +75,7 @@ export class EmployeesService {
     private lettersService: LettersService,
     private faceSyncService: FaceSyncService,
     private permissionsService: PermissionsService,
+    private accessScopeService: AccessScopeService,
   ) {}
 
   private serializeUserRoles(
@@ -85,17 +87,58 @@ export class EmployeesService {
       branchId?: string | null;
       branch?: unknown;
       additionalRoles?: Array<{ role: UserRole }>;
+      managerScopes?: Array<{
+        id: string;
+        projectId: string;
+        departmentId: string;
+        designationId: string | null;
+        project?: { name: string };
+        department?: { name: string };
+        designation?: { title: string } | null;
+      }>;
     } | null,
   ) {
     if (!user?.role) return user ?? null;
     const additional = (user.additionalRoles ?? []).map((entry) => entry.role);
     const roles = buildEffectiveRoles(user.role, additional);
-    const { additionalRoles: _ignored, ...rest } = user;
+    const managerScopes = (user.managerScopes ?? []).map((scope) => ({
+      id: scope.id,
+      projectId: scope.projectId,
+      projectName: scope.project?.name ?? '',
+      departmentId: scope.departmentId,
+      departmentName: scope.department?.name ?? '',
+      designationId: scope.designationId,
+      designationTitle: scope.designation?.title ?? null,
+      label: [
+        scope.project?.name ?? '',
+        scope.department?.name ?? '',
+        scope.designation?.title ?? 'All designations',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    }));
+    const { additionalRoles: _ignored, managerScopes: _scopes, ...rest } = user;
     return {
       ...rest,
       additionalRoles: additional,
+      managerScopes,
       roles,
     };
+  }
+
+  private managerScopeSelect() {
+    return {
+      where: { isActive: true },
+      select: {
+        id: true,
+        projectId: true,
+        departmentId: true,
+        designationId: true,
+        project: { select: { name: true } },
+        department: { select: { name: true } },
+        designation: { select: { title: true } },
+      },
+    } as const;
   }
 
   async create(dto: CreateEmployeeDto, actingUser?: ActingUser) {
@@ -598,6 +641,19 @@ export class EmployeesService {
       where.AND = andConditions;
     }
 
+    if (actingUser?.id) {
+      const scopedWhere =
+        await this.accessScopeService.narrowEmployeeWhereForActor(
+          actingUser.id,
+          actingUser.role as UserRole,
+          where,
+        );
+      Object.keys(where).forEach(
+        (key) => delete (where as Record<string, unknown>)[key],
+      );
+      Object.assign(where, scopedWhere);
+    }
+
     if (filters.count === 'true') {
       const count = await this.prisma.employee.count({ where });
       return { count };
@@ -623,6 +679,7 @@ export class EmployeesService {
             id: true,
             role: true,
             additionalRoles: { select: { role: true } },
+            managerScopes: this.managerScopeSelect(),
           },
         },
         currentBranch: {
@@ -776,6 +833,7 @@ export class EmployeesService {
             branchId: true,
             branch: { select: { name: true, address: true } },
             additionalRoles: { select: { role: true } },
+            managerScopes: this.managerScopeSelect(),
           },
         },
       },
@@ -783,6 +841,31 @@ export class EmployeesService {
 
     if (!employee) {
       throw new NotFoundException(`Employee not found`);
+    }
+
+    if (actingUser?.id) {
+      const context = await this.accessScopeService.getActorContext(
+        actingUser.id,
+      );
+      const roles = context.roles.length
+        ? context.roles
+        : [actingUser.role as UserRole];
+      const isOwner = employee.user?.id === actingUser.id;
+      const hasOrgWideStaffRole = roles.some((r) => r !== UserRole.EMPLOYEE);
+      if (
+        !context.isGlobal &&
+        !isOwner &&
+        !hasOrgWideStaffRole &&
+        context.hasManagerScopes &&
+        !this.accessScopeService.employeeMatchesScopes(
+          employee,
+          context.managerScopes,
+        )
+      ) {
+        throw new ForbiddenException(
+          'You do not have access to this employee within your hospital scope',
+        );
+      }
     }
 
     return this.filterEmployeeForRole(
@@ -1503,9 +1586,12 @@ export class EmployeesService {
     }
 
     const primaryRole = dto.primaryRole ?? employee.user.role;
-    const additionalRoles = [...new Set(dto.additionalRoles ?? [])].filter(
-      (role) => role !== primaryRole,
+    this.accessScopeService.assertNoExecutiveAdditionalRoles(
+      dto.additionalRoles ?? [],
     );
+    const additionalRoles = this.accessScopeService
+      .rejectExecutiveAdditionalRoles([...new Set(dto.additionalRoles ?? [])])
+      .filter((role) => role !== primaryRole);
     const allRoles = buildEffectiveRoles(primaryRole, additionalRoles);
 
     if (!allRoles.length) {
@@ -1528,6 +1614,13 @@ export class EmployeesService {
     ) {
       throw new ForbiddenException(
         'Only Super Admin can change a Super Admin primary role',
+      );
+    }
+
+    if (dto.managerScopes !== undefined) {
+      await this.accessScopeService.replaceManagerScopes(
+        employee.user.id,
+        dto.managerScopes,
       );
     }
 
@@ -1557,7 +1650,8 @@ export class EmployeesService {
             employeeId,
             primaryRole,
             additionalRoles,
-          },
+            managerScopes: dto.managerScopes ?? null,
+          } as unknown as Prisma.InputJsonValue,
         },
       });
     });
@@ -1749,9 +1843,18 @@ export class EmployeesService {
     };
   }
 
-  async getBiometricIdReference() {
+  async getBiometricIdReference(actingUser?: ActingUser) {
+    let where: Prisma.EmployeeWhereInput = { biometricId: { not: null } };
+    if (actingUser?.id) {
+      where = await this.accessScopeService.narrowEmployeeWhereForActor(
+        actingUser.id,
+        actingUser.role as UserRole,
+        where,
+      );
+    }
+
     const employees = await this.prisma.employee.findMany({
-      where: { biometricId: { not: null } },
+      where,
       select: {
         employeeCode: true,
         fullName: true,

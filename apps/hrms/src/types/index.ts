@@ -249,6 +249,16 @@ export interface Employee {
     role: string
     roles?: string[]
     additionalRoles?: string[]
+    managerScopes?: {
+      id?: string
+      projectId: string
+      departmentId: string
+      designationId?: string | null
+      projectName?: string
+      departmentName?: string
+      designationTitle?: string | null
+      label: string
+    }[]
     isActive?: boolean
     branchId?: string | null
     branch?: { name: string; address?: string | null; abbreviation?: string | null } | null

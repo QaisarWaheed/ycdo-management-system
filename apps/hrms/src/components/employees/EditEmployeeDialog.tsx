@@ -6,16 +6,21 @@ import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { z } from 'zod'
 import { designationsApi } from '@/api/endpoints/designations'
 import { employeesApi } from '@/api/endpoints/employees'
+import { userAccessApi } from '@/api/endpoints/userAccess'
 import { CnicInput, isValidCnic } from '@/components/common/CnicInput'
 import { DateInput } from '@/components/common/DateInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { PhoneInput } from '@/components/common/PhoneInput'
 import { TextOnlyInput } from '@/components/common/TextOnlyInput'
+import {
+  HospitalScopeSelect,
+  type SelectedScope,
+} from '@/components/employees/HospitalScopeSelect'
 import { getEmployeeSystemRoles } from '@/components/employees/RoleBadges'
 import { RoleMultiSelect } from '@/components/employees/RoleMultiSelect'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/hooks/useAuth'
-import { ROLE_GROUPS } from '@/lib/roleLabels'
+import { ROLE_GROUPS, isExecutiveRole } from '@/lib/roleLabels'
 import {
   Dialog,
   DialogContent,
@@ -199,9 +204,20 @@ export function EditEmployeeDialog({
     employee.user?.role ?? initialRoles[0] ?? 'EMPLOYEE',
   )
   const [additionalRoles, setAdditionalRoles] = useState(
-    (employee.user?.additionalRoles ?? initialRoles.filter(
-      (role) => role !== (employee.user?.role ?? initialRoles[0]),
-    )) as string[],
+    (
+      employee.user?.additionalRoles ??
+      initialRoles.filter(
+        (role) => role !== (employee.user?.role ?? initialRoles[0]),
+      )
+    ).filter((role) => !isExecutiveRole(role)) as string[],
+  )
+  const [managerScopes, setManagerScopes] = useState<SelectedScope[]>(
+    (employee.user?.managerScopes ?? []).map((scope) => ({
+      projectId: scope.projectId,
+      departmentId: scope.departmentId,
+      designationId: scope.designationId ?? null,
+      label: scope.label,
+    })),
   )
 
   const watchedDesignation = form.watch('currentDesignation')
@@ -221,11 +237,25 @@ export function EditEmployeeDialog({
     enabled: open,
   })
 
+  const { data: accessMeta } = useQuery({
+    queryKey: ['user-access-meta'],
+    queryFn: () => userAccessApi.getMeta(),
+    enabled: open && canAssignRoles,
+  })
+
   const assignableRoles = useMemo(() => {
+    if (accessMeta?.assignableRoles?.length) return accessMeta.assignableRoles
     const all = ROLE_GROUPS.flatMap((group) => group.roles)
     if (hasRole(['SUPER_ADMIN'])) return all
     return all.filter((role) => role !== 'SUPER_ADMIN')
-  }, [hasRole])
+  }, [accessMeta?.assignableRoles, hasRole])
+
+  const additionalAssignableRoles = useMemo(() => {
+    if (accessMeta?.additionalAssignableRoles?.length) {
+      return accessMeta.additionalAssignableRoles
+    }
+    return assignableRoles.filter((role) => !isExecutiveRole(role))
+  }, [accessMeta?.additionalAssignableRoles, assignableRoles])
 
   const designationOptions = useMemo(() => {
     const titles = [
@@ -247,8 +277,18 @@ export function EditEmployeeDialog({
       const primary = employee.user?.role ?? roles[0] ?? 'EMPLOYEE'
       setPrimaryRole(primary)
       setAdditionalRoles(
-        employee.user?.additionalRoles ??
-          roles.filter((role) => role !== primary),
+        (
+          employee.user?.additionalRoles ??
+          roles.filter((role) => role !== primary)
+        ).filter((role) => !isExecutiveRole(role)),
+      )
+      setManagerScopes(
+        (employee.user?.managerScopes ?? []).map((scope) => ({
+          projectId: scope.projectId,
+          departmentId: scope.departmentId,
+          designationId: scope.designationId ?? null,
+          label: scope.label,
+        })),
       )
     }
   }, [open, employee, form])
@@ -259,7 +299,14 @@ export function EditEmployeeDialog({
       if (mode === 'job' && canAssignRoles && employee.user) {
         await employeesApi.updateRoles(employee.id, {
           primaryRole,
-          additionalRoles: additionalRoles.filter((role) => role !== primaryRole),
+          additionalRoles: additionalRoles
+            .filter((role) => role !== primaryRole)
+            .filter((role) => !isExecutiveRole(role)),
+          managerScopes: managerScopes.map((scope) => ({
+            projectId: scope.projectId,
+            departmentId: scope.departmentId,
+            designationId: scope.designationId ?? null,
+          })),
         })
       }
     },
@@ -644,10 +691,19 @@ export function EditEmployeeDialog({
                     primaryRole={primaryRole}
                     additionalRoles={additionalRoles}
                     assignableRoles={assignableRoles}
+                    additionalAssignableRoles={additionalAssignableRoles}
                     onPrimaryChange={setPrimaryRole}
                     onAdditionalChange={setAdditionalRoles}
                     disabled={mutation.isPending}
                   />
+                  <div className="rounded-md border border-border p-3">
+                    <HospitalScopeSelect
+                      options={accessMeta?.hospitalScopeOptions ?? []}
+                      value={managerScopes}
+                      onChange={setManagerScopes}
+                      disabled={mutation.isPending}
+                    />
+                  </div>
                 </div>
               )}
               {canAssignRoles && !employee.user && (

@@ -33,6 +33,7 @@ import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 import {
   getEmployeeSystemRoles,
+  ManagerScopeBadges,
   RoleBadges,
 } from '@/components/employees/RoleBadges'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
@@ -1024,6 +1025,12 @@ export function EmployeeProfilePage() {
             <div className="flex flex-col items-center gap-1">
               <p className="text-xs text-text-secondary">System roles</p>
               <RoleBadges roles={systemRoles} />
+            </div>
+          )}
+          {(employee.user?.managerScopes?.length ?? 0) > 0 && (
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-xs text-text-secondary">Hospital scopes</p>
+              <ManagerScopeBadges scopes={employee.user?.managerScopes} />
             </div>
           )}
           <p className="text-sm">

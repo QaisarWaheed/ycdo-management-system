@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { LetterType, Prisma } from '@prisma/client';
+import { LetterType, Permission, Prisma, UserRole } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import { GenerateLetterDto, LetterQueryDto } from './letters.dto';
 import {
   getLetterTypeShort,
@@ -14,9 +15,23 @@ import { generatePdf } from './pdf.helper';
 
 @Injectable()
 export class LettersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accessScopeService: AccessScopeService,
+  ) {}
 
-  async generate(dto: GenerateLetterDto, actingUserId: string) {
+  async generate(
+    dto: GenerateLetterDto,
+    actingUserId: string,
+    actingRole: UserRole = UserRole.HR_MANAGER,
+  ) {
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUserId,
+      actingRole,
+      Permission.LETTERS_GENERATE,
+      dto.employeeId,
+    );
+
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
@@ -125,7 +140,10 @@ export class LettersService {
     return { letter, previewHtml: htmlContent };
   }
 
-  findAll(query: LetterQueryDto) {
+  async findAll(
+    query: LetterQueryDto,
+    actingUser?: { id: string; role: UserRole },
+  ) {
     const where: Prisma.LetterWhereInput = {};
 
     if (query.employeeId) {
@@ -141,6 +159,15 @@ export class LettersService {
         gte: new Date(query.startDate),
         lte: new Date(query.endDate),
       };
+    }
+
+    if (actingUser?.id) {
+      where.employee =
+        await this.accessScopeService.narrowEmployeeWhereForActor(
+          actingUser.id,
+          actingUser.role,
+          {},
+        );
     }
 
     return this.prisma.letter.findMany({

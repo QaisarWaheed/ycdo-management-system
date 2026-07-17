@@ -1,11 +1,13 @@
 import { Label } from '@/components/ui/label'
-import { ROLE_GROUPS, formatRole } from '@/lib/roleLabels'
+import { ROLE_GROUPS, formatRole, isExecutiveRole } from '@/lib/roleLabels'
 import { cn } from '@/lib/utils'
 
 type RoleMultiSelectProps = {
   primaryRole: string
   additionalRoles: string[]
   assignableRoles: string[]
+  /** Roles allowed as additional (defaults to assignable minus executives). */
+  additionalAssignableRoles?: string[]
   onPrimaryChange: (role: string) => void
   onAdditionalChange: (roles: string[]) => void
   disabled?: boolean
@@ -15,13 +17,20 @@ export function RoleMultiSelect({
   primaryRole,
   additionalRoles,
   assignableRoles,
+  additionalAssignableRoles,
   onPrimaryChange,
   onAdditionalChange,
   disabled,
 }: RoleMultiSelectProps) {
-  const allowed = new Set(assignableRoles)
+  const primaryAllowed = new Set(assignableRoles)
+  const additionalAllowed = new Set(
+    (additionalAssignableRoles ?? assignableRoles).filter(
+      (role) => !isExecutiveRole(role),
+    ),
+  )
+
   const toggleAdditional = (role: string) => {
-    if (role === primaryRole) return
+    if (role === primaryRole || isExecutiveRole(role)) return
     if (additionalRoles.includes(role)) {
       onAdditionalChange(additionalRoles.filter((value) => value !== role))
     } else {
@@ -41,13 +50,15 @@ export function RoleMultiSelect({
             const next = event.target.value
             onPrimaryChange(next)
             onAdditionalChange(
-              additionalRoles.filter((role) => role !== next),
+              additionalRoles.filter(
+                (role) => role !== next && !isExecutiveRole(role),
+              ),
             )
           }}
         >
           {ROLE_GROUPS.flatMap((group) =>
             group.roles
-              .filter((role) => allowed.has(role) || role === primaryRole)
+              .filter((role) => primaryAllowed.has(role) || role === primaryRole)
               .map((role) => (
                 <option key={role} value={role}>
                   {formatRole(role)}
@@ -59,10 +70,18 @@ export function RoleMultiSelect({
 
       <div className="space-y-2">
         <Label>Additional roles</Label>
+        <p className="text-xs text-text-secondary">
+          President, Chairman Admin, and Founder cannot be additional roles.
+          Use hospital management scopes for department/designation access.
+        </p>
         <div className="max-h-48 space-y-3 overflow-y-auto rounded-md border border-border p-3">
           {ROLE_GROUPS.map((group) => {
             const roles = group.roles.filter(
-              (role) => allowed.has(role) || additionalRoles.includes(role),
+              (role) =>
+                !isExecutiveRole(role) &&
+                (additionalAllowed.has(role) ||
+                  additionalRoles.includes(role) ||
+                  role === primaryRole),
             )
             if (!roles.length) return null
             return (

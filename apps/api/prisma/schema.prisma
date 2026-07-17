@@ -16,7 +16,9 @@ model Project {
   isActive  Boolean     @default(true)
   createdAt DateTime    @default(now())
 
-  branches Branch[]
+  branches           Branch[]
+  projectDepartments ProjectDepartment[]
+  managerScopes      UserManagerScope[]
 }
 
 enum ProjectType {
@@ -114,8 +116,25 @@ model Department {
   sortOrder Int      @default(999)
   createdAt DateTime @default(now())
 
-  employees         Employee[]
-  employmentHistory EmploymentHistory[]
+  employees          Employee[]
+  employmentHistory  EmploymentHistory[]
+  projectDepartments ProjectDepartment[]
+  managerScopes      UserManagerScope[]
+}
+
+/// Links a HOSPITAL project to departments that may be assigned as manager scopes.
+model ProjectDepartment {
+  id           String   @id @default(uuid())
+  projectId    String
+  departmentId String
+  createdAt    DateTime @default(now())
+
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, departmentId])
+  @@index([projectId])
+  @@index([departmentId])
 }
 
 // ─── EMPLOYEE ─────────────────────────────────────────────
@@ -291,6 +310,8 @@ model Designation {
   isDeleted Boolean  @default(false)
   sortOrder Int      @default(999)
   createdAt DateTime @default(now())
+
+  managerScopes UserManagerScope[]
 }
 
 // ─── EMPLOYMENT HISTORY ───────────────────────────────────
@@ -733,6 +754,7 @@ model User {
   passwordRecord UserPassword?
   permissions    UserPermission[]
   additionalRoles UserAdditionalRole[]
+  managerScopes   UserManagerScope[]
   submittedOnboardingApprovals EmployeeOnboardingApproval[] @relation("SubmittedOnboardingApprovals")
   reviewedOnboardingApprovals  EmployeeOnboardingApproval[] @relation("ReviewedOnboardingApprovals")
   mutualSwapsCreated           MutualSwap[]
@@ -748,6 +770,27 @@ model UserAdditionalRole {
 
   @@unique([userId, role])
   @@index([userId])
+}
+
+/// Hospital department/designation manager scopes (Admin Officer–equivalent within match).
+model UserManagerScope {
+  id            String   @id @default(uuid())
+  userId        String
+  projectId     String
+  departmentId  String
+  designationId String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  department  Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  designation Designation? @relation(fields: [designationId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([departmentId])
+  @@index([userId, projectId, departmentId, designationId])
 }
 
 model MutualSwap {

@@ -106,6 +106,23 @@ export const DEPARTMENT_DESIGNATIONS: Record<string, string[]> = {
 
 export const ALL_DEPARTMENT_NAMES = Object.keys(DEPARTMENT_DESIGNATIONS).sort();
 
+/** Organization-level departments excluded from hospital manager scopes. */
+export const ORG_LEVEL_DEPARTMENTS = new Set([
+  'HUMAN RESOURCES',
+  'ACCOUNTS',
+  'SOFTWARE DEPARTMENT',
+  'MEDIA & NEWS',
+  'IT',
+  'TEACHER',
+  'PRINCIPAL',
+  'VTI',
+  'KITCHEN',
+]);
+
+export function isHospitalAssignableDepartment(name: string): boolean {
+  return !ORG_LEVEL_DEPARTMENTS.has(normalizeOrgName(name));
+}
+
 export function normalizeOrgName(name: string): string {
   return name.trim().toUpperCase();
 }

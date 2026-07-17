@@ -12,6 +12,7 @@ import {
   PERMISSION_LABELS,
   roleDefaultAllows,
 } from '../permissions/permissions.constants';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { buildEffectiveRoles } from '../../common/user-roles.util';
 import {
@@ -26,6 +27,7 @@ export class UserAccessService {
   constructor(
     private prisma: PrismaService,
     private permissionsService: PermissionsService,
+    private accessScopeService: AccessScopeService,
   ) {}
 
   findAll(query: UserAccessQueryDto = {}) {
@@ -127,17 +129,44 @@ export class UserAccessService {
         additionalRoles: {
           select: { role: true },
         },
+        managerScopes: {
+          where: { isActive: true },
+          select: {
+            id: true,
+            projectId: true,
+            departmentId: true,
+            designationId: true,
+            project: { select: { name: true } },
+            department: { select: { name: true } },
+            designation: { select: { title: true } },
+          },
+        },
       },
       orderBy: [{ email: 'asc' }],
     }).then((users) =>
-      users.map((user) => ({
-        ...user,
-        additionalRoles: user.additionalRoles.map((entry) => entry.role),
-        roles: buildEffectiveRoles(
-          user.role,
-          user.additionalRoles.map((entry) => entry.role),
-        ),
-      })),
+      users.map((user) => {
+        const additionalRoles = user.additionalRoles.map((entry) => entry.role);
+        const managerScopes = user.managerScopes.map((scope) => ({
+          id: scope.id,
+          projectId: scope.projectId,
+          projectName: scope.project.name,
+          departmentId: scope.departmentId,
+          departmentName: scope.department.name,
+          designationId: scope.designationId,
+          designationTitle: scope.designation?.title ?? null,
+          label: [
+            scope.project.name,
+            scope.department.name,
+            scope.designation?.title ?? 'All designations',
+          ].join(' · '),
+        }));
+        return {
+          ...user,
+          additionalRoles,
+          managerScopes,
+          roles: buildEffectiveRoles(user.role, additionalRoles),
+        };
+      }),
     );
   }
 
@@ -270,6 +299,7 @@ export class UserAccessService {
 
     const additionalRoles = user.additionalRoles.map((entry) => entry.role);
     const roles = buildEffectiveRoles(user.role, additionalRoles);
+    const managerScopes = await this.accessScopeService.listManagerScopes(userId);
 
     const effectivePermissions =
       await this.permissionsService.getEffectivePermissions(user.id, user.role);
@@ -277,14 +307,30 @@ export class UserAccessService {
     return {
       ...user,
       additionalRoles,
+      managerScopes,
       roles,
       effectivePermissions,
       assignableRoles: this.assignableRoles(actingRole, user),
+      hospitalScopeOptions:
+        await this.accessScopeService.getHospitalScopeOptions(),
     };
   }
 
   getPermissionCatalog() {
     return this.permissionsService.getPermissionCatalog();
+  }
+
+  async getMeta(actingRole: UserRole) {
+    return {
+      permissions: this.getPermissionCatalog(),
+      assignableRoles: this.assignableRoles(actingRole),
+      additionalAssignableRoles: this.assignableRoles(actingRole).filter(
+        (role) => !this.accessScopeService.isExecutiveRole(role),
+      ),
+      permissionLabels: this.permissionLabels(),
+      hospitalScopeOptions:
+        await this.accessScopeService.getHospitalScopeOptions(),
+    };
   }
 
   async update(
@@ -306,6 +352,9 @@ export class UserAccessService {
       this.assertAssignableRole(dto.role, actingRole, user);
     }
     if (dto.additionalRoles?.length) {
+      this.accessScopeService.assertNoExecutiveAdditionalRoles(
+        dto.additionalRoles,
+      );
       for (const role of dto.additionalRoles) {
         this.assertAssignableRole(role, actingRole, user);
       }
@@ -317,8 +366,17 @@ export class UserAccessService {
 
     const nextPrimary = dto.role ?? user.role;
     const nextAdditional = dto.additionalRoles
-      ? [...new Set(dto.additionalRoles)].filter((role) => role !== nextPrimary)
+      ? this.accessScopeService
+          .rejectExecutiveAdditionalRoles([...new Set(dto.additionalRoles)])
+          .filter((role) => role !== nextPrimary)
       : undefined;
+
+    if (dto.managerScopes !== undefined) {
+      await this.accessScopeService.replaceManagerScopes(
+        userId,
+        dto.managerScopes,
+      );
+    }
 
     await this.prisma.$transaction(async (tx) => {
       if (
@@ -380,12 +438,13 @@ export class UserAccessService {
             isActive: dto.isActive,
             role: dto.role,
             additionalRoles: nextAdditional,
+            managerScopes: dto.managerScopes ?? null,
             branchId: dto.branchId,
             permissions: dto.permissions?.map((p) => ({
               permission: p.permission,
               granted: p.granted,
             })),
-          },
+          } as unknown as Prisma.InputJsonValue,
         },
       });
     });

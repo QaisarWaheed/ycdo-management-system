@@ -38,12 +38,8 @@ export class UserAccessController {
   }
 
   @Get('meta')
-  getMeta(@CurrentUser() user: { role: UserRole }) {
-    return {
-      permissions: this.userAccessService.getPermissionCatalog(),
-      assignableRoles: this.userAccessService.assignableRoles(user.role),
-      permissionLabels: this.userAccessService.permissionLabels(),
-    };
+  async getMeta(@CurrentUser() user: { role: UserRole }) {
+    return this.userAccessService.getMeta(user.role);
   }
 
   @Post('sync-employee-logins')
