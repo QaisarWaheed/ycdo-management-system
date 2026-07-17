@@ -102,6 +102,42 @@ describe('AccessScopeService helpers', () => {
     ).toBe(false);
   });
 
+  it('expands department/designation filters to include manager scopes', () => {
+    expect(
+      service.employeeMatchesDepartmentDesignationFilter({
+        departmentId: 'dept-pharm',
+        designation: 'PHARMACY INCHARGE',
+      }),
+    ).toEqual({
+      OR: [
+        {
+          currentDepartmentId: 'dept-pharm',
+          currentDesignation: {
+            equals: 'PHARMACY INCHARGE',
+            mode: 'insensitive',
+          },
+        },
+        {
+          user: {
+            managerScopes: {
+              some: {
+                isActive: true,
+                project: { type: ProjectType.HOSPITAL },
+                departmentId: 'dept-pharm',
+                designation: {
+                  title: {
+                    equals: 'PHARMACY INCHARGE',
+                    mode: 'insensitive',
+                  },
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+  });
+
   it('builds OR employee predicates for scopes', () => {
     const where = service.employeeWhereForScopes([
       {

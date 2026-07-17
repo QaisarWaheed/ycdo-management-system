@@ -183,6 +183,58 @@ export class AccessScopeService {
   }
 
   /**
+   * Department/designation list filters match either actual employee placement
+   * or an active hospital manager scope on the linked user account.
+   */
+  employeeMatchesDepartmentDesignationFilter(filters: {
+    departmentId?: string;
+    designation?: string;
+  }): Prisma.EmployeeWhereInput | undefined {
+    const departmentId = filters.departmentId?.trim() || undefined;
+    const designation = filters.designation?.trim() || undefined;
+    if (!departmentId && !designation) return undefined;
+
+    const actual: Prisma.EmployeeWhereInput = {};
+    if (departmentId) {
+      actual.currentDepartmentId = departmentId;
+    }
+    if (designation) {
+      actual.currentDesignation = {
+        equals: designation,
+        mode: 'insensitive',
+      };
+    }
+
+    const scopeClause: Prisma.UserManagerScopeWhereInput = {
+      isActive: true,
+      project: { type: ProjectType.HOSPITAL },
+    };
+    if (departmentId) {
+      scopeClause.departmentId = departmentId;
+    }
+    if (designation) {
+      // Department-wide scopes (no designation) count for department filters only.
+      // For designation filters, require an exact designation-title match.
+      scopeClause.designation = {
+        title: { equals: designation, mode: 'insensitive' },
+      };
+    }
+
+    return {
+      OR: [
+        actual,
+        {
+          user: {
+            managerScopes: {
+              some: scopeClause,
+            },
+          },
+        },
+      ],
+    };
+  }
+
+  /**
    * Row filter for list queries.
    * - Global actors: no extra filter
    * - Actors with global role permissions: no extra filter from scopes

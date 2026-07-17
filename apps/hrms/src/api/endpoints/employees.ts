@@ -90,7 +90,6 @@ export const employeesApi = {
     id: string,
     data: {
       primaryRole?: string
-      additionalRoles: string[]
       managerScopes?: {
         projectId: string
         departmentId: string

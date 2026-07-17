@@ -266,7 +266,9 @@ export class ToggleHideProfilePhotoDto {
 }
 
 export class ManagerScopeInputDto {
-  @IsUUID()
+  /** Seeded projects use slug ids (e.g. project-hospital), not UUIDs. */
+  @IsString()
+  @IsNotEmpty()
   projectId: string;
 
   @IsUUID()
@@ -282,9 +284,11 @@ export class UpdateEmployeeRolesDto {
   @IsEnum(UserRole)
   primaryRole?: UserRole;
 
+  /** Kept optional for API compatibility; writes are ignored to preserve existing grants. */
+  @IsOptional()
   @IsArray()
   @IsEnum(UserRole, { each: true })
-  additionalRoles: UserRole[];
+  additionalRoles?: UserRole[];
 
   @IsOptional()
   @IsArray()

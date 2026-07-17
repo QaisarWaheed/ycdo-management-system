@@ -19,7 +19,6 @@ import {
 } from '@/components/employees/HospitalScopeSelect'
 import { RoleBadges } from '@/components/employees/RoleBadges'
 import { RoleMultiSelect } from '@/components/employees/RoleMultiSelect'
-import { isExecutiveRole } from '@/lib/roleLabels'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -92,7 +91,6 @@ function ManageAccessDialog({
     Record<AppPermission, PermissionMode>
   >({} as Record<AppPermission, PermissionMode>)
   const [role, setRole] = useState('')
-  const [additionalRoles, setAdditionalRoles] = useState<string[]>([])
   const [managerScopes, setManagerScopes] = useState<SelectedScope[]>([])
   const [isActive, setIsActive] = useState(true)
   const [branchId, setBranchId] = useState('')
@@ -116,9 +114,6 @@ function ManageAccessDialog({
   useEffect(() => {
     if (!user || !open) return
     setRole(user.role)
-    setAdditionalRoles(
-      (user.additionalRoles ?? []).filter((value) => !isExecutiveRole(value)),
-    )
     setManagerScopes(
       (user.managerScopes ?? []).map((scope) => ({
         projectId: scope.projectId,
@@ -139,7 +134,6 @@ function ManageAccessDialog({
   useEffect(() => {
     if (!open) {
       setRole('')
-      setAdditionalRoles([])
       setManagerScopes([])
       setNewPassword('')
       setPermissionModes({} as Record<AppPermission, PermissionMode>)
@@ -157,9 +151,6 @@ function ManageAccessDialog({
 
       return userAccessApi.update(userId!, {
         role,
-        additionalRoles: additionalRoles
-          .filter((value) => value !== role)
-          .filter((value) => !isExecutiveRole(value)),
         managerScopes: managerScopes.map((scope) => ({
           projectId: scope.projectId,
           departmentId: scope.departmentId,
@@ -240,19 +231,10 @@ function ManageAccessDialog({
               <div className="space-y-2 sm:col-span-2">
                 <RoleMultiSelect
                   primaryRole={role}
-                  additionalRoles={additionalRoles}
                   assignableRoles={
                     user.assignableRoles ?? meta?.assignableRoles ?? []
                   }
-                  additionalAssignableRoles={
-                    user.additionalAssignableRoles ??
-                    meta?.additionalAssignableRoles ??
-                    (user.assignableRoles ?? meta?.assignableRoles ?? []).filter(
-                      (value) => !isExecutiveRole(value),
-                    )
-                  }
                   onPrimaryChange={setRole}
-                  onAdditionalChange={setAdditionalRoles}
                   disabled={saveMutation.isPending}
                 />
               </div>
@@ -842,13 +824,7 @@ export function LoginAccessPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <RoleBadges
-                        roles={
-                          record.roles?.length
-                            ? record.roles
-                            : [record.role]
-                        }
-                      />
+                      <RoleBadges roles={[record.role]} />
                     </TableCell>
                     <TableCell>
                       <Badge

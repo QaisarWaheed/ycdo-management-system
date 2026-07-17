@@ -539,8 +539,13 @@ export class EmployeesService {
       where.currentBranchId = filters.branchId;
     }
 
-    if (filters.departmentId) {
-      where.currentDepartmentId = filters.departmentId;
+    const departmentDesignationWhere =
+      this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
+        departmentId: filters.departmentId,
+        designation: filters.designation,
+      });
+    if (departmentDesignationWhere) {
+      andConditions.push(departmentDesignationWhere);
     }
 
     if (filters.projectId) {
@@ -590,13 +595,6 @@ export class EmployeesService {
       andConditions.push({
         OR: [{ currentDepartmentId: null }, { currentDesignation: null }],
       });
-    }
-
-    if (filters.designation) {
-      where.currentDesignation = {
-        equals: filters.designation,
-        mode: 'insensitive',
-      };
     }
 
     if (filters.district) {
@@ -863,11 +861,18 @@ export class EmployeesService {
       }
     }
 
-    return this.filterEmployeeForRole(
+    const filtered = this.filterEmployeeForRole(
       employee,
       actingUser?.id,
       actingUser?.role,
     );
+    const biometricRegistration =
+      await this.faceSyncService.getBiometricRegistrationSummary(employee.id);
+
+    return {
+      ...filtered,
+      biometricRegistration,
+    };
   }
 
   async update(
@@ -1581,13 +1586,11 @@ export class EmployeesService {
     }
 
     const primaryRole = dto.primaryRole ?? employee.user.role;
-    this.accessScopeService.assertNoExecutiveAdditionalRoles(
-      dto.additionalRoles ?? [],
-    );
-    const additionalRoles = this.accessScopeService
-      .rejectExecutiveAdditionalRoles([...new Set(dto.additionalRoles ?? [])])
+    // Preserve existing additional-role grants; hospital scopes replace the UI.
+    const existingAdditional = (employee.user.additionalRoles ?? [])
+      .map((entry) => entry.role)
       .filter((role) => role !== primaryRole);
-    const allRoles = buildEffectiveRoles(primaryRole, additionalRoles);
+    const allRoles = buildEffectiveRoles(primaryRole, existingAdditional);
 
     if (!allRoles.length) {
       throw new BadRequestException('At least one role is required');
@@ -1624,15 +1627,10 @@ export class EmployeesService {
         where: { id: employee.user!.id },
         data: { role: primaryRole },
       });
-      await tx.userAdditionalRole.deleteMany({
-        where: { userId: employee.user!.id },
-      });
-      if (additionalRoles.length) {
-        await tx.userAdditionalRole.createMany({
-          data: additionalRoles.map((role) => ({
-            userId: employee.user!.id,
-            role,
-          })),
+      // Drop any additional grant that now duplicates the primary role.
+      if (primaryRole !== employee.user!.role) {
+        await tx.userAdditionalRole.deleteMany({
+          where: { userId: employee.user!.id, role: primaryRole },
         });
       }
       await tx.auditLog.create({
@@ -1644,7 +1642,7 @@ export class EmployeesService {
           changes: {
             employeeId,
             primaryRole,
-            additionalRoles,
+            additionalRoles: existingAdditional,
             managerScopes: dto.managerScopes ?? null,
           } as unknown as Prisma.InputJsonValue,
         },
@@ -1735,6 +1733,14 @@ export class EmployeesService {
       andConditions.push(medicineEmployeeWhere());
     }
 
+    const departmentDesignationWhere =
+      this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
+        departmentId: scopedQuery.departmentId,
+      });
+    if (departmentDesignationWhere) {
+      andConditions.push(departmentDesignationWhere);
+    }
+
     const employees = await this.prisma.employee.findMany({
       where: {
         status: {
@@ -1745,9 +1751,6 @@ export class EmployeesService {
           ],
         },
         ...(scopedQuery.branchId ? { currentBranchId: scopedQuery.branchId } : {}),
-        ...(scopedQuery.departmentId
-          ? { currentDepartmentId: scopedQuery.departmentId }
-          : {}),
         ...(andConditions.length ? { AND: andConditions } : {}),
       },
       include: {

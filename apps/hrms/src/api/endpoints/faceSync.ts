@@ -6,6 +6,26 @@ export type FaceSyncJobStatus =
   | 'FAILED'
   | 'PARTIAL'
 
+export type BiometricRegistrationStatus =
+  | 'NOT_REGISTERED'
+  | 'PARTIAL'
+  | 'REGISTERED'
+
+export interface BiometricRegistrationSummary {
+  biometricId: string | null
+  biometricIdAssigned: boolean
+  registeredDeviceCount: number
+  totalDevices: number
+  registrationStatus: BiometricRegistrationStatus
+  devices: Array<{
+    deviceId: string
+    label: string | null
+    branchName: string
+    registered: boolean
+    lastSyncedAt: string | null
+  }>
+}
+
 export interface FaceSyncStats {
   total?: number
   pending?: number
@@ -18,6 +38,7 @@ export interface FaceSyncStats {
     createdAt: string
     updatedAt: string
   } | null
+  registration?: BiometricRegistrationSummary
 }
 
 export interface FaceSyncJob {
@@ -52,6 +73,11 @@ export const faceSyncApi = {
     api.get<unknown, FaceSyncStats>('/face-sync/stats', {
       params: employeeId ? { employeeId } : undefined,
     }),
+
+  getRegistration: (employeeId: string) =>
+    api.get<unknown, BiometricRegistrationSummary>(
+      `/face-sync/registration/${employeeId}`,
+    ),
 
   listJobs: () => api.get<unknown, FaceSyncJob[]>('/face-sync/jobs'),
 

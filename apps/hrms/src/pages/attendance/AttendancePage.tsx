@@ -25,10 +25,6 @@ import {
   employeeFiltersToAttendanceParams,
 } from '@/components/employees/EmployeeFiltersBar'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
-import {
-  getEmployeeSystemRoles,
-  RoleBadges,
-} from '@/components/employees/RoleBadges'
 import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -363,7 +359,6 @@ function DailyLogTab({
               <TableHead>Employee Name</TableHead>
               <TableHead>Department</TableHead>
               <TableHead>Designation</TableHead>
-              <TableHead>System Roles</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Shift</TableHead>
@@ -380,7 +375,7 @@ function DailyLogTab({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(15)].map((__, j) => (
+                  {[...Array(14)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -389,7 +384,7 @@ function DailyLogTab({
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={15} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={14} className="h-32 text-center text-text-secondary">
                   No attendance records for this date
                 </TableCell>
               </TableRow>
@@ -412,11 +407,6 @@ function DailyLogTab({
                   </TableCell>
                   <TableCell>
                     {log.employee?.currentDesignation ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    <RoleBadges
-                      roles={getEmployeeSystemRoles(log.employee)}
-                    />
                   </TableCell>
                   <TableCell>
                     {log.employee?.phone ? (

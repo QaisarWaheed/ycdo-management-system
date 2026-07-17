@@ -4,6 +4,7 @@ import {
   IsEmail,
   IsEnum,
   IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -50,7 +51,9 @@ export class PermissionOverrideDto {
 }
 
 export class ManagerScopeInputDto {
-  @IsUUID()
+  /** Seeded projects use slug ids (e.g. project-hospital), not UUIDs. */
+  @IsString()
+  @IsNotEmpty()
   projectId: string;
 
   @IsUUID()

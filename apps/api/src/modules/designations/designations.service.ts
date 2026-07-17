@@ -5,6 +5,7 @@ import {
   normalizeOrgName,
 } from '../../common/org-structure';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import {
   CreateDesignationDto,
   DesignationQueryDto,
@@ -13,7 +14,10 @@ import {
 
 @Injectable()
 export class DesignationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accessScopeService: AccessScopeService,
+  ) {}
 
   findAll(query?: DesignationQueryDto) {
     const where: Prisma.DesignationWhereInput = {
@@ -49,12 +53,20 @@ export class DesignationsService {
       .then(async (designations) => {
         const designationsWithCounts = await Promise.all(
           designations.map(async (d) => {
+            const placementOrScope =
+              this.accessScopeService.employeeMatchesDepartmentDesignationFilter(
+                { designation: d.title },
+              );
             const employeesCount = await this.prisma.employee.count({
               where: {
-                currentDesignation: d.title,
-                status: {
-                  in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED],
-                },
+                AND: [
+                  placementOrScope ?? {},
+                  {
+                    status: {
+                      in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED],
+                    },
+                  },
+                ],
               },
             });
 

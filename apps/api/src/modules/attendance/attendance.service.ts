@@ -722,9 +722,15 @@ export class AttendanceService {
     search?: string;
   }): Prisma.EmployeeWhereInput | undefined {
     const employeeWhere: Prisma.EmployeeWhereInput = {};
+    const andConditions: Prisma.EmployeeWhereInput[] = [];
 
-    if (query.departmentId) {
-      employeeWhere.currentDepartmentId = query.departmentId;
+    const departmentDesignationWhere =
+      this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
+        departmentId: query.departmentId,
+        designation: query.designation,
+      });
+    if (departmentDesignationWhere) {
+      andConditions.push(departmentDesignationWhere);
     }
 
     if (query.projectId) {
@@ -763,13 +769,6 @@ export class AttendanceService {
       employeeWhere.gender = query.gender;
     }
 
-    if (query.designation) {
-      employeeWhere.currentDesignation = {
-        equals: query.designation,
-        mode: 'insensitive',
-      };
-    }
-
     if (query.district) {
       employeeWhere.district = {
         equals: query.district,
@@ -782,16 +781,22 @@ export class AttendanceService {
     }
 
     if (query.search) {
-      employeeWhere.OR = [
-        { fullName: { contains: query.search, mode: 'insensitive' } },
-        { employeeCode: { contains: query.search, mode: 'insensitive' } },
-        { cnic: { contains: query.search, mode: 'insensitive' } },
-        {
-          currentBranch: {
-            name: { contains: query.search, mode: 'insensitive' },
+      andConditions.push({
+        OR: [
+          { fullName: { contains: query.search, mode: 'insensitive' } },
+          { employeeCode: { contains: query.search, mode: 'insensitive' } },
+          { cnic: { contains: query.search, mode: 'insensitive' } },
+          {
+            currentBranch: {
+              name: { contains: query.search, mode: 'insensitive' },
+            },
           },
-        },
-      ];
+        ],
+      });
+    }
+
+    if (andConditions.length > 0) {
+      employeeWhere.AND = andConditions;
     }
 
     return Object.keys(employeeWhere).length > 0 ? employeeWhere : undefined;

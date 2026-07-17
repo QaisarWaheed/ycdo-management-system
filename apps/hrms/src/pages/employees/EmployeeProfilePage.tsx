@@ -32,9 +32,7 @@ import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 import {
-  getEmployeeSystemRoles,
   ManagerScopeBadges,
-  RoleBadges,
 } from '@/components/employees/RoleBadges'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
 import { StatusBadge } from '@/components/employees/StatusBadge'
@@ -810,8 +808,6 @@ export function EmployeeProfilePage() {
   const canEditBranchDuty =
     canHrJobActions && user?.employeeId !== employee.id
 
-  const systemRoles = getEmployeeSystemRoles(employee)
-
   const hasPersonalInfo =
     employee.bloodGroup ||
     employee.caste ||
@@ -947,12 +943,6 @@ export function EmployeeProfilePage() {
             {employee.currentDesignation ?? '—'}
           </div>
           <div className="print-field">
-            <div className="print-label">System Roles</div>
-            {systemRoles.length
-              ? systemRoles.map((role) => role.replace(/_/g, ' ')).join(', ')
-              : '—'}
-          </div>
-          <div className="print-field">
             <div className="print-label">Department</div>
             {employee.currentDepartment?.name ?? '—'}
           </div>
@@ -1015,18 +1005,52 @@ export function EmployeeProfilePage() {
             <Badge variant="outline" className="mt-2 font-mono">
               {employee.employeeCode}
             </Badge>
-            <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-text-secondary">
-              <Fingerprint className="h-3.5 w-3.5" />
-              <span>Biometric ID: {employee.biometricId ?? 'Auto-assigned'}</span>
-            </p>
+            {(() => {
+              const registration =
+                employee.biometricRegistration ??
+                faceSyncStats?.registration
+              const registrationStatus =
+                registration?.registrationStatus ?? 'NOT_REGISTERED'
+              const registrationLabel =
+                registrationStatus === 'REGISTERED'
+                  ? 'Registered on device'
+                  : registrationStatus === 'PARTIAL'
+                    ? 'Partially registered'
+                    : 'Not registered on device'
+              const registrationClass =
+                registrationStatus === 'REGISTERED'
+                  ? 'bg-green-100 text-green-800'
+                  : registrationStatus === 'PARTIAL'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-slate-100 text-slate-600'
+              return (
+                <div className="mt-2 flex flex-col items-center gap-1.5">
+                  <p className="flex items-center justify-center gap-1.5 text-xs text-text-secondary">
+                    <Fingerprint className="h-3.5 w-3.5" />
+                    <span>
+                      Biometric ID:{' '}
+                      {employee.biometricId || registration?.biometricId
+                        ? (employee.biometricId ?? registration?.biometricId)
+                        : 'Not assigned'}
+                    </span>
+                  </p>
+                  <Badge
+                    variant="outline"
+                    className={`text-xs ${registrationClass}`}
+                  >
+                    {registrationLabel}
+                  </Badge>
+                  {registration && registration.totalDevices > 0 && (
+                    <p className="text-xs text-text-secondary">
+                      Synced on {registration.registeredDeviceCount} of{' '}
+                      {registration.totalDevices} devices
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
           </div>
           <p className="text-text-secondary">{employee.currentDesignation ?? '—'}</p>
-          {systemRoles.length > 0 && (
-            <div className="flex flex-col items-center gap-1">
-              <p className="text-xs text-text-secondary">System roles</p>
-              <RoleBadges roles={systemRoles} />
-            </div>
-          )}
           {(employee.user?.managerScopes?.length ?? 0) > 0 && (
             <div className="flex flex-col items-center gap-1">
               <p className="text-xs text-text-secondary">Hospital scopes</p>

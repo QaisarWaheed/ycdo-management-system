@@ -74,9 +74,34 @@ export class FaceSyncController {
     UserRole.IT_ADMIN,
     UserRole.SUPER_ADMIN,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.MEDICINE_MANAGER,
+    UserRole.DEPARTMENT_HEAD,
   )
   getStats(@Query('employeeId') employeeId?: string) {
     return this.faceSyncService.getStats(employeeId);
+  }
+
+  @Get('registration/:employeeId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.IT_ADMIN,
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.MEDICINE_MANAGER,
+    UserRole.DEPARTMENT_HEAD,
+  )
+  getRegistration(@Param('employeeId') employeeId: string) {
+    return this.faceSyncService.getBiometricRegistrationSummary(employeeId);
   }
 
   @Get('jobs')

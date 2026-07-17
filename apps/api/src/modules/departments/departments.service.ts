@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { EmployeeStatus } from '@prisma/client';
 import { normalizeDepartmentName } from '../../common/org-structure';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AccessScopeService } from '../permissions/access-scope.service';
 import {
   CreateDepartmentDto,
   DepartmentQueryDto,
@@ -11,7 +12,10 @@ import {
 
 @Injectable()
 export class DepartmentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private accessScopeService: AccessScopeService,
+  ) {}
 
   async create(dto: CreateDepartmentDto) {
     const name = normalizeDepartmentName(dto.name);
@@ -32,19 +36,31 @@ export class DepartmentsService {
     });
   }
 
-  findAll(_query?: DepartmentQueryDto) {
+  async findAll(_query?: DepartmentQueryDto) {
     const where: Prisma.DepartmentWhereInput = {
       isActive: true,
       isDeleted: false,
     };
 
-    return this.prisma.department.findMany({
+    const departments = await this.prisma.department.findMany({
       where,
-      include: {
-        _count: { select: { employees: true } },
-      },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
+
+    return Promise.all(
+      departments.map(async (department) => {
+        const employees = await this.prisma.employee.count({
+          where:
+            this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
+              departmentId: department.id,
+            }),
+        });
+        return {
+          ...department,
+          _count: { employees },
+        };
+      }),
+    );
   }
 
   async findOne(id: string) {

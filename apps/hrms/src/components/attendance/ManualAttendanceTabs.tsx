@@ -13,10 +13,6 @@ import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { DateInput } from '@/components/common/DateInput'
 import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
-import {
-  getEmployeeSystemRoles,
-  RoleBadges,
-} from '@/components/employees/RoleBadges'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -470,7 +466,6 @@ export function CheckInManualTab() {
               <TableHead>Name</TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Designation</TableHead>
-              <TableHead>System Roles</TableHead>
               <TableHead>Shift</TableHead>
               <TableHead>Check In Time</TableHead>
               <TableHead />
@@ -479,14 +474,14 @@ export function CheckInManualTab() {
           <TableBody>
             {!effectiveBranchId ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-text-secondary">
+                <TableCell colSpan={6} className="text-text-secondary">
                   Select a branch to load employees
                 </TableCell>
               </TableRow>
             ) : isLoading ? (
               [...Array(4)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(7)].map((__, j) => (
+                  {[...Array(6)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -495,7 +490,7 @@ export function CheckInManualTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-text-secondary">
+                <TableCell colSpan={6} className="text-text-secondary">
                   No employees pending check-in for the current duty hours
                 </TableCell>
               </TableRow>
@@ -524,9 +519,6 @@ export function CheckInManualTab() {
                     {emp.employeeCode}
                   </TableCell>
                   <TableCell>{emp.currentDesignation ?? '—'}</TableCell>
-                  <TableCell>
-                    <RoleBadges roles={getEmployeeSystemRoles(emp)} />
-                  </TableCell>
                   <TableCell className="text-sm text-text-secondary">
                     {formatEmployeeDutyLabel(emp)}
                     {graceLockedRole && withinGrace && (
@@ -1120,7 +1112,6 @@ export function MarkLeaveManualTab() {
               <TableHead>Name</TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Designation</TableHead>
-              <TableHead>System Roles</TableHead>
               <TableHead>Duty</TableHead>
               <TableHead />
             </TableRow>
@@ -1128,14 +1119,14 @@ export function MarkLeaveManualTab() {
           <TableBody>
             {!effectiveBranchId ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-text-secondary">
+                <TableCell colSpan={5} className="text-text-secondary">
                   Select a branch to load employees
                 </TableCell>
               </TableRow>
             ) : isLoading ? (
               [...Array(4)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(6)].map((__, j) => (
+                  {[...Array(5)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -1144,7 +1135,7 @@ export function MarkLeaveManualTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-text-secondary">
+                <TableCell colSpan={5} className="text-text-secondary">
                   No employees found
                 </TableCell>
               </TableRow>
@@ -1159,9 +1150,6 @@ export function MarkLeaveManualTab() {
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {emp.currentDesignation ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    <RoleBadges roles={getEmployeeSystemRoles(emp)} />
                   </TableCell>
                   <TableCell className="text-sm text-text-secondary">
                     {formatEmployeeDutyLabel(emp)}

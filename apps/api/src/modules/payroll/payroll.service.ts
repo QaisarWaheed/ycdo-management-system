@@ -303,8 +303,14 @@ export class PayrollService {
       employeeFilter.currentBranchId = query.branchId;
     }
 
-    if (query.departmentId) {
-      employeeFilter.currentDepartmentId = query.departmentId;
+    const departmentDesignationWhere =
+      this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
+        departmentId: query.departmentId,
+      });
+    if (departmentDesignationWhere) {
+      employeeFilter = {
+        AND: [employeeFilter, departmentDesignationWhere],
+      };
     }
 
     if (actingUser?.id) {

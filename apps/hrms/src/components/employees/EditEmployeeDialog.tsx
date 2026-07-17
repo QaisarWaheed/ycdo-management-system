@@ -16,11 +16,10 @@ import {
   HospitalScopeSelect,
   type SelectedScope,
 } from '@/components/employees/HospitalScopeSelect'
-import { getEmployeeSystemRoles } from '@/components/employees/RoleBadges'
 import { RoleMultiSelect } from '@/components/employees/RoleMultiSelect'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/hooks/useAuth'
-import { ROLE_GROUPS, isExecutiveRole } from '@/lib/roleLabels'
+import { ROLE_GROUPS } from '@/lib/roleLabels'
 import {
   Dialog,
   DialogContent,
@@ -199,17 +198,8 @@ export function EditEmployeeDialog({
     defaultValues: employeeToFormValues(employee),
   })
 
-  const initialRoles = getEmployeeSystemRoles(employee)
   const [primaryRole, setPrimaryRole] = useState(
-    employee.user?.role ?? initialRoles[0] ?? 'EMPLOYEE',
-  )
-  const [additionalRoles, setAdditionalRoles] = useState(
-    (
-      employee.user?.additionalRoles ??
-      initialRoles.filter(
-        (role) => role !== (employee.user?.role ?? initialRoles[0]),
-      )
-    ).filter((role) => !isExecutiveRole(role)) as string[],
+    employee.user?.role ?? 'EMPLOYEE',
   )
   const [managerScopes, setManagerScopes] = useState<SelectedScope[]>(
     (employee.user?.managerScopes ?? []).map((scope) => ({
@@ -250,13 +240,6 @@ export function EditEmployeeDialog({
     return all.filter((role) => role !== 'SUPER_ADMIN')
   }, [accessMeta?.assignableRoles, hasRole])
 
-  const additionalAssignableRoles = useMemo(() => {
-    if (accessMeta?.additionalAssignableRoles?.length) {
-      return accessMeta.additionalAssignableRoles
-    }
-    return assignableRoles.filter((role) => !isExecutiveRole(role))
-  }, [accessMeta?.additionalAssignableRoles, assignableRoles])
-
   const designationOptions = useMemo(() => {
     const titles = [
       ...new Set(designations.map((d: { title: string }) => d.title)),
@@ -273,15 +256,7 @@ export function EditEmployeeDialog({
   useEffect(() => {
     if (open) {
       form.reset(employeeToFormValues(employee))
-      const roles = getEmployeeSystemRoles(employee)
-      const primary = employee.user?.role ?? roles[0] ?? 'EMPLOYEE'
-      setPrimaryRole(primary)
-      setAdditionalRoles(
-        (
-          employee.user?.additionalRoles ??
-          roles.filter((role) => role !== primary)
-        ).filter((role) => !isExecutiveRole(role)),
-      )
+      setPrimaryRole(employee.user?.role ?? 'EMPLOYEE')
       setManagerScopes(
         (employee.user?.managerScopes ?? []).map((scope) => ({
           projectId: scope.projectId,
@@ -299,9 +274,6 @@ export function EditEmployeeDialog({
       if (mode === 'job' && canAssignRoles && employee.user) {
         await employeesApi.updateRoles(employee.id, {
           primaryRole,
-          additionalRoles: additionalRoles
-            .filter((role) => role !== primaryRole)
-            .filter((role) => !isExecutiveRole(role)),
           managerScopes: managerScopes.map((scope) => ({
             projectId: scope.projectId,
             departmentId: scope.departmentId,
@@ -681,19 +653,17 @@ export function EditEmployeeDialog({
               {canAssignRoles && employee.user && (
                 <div className="space-y-3 rounded-lg border border-border p-4">
                   <div>
-                    <p className="text-sm font-semibold">System roles</p>
+                    <p className="text-sm font-semibold">Access & scopes</p>
                     <p className="text-xs text-text-secondary">
-                      Additional roles grant combined HRMS permissions. Primary
-                      role controls the default dashboard view.
+                      Primary role controls the default dashboard. Hospital
+                      scopes grant department access and list the employee in
+                      those staff views.
                     </p>
                   </div>
                   <RoleMultiSelect
                     primaryRole={primaryRole}
-                    additionalRoles={additionalRoles}
                     assignableRoles={assignableRoles}
-                    additionalAssignableRoles={additionalAssignableRoles}
                     onPrimaryChange={setPrimaryRole}
-                    onAdditionalChange={setAdditionalRoles}
                     disabled={mutation.isPending}
                   />
                   <div className="rounded-md border border-border p-3">
@@ -709,7 +679,7 @@ export function EditEmployeeDialog({
               {canAssignRoles && !employee.user && (
                 <p className="text-sm text-amber-700">
                   Create a login account for this employee before assigning
-                  system roles.
+                  hospital scopes.
                 </p>
               )}
             </div>

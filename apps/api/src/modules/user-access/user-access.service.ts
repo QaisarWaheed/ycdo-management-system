@@ -351,25 +351,13 @@ export class UserAccessService {
     if (dto.role) {
       this.assertAssignableRole(dto.role, actingRole, user);
     }
-    if (dto.additionalRoles?.length) {
-      this.accessScopeService.assertNoExecutiveAdditionalRoles(
-        dto.additionalRoles,
-      );
-      for (const role of dto.additionalRoles) {
-        this.assertAssignableRole(role, actingRole, user);
-      }
-    }
+    // additionalRoles writes are ignored; existing grants remain active.
 
     if (userId === actingUserId && dto.isActive === false) {
       throw new BadRequestException('You cannot disable your own account');
     }
 
     const nextPrimary = dto.role ?? user.role;
-    const nextAdditional = dto.additionalRoles
-      ? this.accessScopeService
-          .rejectExecutiveAdditionalRoles([...new Set(dto.additionalRoles)])
-          .filter((role) => role !== nextPrimary)
-      : undefined;
 
     if (dto.managerScopes !== undefined) {
       await this.accessScopeService.replaceManagerScopes(
@@ -394,13 +382,11 @@ export class UserAccessService {
         });
       }
 
-      if (nextAdditional !== undefined) {
-        await tx.userAdditionalRole.deleteMany({ where: { userId } });
-        if (nextAdditional.length) {
-          await tx.userAdditionalRole.createMany({
-            data: nextAdditional.map((role) => ({ userId, role })),
-          });
-        }
+      // If primary role changed, drop any duplicate additional grant for that role.
+      if (dto.role !== undefined) {
+        await tx.userAdditionalRole.deleteMany({
+          where: { userId, role: nextPrimary },
+        });
       }
 
       if (dto.permissions?.length) {
@@ -437,7 +423,6 @@ export class UserAccessService {
           changes: {
             isActive: dto.isActive,
             role: dto.role,
-            additionalRoles: nextAdditional,
             managerScopes: dto.managerScopes ?? null,
             branchId: dto.branchId,
             permissions: dto.permissions?.map((p) => ({

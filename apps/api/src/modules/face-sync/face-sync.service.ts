@@ -270,20 +270,90 @@ export class FaceSyncService {
     };
   }
 
+  async getBiometricRegistrationSummary(employeeId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { biometricId: true },
+    });
+
+    const devices = await this.prisma.biometricDevice.findMany({
+      select: {
+        deviceId: true,
+        label: true,
+        branch: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const successResults = await this.prisma.faceSyncResult.findMany({
+      where: {
+        status: 'SUCCESS',
+        job: { employeeId },
+      },
+      select: {
+        deviceId: true,
+        syncedAt: true,
+      },
+      orderBy: { syncedAt: 'desc' },
+    });
+
+    const latestSuccessByDevice = new Map<string, Date>();
+    for (const result of successResults) {
+      if (!latestSuccessByDevice.has(result.deviceId)) {
+        latestSuccessByDevice.set(result.deviceId, result.syncedAt);
+      }
+    }
+
+    const deviceSummaries = devices.map((device) => ({
+      deviceId: device.deviceId,
+      label: device.label,
+      branchName: device.branch.name,
+      registered: latestSuccessByDevice.has(device.deviceId),
+      lastSyncedAt:
+        latestSuccessByDevice.get(device.deviceId)?.toISOString() ?? null,
+    }));
+
+    const registeredDeviceCount = deviceSummaries.filter(
+      (device) => device.registered,
+    ).length;
+    const totalDevices = devices.length;
+    const biometricIdAssigned = Boolean(employee?.biometricId);
+
+    let registrationStatus: 'NOT_REGISTERED' | 'PARTIAL' | 'REGISTERED' =
+      'NOT_REGISTERED';
+    if (totalDevices > 0 && registeredDeviceCount === totalDevices) {
+      registrationStatus = 'REGISTERED';
+    } else if (registeredDeviceCount > 0) {
+      registrationStatus = 'PARTIAL';
+    }
+
+    return {
+      biometricId: employee?.biometricId ?? null,
+      biometricIdAssigned,
+      registeredDeviceCount,
+      totalDevices,
+      registrationStatus,
+      devices: deviceSummaries,
+    };
+  }
+
   async getStats(employeeId?: string) {
     if (employeeId) {
-      const latestJob = await this.prisma.faceSyncJob.findFirst({
-        where: { employeeId },
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          status: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+      const [latestJob, registration] = await Promise.all([
+        this.prisma.faceSyncJob.findFirst({
+          where: { employeeId },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+        this.getBiometricRegistrationSummary(employeeId),
+      ]);
 
-      return { latestJob };
+      return { latestJob, registration };
     }
 
     const [total, pending, synced, failed, partial] = await Promise.all([

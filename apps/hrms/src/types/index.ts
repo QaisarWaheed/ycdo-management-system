@@ -231,6 +231,20 @@ export interface Employee {
   currentBranchId?: string
   currentDepartmentId?: string | null
   biometricId?: string | null
+  biometricRegistration?: {
+    biometricId: string | null
+    biometricIdAssigned: boolean
+    registeredDeviceCount: number
+    totalDevices: number
+    registrationStatus: 'NOT_REGISTERED' | 'PARTIAL' | 'REGISTERED'
+    devices: Array<{
+      deviceId: string
+      label: string | null
+      branchName: string
+      registered: boolean
+      lastSyncedAt: string | null
+    }>
+  }
   currentBranch?: Branch
   currentDepartment?: Department | null
   shift?: Shift | null

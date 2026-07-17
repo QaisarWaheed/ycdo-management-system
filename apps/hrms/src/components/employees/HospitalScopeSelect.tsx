@@ -84,8 +84,9 @@ export function HospitalScopeSelect({
       <div>
         <Label>Hospital management scope</Label>
         <p className="mt-1 text-xs text-text-secondary">
-          Grants Admin Officer permissions only for employees matching these
-          hospital departments/designations.
+          Grants Admin Officer permissions for matching hospital staff, and
+          also lists this employee under those department/designation staff
+          views.
         </p>
       </div>
 
