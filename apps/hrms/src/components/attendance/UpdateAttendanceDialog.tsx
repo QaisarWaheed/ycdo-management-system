@@ -63,7 +63,14 @@ export function UpdateAttendanceDialog({
   onSuccess,
 }: UpdateAttendanceDialogProps) {
   const { user } = useAuth()
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN'
+  const canEditOvertime = [
+    'SUPER_ADMIN',
+    'IT_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+    'HR_EXECUTIVE',
+  ].includes(user?.role ?? '')
 
   const [status, setStatus] = useState<AttendanceStatus>('PRESENT')
   const [statusOverride, setStatusOverride] = useState(false)
@@ -126,7 +133,7 @@ export function UpdateAttendanceDialog({
         payload.lateMinutes = lateMinutes === '' ? 0 : Number(lateMinutes)
       }
 
-      if (isSuperAdmin && overtimeMinutes !== '') {
+      if (canEditOvertime && overtimeMinutes !== '') {
         payload.overtimeMinutes = Number(overtimeMinutes)
       }
 
@@ -266,7 +273,31 @@ export function UpdateAttendanceDialog({
             </div>
           )}
 
-          {statusOverride && (
+          {!checkIn && (
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <SearchableSelect
+                options={ATTENDANCE_STATUSES.map(enumValueToLabel)}
+                value={enumValueToLabel(status)}
+                onChange={(label) => {
+                  setStatus(
+                    labelToEnumValue(
+                      label,
+                      ATTENDANCE_STATUSES,
+                    ) as AttendanceStatus,
+                  )
+                  setStatusOverride(true)
+                }}
+                placeholder="Select status"
+              />
+              <p className="text-xs text-text-secondary">
+                Statuses such as absent or on leave can be saved without a
+                check-in time.
+              </p>
+            </div>
+          )}
+
+          {statusOverride && checkIn && (
             <div className="space-y-2">
               <Label>Override Status</Label>
               <SearchableSelect
@@ -305,16 +336,16 @@ export function UpdateAttendanceDialog({
                 type="number"
                 min={0}
                 value={overtimeMinutes}
-                disabled={!isSuperAdmin}
+                disabled={!canEditOvertime}
                 onChange={(e) =>
                   setOvertimeMinutes(
                     e.target.value === '' ? '' : Number(e.target.value),
                   )
                 }
               />
-              {!isSuperAdmin && (
+              {!canEditOvertime && (
                 <p className="text-xs text-text-secondary">
-                  Only Super Admin can update overtime minutes
+                  Only HR, IT, or Super Admin can update overtime minutes
                 </p>
               )}
             </div>
@@ -336,7 +367,7 @@ export function UpdateAttendanceDialog({
           </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={mutation.isPending || !checkIn}
+            disabled={mutation.isPending || (!checkIn && !statusOverride)}
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Saving...' : 'Save Changes'}

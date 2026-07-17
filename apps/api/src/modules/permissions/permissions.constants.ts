@@ -27,8 +27,11 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
     UserRole.MEDICINE_MANAGER,
   ],
   ATTENDANCE_EDIT: [
+    UserRole.IT_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
     UserRole.MEDICINE_MANAGER,

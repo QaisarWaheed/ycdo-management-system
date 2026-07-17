@@ -18,6 +18,7 @@ import {
 import { useParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { AttendanceStatusBadge } from '@/components/attendance/AttendanceStatusBadge'
+import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
@@ -75,6 +76,7 @@ import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { maritalStatusToLabel } from '@/lib/searchableSelectOptions'
 import type {
   AcademicQualification,
+  AttendanceLog,
   DocumentType,
   EmployeeDocument,
   EmploymentHistory,
@@ -88,6 +90,14 @@ import type {
 const IT_PROFILE_ROLES = ['SUPER_ADMIN', 'IT_ADMIN'] as const
 const HR_JOB_ROLES = [
   'SUPER_ADMIN',
+  'HR_EXECUTIVE',
+  'HR_MANAGER',
+  'HR_ADMIN_MANAGER',
+  'HR_OPERATIONS_MANAGER',
+] as const
+const ATTENDANCE_EDIT_ROLES = [
+  'SUPER_ADMIN',
+  'IT_ADMIN',
   'HR_EXECUTIVE',
   'HR_MANAGER',
   'HR_ADMIN_MANAGER',
@@ -547,6 +557,8 @@ export function EmployeeProfilePage() {
   const [prevEmpOpen, setPrevEmpOpen] = useState(false)
   const [incentiveOpen, setIncentiveOpen] = useState(false)
   const [faceSyncOpen, setFaceSyncOpen] = useState(false)
+  const [attendanceToEdit, setAttendanceToEdit] =
+    useState<AttendanceLog | null>(null)
   const [expandedPrevEmpId, setExpandedPrevEmpId] = useState<string | null>(
     null,
   )
@@ -580,6 +592,11 @@ export function EmployeeProfilePage() {
     queryFn: () => attendanceApi.getAll({ employeeId: id, month, year }),
     enabled: !!id,
   })
+  const canEditAttendance =
+    !!user?.role &&
+    ATTENDANCE_EDIT_ROLES.includes(
+      user.role as (typeof ATTENDANCE_EDIT_ROLES)[number],
+    )
 
   const { data: leaves = [], isLoading: loadingLeaves } = useQuery({
     queryKey: ['leave', id],
@@ -1478,12 +1495,16 @@ export function EmployeeProfilePage() {
                       <TableHead>Status</TableHead>
                       <TableHead>Late Min</TableHead>
                       <TableHead>Source</TableHead>
+                      {canEditAttendance && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {attendanceLogs.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-text-secondary">
+                        <TableCell
+                          colSpan={canEditAttendance ? 7 : 6}
+                          className="text-text-secondary"
+                        >
                           No attendance records
                         </TableCell>
                       </TableRow>
@@ -1511,6 +1532,18 @@ export function EmployeeProfilePage() {
                           </TableCell>
                           <TableCell>{log.lateMinutes ?? 0}</TableCell>
                           <TableCell>{log.source ?? '—'}</TableCell>
+                          {canEditAttendance && (
+                            <TableCell>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setAttendanceToEdit(log)}
+                              >
+                                <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                                Update
+                              </Button>
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))
                     )}
@@ -2064,6 +2097,23 @@ export function EmployeeProfilePage() {
         open={prevEmpOpen}
         onOpenChange={setPrevEmpOpen}
         employeeId={id}
+      />
+
+      <UpdateAttendanceDialog
+        log={attendanceToEdit}
+        open={attendanceToEdit !== null}
+        onOpenChange={(open) => {
+          if (!open) setAttendanceToEdit(null)
+        }}
+        onSuccess={() => {
+          queryClient.invalidateQueries({
+            queryKey: ['attendance-logs', id, month, year],
+          })
+          queryClient.invalidateQueries({
+            queryKey: ['attendance-summary', id, month, year],
+          })
+          queryClient.invalidateQueries({ queryKey: ['working-hours', id] })
+        }}
       />
 
       <FaceSyncDialog

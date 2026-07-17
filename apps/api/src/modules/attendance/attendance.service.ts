@@ -62,6 +62,14 @@ import {
 
 const OVERTIME_GRACE_MINUTES = 60;
 const AUTO_UNMARKED_NOTE = 'Auto-marked unmarked at shift start';
+const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
+  UserRole.SUPER_ADMIN,
+  UserRole.IT_ADMIN,
+  UserRole.HR_MANAGER,
+  UserRole.HR_ADMIN_MANAGER,
+  UserRole.HR_OPERATIONS_MANAGER,
+  UserRole.HR_EXECUTIVE,
+];
 
 @Injectable()
 export class AttendanceService {
@@ -567,10 +575,10 @@ export class AttendanceService {
 
     if (
       dto.overtimeMinutes !== undefined &&
-      actingUser.role !== UserRole.SUPER_ADMIN
+      !FULL_ATTENDANCE_EDIT_ROLES.includes(actingUser.role)
     ) {
       throw new ForbiddenException(
-        'Only Super Admin can update overtime minutes',
+        'Only HR, IT, or Super Admin can update overtime minutes',
       );
     }
 
@@ -626,7 +634,7 @@ export class AttendanceService {
     }
     if (
       dto.overtimeMinutes !== undefined &&
-      actingUser.role === UserRole.SUPER_ADMIN
+      FULL_ATTENDANCE_EDIT_ROLES.includes(actingUser.role)
     ) {
       data.overtimeMinutes = dto.overtimeMinutes;
       data.overtimePending = false;
