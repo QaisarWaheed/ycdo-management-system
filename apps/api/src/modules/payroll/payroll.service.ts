@@ -270,18 +270,30 @@ export class PayrollService {
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
     const daysInMonth = monthEnd.getDate();
 
-    const otAgg = await this.prisma.attendanceLog.aggregate({
-      where: {
-        employeeId,
-        date: { gte: monthStart, lte: monthEnd },
-        overtimeMinutes: { gt: 0 },
-        // Only approved / non-pending overtime is payable.
-        overtimePending: false,
-      },
-      _sum: { overtimeMinutes: true },
-    });
+    const [otAgg, pendingAgg] = await Promise.all([
+      this.prisma.attendanceLog.aggregate({
+        where: {
+          employeeId,
+          date: { gte: monthStart, lte: monthEnd },
+          overtimeMinutes: { gt: 0 },
+        },
+        _sum: { overtimeMinutes: true },
+      }),
+      this.prisma.attendanceLog.aggregate({
+        where: {
+          employeeId,
+          date: { gte: monthStart, lte: monthEnd },
+          overtimeMinutes: { gt: 0 },
+          overtimePending: true,
+        },
+        _sum: { overtimeMinutes: true },
+      }),
+    ]);
 
+    // Include all recorded OT for this month (pending + approved).
+    // Clicking Apply Overtime is the HR approval step for payroll.
     const overtimeMinutes = otAgg._sum.overtimeMinutes ?? 0;
+    const pendingOvertimeMinutes = pendingAgg._sum.overtimeMinutes ?? 0;
     const overtimeHours =
       Math.round((overtimeMinutes / 60) * 100) / 100;
 
@@ -319,6 +331,7 @@ export class PayrollService {
       daysInMonth,
       monthlyWorkingHours,
       overtimeMinutes,
+      pendingOvertimeMinutes,
       overtimeHours,
       hourlyRate,
       amount,
@@ -413,6 +426,19 @@ export class PayrollService {
           amount: preview.amount,
           description: `Overtime ${preview.overtimeHours}h @ PKR ${preview.hourlyRate}/hr (${monthLabel})`,
         },
+      });
+
+      // Applying OT for payroll also clears pending flags for the month.
+      const monthStart = new Date(dto.year, dto.month - 1, 1);
+      const monthEnd = new Date(dto.year, dto.month, 0, 23, 59, 59, 999);
+      await tx.attendanceLog.updateMany({
+        where: {
+          employeeId: dto.employeeId,
+          date: { gte: monthStart, lte: monthEnd },
+          overtimeMinutes: { gt: 0 },
+          overtimePending: true,
+        },
+        data: { overtimePending: false },
       });
 
       totalAllowances += preview.amount;

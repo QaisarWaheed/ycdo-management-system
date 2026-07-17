@@ -18,6 +18,7 @@ export interface OvertimePreview {
   daysInMonth: number
   monthlyWorkingHours: number
   overtimeMinutes: number
+  pendingOvertimeMinutes?: number
   overtimeHours: number
   hourlyRate: number
   amount: number

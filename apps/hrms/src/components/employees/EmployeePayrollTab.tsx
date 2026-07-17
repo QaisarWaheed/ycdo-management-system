@@ -50,6 +50,15 @@ function money(value: number | string | null | undefined): string {
   return `PKR ${Number(value).toLocaleString('en-PK')}`
 }
 
+function apiErrorMessage(err: unknown, fallback = 'Error'): string {
+  const msg = (
+    err as { response?: { data?: { message?: string | string[] } } }
+  )?.response?.data?.message
+  if (Array.isArray(msg)) return msg.join(', ')
+  if (msg) return String(msg)
+  return fallback
+}
+
 type EmployeePayrollTabProps = {
   employeeId: string
   joiningDate: string
@@ -104,7 +113,12 @@ export function EmployeePayrollTab({
     enabled: !!employeeId,
   })
 
-  const { data: overtimePreview, isLoading: loadingOtPreview } = useQuery({
+  const {
+    data: overtimePreview,
+    isLoading: loadingOtPreview,
+    isError: otPreviewError,
+    error: otPreviewErr,
+  } = useQuery({
     queryKey: ['payroll-overtime-preview', employeeId, otMonth, otYear],
     queryFn: () => payrollApi.getOvertimePreview(employeeId, otMonth, otYear),
     enabled: !!employeeId && canApplyOvertime,
@@ -268,8 +282,8 @@ export function EmployeePayrollTab({
           <CardContent className="space-y-4">
             <p className="text-sm text-text-secondary">
               Overtime pay uses this employee&apos;s base stipend and monthly
-              working hours (duty hours × days in month). Only approved
-              overtime minutes are included, and pay is added only when you
+              working hours (duty hours × days in month). All recorded overtime
+              for the selected month is included; pay is added only when you
               click Apply Overtime.
             </p>
 
@@ -313,37 +327,57 @@ export function EmployeePayrollTab({
             </div>
 
             {loadingOtPreview ? (
-              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-28 w-full" />
+            ) : otPreviewError ? (
+              <p className="text-sm text-destructive">
+                Could not load overtime preview:{' '}
+                {apiErrorMessage(otPreviewErr)}. Redeploy the API if this
+                endpoint is missing.
+              </p>
             ) : overtimePreview ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="rounded-lg border border-border p-3">
-                  <p className="text-xs text-text-secondary">OT Hours</p>
-                  <p className="font-semibold">
-                    {overtimePreview.overtimeHours.toFixed(2)}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-border p-3">
-                  <p className="text-xs text-text-secondary">Hourly Rate</p>
-                  <p className="font-semibold">
-                    {money(overtimePreview.hourlyRate)}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-border p-3">
+              <div className="space-y-3">
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
                   <p className="text-xs text-text-secondary">
-                    Monthly Working Hrs
+                    Overtime this month
                   </p>
-                  <p className="font-semibold">
-                    {overtimePreview.monthlyWorkingHours}
+                  <p className="text-2xl font-bold text-primary">
+                    {overtimePreview.overtimeMinutes.toLocaleString()} minutes
+                  </p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    {overtimePreview.overtimeHours.toFixed(2)} hours
+                    {(overtimePreview.pendingOvertimeMinutes ?? 0) > 0
+                      ? ` · ${overtimePreview.pendingOvertimeMinutes!.toLocaleString()} pending (included)`
+                      : null}
                   </p>
                 </div>
-                <div className="rounded-lg border border-border p-3">
-                  <p className="text-xs text-text-secondary">OT Amount</p>
-                  <p className="text-lg font-bold text-primary">
-                    {money(overtimePreview.amount)}
-                  </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-text-secondary">Hourly Rate</p>
+                    <p className="font-semibold">
+                      {money(overtimePreview.hourlyRate)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs text-text-secondary">
+                      Monthly Working Hrs
+                    </p>
+                    <p className="font-semibold">
+                      {overtimePreview.monthlyWorkingHours}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 sm:col-span-1 col-span-2">
+                    <p className="text-xs text-text-secondary">OT Amount</p>
+                    <p className="text-lg font-bold text-primary">
+                      {money(overtimePreview.amount)}
+                    </p>
+                  </div>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <p className="text-sm text-text-secondary">
+                No overtime data for this month.
+              </p>
+            )}
 
             {overtimePreview?.alreadyApplied && (
               <p className="text-sm text-amber-700">
