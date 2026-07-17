@@ -560,7 +560,7 @@ export function EditEmployeeDialog({
                   )}
                 />
                 <div className="space-y-2">
-                  <FormLabel>Biometric ID</FormLabel>
+                  <Label>Biometric ID</Label>
                   <Input
                     value={employee.biometricId ?? 'Auto-assigned'}
                     disabled

@@ -1784,7 +1784,7 @@ function EmployeeCreatePageForm() {
                 )}
               />
               <div className="space-y-2 sm:col-span-2">
-                <FormLabel>Biometric ID</FormLabel>
+                <Label>Biometric ID</Label>
                 <Input value="Auto-assigned after creation" disabled readOnly />
               </div>
             </div>
