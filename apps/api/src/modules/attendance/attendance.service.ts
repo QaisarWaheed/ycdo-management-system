@@ -466,18 +466,31 @@ export class AttendanceService {
     let lateMinutes = dto.lateMinutes ?? 0;
 
     if (checkIn) {
-      const dutyStart = resolveDutyStartTime(employee);
-      const computedLate = dutyStart
-        ? calculateLateMinutesFromCheckIn(checkIn, dutyStart)
-        : this.determineCheckInStatus(checkIn, employee.shift).lateMinutes;
-
-      if (typeof dto.lateMinutes === 'number' && dto.lateMinutes > 0) {
-        lateMinutes = dto.lateMinutes;
+      if (is24HourShift(employee)) {
+        // 24-hour staff are never late / half-day from check-in time.
+        lateMinutes = 0;
+        if (
+          !dto.status ||
+          dto.status === AttendanceStatus.LATE ||
+          dto.status === AttendanceStatus.HALF_DAY ||
+          dto.status === AttendanceStatus.PRESENT
+        ) {
+          status = AttendanceStatus.PRESENT;
+        }
       } else {
-        lateMinutes = computedLate;
-      }
+        const dutyStart = resolveDutyStartTime(employee);
+        const computedLate = dutyStart
+          ? calculateLateMinutesFromCheckIn(checkIn, dutyStart)
+          : this.determineCheckInStatus(checkIn, employee.shift).lateMinutes;
 
-      status = statusFromLateMinutes(lateMinutes);
+        if (typeof dto.lateMinutes === 'number' && dto.lateMinutes > 0) {
+          lateMinutes = dto.lateMinutes;
+        } else {
+          lateMinutes = computedLate;
+        }
+
+        status = statusFromLateMinutes(lateMinutes);
+      }
     }
 
     let calculatedOvertime = dto.overtimeMinutes ?? 0;
@@ -613,9 +626,11 @@ export class AttendanceService {
             fullName: true,
             employeeCode: true,
             dutyStartTime: true,
+            dutyEndTime: true,
+            dutyTotalHours: true,
             currentDesignation: true,
             currentDepartment: { select: { name: true } },
-            shift: { select: { startTime: true } },
+            shift: { select: { name: true, startTime: true, endTime: true } },
           },
         },
         branch: { select: BRANCH_LABEL_SELECT },
@@ -689,14 +704,19 @@ export class AttendanceService {
         : log.checkIn;
 
     if (dto.status === undefined && effectiveCheckIn) {
-      const dutyStart = resolveDutyStartTime(log.employee);
-      if (dutyStart) {
-        const lateMinutes = calculateLateMinutesFromCheckIn(
-          effectiveCheckIn,
-          dutyStart,
-        );
-        data.status = statusFromLateMinutes(lateMinutes);
-        data.lateMinutes = lateMinutes;
+      if (is24HourShift(log.employee)) {
+        data.status = AttendanceStatus.PRESENT;
+        data.lateMinutes = 0;
+      } else {
+        const dutyStart = resolveDutyStartTime(log.employee);
+        if (dutyStart) {
+          const lateMinutes = calculateLateMinutesFromCheckIn(
+            effectiveCheckIn,
+            dutyStart,
+          );
+          data.status = statusFromLateMinutes(lateMinutes);
+          data.lateMinutes = lateMinutes;
+        }
       }
     }
 
@@ -1229,7 +1249,11 @@ export class AttendanceService {
     const dateOnly = this.toDateOnly(new Date(date));
 
     const activeEmployees = await this.prisma.employee.findMany({
-      where: { status: EmployeeStatus.ACTIVE },
+      where: {
+        status: EmployeeStatus.ACTIVE,
+        relieverOnly: false,
+        shiftId: { not: null },
+      },
       select: { id: true, currentBranchId: true },
     });
 
@@ -1375,10 +1399,17 @@ export class AttendanceService {
       throw new BadRequestException('Already checked in today');
     }
 
-    let { status, lateMinutes } = this.determineCheckInStatus(
-      checkTime,
-      employee.shift,
-    );
+    let status: AttendanceStatus;
+    let lateMinutes: number;
+    if (is24HourShift(employee)) {
+      status = AttendanceStatus.PRESENT;
+      lateMinutes = 0;
+    } else {
+      ({ status, lateMinutes } = this.determineCheckInStatus(
+        checkTime,
+        employee.shift,
+      ));
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.portalAttendance.create({

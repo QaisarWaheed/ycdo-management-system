@@ -211,6 +211,8 @@ model Employee {
   policeStation          String?
   bloodGroup             String?
   staffType              StaffType      @default(NEW)
+  /// Reliever-only staff: no regular duty; skipped by auto-absent marking.
+  relieverOnly           Boolean        @default(false)
   dutyStartTime          String?
   dutyEndTime            String?
   dutyTotalHours         Int?

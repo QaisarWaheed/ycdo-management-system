@@ -41,6 +41,9 @@ export function UpdateBranchDutyDialog({
     employee.dutyStartTime ?? '',
   )
   const [dutyEndTime, setDutyEndTime] = useState(employee.dutyEndTime ?? '')
+  const [relieverOnly, setRelieverOnly] = useState(
+    Boolean(employee.relieverOnly),
+  )
 
   useEffect(() => {
     if (open) {
@@ -49,6 +52,7 @@ export function UpdateBranchDutyDialog({
       setDutyTotalHours(employee.dutyTotalHours ?? '')
       setDutyStartTime(employee.dutyStartTime ?? '')
       setDutyEndTime(employee.dutyEndTime ?? '')
+      setRelieverOnly(Boolean(employee.relieverOnly))
     }
   }, [open, employee])
 
@@ -73,6 +77,7 @@ export function UpdateBranchDutyDialog({
           dutyTotalHours !== '' ? Number(dutyTotalHours) : undefined,
         dutyStartTime: dutyStartTime || undefined,
         dutyEndTime: dutyEndTime || undefined,
+        relieverOnly,
       }),
     onSuccess: () => {
       toast({ title: 'Branch and duty time updated' })
@@ -151,14 +156,32 @@ export function UpdateBranchDutyDialog({
             }
           />
 
-          <DutyHoursFields
-            totalHours={dutyTotalHours}
-            startTime={dutyStartTime}
-            endTime={dutyEndTime}
-            onTotalHoursChange={setDutyTotalHours}
-            onStartTimeChange={setDutyStartTime}
-            onEndTimeChange={setDutyEndTime}
-          />
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-primary"
+              checked={relieverOnly}
+              onChange={(e) => setRelieverOnly(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Reliever only</span>
+              <span className="mt-0.5 block text-text-secondary">
+                No regular duty roster. Will not be auto-marked absent; used only
+                when covering as a reliever.
+              </span>
+            </span>
+          </label>
+
+          {!relieverOnly && (
+            <DutyHoursFields
+              totalHours={dutyTotalHours}
+              startTime={dutyStartTime}
+              endTime={dutyEndTime}
+              onTotalHoursChange={setDutyTotalHours}
+              onStartTimeChange={setDutyStartTime}
+              onEndTimeChange={setDutyEndTime}
+            />
+          )}
 
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
             Changing the branch will create a transfer record in employment

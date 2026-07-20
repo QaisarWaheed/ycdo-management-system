@@ -37,7 +37,6 @@ import type { Employee } from '@/types'
 export function ItAdminEmployeesTab() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN'
   const canManagePersonal =
     user?.role === 'IT_ADMIN' || user?.role === 'SUPER_ADMIN'
 
@@ -189,7 +188,7 @@ export function ItAdminEmployeesTab() {
                           </Button>
                         </>
                       )}
-                      {isSuperAdmin && (
+                      {canManagePersonal && (
                         <Button
                           size="sm"
                           variant="outline"

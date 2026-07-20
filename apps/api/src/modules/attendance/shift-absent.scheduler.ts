@@ -189,6 +189,7 @@ export class ShiftAbsentScheduler {
     const employees = await this.prisma.employee.findMany({
       where: {
         shiftId,
+        relieverOnly: false,
         status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
       },
     });

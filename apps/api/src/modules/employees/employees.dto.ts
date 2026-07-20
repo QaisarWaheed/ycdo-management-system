@@ -212,6 +212,11 @@ export class CreateEmployeeDto {
   @IsEnum(StaffType)
   staffType?: StaffType;
 
+  /** Reliever-only: no regular duty; excluded from auto-absent. */
+  @IsOptional()
+  @IsBoolean()
+  relieverOnly?: boolean;
+
   @IsOptional()
   @IsString()
   @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
@@ -435,6 +440,11 @@ export class UpdateBranchDutyDto {
   @Min(1)
   @Max(24)
   dutyTotalHours?: number;
+
+  /** Reliever-only: no regular duty; excluded from auto-absent. */
+  @IsOptional()
+  @IsBoolean()
+  relieverOnly?: boolean;
 }
 
 export class ActiveShiftQueryDto {

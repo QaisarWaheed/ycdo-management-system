@@ -350,7 +350,7 @@ export class EmployeesController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   remove(@Param('id') id: string) {
     return this.employeesService.remove(id);
   }

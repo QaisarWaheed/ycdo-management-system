@@ -91,9 +91,28 @@ export function computeBiometricLateMinutes(
   checkIn: Date,
   employee: {
     dutyStartTime?: string | null;
-    shift?: { startTime: string } | null;
+    dutyEndTime?: string | null;
+    dutyTotalHours?: number | null;
+    shift?: { name?: string | null; startTime: string; endTime?: string } | null;
   },
 ): number {
+  if (
+    is24HourShift({
+      dutyStartTime: employee.dutyStartTime,
+      dutyEndTime: employee.dutyEndTime,
+      dutyTotalHours: employee.dutyTotalHours,
+      shift: employee.shift
+        ? {
+            name: employee.shift.name,
+            startTime: employee.shift.startTime,
+            endTime: employee.shift.endTime ?? employee.shift.startTime,
+          }
+        : null,
+    })
+  ) {
+    return 0;
+  }
+
   const dutyStart = employee.dutyStartTime ?? employee.shift?.startTime ?? null;
   if (!dutyStart) {
     return 0;
@@ -110,6 +129,11 @@ export function determineBiometricCheckInStatus(
   employee: { dutyStartTime?: string | null },
   sessionMinutes: number,
 ): AttendanceStatus {
+  // Callers must pass lateMinutes=0 for 24-hour staff.
+  if (lateMinutes <= 0) {
+    return AttendanceStatus.PRESENT;
+  }
+
   if (
     lateMinutes > 60 &&
     employee.dutyStartTime &&
@@ -118,11 +142,7 @@ export function determineBiometricCheckInStatus(
     return AttendanceStatus.HALF_DAY;
   }
 
-  if (lateMinutes > 0) {
-    return AttendanceStatus.LATE;
-  }
-
-  return AttendanceStatus.PRESENT;
+  return AttendanceStatus.LATE;
 }
 
 export function computeBiometricOvertimeMinutes(

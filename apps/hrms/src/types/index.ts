@@ -249,6 +249,8 @@ export interface Employee {
   currentDepartment?: Department | null
   shift?: Shift | null
   shiftId?: string | null
+  /** Reliever-only doctors/staff: no regular duty attendance. */
+  relieverOnly?: boolean
   dutyStartTime?: string | null
   dutyEndTime?: string | null
   dutyTotalHours?: number | null

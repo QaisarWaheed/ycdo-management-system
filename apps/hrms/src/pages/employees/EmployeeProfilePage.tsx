@@ -1078,7 +1078,9 @@ export function EmployeeProfilePage() {
             <Clock className="h-4 w-4 shrink-0" />
             <span>
               Duty:{' '}
-              {formatEmployeeShiftDisplay(employee)}
+              {employee.relieverOnly
+                ? 'Reliever only (no regular duty)'
+                : formatEmployeeShiftDisplay(employee)}
             </span>
           </p>
           <div className="w-full space-y-2 text-left text-sm">

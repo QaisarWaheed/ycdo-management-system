@@ -170,8 +170,8 @@ export class EmployeesService {
       await this.ensureShiftExists(dto.shiftId);
     }
 
-    let resolvedShiftId = dto.shiftId;
-    if (!resolvedShiftId && dto.dutyStartTime) {
+    let resolvedShiftId = dto.relieverOnly ? undefined : dto.shiftId;
+    if (!dto.relieverOnly && !resolvedShiftId && dto.dutyStartTime) {
       resolvedShiftId = await this.assignShiftFromDuty(
         dto.dutyStartTime,
         dto.dutyEndTime,
@@ -255,6 +255,7 @@ export class EmployeesService {
           ...employeeData,
           email: loginEmail,
           staffType,
+          relieverOnly: dto.relieverOnly ?? false,
           shiftId: resolvedShiftId,
           dutyStartTime: syncedDutyStart,
           dutyEndTime: syncedDutyEnd,
@@ -1395,14 +1396,26 @@ export class EmployeesService {
       if (dto.dutyTotalHours !== undefined) {
         data.dutyTotalHours = dto.dutyTotalHours;
       }
+      if (dto.relieverOnly !== undefined) {
+        data.relieverOnly = dto.relieverOnly;
+        // Reliever-only staff should not sit on a regular shift roster.
+        if (dto.relieverOnly) {
+          data.shift = { disconnect: true };
+        }
+      }
 
       const nextStart = dto.dutyStartTime ?? employee.dutyStartTime;
       const nextEnd = dto.dutyEndTime ?? employee.dutyEndTime;
       const nextHours = dto.dutyTotalHours ?? employee.dutyTotalHours;
+      const nextRelieverOnly =
+        dto.relieverOnly !== undefined
+          ? dto.relieverOnly
+          : employee.relieverOnly;
       if (
-        dto.dutyStartTime !== undefined ||
-        dto.dutyEndTime !== undefined ||
-        dto.dutyTotalHours !== undefined
+        !nextRelieverOnly &&
+        (dto.dutyStartTime !== undefined ||
+          dto.dutyEndTime !== undefined ||
+          dto.dutyTotalHours !== undefined)
       ) {
         const shiftId = await this.assignShiftFromDuty(
           nextStart,
