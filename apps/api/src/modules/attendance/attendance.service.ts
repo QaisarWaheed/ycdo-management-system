@@ -102,7 +102,7 @@ export class AttendanceService {
 
     if (!dto.punchType) {
       throw new BadRequestException(
-        'punchType is required (CHECKIN, CHECKOUT, OVERTIME_CHECKIN, or OVERTIME_CHECKOUT)',
+        'punchType is required (CHECKIN, CHECKOUT, OVERTIME_CHECKIN, OVERTIME_CHECKOUT, or AUTO)',
       );
     }
 
@@ -118,7 +118,15 @@ export class AttendanceService {
     const checkTime = parseAttendanceDateTime(dto.timestamp);
     const dateOnly = toPakistanDateOnly(checkTime);
     const twentyFourHour = is24HourShift(employee);
-    const punchType = dto.punchType;
+    let punchType = dto.punchType;
+
+    // AUTO: device did not send status — open REGULAR session → checkout, else check-in.
+    if (punchType === 'AUTO') {
+      const openRegular = twentyFourHour
+        ? null
+        : await this.findOpenRegularLog(employee.id, dateOnly);
+      punchType = openRegular ? 'CHECKOUT' : 'CHECKIN';
+    }
 
     if (punchType === 'CHECKOUT') {
       return this.biometricRegularCheckout(

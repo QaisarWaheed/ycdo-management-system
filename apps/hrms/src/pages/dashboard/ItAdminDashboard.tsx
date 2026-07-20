@@ -2208,6 +2208,7 @@ export function ItAdminDashboard() {
               <TabsTrigger value="employees">Employees</TabsTrigger>
               <TabsTrigger value="system-logins">System Logins</TabsTrigger>
               <TabsTrigger value="biometric-ids">Biometric IDs</TabsTrigger>
+              <TabsTrigger value="devices">Devices</TabsTrigger>
               <TabsTrigger value="face-sync">Face Sync</TabsTrigger>
             </TabsList>
             <TabsContent value="projects" className="mt-4">
