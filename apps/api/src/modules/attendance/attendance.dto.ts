@@ -18,9 +18,10 @@ export class BiometricPushDto {
   @IsNotEmpty()
   biometricId: string;
 
+  /** Ignored for punch time — API always uses Pakistan server time. Kept optional for older agents. */
+  @IsOptional()
   @IsDateString()
-  @IsNotEmpty()
-  timestamp: string;
+  timestamp?: string;
 
   @IsOptional()
   @IsString()
