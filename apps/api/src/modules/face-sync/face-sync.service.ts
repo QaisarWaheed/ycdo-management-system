@@ -98,13 +98,21 @@ export class FaceSyncService {
   }
 
   async getPendingJobs(deviceId: string) {
+    if (!deviceId?.trim()) {
+      throw new BadRequestException(
+        'deviceId query parameter is required',
+      );
+    }
+
     const device = await this.prisma.biometricDevice.findUnique({
       where: { deviceId },
       include: { branch: true },
     });
 
     if (!device) {
-      throw new NotFoundException(`Device ${deviceId} not found`);
+      throw new NotFoundException(
+        `Device "${deviceId}" not found. Register it under Biometric Devices in HRMS.`,
+      );
     }
 
     const jobs = await this.prisma.faceSyncJob.findMany({

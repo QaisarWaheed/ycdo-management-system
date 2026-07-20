@@ -26,9 +26,9 @@ export class BiometricPushDto {
   @IsString()
   deviceId?: string;
 
-  @IsOptional()
-  @IsIn(['CHECKIN', 'CHECKOUT', 'OVERTIME_CHECKIN'])
-  punchType?: 'CHECKIN' | 'CHECKOUT' | 'OVERTIME_CHECKIN';
+  @IsNotEmpty()
+  @IsIn(['CHECKIN', 'CHECKOUT', 'OVERTIME_CHECKIN', 'OVERTIME_CHECKOUT'])
+  punchType: 'CHECKIN' | 'CHECKOUT' | 'OVERTIME_CHECKIN' | 'OVERTIME_CHECKOUT';
 }
 
 export class ManualAttendanceDto {

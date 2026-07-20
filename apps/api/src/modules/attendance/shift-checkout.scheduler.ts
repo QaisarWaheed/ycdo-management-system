@@ -17,6 +17,9 @@ import {
 } from './attendance-late.util';
 
 const AUTO_CHECKOUT_NOTE = 'Auto-checked out at shift end';
+const OT_CHECKIN_PROMPT_TYPE = 'OVERTIME_CHECKIN_PROMPT';
+const OT_CHECKIN_PROMPT_MESSAGE =
+  'Your shift has ended and you were auto-checked out. If you are continuing work, please Overtime Check-In on the biometric device.';
 
 /** How far back to look for open check-ins (covers overnight + missed cron ticks). */
 const LOOKBACK_DAYS = 2;
@@ -98,6 +101,25 @@ export class ShiftCheckoutScheduler {
           note,
         },
       });
+
+      const existingPrompt = await this.prisma.notification.findFirst({
+        where: {
+          employeeId: log.employeeId,
+          type: OT_CHECKIN_PROMPT_TYPE,
+          isRead: false,
+          createdAt: { gte: pkToday },
+        },
+      });
+
+      if (!existingPrompt) {
+        await this.prisma.notification.create({
+          data: {
+            employeeId: log.employeeId,
+            type: OT_CHECKIN_PROMPT_TYPE,
+            message: OT_CHECKIN_PROMPT_MESSAGE,
+          },
+        });
+      }
 
       checkedOut++;
     }

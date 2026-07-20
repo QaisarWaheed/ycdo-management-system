@@ -42,32 +42,66 @@ def is_recent(event_datetime_str):
         return True
 
 # ─── Attendance ───────────────────────────────────────────────
+STATUS_TO_PUNCH = {
+    "checkin": "CHECKIN",
+    "checkout": "CHECKOUT",
+    "overtimein": "OVERTIME_CHECKIN",
+    "overtimecheckin": "OVERTIME_CHECKIN",
+    "overtimeout": "OVERTIME_CHECKOUT",
+    "overtimecheckout": "OVERTIME_CHECKOUT",
+}
+
+
+def map_punch_type(attendance_status):
+    """Map device attendanceStatus to API punchType. Returns None if unknown."""
+    if not attendance_status:
+        return None
+    key = re.sub(r"[^a-z]", "", attendance_status.lower())
+    return STATUS_TO_PUNCH.get(key)
+
+
+def to_pkt_timestamp(event_time=None):
+    """Prefer device event time; fall back to now. Always PKT ISO."""
+    if event_time:
+        try:
+            dt = datetime.datetime.fromisoformat(event_time.replace("Z", "+00:00"))
+            return dt.astimezone(PKT).isoformat()
+        except Exception:
+            pass
+    return get_pakistan_time()
+
+
 def push_attendance(employee_no, attendance_status=None, event_time=None):
     try:
-        is_checkout = attendance_status and attendance_status.lower() == 'checkout'
-
-        # Always convert to PKT time
-        timestamp = get_pakistan_time()
+        punch_type = map_punch_type(attendance_status)
+        if not punch_type:
+            log(
+                f"Skipping punch: employee={employee_no} "
+                f"status={attendance_status or 'missing'} (no attendance status)"
+            )
+            return
 
         payload = {
             "biometricId": str(employee_no),
-            "timestamp": timestamp,
+            "timestamp": to_pkt_timestamp(event_time),
             "deviceId": DEVICE_ID,
+            "punchType": punch_type,
         }
-
-        if is_checkout:
-            payload["punchType"] = "CHECKOUT"
 
         r = requests.post(
             f"{HRMS_API}/attendance/biometric-push",
             json=payload,
             headers={"x-device-key": DEVICE_KEY},
-            timeout=10
+            timeout=10,
         )
-        action = "CheckOut" if is_checkout else "Punch"
-        log(f"{action} pushed: {employee_no} → {r.status_code}: {r.text[:150]}")
+        body = r.text[:200]
+        if r.status_code >= 400:
+            log(f"{punch_type} REJECTED: {employee_no} → {r.status_code}: {body}")
+        else:
+            log(f"{punch_type} pushed: {employee_no} → {r.status_code}: {body}")
     except Exception as e:
         log(f"Attendance push failed: {e}")
+
 
 def listen_attendance():
     url = f"http://{DEVICE_IP}/ISAPI/Event/notification/alertStream"
@@ -84,40 +118,58 @@ def listen_attendance():
             for chunk in r.iter_content(chunk_size=4096):
                 buf += chunk.decode("utf-8", errors="replace")
 
-                # Extract event datetime
                 date_match = re.search(r'"dateTime"\s*:\s*"([^"]+)"', buf)
                 if date_match:
                     last_event_time = date_match.group(1)
 
-                # Extract attendanceStatus
                 status_match = re.search(r'"attendanceStatus"\s*:\s*"(\w+)"', buf)
                 if status_match:
                     captured = status_match.group(1)
-                    if captured.lower() not in ('undefined', 'unknown'):
+                    if captured.lower() not in ("undefined", "unknown"):
                         last_status = captured
 
-                # Extract employeeNoString
                 emp_matches = re.findall(r'"employeeNoString"\s*:\s*"(\w+)"', buf)
 
                 for emp_no in emp_matches:
-                    # Skip events older than REPLAY_HOURS
                     if last_event_time and not is_recent(last_event_time):
                         log(f"Skipping old event: {emp_no} at {last_event_time}")
                         buf = ""
+                        last_status = None
                         last_event_time = None
                         break
 
-                    # Deduplicate by employee + minute
-                    minute_key = f"{emp_no}-{datetime.datetime.now(PKT).strftime('%Y%m%d%H%M')}"
-                    if minute_key not in pushed:
-                        pushed.add(minute_key)
-                        current_status = last_status
-                        log(f"SCAN: employee={emp_no} status={current_status or 'auto'} time={last_event_time}")
-                        push_attendance(emp_no, current_status, last_event_time)
-                        last_status = None
+                    punch_type = map_punch_type(last_status)
+                    event_key = (
+                        f"{emp_no}-{last_event_time or 'notime'}-"
+                        f"{punch_type or last_status or 'none'}"
+                    )
+                    if event_key in pushed:
+                        # Drop stale employee id from buffer so it is not re-scanned
+                        buf = re.sub(
+                            rf'"employeeNoString"\s*:\s*"{re.escape(emp_no)}"',
+                            "",
+                            buf,
+                            count=1,
+                        )
+                        continue
 
-                        if len(pushed) > 1000:
-                            pushed.clear()
+                    pushed.add(event_key)
+                    current_status = last_status
+                    log(
+                        f"SCAN: employee={emp_no} status={current_status or 'missing'} "
+                        f"time={last_event_time}"
+                    )
+                    push_attendance(emp_no, current_status, last_event_time)
+                    last_status = None
+                    buf = re.sub(
+                        rf'"employeeNoString"\s*:\s*"{re.escape(emp_no)}"',
+                        "",
+                        buf,
+                        count=1,
+                    )
+
+                    if len(pushed) > 1000:
+                        pushed.clear()
 
                 if len(buf) > 10000:
                     buf = buf[-5000:]
@@ -247,13 +299,14 @@ def sync_face(job):
 
 def poll_face_sync():
     log("Face sync polling started (every 60s)")
+    log(f"Face sync using deviceId={DEVICE_ID}")
     while True:
         try:
             r = requests.get(
                 f"{HRMS_API}/face-sync/pending",
                 params={"deviceId": DEVICE_ID},
                 headers={"x-device-key": DEVICE_KEY},
-                timeout=10
+                timeout=10,
             )
             if r.status_code == 200:
                 jobs = r.json().get("jobs", [])
@@ -262,8 +315,19 @@ def poll_face_sync():
                     log(f"{len(jobs)} face sync jobs pending")
                 for job in jobs:
                     sync_face(job)
+            elif r.status_code == 404:
+                log(
+                    f"Face sync poll 404 for deviceId={DEVICE_ID!r}: {r.text[:200]}"
+                )
+                log(
+                    "HINT: Register this deviceId in HRMS → Biometric Devices "
+                    "(must match agent.py DEVICE_ID exactly), then restart the agent."
+                )
             else:
-                log(f"Face sync poll: {r.status_code} {r.text[:100]}")
+                log(
+                    f"Face sync poll: {r.status_code} deviceId={DEVICE_ID!r} "
+                    f"{r.text[:150]}"
+                )
         except Exception as e:
             log(f"Face sync poll error: {e}")
         time.sleep(60)
