@@ -59,14 +59,15 @@ export function resolveDutyStartTime(employee: {
   dutyStartTime?: string | null;
   shift?: { startTime: string } | null;
 }): string | null {
-  return employee.dutyStartTime ?? employee.shift?.startTime ?? null;
+  // Employee duty fields are the single source of truth (shift is template only).
+  return employee.dutyStartTime?.trim() || null;
 }
 
 export function resolveDutyEndTime(employee: {
   dutyEndTime?: string | null;
   shift?: { endTime: string } | null;
 }): string | null {
-  return employee.dutyEndTime ?? employee.shift?.endTime ?? null;
+  return employee.dutyEndTime?.trim() || null;
 }
 
 export function isWithinDutyWindow(

@@ -1070,7 +1070,7 @@ export function EmployeeProfilePage() {
           <StatusBadge status={employee.status} />
           <p
             className={`flex w-full items-center justify-center gap-1.5 text-sm ${
-              employee.shift?.startTime || employee.dutyStartTime
+              employee.dutyStartTime || employee.relieverOnly
                 ? 'text-text-primary'
                 : 'text-text-secondary'
             }`}
@@ -1347,6 +1347,7 @@ export function EmployeeProfilePage() {
                   ))}
                 </div>
               ) : (
+                <>
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
                   {[
                     {
@@ -1379,6 +1380,14 @@ export function EmployeeProfilePage() {
                     </div>
                   ))}
                 </div>
+                {(workingHours?.anomalies ?? 0) > 0 && (
+                  <p className="mt-3 text-sm text-amber-700">
+                    {workingHours?.anomalies} day
+                    {(workingHours?.anomalies ?? 0) === 1 ? '' : 's'} excluded
+                    due to invalid punch times
+                  </p>
+                )}
+                </>
               )}
             </CardContent>
           </Card>

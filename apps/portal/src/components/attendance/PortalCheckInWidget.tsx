@@ -140,25 +140,41 @@ function WidgetContent({
   compact,
   onCheckIn,
   onCheckOut,
+  onOvertimeCheckIn,
+  onOvertimeCheckOut,
   checkingIn,
   checkingOut,
+  overtimePunching,
 }: {
   timer: ActiveTimer
   shift?: { startTime: string; endTime: string; name?: string }
   compact?: boolean
   onCheckIn: () => void
   onCheckOut: () => void
+  onOvertimeCheckIn: () => void
+  onOvertimeCheckOut: () => void
   checkingIn: boolean
   checkingOut: boolean
+  overtimePunching: boolean
 }) {
-  const { primaryShift, reliever } = timer
+  const { primaryShift, reliever, overtime } = timer
   const primaryActive = primaryShift.isActive
   const shiftComplete =
     primaryShift.checkedIn && !primaryShift.isActive && !!primaryShift.checkOut
+  const otActive = !!overtime?.isActive
+  const canOtCheckIn = !!overtime?.canCheckIn
+  const canOtCheckOut = !!overtime?.canCheckOut
+  const showOtPrompt =
+    canOtCheckIn && (!!overtime?.promptPending || shiftComplete)
 
   const primaryElapsed = useLiveElapsed(
     primaryShift.checkIn,
     primaryActive,
+  )
+
+  const overtimeElapsed = useLiveElapsed(
+    overtime?.checkIn ?? null,
+    otActive,
   )
 
   const relieverElapsed = useLiveElapsed(
@@ -187,7 +203,11 @@ function WidgetContent({
   let statusColor = 'border-gray-200 bg-gray-50 text-gray-600'
   let displayTime = '—'
 
-  if (primaryActive) {
+  if (otActive) {
+    statusLabel = 'On Overtime'
+    statusColor = 'border-amber-200 bg-amber-50 text-amber-900'
+    displayTime = overtimeElapsed
+  } else if (primaryActive) {
     statusLabel = 'On Duty'
     statusColor = 'border-green-200 bg-green-50 text-green-800'
     displayTime = primaryElapsed
@@ -232,7 +252,7 @@ function WidgetContent({
         >
           {displayTime}
         </p>
-        {shiftComplete && fixedMinutes > 0 && (
+        {shiftComplete && !otActive && fixedMinutes > 0 && (
           <p className="mt-1 text-sm opacity-80">
             Total: {formatDuration(fixedMinutes)}
           </p>
@@ -251,8 +271,22 @@ function WidgetContent({
               })}`}
           </p>
         )}
+        {overtime?.checkIn && (
+          <p className="mt-1 text-xs opacity-70">
+            OT in:{' '}
+            {new Date(overtime.checkIn).toLocaleTimeString('en-PK', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+            {overtime.checkOut &&
+              ` · OT out: ${new Date(overtime.checkOut).toLocaleTimeString('en-PK', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}`}
+          </p>
+        )}
 
-        {shift && (primaryActive || primaryShift.checkIn) && (
+        {shift && (primaryActive || primaryShift.checkIn) && !otActive && (
           <ShiftProgressBar
             shift={shift}
             checkInIso={primaryShift.checkIn}
@@ -267,7 +301,7 @@ function WidgetContent({
           {canCheckIn && (
             <Button
               className="bg-green-600 hover:bg-green-700"
-              disabled={checkingIn || checkingOut}
+              disabled={checkingIn || checkingOut || overtimePunching}
               onClick={onCheckIn}
             >
               <LogIn className="mr-2 h-4 w-4" />
@@ -277,7 +311,7 @@ function WidgetContent({
           {canCheckOut && (
             <Button
               variant="destructive"
-              disabled={checkingIn || checkingOut}
+              disabled={checkingIn || checkingOut || overtimePunching}
               onClick={onCheckOut}
             >
               <LogOut className="mr-2 h-4 w-4" />
@@ -288,6 +322,57 @@ function WidgetContent({
             <MapPin className="h-3 w-3" />
             Location access required for check-in/out
           </p>
+        </div>
+      )}
+
+      {(showOtPrompt || canOtCheckOut) && (
+        <div
+          className={cn(
+            'rounded-lg border-2 border-amber-300 bg-amber-50 p-4 text-amber-950',
+            compact && 'p-3',
+          )}
+        >
+          {showOtPrompt && (
+            <>
+              <p className={cn('font-medium', compact && 'text-sm')}>
+                Your shift has ended
+              </p>
+              <p className="mt-1 text-sm text-amber-900/80">
+                Staying for overtime? Mark your check-in.
+              </p>
+              <Button
+                className="mt-3 bg-amber-700 hover:bg-amber-800"
+                disabled={overtimePunching || checkingIn || checkingOut}
+                onClick={onOvertimeCheckIn}
+              >
+                <LogIn className="mr-2 h-4 w-4" />
+                {overtimePunching
+                  ? 'Recording...'
+                  : 'Mark Overtime Check-In'}
+              </Button>
+            </>
+          )}
+          {canOtCheckOut && (
+            <>
+              <p className={cn('font-medium', compact && 'text-sm')}>
+                Overtime in progress
+              </p>
+              <p className="mt-1 text-sm text-amber-900/80">
+                Mark check-out when you finish overtime.
+              </p>
+              <Button
+                variant="destructive"
+                className="mt-3"
+                disabled={overtimePunching || checkingIn || checkingOut}
+                onClick={onOvertimeCheckOut}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                {overtimePunching
+                  ? 'Recording...'
+                  : 'Mark Overtime Check-Out'}
+              </Button>
+            </>
+          )}
         </div>
       )}
 
@@ -325,6 +410,7 @@ export function PortalCheckInWidget({
   const queryClient = useQueryClient()
   const [checkingIn, setCheckingIn] = useState(false)
   const [checkingOut, setCheckingOut] = useState(false)
+  const [overtimePunching, setOvertimePunching] = useState(false)
 
   const { data: timer, isLoading } = useQuery({
     queryKey: ['attendance-timer', employeeId],
@@ -339,6 +425,7 @@ export function PortalCheckInWidget({
     queryClient.invalidateQueries({ queryKey: ['attendance-summary'] })
     queryClient.invalidateQueries({ queryKey: ['working-hours'] })
     queryClient.invalidateQueries({ queryKey: ['attendance-today'] })
+    queryClient.invalidateQueries({ queryKey: ['notifications'] })
   }
 
   const checkInMutation = useMutation({
@@ -383,6 +470,29 @@ export function PortalCheckInWidget({
     onSettled: () => setCheckingOut(false),
   })
 
+  const overtimeMutation = useMutation({
+    mutationFn: (punchType: 'OVERTIME_CHECKIN' | 'OVERTIME_CHECKOUT') =>
+      attendanceApi.overtimePunch(punchType),
+    onSuccess: (_data, punchType) => {
+      toast({
+        title:
+          punchType === 'OVERTIME_CHECKIN'
+            ? 'Overtime check-in recorded'
+            : 'Overtime check-out recorded',
+      })
+      invalidateAttendance()
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Overtime punch failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+    onSettled: () => setOvertimePunching(false),
+  })
+
   const handleCheckIn = async () => {
     setCheckingIn(true)
     try {
@@ -419,6 +529,16 @@ export function PortalCheckInWidget({
     }
   }
 
+  const handleOvertimeCheckIn = () => {
+    setOvertimePunching(true)
+    overtimeMutation.mutate('OVERTIME_CHECKIN')
+  }
+
+  const handleOvertimeCheckOut = () => {
+    setOvertimePunching(true)
+    overtimeMutation.mutate('OVERTIME_CHECKOUT')
+  }
+
   if (isLoading) {
     return (
       <Card className={cn('border-border', compact && 'shadow-sm')}>
@@ -438,8 +558,11 @@ export function PortalCheckInWidget({
       compact={compact}
       onCheckIn={handleCheckIn}
       onCheckOut={handleCheckOut}
+      onOvertimeCheckIn={handleOvertimeCheckIn}
+      onOvertimeCheckOut={handleOvertimeCheckOut}
       checkingIn={checkingIn || checkInMutation.isPending}
       checkingOut={checkingOut || checkOutMutation.isPending}
+      overtimePunching={overtimePunching || overtimeMutation.isPending}
     />
   )
 

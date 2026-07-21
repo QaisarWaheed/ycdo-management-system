@@ -286,6 +286,7 @@ export function CheckInManualTab() {
   const [searchQuery, setSearchQuery] = useState('')
   const [checkInTimes, setCheckInTimes] = useState<Record<string, string>>({})
   const [markingId, setMarkingId] = useState<string | null>(null)
+  const [dutyFilter, setDutyFilter] = useState<'onDutyNow' | 'all'>('onDutyNow')
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
@@ -338,7 +339,7 @@ export function CheckInManualTab() {
     [branchEmployees],
   )
 
-  const { data: activeEmployees = [], isLoading } = useQuery({
+  const { data: activeEmployees = [], isLoading: loadingActive } = useQuery({
     queryKey: [
       'active-shift-checkin',
       today,
@@ -352,22 +353,62 @@ export function CheckInManualTab() {
         branchId: effectiveBranchId || undefined,
         departmentId: effectiveDepartmentId || undefined,
       }),
-    enabled: !!effectiveBranchId,
+    enabled: !!effectiveBranchId && dutyFilter === 'onDutyNow',
     refetchInterval: REFRESH_MS,
   })
 
+  const { data: allEligible = [], isLoading: loadingAll } = useQuery({
+    queryKey: [
+      'manual-checkin-all',
+      today,
+      effectiveBranchId,
+      effectiveDepartmentId,
+    ],
+    queryFn: async () => {
+      const [emps, logs] = await Promise.all([
+        employeesApi.getAll({
+          ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
+          ...(effectiveDepartmentId
+            ? { departmentId: effectiveDepartmentId }
+            : {}),
+          status: 'ACTIVE',
+        }),
+        attendanceApi.getAll({
+          startDate: today,
+          endDate: today,
+          branchId: effectiveBranchId || undefined,
+          departmentId: effectiveDepartmentId || undefined,
+          dutyFilter: 'all',
+        }),
+      ])
+      const checkedIn = new Set(
+        (logs as AttendanceLog[])
+          .filter((l) => l.checkIn)
+          .map((l) => l.employeeId),
+      )
+      return (emps as Employee[]).filter((e) => !checkedIn.has(e.id))
+    },
+    enabled: !!effectiveBranchId && dutyFilter === 'all',
+    refetchInterval: REFRESH_MS,
+  })
+
+  const isLoading = dutyFilter === 'onDutyNow' ? loadingActive : loadingAll
+  const sourceEmployees =
+    dutyFilter === 'onDutyNow' ? activeEmployees : allEligible
+
   const employees = useMemo(() => {
-    const filtered = filterByDutyStartTime(activeEmployees, dutyStartTime).filter(
+    const filtered = filterByDutyStartTime(sourceEmployees, dutyStartTime).filter(
       (emp) => matchesNameOrCnicSearch(emp, searchQuery),
     )
     return sortEmployeesByHierarchy(filtered)
-  }, [activeEmployees, dutyStartTime, searchQuery])
+  }, [sourceEmployees, dutyStartTime, searchQuery])
 
   const filterDeps = [
     effectiveBranchId,
     effectiveDepartmentId,
     dutyStartTime,
     searchQuery,
+    dutyFilter,
   ]
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
@@ -438,9 +479,41 @@ export function CheckInManualTab() {
         </div>
       )}
 
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <Label>Duty window</Label>
+          <div className="flex rounded-md border border-border p-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={dutyFilter === 'onDutyNow' ? 'default' : 'ghost'}
+              className="h-8"
+              onClick={() => setDutyFilter('onDutyNow')}
+            >
+              On duty now
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={dutyFilter === 'all' ? 'default' : 'ghost'}
+              className="h-8"
+              onClick={() => setDutyFilter('all')}
+            >
+              All employees
+            </Button>
+          </div>
+        </div>
+      </div>
+
       <p className="text-sm text-text-secondary">
-        Employees within their registered duty hours who have not checked in
-        today. Refreshes every 60 seconds.
+        {dutyFilter === 'onDutyNow'
+          ? 'Employees within their registered duty hours (±60 min grace) who have not checked in today.'
+          : 'All active employees who have not checked in today.'}{' '}
+        Showing {employees.length}
+        {dutyFilter === 'onDutyNow' && branchEmployees.length
+          ? ` of ${branchEmployees.length} branch staff`
+          : ''}
+        . Refreshes every 60 seconds.
       </p>
 
       <ManualAttendanceFilters

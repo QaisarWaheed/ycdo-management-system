@@ -162,6 +162,13 @@ export function MyAttendancePage() {
                 </p>
               </div>
             </div>
+            {(workingHours?.anomalies ?? 0) > 0 && (
+              <p className="mt-3 text-sm text-amber-700">
+                {workingHours?.anomalies} day
+                {(workingHours?.anomalies ?? 0) === 1 ? '' : 's'} excluded due to
+                invalid punch times
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

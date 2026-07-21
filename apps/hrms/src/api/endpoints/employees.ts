@@ -12,6 +12,7 @@ export interface WorkingHoursSummary {
   thisMonthMinutes: number
   thisMonthHours: number
   averageDailyHours: number
+  anomalies?: number
 }
 
 export interface EmployeeStats {

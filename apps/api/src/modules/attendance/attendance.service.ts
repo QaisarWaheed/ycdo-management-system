@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -61,6 +62,11 @@ import {
   isMedicineManagerRole,
   medicineEmployeeWhere,
 } from '../../common/medicine-scope.util';
+import {
+  DUTY_FILTER_GRACE_MINUTES,
+  getDutyWindow,
+  isOnDutyAt,
+} from '../../common/duty.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
 const AUTO_UNMARKED_NOTE = 'Auto-marked unmarked at shift start';
@@ -72,6 +78,16 @@ const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
   UserRole.HR_OPERATIONS_MANAGER,
   UserRole.HR_EXECUTIVE,
 ];
+
+/** Branch admins may mark check-in/out once; only HR/IT may modify afterwards. */
+const ATTENDANCE_MARK_ONLY_ROLES: UserRole[] = [
+  UserRole.ADMIN_MANAGER,
+  UserRole.ADMIN_OFFICER,
+  UserRole.MEDICINE_MANAGER,
+];
+
+const ATTENDANCE_ALREADY_MARKED_MESSAGE =
+  'Attendance already marked and cannot be modified. Please contact HR to update attendance.';
 
 @Injectable()
 export class AttendanceService {
@@ -125,6 +141,50 @@ export class AttendanceService {
         ? null
         : await this.findOpenRegularLog(employee.id, dateOnly);
       punchType = openRegular ? 'CHECKOUT' : 'CHECKIN';
+    }
+
+    // Hard guards — never silently convert an explicit punch type.
+    if (punchType === 'CHECKIN') {
+      const openRegular = await this.findOpenRegularLog(employee.id, dateOnly);
+      if (openRegular?.checkIn) {
+        throw new ConflictException(
+          'Employee already checked in. Duplicate CHECKIN rejected.',
+        );
+      }
+    }
+
+    if (punchType === 'CHECKOUT' && !twentyFourHour) {
+      const openRegular = await this.findOpenRegularLog(employee.id, dateOnly);
+      if (!openRegular) {
+        throw new BadRequestException(
+          'No open check-in found for this employee today.',
+        );
+      }
+    }
+
+    if (punchType === 'OVERTIME_CHECKIN') {
+      await this.assertRegularShiftCompletedForOvertime(
+        employee.id,
+        dateOnly,
+      );
+      const existingOt = await this.findOvertimeLogForDate(
+        employee.id,
+        dateOnly,
+      );
+      if (existingOt?.checkIn) {
+        throw new ConflictException(
+          'Employee already has an overtime check-in today.',
+        );
+      }
+    }
+
+    if (punchType === 'OVERTIME_CHECKOUT') {
+      const openOt = await this.findOpenOvertimeLog(employee.id, dateOnly);
+      if (!openOt) {
+        throw new BadRequestException(
+          'No open overtime check-in found for this employee today.',
+        );
+      }
     }
 
     if (punchType === 'CHECKOUT') {
@@ -189,7 +249,9 @@ export class AttendanceService {
 
     if (anyExisting) {
       if (anyExisting.checkIn) {
-        throw new BadRequestException('Already checked in for today');
+        throw new ConflictException(
+          'Employee already checked in. Duplicate CHECKIN rejected.',
+        );
       }
 
       const log = await this.prisma.$transaction(async (tx) => {
@@ -279,7 +341,9 @@ export class AttendanceService {
     const openRegular = await this.findOpenRegularLog(employee.id, dateOnly);
 
     if (!openRegular) {
-      throw new BadRequestException('No open check-in found to check out');
+      throw new BadRequestException(
+        'No open check-in found for this employee today.',
+      );
     }
 
     const sessionMinutes = Math.round(
@@ -319,19 +383,24 @@ export class AttendanceService {
     branchId: string | null,
     checkTime: Date,
     dateOnly: Date,
+    source: AttendanceSource = AttendanceSource.BIOMETRIC,
   ) {
-    const openOvertimeLog = await this.prisma.attendanceLog.findFirst({
-      where: {
-        employeeId: employee.id,
-        date: dateOnly,
-        type: AttendanceLogType.OVERTIME,
-        checkIn: { not: null },
-        checkOut: null,
-      },
-    });
+    await this.assertRegularShiftCompletedForOvertime(employee.id, dateOnly);
 
-    if (openOvertimeLog) {
-      throw new BadRequestException('Already on overtime check-in');
+    const existingOt = await this.findOvertimeLogForDate(
+      employee.id,
+      dateOnly,
+    );
+    if (existingOt?.checkIn) {
+      throw new ConflictException(
+        'Employee already has an overtime check-in today.',
+      );
+    }
+
+    if (!branchId) {
+      throw new BadRequestException(
+        'Employee has no branch assignment for overtime check-in',
+      );
     }
 
     const log = await this.prisma.attendanceLog.create({
@@ -342,8 +411,18 @@ export class AttendanceService {
         type: AttendanceLogType.OVERTIME,
         checkIn: checkTime,
         status: AttendanceStatus.PRESENT,
-        source: AttendanceSource.BIOMETRIC,
+        source,
       },
+    });
+
+    // Clear unread OT prompts once they start overtime.
+    await this.prisma.notification.updateMany({
+      where: {
+        employeeId: employee.id,
+        type: 'OVERTIME_CHECKIN_PROMPT',
+        isRead: false,
+      },
+      data: { isRead: true },
     });
 
     return { type: 'OVERTIME_CHECKIN' as const, log };
@@ -354,33 +433,12 @@ export class AttendanceService {
     checkTime: Date,
     dateOnly: Date,
   ) {
-    const openOvertimeLog = await this.prisma.attendanceLog.findFirst({
-      where: {
-        employeeId: employee.id,
-        date: dateOnly,
-        type: AttendanceLogType.OVERTIME,
-        checkIn: { not: null },
-        checkOut: null,
-      },
-      orderBy: { checkIn: 'desc' },
-    });
-
-    // Also allow closing yesterday's open OT for overnight OT sessions
-    const open =
-      openOvertimeLog ??
-      (await this.prisma.attendanceLog.findFirst({
-        where: {
-          employeeId: employee.id,
-          date: this.pakistanYesterday(dateOnly),
-          type: AttendanceLogType.OVERTIME,
-          checkIn: { not: null },
-          checkOut: null,
-        },
-        orderBy: { checkIn: 'desc' },
-      }));
+    const open = await this.findOpenOvertimeLog(employee.id, dateOnly);
 
     if (!open?.checkIn) {
-      throw new BadRequestException('No open overtime check-in found to check out');
+      throw new BadRequestException(
+        'No open overtime check-in found for this employee today.',
+      );
     }
 
     const overtimeMinutes = Math.round(
@@ -396,6 +454,45 @@ export class AttendanceService {
     });
 
     return { type: 'OVERTIME_CHECKOUT' as const, log };
+  }
+
+  /**
+   * Portal overtime punch — same rules as biometric OT, MANUAL source.
+   */
+  async recordOvertimePunch(
+    employeeId: string,
+    punchType: 'OVERTIME_CHECKIN' | 'OVERTIME_CHECKOUT',
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true, currentBranchId: true, status: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${employeeId} not found`);
+    }
+
+    if (
+      employee.status !== EmployeeStatus.ACTIVE &&
+      employee.status !== EmployeeStatus.TRAINEE
+    ) {
+      throw new BadRequestException('Employee is not active');
+    }
+
+    const checkTime = new Date();
+    const dateOnly = toPakistanDateOnly(checkTime);
+
+    if (punchType === 'OVERTIME_CHECKIN') {
+      return this.biometricOvertimeCheckIn(
+        employee,
+        employee.currentBranchId,
+        checkTime,
+        dateOnly,
+        AttendanceSource.MANUAL,
+      );
+    }
+
+    return this.biometricOvertimeCheckOut(employee, checkTime, dateOnly);
   }
 
   async markManual(
@@ -459,6 +556,31 @@ export class AttendanceService {
     const dateOnly = toPakistanDateOnly(
       new Date(`${dto.date}T00:00:00+05:00`),
     );
+
+    if (this.isAttendanceMarkOnlyRole(actingUser.role)) {
+      const existing = await this.prisma.attendanceLog.findUnique({
+        where: {
+          employeeId_date_type: {
+            employeeId: dto.employeeId,
+            date: dateOnly,
+            type: AttendanceLogType.REGULAR,
+          },
+        },
+      });
+
+      if (existing?.checkIn) {
+        throw new ForbiddenException(ATTENDANCE_ALREADY_MARKED_MESSAGE);
+      }
+
+      if (
+        existing &&
+        existing.status !== AttendanceStatus.UNMARKED &&
+        !existing.checkIn
+      ) {
+        throw new ForbiddenException(ATTENDANCE_ALREADY_MARKED_MESSAGE);
+      }
+    }
+
     const checkIn = dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : undefined;
     const checkOut = dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : undefined;
 
@@ -653,6 +775,22 @@ export class AttendanceService {
         throw new ForbiddenException(
           'You can only update attendance for Medicine Management System staff',
         );
+      }
+    }
+
+    if (this.isAttendanceMarkOnlyRole(actingUser.role)) {
+      const isFirstCheckoutOnly =
+        dto.checkOut != null &&
+        !log.checkOut &&
+        !!log.checkIn &&
+        dto.checkIn === undefined &&
+        dto.status === undefined &&
+        dto.lateMinutes === undefined &&
+        dto.note === undefined &&
+        dto.overtimeMinutes === undefined;
+
+      if (!isFirstCheckoutOnly) {
+        throw new ForbiddenException(ATTENDANCE_ALREADY_MARKED_MESSAGE);
       }
     }
 
@@ -1131,6 +1269,7 @@ export class AttendanceService {
             currentDepartmentId: true,
             dutyStartTime: true,
             dutyEndTime: true,
+            relieverOnly: true,
             currentBranch: { select: BRANCH_LABEL_SELECT },
             currentDepartment: { select: { name: true } },
             shift: {
@@ -1149,12 +1288,22 @@ export class AttendanceService {
       orderBy: { date: 'desc' },
     });
 
-    return logs
+    const mapped = logs
       .map((log) => ({
         ...log,
         employee: log.employee
           ? {
               ...log.employee,
+              // Display times always from employee duty fields (shift name only).
+              shift: log.employee.shift
+                ? {
+                    name: log.employee.shift.name,
+                    startTime:
+                      log.employee.dutyStartTime ?? log.employee.shift.startTime,
+                    endTime:
+                      log.employee.dutyEndTime ?? log.employee.shift.endTime,
+                  }
+                : log.employee.shift,
               user: log.employee.user
                 ? {
                     role: log.employee.user.role,
@@ -1182,6 +1331,43 @@ export class AttendanceService {
         b.employee?.fullName ?? '',
       );
     });
+
+    const dutyFilter = this.resolveDutyFilter(query);
+    if (dutyFilter === 'all') {
+      return mapped;
+    }
+
+    const minutesOfDay = toPakistanMinutesOfDay(new Date());
+    return mapped.filter((log) => {
+      const emp = log.employee;
+      if (!emp) return true;
+      if (emp.relieverOnly) return true;
+      const win = getDutyWindow(emp);
+      if (!win) return true;
+      return isOnDutyAt(win, minutesOfDay, DUTY_FILTER_GRACE_MINUTES);
+    });
+  }
+
+  private isAttendanceMarkOnlyRole(role: UserRole): boolean {
+    return ATTENDANCE_MARK_ONLY_ROLES.includes(role);
+  }
+
+  private resolveDutyFilter(query: AttendanceQueryDto): 'onDutyNow' | 'all' {
+    const requested = query.dutyFilter ?? 'onDutyNow';
+    if (requested === 'all') return 'all';
+
+    // Only meaningful for a single day that is today (PKT).
+    const isSingleDay =
+      !!query.startDate &&
+      !!query.endDate &&
+      query.startDate === query.endDate;
+    if (!isSingleDay) return 'all';
+
+    const pkToday = toPakistanDateOnly(new Date());
+    const requestedDate = this.toDateOnly(new Date(query.startDate!));
+    if (requestedDate.getTime() !== pkToday.getTime()) return 'all';
+
+    return 'onDutyNow';
   }
 
   findAllRelieverSessions(query: RelieverSessionsQueryDto) {
@@ -1323,6 +1509,16 @@ export class AttendanceService {
       },
     });
 
+    const overtimeLog = await this.prisma.attendanceLog.findUnique({
+      where: {
+        employeeId_date_type: {
+          employeeId,
+          date: dateOnly,
+          type: AttendanceLogType.OVERTIME,
+        },
+      },
+    });
+
     const openRelieverSession = await this.prisma.relieverSession.findFirst({
       where: {
         employeeId,
@@ -1331,8 +1527,20 @@ export class AttendanceService {
       },
     });
 
+    const otPrompt = await this.prisma.notification.findFirst({
+      where: {
+        employeeId,
+        type: 'OVERTIME_CHECKIN_PROMPT',
+        isRead: false,
+        createdAt: { gte: dateOnly },
+      },
+      select: { id: true },
+    });
+
     const checkedIn = !!attendanceLog?.checkIn;
     const hasCheckOut = !!attendanceLog?.checkOut;
+    const otCheckedIn = !!overtimeLog?.checkIn;
+    const otCheckedOut = !!overtimeLog?.checkOut;
 
     return {
       primaryShift: {
@@ -1340,6 +1548,16 @@ export class AttendanceService {
         checkIn: attendanceLog?.checkIn ?? null,
         checkOut: attendanceLog?.checkOut ?? null,
         isActive: checkedIn && !hasCheckOut,
+      },
+      overtime: {
+        checkedIn: otCheckedIn,
+        checkIn: overtimeLog?.checkIn ?? null,
+        checkOut: overtimeLog?.checkOut ?? null,
+        isActive: otCheckedIn && !otCheckedOut,
+        /** Show portal OT check-in when regular is done and OT not started. */
+        canCheckIn: checkedIn && hasCheckOut && !otCheckedIn,
+        canCheckOut: otCheckedIn && !otCheckedOut,
+        promptPending: !!otPrompt,
       },
       reliever: {
         isActive: !!openRelieverSession,
@@ -1666,6 +1884,76 @@ export class AttendanceService {
           },
         });
       });
+  }
+
+  private findOvertimeLogForDate(employeeId: string, dateOnly: Date) {
+    return this.prisma.attendanceLog.findFirst({
+      where: {
+        employeeId,
+        date: dateOnly,
+        type: AttendanceLogType.OVERTIME,
+      },
+    });
+  }
+
+  private findOpenOvertimeLog(employeeId: string, dateOnly: Date) {
+    return this.prisma.attendanceLog
+      .findFirst({
+        where: {
+          employeeId,
+          date: dateOnly,
+          type: AttendanceLogType.OVERTIME,
+          checkIn: { not: null },
+          checkOut: null,
+        },
+        orderBy: { checkIn: 'desc' },
+      })
+      .then(async (todayOpen) => {
+        if (todayOpen) return todayOpen;
+        return this.prisma.attendanceLog.findFirst({
+          where: {
+            employeeId,
+            date: this.pakistanYesterday(dateOnly),
+            type: AttendanceLogType.OVERTIME,
+            checkIn: { not: null },
+            checkOut: null,
+          },
+          orderBy: { checkIn: 'desc' },
+        });
+      });
+  }
+
+  private async assertRegularShiftCompletedForOvertime(
+    employeeId: string,
+    dateOnly: Date,
+  ) {
+    const regularToday = await this.prisma.attendanceLog.findFirst({
+      where: {
+        employeeId,
+        date: dateOnly,
+        type: AttendanceLogType.REGULAR,
+        checkIn: { not: null },
+        checkOut: { not: null },
+      },
+    });
+
+    if (regularToday) return;
+
+    const regularYesterday = await this.prisma.attendanceLog.findFirst({
+      where: {
+        employeeId,
+        date: this.pakistanYesterday(dateOnly),
+        type: AttendanceLogType.REGULAR,
+        checkIn: { not: null },
+        checkOut: { not: null },
+      },
+    });
+
+    if (!regularYesterday) {
+      throw new BadRequestException(
+        'Regular shift must be completed before overtime check-in.',
+      );
+    }
   }
 
   async importRecord(

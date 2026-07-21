@@ -67,6 +67,7 @@ export interface WorkingHours {
   thisMonthMinutes: number
   thisMonthHours: number
   averageDailyHours: number
+  anomalies?: number
 }
 
 export interface AttendanceSummary {
@@ -87,6 +88,15 @@ export interface ActiveTimer {
     checkIn: string | null
     checkOut: string | null
     isActive: boolean
+  }
+  overtime?: {
+    checkedIn: boolean
+    checkIn: string | null
+    checkOut: string | null
+    isActive: boolean
+    canCheckIn: boolean
+    canCheckOut: boolean
+    promptPending: boolean
   }
   reliever: {
     isActive: boolean

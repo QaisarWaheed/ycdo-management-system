@@ -25,6 +25,7 @@ import {
   ImportAttendanceDto,
   ManualAttendanceDto,
   MarkAbsenteesDto,
+  OvertimePunchDto,
   PortalCheckDto,
   RelieverSessionsQueryDto,
   UpdateAttendanceDto,
@@ -299,6 +300,22 @@ export class AttendanceController {
       user.employeeId,
       dto.latitude,
       dto.longitude,
+    );
+  }
+
+  @Post('overtime-punch')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.EMPLOYEE)
+  overtimePunch(
+    @Body() dto: OvertimePunchDto,
+    @CurrentUser() user: { employeeId?: string | null },
+  ) {
+    if (!user.employeeId) {
+      throw new ForbiddenException('Employee profile required');
+    }
+    return this.attendanceService.recordOvertimePunch(
+      user.employeeId,
+      dto.punchType,
     );
   }
 }

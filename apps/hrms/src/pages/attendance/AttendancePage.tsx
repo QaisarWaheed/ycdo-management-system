@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Search } from 'lucide-react'
@@ -74,12 +74,15 @@ import {
 const ALL = 'ALL'
 
 function formatLogShift(log: AttendanceLog): string {
-  const shift = log.employee?.shift
-  if (!shift?.name || !shift?.startTime || !shift?.endTime) return '—'
+  const emp = log.employee
+  const start = emp?.dutyStartTime ?? emp?.shift?.startTime
+  const end = emp?.dutyEndTime ?? emp?.shift?.endTime
+  const name = emp?.shift?.name
+  if (!start || !end) return name ?? '—'
   return formatShiftOptionLabel({
-    name: shift.name,
-    startTime: shift.startTime,
-    endTime: shift.endTime,
+    name: name ?? 'Duty',
+    startTime: start,
+    endTime: end,
   })
 }
 
@@ -234,16 +237,36 @@ function DailyLogTab({
   initialDate?: string
 }) {
   const queryClient = useQueryClient()
-  const { user } = useAuth()
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const { user, hasRole } = useAuth()
+  const canFullyEditAttendance = hasRole([
+    'SUPER_ADMIN',
+    'IT_ADMIN',
+    'HR_EXECUTIVE',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+  ])
+  const today = todayPakistan()
   const [date, setDate] = useState(initialDate ?? today)
   const [search, setSearch] = useState('')
   const [employeeFilters, setEmployeeFilters] = useState(() =>
     createEmployeeFilters(user),
   )
   const [statusFilter, setStatusFilter] = useState(initialStatus)
+  const [dutyFilter, setDutyFilter] = useState<'onDutyNow' | 'all'>(
+    (initialDate ?? today) === today ? 'onDutyNow' : 'all',
+  )
   const [updateLog, setUpdateLog] = useState<AttendanceLog | null>(null)
   const [relieverLog, setRelieverLog] = useState<AttendanceLog | null>(null)
+
+  const isToday = date === today
+  const effectiveDutyFilter = isToday ? dutyFilter : 'all'
+
+  useEffect(() => {
+    if (!isToday && dutyFilter !== 'all') {
+      setDutyFilter('all')
+    }
+  }, [isToday, dutyFilter])
 
   const debouncedSearch = useDebounce(search, 400)
 
@@ -258,18 +281,37 @@ function DailyLogTab({
       endDate: date,
       status: statusFilter !== ALL ? statusFilter : undefined,
       search: debouncedSearch || undefined,
+      dutyFilter: effectiveDutyFilter,
       ...employeeFiltersToAttendanceParams(employeeFilters, shifts),
     }),
-    [date, statusFilter, debouncedSearch, employeeFilters, shifts],
+    [
+      date,
+      statusFilter,
+      debouncedSearch,
+      employeeFilters,
+      shifts,
+      effectiveDutyFilter,
+    ],
   )
+
+  const { data: allTodayLogs = [] } = useQuery({
+    queryKey: ['attendance', { ...queryParams, dutyFilter: 'all', _countOnly: true }],
+    queryFn: () =>
+      attendanceApi.getAll({ ...queryParams, dutyFilter: 'all' }),
+    enabled: isToday && effectiveDutyFilter === 'onDutyNow',
+  })
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['attendance', queryParams],
     queryFn: () => attendanceApi.getAll(queryParams),
-    refetchInterval: date === todayPakistan() ? 60_000 : false,
+    refetchInterval: isToday ? 60_000 : false,
   })
 
   const attendanceLogs = logs as AttendanceLog[]
+  const totalBeforeFilter =
+    effectiveDutyFilter === 'onDutyNow'
+      ? (allTodayLogs as AttendanceLog[]).length
+      : attendanceLogs.length
 
   const summary = useMemo(() => {
     const total = attendanceLogs.length
@@ -318,8 +360,40 @@ function DailyLogTab({
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-1">
+            <Label>Duty window</Label>
+            <div className="flex rounded-md border border-border p-0.5">
+              <Button
+                type="button"
+                size="sm"
+                variant={effectiveDutyFilter === 'onDutyNow' ? 'default' : 'ghost'}
+                className="h-8"
+                disabled={!isToday}
+                onClick={() => setDutyFilter('onDutyNow')}
+              >
+                On duty now
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={effectiveDutyFilter === 'all' ? 'default' : 'ghost'}
+                className="h-8"
+                onClick={() => setDutyFilter('all')}
+              >
+                All employees
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
+
+      <p className="text-sm text-text-secondary">
+        Showing {attendanceLogs.length}
+        {effectiveDutyFilter === 'onDutyNow'
+          ? ` of ${totalBeforeFilter} (on duty now)`
+          : ' employees'}
+      </p>
 
       <div className="rounded-lg border border-border bg-white p-4 space-y-4">
         <div className="relative min-w-[200px] max-w-md">
@@ -368,14 +442,14 @@ function DailyLogTab({
               <TableHead>Late Minutes</TableHead>
               <TableHead>Overtime</TableHead>
               <TableHead>Source</TableHead>
-              <TableHead>Actions</TableHead>
+              {canFullyEditAttendance && <TableHead>Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(14)].map((__, j) => (
+                  {[...Array(canFullyEditAttendance ? 14 : 13)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -384,7 +458,10 @@ function DailyLogTab({
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={14} className="h-32 text-center text-text-secondary">
+                <TableCell
+                  colSpan={canFullyEditAttendance ? 14 : 13}
+                  className="h-32 text-center text-text-secondary"
+                >
                   No attendance records for this date
                 </TableCell>
               </TableRow>
@@ -469,6 +546,7 @@ function DailyLogTab({
                       </Badge>
                     )}
                   </TableCell>
+                  {canFullyEditAttendance && (
                   <TableCell>
                     <div className="flex flex-wrap gap-2">
                       <Button
@@ -489,6 +567,7 @@ function DailyLogTab({
                       )}
                     </div>
                   </TableCell>
+                  )}
                 </TableRow>
                 )
               })

@@ -28,14 +28,14 @@ export function resolveShiftEndTime(employee: {
   dutyEndTime?: string | null;
   shift?: { endTime: string } | null;
 }): string | null {
-  return employee.dutyEndTime ?? employee.shift?.endTime ?? null;
+  return employee.dutyEndTime?.trim() || null;
 }
 
 export function resolveShiftStartTime(employee: {
   dutyStartTime?: string | null;
   shift?: { startTime: string } | null;
 }): string | null {
-  return employee.dutyStartTime ?? employee.shift?.startTime ?? null;
+  return employee.dutyStartTime?.trim() || null;
 }
 
 export function isOvernightShift(
@@ -64,9 +64,12 @@ export function is24HourShift(employee: {
     return true;
   }
 
-  const start = employee.dutyStartTime ?? employee.shift?.startTime ?? null;
-  const end = employee.dutyEndTime ?? employee.shift?.endTime ?? null;
-  if (!start || !end) return false;
+  const start = employee.dutyStartTime ?? null;
+  const end = employee.dutyEndTime ?? null;
+  if (!start || !end) {
+    // Fall back to dutyTotalHours / shift name only — not shift clock times.
+    return false;
+  }
 
   if (start === end) return true;
 
@@ -113,7 +116,7 @@ export function computeBiometricLateMinutes(
     return 0;
   }
 
-  const dutyStart = employee.dutyStartTime ?? employee.shift?.startTime ?? null;
+  const dutyStart = employee.dutyStartTime ?? null;
   if (!dutyStart) {
     return 0;
   }

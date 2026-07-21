@@ -24,6 +24,7 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
   ATTENDANCE_MARK: [
     UserRole.HR_MANAGER,
     UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
     UserRole.MEDICINE_MANAGER,
   ],
   ATTENDANCE_EDIT: [
@@ -32,6 +33,8 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.HR_EXECUTIVE,
+    // Branch admins keep EDIT so they can complete first check-out only;
+    // updateAttendance blocks any other modification.
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
     UserRole.MEDICINE_MANAGER,

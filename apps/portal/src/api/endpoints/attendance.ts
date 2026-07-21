@@ -51,4 +51,6 @@ export const attendanceApi = {
       '/attendance/portal-checkout',
       data,
     ),
+  overtimePunch: (punchType: 'OVERTIME_CHECKIN' | 'OVERTIME_CHECKOUT') =>
+    api.post('/attendance/overtime-punch', { punchType }),
 }

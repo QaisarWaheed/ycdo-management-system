@@ -8,6 +8,13 @@ import {
 import { normalizeDesignationName } from '../../common/org-structure';
 import { inferShiftNameFromDuty } from '../../common/shift-inference.util';
 import {
+  DUTY_FILTER_GRACE_MINUTES,
+  getDutyWindow,
+  isOnDutyAt,
+  normalizeDutyTimeToHhMm,
+  workedMinutes,
+} from '../../common/duty.util';
+import {
   ChangeType,
   EmployeeOnboardingStatus,
   EmployeeStatus,
@@ -30,9 +37,6 @@ import {
 import { LettersService } from '../letters/letters.service';
 import { FaceSyncService } from '../face-sync/face-sync.service';
 import {
-  isWithinDutyWindow,
-  resolveDutyEndTime,
-  resolveDutyStartTime,
   toPakistanMinutesOfDay,
 } from '../attendance/attendance-late.util';
 import { generateEmployeeCode } from './employee-code.helper';
@@ -179,8 +183,8 @@ export class EmployeesService {
       );
     }
 
-    let syncedDutyStart = dto.dutyStartTime;
-    let syncedDutyEnd = dto.dutyEndTime;
+    let syncedDutyStart = this.normalizeOptionalDuty(dto.dutyStartTime);
+    let syncedDutyEnd = this.normalizeOptionalDuty(dto.dutyEndTime);
     let syncedDutyHours = dto.dutyTotalHours;
     if (resolvedShiftId) {
       const shift = await this.prisma.shift.findUnique({
@@ -189,14 +193,16 @@ export class EmployeesService {
       if (shift) {
         // Explicit shift selection wins over manually entered duty times
         if (dto.shiftId) {
-          syncedDutyStart = shift.startTime;
-          syncedDutyEnd = shift.endTime;
+          syncedDutyStart = this.normalizeOptionalDuty(shift.startTime);
+          syncedDutyEnd = this.normalizeOptionalDuty(shift.endTime);
           syncedDutyHours =
             this.calculateShiftHours(shift.startTime, shift.endTime) ??
             syncedDutyHours;
         } else {
-          syncedDutyStart = syncedDutyStart ?? shift.startTime;
-          syncedDutyEnd = syncedDutyEnd ?? shift.endTime;
+          syncedDutyStart =
+            syncedDutyStart ?? this.normalizeOptionalDuty(shift.startTime);
+          syncedDutyEnd =
+            syncedDutyEnd ?? this.normalizeOptionalDuty(shift.endTime);
           syncedDutyHours =
             syncedDutyHours ??
             this.calculateShiftHours(syncedDutyStart, syncedDutyEnd);
@@ -1130,6 +1136,18 @@ export class EmployeesService {
     return shift;
   }
 
+  private normalizeOptionalDuty(
+    value?: string | null,
+  ): string | undefined {
+    if (value == null || value === '') return undefined;
+    try {
+      return normalizeDutyTimeToHhMm(value);
+    } catch {
+      // Keep original if unparseable — validation layer should catch bad input.
+      return value.trim().substring(0, 5);
+    }
+  }
+
   private calculateShiftHours(
     startTime?: string | null,
     endTime?: string | null,
@@ -1304,15 +1322,23 @@ export class EmployeesService {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
+    const win = getDutyWindow(employee);
     let totalMinutes = 0;
     let thisMonthMinutes = 0;
+    let anomalies = 0;
     const daysWithHours = new Set<string>();
 
     for (const log of logs) {
       if (!log.checkIn || !log.checkOut) continue;
-      const minutes = Math.round(
-        (log.checkOut.getTime() - log.checkIn.getTime()) / 60000,
+      const { minutes, anomalous } = workedMinutes(
+        log.checkIn,
+        log.checkOut,
+        win,
       );
+      if (anomalous) {
+        anomalies += 1;
+        continue;
+      }
       totalMinutes += minutes;
       daysWithHours.add(log.date.toISOString().split('T')[0]);
 
@@ -1336,6 +1362,7 @@ export class EmployeesService {
       thisMonthMinutes,
       thisMonthHours,
       averageDailyHours,
+      anomalies,
     };
   }
 
@@ -1388,10 +1415,10 @@ export class EmployeesService {
         data.currentDepartment = { connect: { id: dto.currentDepartmentId } };
       }
       if (dto.dutyStartTime !== undefined) {
-        data.dutyStartTime = dto.dutyStartTime;
+        data.dutyStartTime = this.normalizeOptionalDuty(dto.dutyStartTime);
       }
       if (dto.dutyEndTime !== undefined) {
-        data.dutyEndTime = dto.dutyEndTime;
+        data.dutyEndTime = this.normalizeOptionalDuty(dto.dutyEndTime);
       }
       if (dto.dutyTotalHours !== undefined) {
         data.dutyTotalHours = dto.dutyTotalHours;
@@ -1404,8 +1431,11 @@ export class EmployeesService {
         }
       }
 
-      const nextStart = dto.dutyStartTime ?? employee.dutyStartTime;
-      const nextEnd = dto.dutyEndTime ?? employee.dutyEndTime;
+      const nextStart =
+        this.normalizeOptionalDuty(dto.dutyStartTime) ??
+        employee.dutyStartTime;
+      const nextEnd =
+        this.normalizeOptionalDuty(dto.dutyEndTime) ?? employee.dutyEndTime;
       const nextHours = dto.dutyTotalHours ?? employee.dutyTotalHours;
       const nextRelieverOnly =
         dto.relieverOnly !== undefined
@@ -1789,11 +1819,13 @@ export class EmployeesService {
         const log = emp.attendanceLogs[0];
         if (log?.checkIn) return false;
 
-        const dutyStart = resolveDutyStartTime(emp);
-        const dutyEnd = resolveDutyEndTime(emp);
-        if (!dutyStart || !dutyEnd) return false;
+        // Reliever-only staff have no roster; always show for manual mark.
+        if (emp.relieverOnly) return true;
 
-        return isWithinDutyWindow(currentMinutes, dutyStart, dutyEnd);
+        const win = getDutyWindow(emp);
+        if (!win) return false;
+
+        return isOnDutyAt(win, currentMinutes, DUTY_FILTER_GRACE_MINUTES);
       })
       .map(({ attendanceLogs: _a, leaveRecords: _l, ...emp }) => emp);
   }

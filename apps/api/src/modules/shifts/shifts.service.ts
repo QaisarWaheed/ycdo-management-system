@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { EmployeeStatus, Prisma } from '@prisma/client';
 import { inferShiftNameFromStartTime } from '../../common/shift-inference.util';
+import { normalizeDutyTimeToHhMm } from '../../common/duty.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateShiftDto, UpdateShiftDto } from './shifts.dto';
 
@@ -47,8 +48,8 @@ export class ShiftsService {
     return this.prisma.shift.create({
       data: {
         name,
-        startTime: dto.startTime,
-        endTime: dto.endTime,
+        startTime: normalizeDutyTimeToHhMm(dto.startTime),
+        endTime: normalizeDutyTimeToHhMm(dto.endTime),
         branchId: null,
       },
       include: {
@@ -123,16 +124,37 @@ export class ShiftsService {
       );
     }
 
-    return this.prisma.shift.update({
-      where: { id },
-      data: {
-        name: nextName,
-        ...(dto.startTime !== undefined ? { startTime: dto.startTime } : {}),
-        ...(dto.endTime !== undefined ? { endTime: dto.endTime } : {}),
-      },
-      include: {
-        _count: { select: { employees: true } },
-      },
+    const timesChanged =
+      (dto.startTime !== undefined && dto.startTime !== current.startTime) ||
+      (dto.endTime !== undefined && dto.endTime !== current.endTime);
+
+    const nextStartNorm = normalizeDutyTimeToHhMm(nextStart);
+    const nextEndNorm = normalizeDutyTimeToHhMm(nextEnd);
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.shift.update({
+        where: { id },
+        data: {
+          name: nextName,
+          startTime: nextStartNorm,
+          endTime: nextEndNorm,
+        },
+        include: {
+          _count: { select: { employees: true } },
+        },
+      });
+
+      if (timesChanged) {
+        await tx.employee.updateMany({
+          where: { shiftId: id },
+          data: {
+            dutyStartTime: nextStartNorm,
+            dutyEndTime: nextEndNorm,
+          },
+        });
+      }
+
+      return updated;
     });
   }
 

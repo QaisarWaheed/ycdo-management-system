@@ -37,6 +37,12 @@ export class BiometricPushDto {
     | 'AUTO';
 }
 
+export class OvertimePunchDto {
+  @IsNotEmpty()
+  @IsIn(['OVERTIME_CHECKIN', 'OVERTIME_CHECKOUT'])
+  punchType: 'OVERTIME_CHECKIN' | 'OVERTIME_CHECKOUT';
+}
+
 export class ManualAttendanceDto {
   @IsUUID()
   @IsNotEmpty()
@@ -162,6 +168,11 @@ export class AttendanceQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  /** Filter Daily Log rows by whether the employee is on duty now (PKT). */
+  @IsOptional()
+  @IsIn(['onDutyNow', 'all'])
+  dutyFilter?: 'onDutyNow' | 'all';
 }
 
 export class MarkAbsenteesDto {
