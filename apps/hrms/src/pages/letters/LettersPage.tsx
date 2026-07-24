@@ -69,6 +69,7 @@ import { toast } from '@/hooks/use-toast'
 import { usePagination } from '@/hooks/usePagination'
 import {
   getLetterExtraFields,
+  isLetterPdfUnavailable,
   letterReference,
   letterTypeBadgeClass,
 } from '@/lib/letterFieldConfig'
@@ -333,6 +334,7 @@ function GenerateLetterWizard({
   const [employeeId, setEmployeeId] = useState('')
   const [letterType, setLetterType] = useState<LetterType>('APPOINTMENT')
   const [fields, setFields] = useState<Record<string, string>>({})
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [downloadPrompt, setDownloadPrompt] = useState<{
     id: string
     reference: string
@@ -343,9 +345,11 @@ function GenerateLetterWizard({
     setEmployeeId('')
     setLetterType('APPOINTMENT')
     setFields({})
+    setPreviewHtml(null)
   }
 
   const extraFields = getLetterExtraFields(letterType)
+  const isAppointment = letterType === 'APPOINTMENT'
 
   const buildExtraFieldsPayload = () => {
     const payload: Record<string, string> = {}
@@ -355,13 +359,35 @@ function GenerateLetterWizard({
       if (!value) continue
 
       payload[field.key] =
-        field.type === 'date'
-          ? format(parseISO(value), 'dd/MM/yyyy')
-          : value
+        field.type === 'date' ? format(parseISO(value), 'dd/MM/yyyy') : value
     }
 
     return payload
   }
+
+  const requiredFieldsFilled = extraFields.every(
+    (field) => (fields[field.key] ?? '').trim().length > 0,
+  )
+
+  const previewMutation = useMutation({
+    mutationFn: () =>
+      lettersApi.preview({
+        employeeId,
+        letterType,
+        extraFields: buildExtraFieldsPayload(),
+      }),
+    onSuccess: (data) => {
+      setPreviewHtml(data.previewHtml)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Preview failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -391,6 +417,8 @@ function GenerateLetterWizard({
     },
   })
 
+  const totalSteps = isAppointment ? 4 : 3
+
   return (
     <>
       <Dialog
@@ -403,7 +431,7 @@ function GenerateLetterWizard({
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              Generate Letter — Step {step} of 3
+              Generate Letter — Step {step} of {totalSteps}
             </DialogTitle>
           </DialogHeader>
 
@@ -428,6 +456,7 @@ function GenerateLetterWizard({
                     onClick={() => {
                       setLetterType(t.value)
                       setFields({})
+                      setPreviewHtml(null)
                     }}
                     className={cn(
                       'flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-colors hover:bg-muted',
@@ -445,9 +474,15 @@ function GenerateLetterWizard({
 
           {step === 3 && (
             <div className="space-y-4">
+              {isAppointment && (
+                <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                  Name, CNIC, phone, designation, department, branch, and duty
+                  times are filled automatically from the employee record.
+                </p>
+              )}
               <p className="text-sm text-text-secondary">
-                {LETTER_TYPES.find((t) => t.value === letterType)?.label} — extra
-                fields
+                {LETTER_TYPES.find((t) => t.value === letterType)?.label} —{' '}
+                {isAppointment ? 'HR-supplied fields' : 'extra fields'}
               </p>
               {extraFields.map((field) => (
                 <div key={field.key} className="space-y-2">
@@ -479,20 +514,65 @@ function GenerateLetterWizard({
             </div>
           )}
 
+          {step === 4 && isAppointment && (
+            <div className="space-y-3">
+              <p className="text-sm text-text-secondary">
+                Preview the letter before issuing. Preview does not consume a
+                letter number.
+              </p>
+              {previewHtml ? (
+                <iframe
+                  title="Letter preview"
+                  className="h-[55vh] w-full rounded border bg-white"
+                  srcDoc={previewHtml}
+                />
+              ) : (
+                <div className="flex h-40 items-center justify-center rounded border border-dashed text-sm text-text-secondary">
+                  Click Preview to render the letter
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter className="gap-2">
             {step > 1 && (
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
                 Back
               </Button>
             )}
-            {step < 3 ? (
+            {step < totalSteps ? (
               <Button
                 className="bg-primary hover:bg-primary-dark"
-                disabled={step === 1 && !employeeId}
-                onClick={() => setStep((s) => s + 1)}
+                disabled={
+                  (step === 1 && !employeeId) ||
+                  (step === 3 && isAppointment && !requiredFieldsFilled)
+                }
+                onClick={() => {
+                  setStep((s) => s + 1)
+                  if (step === 3 && isAppointment) {
+                    setPreviewHtml(null)
+                  }
+                }}
               >
                 Next
               </Button>
+            ) : isAppointment ? (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={previewMutation.isPending || !requiredFieldsFilled}
+                  onClick={() => previewMutation.mutate()}
+                >
+                  {previewMutation.isPending ? 'Rendering...' : 'Preview'}
+                </Button>
+                <Button
+                  className="bg-primary hover:bg-primary-dark"
+                  disabled={mutation.isPending || !previewHtml}
+                  onClick={() => mutation.mutate()}
+                >
+                  {mutation.isPending ? 'Issuing...' : 'Issue Letter'}
+                </Button>
+              </>
             ) : (
               <Button
                 className="bg-primary hover:bg-primary-dark"
@@ -508,17 +588,23 @@ function GenerateLetterWizard({
 
       <ConfirmDialog
         open={!!downloadPrompt}
-        title="Download PDF now?"
-        description={`Letter ${downloadPrompt?.reference} is ready.`}
-        confirmLabel="Yes, Download"
+        title="Letter ready"
+        description={
+          downloadPrompt
+            ? `Reference ${downloadPrompt.reference}. Download the PDF now?`
+            : ''
+        }
+        confirmLabel="Download PDF"
         onConfirm={async () => {
-          if (downloadPrompt) {
-            try {
-              const blob = await lettersApi.getPdf(downloadPrompt.id)
-              window.open(URL.createObjectURL(blob), '_blank')
-            } catch {
-              toast({ title: 'Failed to download PDF', variant: 'destructive' })
-            }
+          if (!downloadPrompt) return
+          try {
+            const blob = await lettersApi.getPdf(downloadPrompt.id)
+            window.open(URL.createObjectURL(blob), '_blank')
+          } catch {
+            toast({
+              title: 'File unavailable — please reissue',
+              variant: 'destructive',
+            })
           }
           setDownloadPrompt(null)
         }}
@@ -527,6 +613,7 @@ function GenerateLetterWizard({
     </>
   )
 }
+
 
 export function LettersPage() {
   const queryClient = useQueryClient()
@@ -587,12 +674,22 @@ export function LettersPage() {
     },
   })
 
-  const downloadPdf = async (id: string) => {
+  const downloadPdf = async (letter: Letter) => {
+    if (isLetterPdfUnavailable(letter)) {
+      toast({
+        title: 'File unavailable — please reissue',
+        variant: 'destructive',
+      })
+      return
+    }
     try {
-      const blob = await lettersApi.getPdf(id)
+      const blob = await lettersApi.getPdf(letter.id)
       window.open(URL.createObjectURL(blob), '_blank')
     } catch {
-      toast({ title: 'Failed to download PDF', variant: 'destructive' })
+      toast({
+        title: 'File unavailable — please reissue',
+        variant: 'destructive',
+      })
     }
   }
 
@@ -706,9 +803,16 @@ export function LettersPage() {
               paginated.map((letter) => (
                 <TableRow key={letter.id}>
                   <TableCell>
-                    <Badge variant="outline" className="font-mono text-xs">
-                      {letterReference(letter)}
-                    </Badge>
+                    <div className="space-y-1">
+                      <Badge variant="outline" className="font-mono text-xs">
+                        {letter.letterNo ?? letterReference(letter)}
+                      </Badge>
+                      {isLetterPdfUnavailable(letter) && (
+                        <p className="text-xs text-amber-700">
+                          File unavailable — please reissue
+                        </p>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div>
@@ -751,7 +855,8 @@ export function LettersPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          onClick={() => downloadPdf(letter.id)}
+                          disabled={isLetterPdfUnavailable(letter)}
+                          onClick={() => downloadPdf(letter)}
                         >
                           Download PDF
                         </DropdownMenuItem>

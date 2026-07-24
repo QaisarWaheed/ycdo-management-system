@@ -10,6 +10,16 @@ export const lettersApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, Letter[]>('/letters', { params }),
   getOne: (id: string) => api.get<unknown, Letter>(`/letters/${id}`),
+  getTemplates: () =>
+    api.get<
+      unknown,
+      { id: string; code: string; name: string; requiredVars: string[]; version: number }[]
+    >('/letters/templates'),
+  preview: (data: Record<string, unknown>) =>
+    api.post<unknown, { previewHtml: string; variables: Record<string, unknown> }>(
+      '/letters/preview',
+      data,
+    ),
   generate: (data: Record<string, unknown>) =>
     api.post<unknown, GenerateLetterResponse>('/letters', data),
   getPdf: (id: string) =>

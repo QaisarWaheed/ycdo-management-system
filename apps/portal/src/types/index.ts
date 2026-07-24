@@ -179,6 +179,7 @@ export interface Letter {
   id: string
   letterType: string
   fileUrl?: string | null
+  letterNo?: string | null
   generatedAt: string
   content?: Record<string, unknown>
   replyDeadline?: string | null

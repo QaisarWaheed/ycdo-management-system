@@ -402,6 +402,9 @@ export interface Letter {
   employeeId?: string
   letterType: string
   fileUrl?: string | null
+  letterNo?: string | null
+  variables?: Record<string, unknown> | null
+  templateVersion?: number | null
   generatedAt: string
   printedAt?: string | null
   content?: Record<string, unknown>
@@ -821,7 +824,7 @@ export type DocumentType =
   | 'OTHER'
 
 export const LETTER_TYPES: { value: LetterType; label: string }[] = [
-  { value: 'APPOINTMENT', label: 'Appointment' },
+  { value: 'APPOINTMENT', label: 'Selection / Appointment' },
   { value: 'WARNING', label: 'Warning' },
   { value: 'ADVICE', label: 'Advice' },
   { value: 'DISCIPLINARY', label: 'Disciplinary' },

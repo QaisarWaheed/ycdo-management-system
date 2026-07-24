@@ -12,6 +12,7 @@ import {
   buildDesignationSeedRows,
   normalizeDepartmentName,
 } from '../src/common/org-structure';
+import { seedLetterTemplates } from './seeds/letter-templates.seed';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -624,9 +625,11 @@ async function main() {
     console.log('Set FORCE_RESEED=true to re-run seed.');
     await seedHrExecutiveAccounts();
     await seedBranchSystemAccounts();
+    await seedLetterTemplates(prisma);
     return;
   }
 
+  await seedLetterTemplates(prisma);
   await seedLocationDistricts();
 
   await ensureUserAccount(

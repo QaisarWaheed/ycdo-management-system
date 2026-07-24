@@ -551,6 +551,18 @@ enum InquiryOutcome {
 
 // ─── LETTERS ──────────────────────────────────────────────
 
+model LetterTemplate {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  bodyHtml     String
+  requiredVars String[]
+  version      Int      @default(1)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Letter {
   id            String     @id @default(uuid())
   employeeId    String
@@ -559,6 +571,9 @@ model Letter {
   generatedAt   DateTime   @default(now())
   printedAt     DateTime?
   fileUrl       String?
+  letterNo      String?    @unique
+  variables     Json?
+  templateVersion Int?
   replyDeadline DateTime?
   isReplied     Boolean    @default(false)
   autoEscalated           Boolean @default(false)
