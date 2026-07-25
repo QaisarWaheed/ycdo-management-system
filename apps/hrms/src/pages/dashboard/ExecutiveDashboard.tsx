@@ -112,16 +112,20 @@ export function ExecutiveDashboard() {
         </Card>
       </div>
 
-      {pendingOnboarding.length > 0 && (
-        <Card className="border-primary/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserCheck className="h-5 w-5 text-primary" />
-              Pending Employee Approvals
-              <Badge className="ml-2">{pendingOnboarding.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+      <Card className="border-primary/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserCheck className="h-5 w-5 text-primary" />
+            Pending Employee Approvals
+            <Badge className="ml-2">{pendingOnboarding.length}</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {pendingOnboarding.length === 0 ? (
+            <p className="py-6 text-center text-sm text-text-secondary">
+              No pending joining requests
+            </p>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -164,9 +168,9 @@ export function ExecutiveDashboard() {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
