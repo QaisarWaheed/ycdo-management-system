@@ -13,13 +13,18 @@ export function formatBranchLabel(
   return address ? `${branch.name} — ${address}` : branch.name
 }
 
-/** Compact label for data tables — uses abbreviation when set. */
+/**
+ * Compact label for data tables. Uses the branch name — the same source the
+ * employee profile shows — so tables and profiles never disagree. The
+ * hand-entered abbreviation is only a fallback for unnamed branches.
+ */
 export function formatBranchTableLabel(
   branch?: BranchLabelSource | null,
   fallback = '—',
 ): string {
+  const name = branch?.name?.trim()
+  if (name) return name
   const abbr = branch?.abbreviation?.trim()
   if (abbr) return abbr
-  if (!branch?.name) return fallback
-  return branch.name
+  return fallback
 }

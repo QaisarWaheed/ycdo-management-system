@@ -34,6 +34,7 @@ import {
 import {
   computeBiometricLateMinutes,
   computeBiometricOvertimeMinutes,
+  computePreDutyOvertimeMinutes,
   determineBiometricCheckInStatus,
   is24HourShift,
   toPakistanDateOnly,
@@ -128,7 +129,11 @@ export class AttendanceService {
         })
       : null;
 
-    const branchId = device?.branchId ?? employee.currentBranchId;
+    // The employee's posting is the source of truth for which branch a log
+    // belongs to. The device only tells us where the punch physically happened,
+    // and a mis-registered or shared device used to stamp logs with a branch
+    // that disagreed with the employee's profile.
+    const branchId = employee.currentBranchId ?? device?.branchId ?? null;
     // Always use API/server time in Pakistan — ignore device/agent clock (often wrong TZ).
     const checkTime = new Date();
     const dateOnly = toPakistanDateOnly(checkTime);
@@ -235,6 +240,10 @@ export class AttendanceService {
     const lateMinutes = twentyFourHour
       ? 0
       : computeBiometricLateMinutes(checkTime, employee);
+    // An early arrival past the threshold already earns overtime at check-in.
+    const preDutyOvertimeMinutes = twentyFourHour
+      ? 0
+      : computePreDutyOvertimeMinutes(checkTime, employee);
     let status = twentyFourHour
       ? AttendanceStatus.PRESENT
       : determineBiometricCheckInStatus(lateMinutes, employee, 0);
@@ -276,6 +285,8 @@ export class AttendanceService {
             status,
             source: AttendanceSource.BIOMETRIC,
             lateMinutes,
+            overtimeMinutes: preDutyOvertimeMinutes,
+            overtimePending: preDutyOvertimeMinutes > 0,
             note: twentyFourHour
               ? '24-hour shift check-in'
               : anyExisting.note,
@@ -310,6 +321,8 @@ export class AttendanceService {
           checkIn: checkTime,
           status,
           lateMinutes,
+          overtimeMinutes: preDutyOvertimeMinutes,
+          overtimePending: preDutyOvertimeMinutes > 0,
           source: AttendanceSource.BIOMETRIC,
           note: twentyFourHour ? '24-hour shift check-in' : undefined,
         },
@@ -371,6 +384,7 @@ export class AttendanceService {
       data: {
         checkOut: checkTime,
         overtimeMinutes,
+        overtimePending: overtimeMinutes > 0 && !openRegular.overtimeApprovedAt,
         status,
       },
     });
@@ -615,12 +629,15 @@ export class AttendanceService {
       }
     }
 
-    let calculatedOvertime = dto.overtimeMinutes ?? 0;
+    const preDutyOvertime =
+      checkIn && !is24HourShift(employee)
+        ? computePreDutyOvertimeMinutes(checkIn, employee)
+        : 0;
+
+    let calculatedOvertime = dto.overtimeMinutes ?? preDutyOvertime;
     if (checkOut) {
-      calculatedOvertime = this.calculateOvertimeMinutes(
-        checkOut,
-        employee.shift,
-      );
+      calculatedOvertime =
+        preDutyOvertime + this.calculateOvertimeMinutes(checkOut, employee);
     }
 
     const isSuperAdmin = actingUser.role === UserRole.SUPER_ADMIN;
@@ -1148,6 +1165,12 @@ export class AttendanceService {
     const { search, ...filterQuery } = query;
     let employeeWhere = this.buildEmployeeFilterWhere(filterQuery) ?? {};
 
+    // Scope by the employee's current posting rather than the branch stamped on
+    // the log, so the branch here always matches the employee's profile.
+    if (query.branchId) {
+      employeeWhere.currentBranchId = query.branchId;
+    }
+
     // Active and on-leave staff remain attendance-eligible. Suspended,
     // terminated, resigned, dismissed, and other statuses stay hidden.
     // The UI's default ACTIVE selection intentionally includes ON_LEAVE here.
@@ -1203,10 +1226,6 @@ export class AttendanceService {
 
     if (query.employeeId) {
       where.employeeId = query.employeeId;
-    }
-
-    if (query.branchId) {
-      where.branchId = query.branchId;
     }
 
     if (query.status) {
@@ -1291,6 +1310,9 @@ export class AttendanceService {
     const mapped = logs
       .map((log) => ({
         ...log,
+        // Historical rows may carry a stale branch (e.g. stamped from the
+        // biometric device). The employee's posting wins.
+        branch: log.employee?.currentBranch ?? log.branch,
         employee: log.employee
           ? {
               ...log.employee,
@@ -1743,10 +1765,9 @@ export class AttendanceService {
       throw new BadRequestException('Already checked out today');
     }
 
-    const overtimeMinutes = this.calculateOvertimeMinutes(
-      checkTime,
-      employee.shift,
-    );
+    const overtimeMinutes =
+      computePreDutyOvertimeMinutes(existing.checkIn, employee) +
+      this.calculateOvertimeMinutes(checkTime, employee);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.portalAttendance.create({
@@ -1822,13 +1843,22 @@ export class AttendanceService {
     return { status: AttendanceStatus.HALF_DAY, lateMinutes };
   }
 
+  /**
+   * Overtime after duty end. Duty times on the employee are the source of
+   * truth; the shift record is only a fallback template.
+   */
   private calculateOvertimeMinutes(
     checkOut: Date,
-    shift: { endTime: string } | null,
+    employee: {
+      dutyEndTime?: string | null;
+      shift?: { endTime: string } | null;
+    } | null,
   ): number {
     const checkOutMinutes = toPakistanMinutesOfDay(checkOut);
-    const endMinutes = shift
-      ? this.parseTimeToMinutes(shift.endTime)
+    const dutyEnd =
+      employee?.dutyEndTime?.trim() || employee?.shift?.endTime || null;
+    const endMinutes = dutyEnd
+      ? this.parseTimeToMinutes(dutyEnd)
       : 18 * 60;
     const overtimeThreshold = endMinutes + OVERTIME_GRACE_MINUTES;
 
