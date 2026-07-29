@@ -11,8 +11,7 @@ const ROLE_PERMISSION_FALLBACK: Record<string, string[]> = {
   EMPLOYEES_CREATE: [
     'HR_MANAGER',
     'HR_ADMIN_MANAGER',
-    'ADMIN_OFFICER',
-    'ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
   ],
   EMPLOYEES_EDIT: [
     'HR_EXECUTIVE',

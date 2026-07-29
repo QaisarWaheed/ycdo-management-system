@@ -26,8 +26,12 @@ export interface EmployeeInformationFormData {
   phone: string
   cnic: string
   fatherName: string
+  fatherStatus: string
   fatherContact: string
-  emergencyGuardianContact: string
+  guardianContact: string
+  emergencyContactName: string
+  emergencyRelation: string
+  emergencyContactNumber: string
   spouseName: string
   spouseContact: string
   dateOfBirth: string
@@ -37,12 +41,18 @@ export interface EmployeeInformationFormData {
   domicile: string
   currentAddress: string
   permanentAddress: string
+  province: string
+  city: string
+  permanentProvince: string
+  permanentCity: string
   district: string
   tehsil: string
   policeStation: string
   gender: string
   maritalStatus: string
   bloodGroup: string
+  staffType: string
+  dutyTimings: string
   academicQualifications: QualificationRow[]
   jobQualifications: QualificationRow[]
   previousJobs: PreviousJobRow[]
@@ -70,12 +80,16 @@ function str(value: unknown): string {
 
 function qualRows(
   snapshot: Record<string, unknown>,
+  fallback: Array<Record<string, unknown>>,
   type: 'ACADEMIC' | 'JOB_RELEVANT',
   emptyCount: number,
 ): QualificationRow[] {
-  const list = Array.isArray(snapshot.qualifications)
+  const snapshotList = Array.isArray(snapshot.qualifications)
     ? (snapshot.qualifications as Array<Record<string, string>>)
     : []
+  const list = (
+    snapshotList.length > 0 ? snapshotList : fallback
+  ) as Array<Record<string, string>>
   const filtered = list
     .filter((q) => (q.qualType ?? 'ACADEMIC') === type)
     .map((q) => ({
@@ -106,29 +120,19 @@ export function buildEmployeeInformationFormData(
     ? (snapshot.previousEmployments as Array<Record<string, string>>)
     : employee?.previousEmployments?.map((p) => ({
         organizationName: p.organizationName,
-        ownerAdminName: '',
-        contactNumber: '',
-        postalAddress: '',
+        ownerAdminName: p.ownerAdminName ?? '',
+        contactNumber: p.contactNumber ?? '',
+        postalAddress: p.postalAddress ?? '',
         totalExperience: p.totalExperience ?? '',
       })) ?? []
 
-  const previousJobs: PreviousJobRow[] = prevList.slice(0, 1).map((p) => ({
+  const previousJobs: PreviousJobRow[] = prevList.map((p) => ({
     organizationName: str(p.organizationName),
     ownerAdminName: str(p.ownerAdminName),
     contactNumber: str(p.contactNumber),
     postalAddress: str(p.postalAddress),
     totalExperience: str(p.totalExperience),
   }))
-  if (previousJobs.length === 0) {
-    previousJobs.push({
-      organizationName: '',
-      ownerAdminName: '',
-      contactNumber: '',
-      postalAddress: '',
-      totalExperience: '',
-    })
-  }
-
   const experienceNotes = prevList
     .map((p) => {
       const parts = [str(p.organizationName), str(p.totalExperience)].filter(Boolean)
@@ -144,6 +148,19 @@ export function buildEmployeeInformationFormData(
   const deptLabel =
     str(snapshot.departmentName) || employee?.currentDepartment?.name || ''
 
+  const dutyStart = str(snapshot.dutyStartTime)
+  const dutyEnd = str(snapshot.dutyEndTime)
+  const dutyHours = str(snapshot.dutyTotalHours)
+  const dutyTimings = [
+    dutyStart && dutyEnd ? `${dutyStart} — ${dutyEnd}` : '',
+    dutyHours ? `${dutyHours} hrs` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  const basicStipend =
+    snapshot.basicStipend ?? employee?.stipendRecords?.[0]?.basicStipend
+
   return {
     code: employee?.employeeCode ?? str(snapshot.employeeCode) ?? '—',
     page: '1',
@@ -154,8 +171,12 @@ export function buildEmployeeInformationFormData(
     phone: str(snapshot.phone),
     cnic: str(snapshot.cnic),
     fatherName: str(snapshot.fatherName),
+    fatherStatus: str(snapshot.fatherStatus),
     fatherContact: str(snapshot.fatherContactNumber),
-    emergencyGuardianContact: str(snapshot.guardianContact),
+    guardianContact: str(snapshot.guardianContact),
+    emergencyContactName: str(snapshot.emergencyContactName),
+    emergencyRelation: str(snapshot.emergencyRelation),
+    emergencyContactNumber: str(snapshot.emergencyContactNumber),
     spouseName: str(snapshot.spouseName),
     spouseContact: str(snapshot.spouseContactNumber),
     dateOfBirth: fmtDate(snapshot.dateOfBirth),
@@ -165,20 +186,36 @@ export function buildEmployeeInformationFormData(
     domicile: str(snapshot.domicile),
     currentAddress: str(snapshot.currentAddress),
     permanentAddress: str(snapshot.permanentAddress),
+    province: str(snapshot.province),
+    city: str(snapshot.city),
+    permanentProvince: str(snapshot.permanentProvince),
+    permanentCity: str(snapshot.permanentCity),
     district: str(snapshot.district),
     tehsil: str(snapshot.tehsil),
     policeStation: str(snapshot.policeStation),
     gender: str(snapshot.gender),
     maritalStatus: str(snapshot.maritalStatus),
     bloodGroup: str(snapshot.bloodGroup),
-    academicQualifications: qualRows(snapshot, 'ACADEMIC', 4),
-    jobQualifications: qualRows(snapshot, 'JOB_RELEVANT', 3),
+    staffType: str(snapshot.staffType),
+    dutyTimings,
+    academicQualifications: qualRows(
+      snapshot,
+      employee?.academicQualifications ?? [],
+      'ACADEMIC',
+      4,
+    ),
+    jobQualifications: qualRows(
+      snapshot,
+      employee?.academicQualifications ?? [],
+      'JOB_RELEVANT',
+      3,
+    ),
     previousJobs,
     experienceNotes,
     postingPlace: [branchLabel, deptLabel].filter(Boolean).join(' · '),
     designation:
       str(snapshot.currentDesignation) || employee?.currentDesignation || '',
-    stipend: snapshot.basicStipend != null ? `PKR ${snapshot.basicStipend}` : '',
+    stipend: basicStipend != null ? `PKR ${basicStipend}` : '',
     submittedBy:
       approval.submittedBy?.employee?.fullName ??
       approval.submittedBy?.email ??

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Printer, X } from 'lucide-react'
 import {
   employeeOnboardingApi,
@@ -18,10 +18,14 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import { buildEmployeeInformationFormData } from '@/lib/employeeInformationFormData'
 import { cn } from '@/lib/utils'
 
 type ReviewTab = 'physical' | 'system'
+
+const EXECUTIVE_ROLES = ['PRESIDENT', 'FOUNDER', 'CHAIRMAN']
+const MIN_REASON_LENGTH = 5
 
 export function EmployeeOnboardingReviewDialog({
   approval,
@@ -33,60 +37,86 @@ export function EmployeeOnboardingReviewDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const queryClient = useQueryClient()
+  const { hasRole } = useAuth()
   const [reviewNote, setReviewNote] = useState('')
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejecting, setRejecting] = useState(false)
   const [tab, setTab] = useState<ReviewTab>('physical')
 
+  /** Executives verify the employee record only — routing is HR's concern. */
+  const isExecutive = hasRole(EXECUTIVE_ROLES)
+
+  // The list endpoints carry a trimmed record; pull the full one for review.
+  const { data: detailed } = useQuery({
+    queryKey: ['employee-onboarding', approval?.id],
+    queryFn: () => employeeOnboardingApi.getOne(approval!.id),
+    enabled: open && !!approval?.id,
+  })
+
+  const record = detailed ?? approval
+
   const formData = useMemo(
-    () => (approval ? buildEmployeeInformationFormData(approval) : null),
-    [approval],
+    () => (record ? buildEmployeeInformationFormData(record) : null),
+    [record],
   )
+
+  const resetState = () => {
+    setReviewNote('')
+    setRejectReason('')
+    setRejecting(false)
+    setTab('physical')
+  }
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) resetState()
+    onOpenChange(next)
+  }
+
+  const onReviewed = (title: string) => {
+    toast({ title })
+    queryClient.invalidateQueries({ queryKey: ['employee-onboarding'] })
+    queryClient.invalidateQueries({ queryKey: ['employees'] })
+    handleOpenChange(false)
+  }
+
+  const onReviewError = (title: string, err: unknown) => {
+    const message = (
+      err as { response?: { data?: { message?: string | string[] } } }
+    ).response?.data?.message
+    toast({
+      title,
+      description: Array.isArray(message)
+        ? message.join(', ')
+        : (message ?? 'Error'),
+      variant: 'destructive',
+    })
+  }
 
   const approveMutation = useMutation({
     mutationFn: () =>
-      employeeOnboardingApi.approve(approval!.id, reviewNote || undefined),
-    onSuccess: () => {
-      toast({ title: 'Employee approved and activated' })
-      queryClient.invalidateQueries({ queryKey: ['employee-onboarding'] })
-      queryClient.invalidateQueries({ queryKey: ['employees'] })
-      onOpenChange(false)
-      setReviewNote('')
-      setTab('physical')
-    },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast({
-        title: 'Approval failed',
-        description: err.response?.data?.message ?? 'Error',
-        variant: 'destructive',
-      })
-    },
+      employeeOnboardingApi.approve(
+        record!.id,
+        isExecutive ? undefined : reviewNote || undefined,
+      ),
+    onSuccess: () => onReviewed('Employee approved and activated'),
+    onError: (err) => onReviewError('Approval failed', err),
   })
 
   const rejectMutation = useMutation({
     mutationFn: () =>
-      employeeOnboardingApi.reject(approval!.id, reviewNote || undefined),
-    onSuccess: () => {
-      toast({ title: 'Employee request rejected' })
-      queryClient.invalidateQueries({ queryKey: ['employee-onboarding'] })
-      queryClient.invalidateQueries({ queryKey: ['employees'] })
-      onOpenChange(false)
-      setReviewNote('')
-      setTab('physical')
-    },
-    onError: (err: { response?: { data?: { message?: string } } }) => {
-      toast({
-        title: 'Rejection failed',
-        description: err.response?.data?.message ?? 'Error',
-        variant: 'destructive',
-      })
-    },
+      employeeOnboardingApi.reject(record!.id, rejectReason.trim()),
+    onSuccess: () => onReviewed('Employee request rejected'),
+    onError: (err) => onReviewError('Rejection failed', err),
   })
 
-  if (!approval || !formData) return null
+  if (!record || !formData) return null
 
-  const pending = approval.status === 'PENDING'
+  const pending = record.status === 'PENDING'
+  const busy = approveMutation.isPending || rejectMutation.isPending
+  const reasonTooShort = rejectReason.trim().length < MIN_REASON_LENGTH
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[95vh] max-w-5xl overflow-hidden p-0">
         <div className="no-print border-b px-6 py-4">
           <DialogHeader>
@@ -125,23 +155,24 @@ export function EmployeeOnboardingReviewDialog({
           </div>
         </div>
 
-        <div className="employee-information-form-print-area max-h-[calc(95vh-220px)] overflow-y-auto bg-gray-100 px-4 py-4 sm:px-6">
+        <div className="employee-information-form-print-area max-h-[calc(95vh-260px)] overflow-y-auto bg-gray-100 px-4 py-4 sm:px-6">
           {tab === 'physical' ? (
             <PhysicalFormViewer
-              url={approval.physicalFormUrl}
-              mimeType={approval.physicalFormMimeType}
-              fileName={approval.physicalFormFileName}
+              url={record.physicalFormUrl}
+              mimeType={record.physicalFormMimeType}
+              fileName={record.physicalFormFileName}
             />
           ) : (
             <EmployeeInformationForm
               data={formData}
-              showPendingApprover={pending}
+              showPendingApprover={pending && !isExecutive}
+              hideApprovalRouting={isExecutive}
               className="shadow-md"
             />
           )}
         </div>
 
-        {pending && (
+        {pending && !isExecutive && (
           <div className="no-print space-y-2 border-t px-6 py-3">
             <Label htmlFor="reviewNote">Review note (optional)</Label>
             <Textarea
@@ -154,9 +185,26 @@ export function EmployeeOnboardingReviewDialog({
           </div>
         )}
 
-        {approval.reviewNote && !pending && (
+        {pending && rejecting && (
+          <div className="no-print space-y-2 border-t bg-red-50/60 px-6 py-3">
+            <Label htmlFor="rejectReason">Reason for rejection *</Label>
+            <Textarea
+              id="rejectReason"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Explain what is wrong so HR can correct it..."
+              rows={3}
+              autoFocus
+            />
+            <p className="text-xs text-text-secondary">
+              This reason is recorded against the application and shown to HR.
+            </p>
+          </div>
+        )}
+
+        {record.reviewNote && !pending && (
           <p className="no-print px-6 pb-2 text-sm text-text-secondary">
-            Note: {approval.reviewNote}
+            Note: {record.reviewNote}
           </p>
         )}
 
@@ -169,28 +217,54 @@ export function EmployeeOnboardingReviewDialog({
             <Printer className="mr-2 h-4 w-4" />
             Print system form
           </Button>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-          {pending && (
+          {rejecting ? (
             <>
               <Button
                 variant="outline"
-                className="text-red-600 hover:text-red-700"
-                disabled={rejectMutation.isPending || approveMutation.isPending}
+                disabled={busy}
+                onClick={() => {
+                  setRejecting(false)
+                  setRejectReason('')
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-red-600 text-white hover:bg-red-700"
+                disabled={busy || reasonTooShort}
                 onClick={() => rejectMutation.mutate()}
               >
                 <X className="mr-2 h-4 w-4" />
-                {rejectMutation.isPending ? 'Rejecting...' : 'Reject'}
+                {rejectMutation.isPending
+                  ? 'Rejecting...'
+                  : 'Confirm rejection'}
               </Button>
-              <Button
-                className="bg-primary hover:bg-primary-dark"
-                disabled={approveMutation.isPending || rejectMutation.isPending}
-                onClick={() => approveMutation.mutate()}
-              >
-                <Check className="mr-2 h-4 w-4" />
-                {approveMutation.isPending ? 'Approving...' : 'Approve'}
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
+                Close
               </Button>
+              {pending && (
+                <>
+                  <Button
+                    className="bg-red-600 text-white hover:bg-red-700"
+                    disabled={busy}
+                    onClick={() => setRejecting(true)}
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    Reject
+                  </Button>
+                  <Button
+                    className="bg-primary hover:bg-primary-dark"
+                    disabled={busy}
+                    onClick={() => approveMutation.mutate()}
+                  >
+                    <Check className="mr-2 h-4 w-4" />
+                    {approveMutation.isPending ? 'Approving...' : 'Approve'}
+                  </Button>
+                </>
+              )}
             </>
           )}
         </DialogFooter>

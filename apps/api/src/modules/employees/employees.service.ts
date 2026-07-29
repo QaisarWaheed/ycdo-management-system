@@ -1094,6 +1094,18 @@ export class EmployeesService {
       );
     }
 
+    if (employee.status === EmployeeStatus.PENDING_APPROVAL) {
+      throw new BadRequestException(
+        'This employee is pending executive approval. Status can only change when the assigned approver (President, Founder, or Chairman) approves or rejects the onboarding request.',
+      );
+    }
+
+    if (dto.status === EmployeeStatus.PENDING_APPROVAL) {
+      throw new BadRequestException(
+        'PENDING_APPROVAL can only be set through the Add Employee onboarding flow.',
+      );
+    }
+
     if (
       employee.status === EmployeeStatus.TRAINEE &&
       dto.status === EmployeeStatus.ACTIVE
@@ -2139,27 +2151,30 @@ export class EmployeesService {
   private validateCreateDto(dto: CreateEmployeeDto) {
     const isExisting = dto.staffType === StaffType.EXISTING;
 
+    // Father status drives which guardian contact is captured — required for
+    // every staff type.
+    if (!dto.fatherStatus) {
+      throw new BadRequestException('Father status is required');
+    }
+    if (dto.fatherStatus === 'ALIVE' && !dto.fatherContactNumber) {
+      throw new BadRequestException("Father's contact number is required");
+    }
+    if (dto.fatherStatus === 'DECEASED' && !dto.guardianContact) {
+      throw new BadRequestException("Guardian's contact number is required");
+    }
+    if (!dto.emergencyRelation) {
+      throw new BadRequestException('Emergency contact relation is required');
+    }
+
     if (isExisting) {
-      if (!dto.fatherStatus) {
-        throw new BadRequestException('Father status is required');
-      }
       if (!dto.maritalStatus) {
         throw new BadRequestException('Marital status is required');
-      }
-      if (!dto.emergencyRelation) {
-        throw new BadRequestException('Emergency relation is required');
       }
       if (!dto.cnic) {
         throw new BadRequestException('CNIC is required');
       }
       if (!dto.dutyStartTime || !dto.dutyEndTime) {
         throw new BadRequestException('Duty hours are required');
-      }
-      if (dto.fatherStatus === 'ALIVE' && !dto.fatherContactNumber) {
-        throw new BadRequestException('Father contact number is required');
-      }
-      if (dto.fatherStatus === 'DECEASED' && !dto.guardianContact) {
-        throw new BadRequestException('Guardian contact is required');
       }
       if (dto.maritalStatus === MaritalStatus.MARRIED) {
         if (!dto.spouseName?.trim()) {
@@ -2174,9 +2189,6 @@ export class EmployeesService {
 
     if (!dto.cnic) {
       throw new BadRequestException('CNIC is required');
-    }
-    if (!dto.fatherContactNumber) {
-      throw new BadRequestException('Father contact number is required');
     }
     if (!dto.domicile) {
       throw new BadRequestException('Domicile is required');

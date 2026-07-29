@@ -106,6 +106,78 @@ export const DEPARTMENT_DESIGNATIONS: Record<string, string[]> = {
 
 export const ALL_DEPARTMENT_NAMES = Object.keys(DEPARTMENT_DESIGNATIONS).sort();
 
+/**
+ * Departments that can exist inside each project type. Used to scope the
+ * department dropdown once a branch (and therefore a project) is chosen.
+ */
+export const PROJECT_TYPE_DEPARTMENTS: Record<string, string[]> = {
+  HOSPITAL: [
+    'OPD',
+    'INDOOR',
+    'ADMIN',
+    'PHARMACY',
+    'CONSULTANT',
+    'MEDICINE MANAGEMENT SYSTEM',
+    'LABORATORY MANAGEMENT SYSTEM',
+    'LABORATORY',
+    'SURGICAL DEPARTMENT',
+    'ASSISTANT',
+    'RADIOLOGISTS',
+    'GRADE 4',
+    'SANITARY',
+    'REPAIR AND DEVELOPMENT',
+    'HUMAN RESOURCES',
+    'ACCOUNTS',
+  ],
+  VTI: [
+    'TEACHER',
+    'PRINCIPAL',
+    'VTI',
+    'ADMIN',
+    'GRADE 4',
+    'SANITARY',
+    'HUMAN RESOURCES',
+    'ACCOUNTS',
+  ],
+  KITCHEN: [
+    'KITCHEN',
+    'ADMIN',
+    'GRADE 4',
+    'SANITARY',
+    'HUMAN RESOURCES',
+    'ACCOUNTS',
+  ],
+  SOFTWARE_HOUSE: [
+    'SOFTWARE DEPARTMENT',
+    'IT',
+    'MEDIA & NEWS',
+    'ADMIN',
+    'GRADE 4',
+    'SANITARY',
+    'HUMAN RESOURCES',
+    'ACCOUNTS',
+  ],
+};
+
+export function getDepartmentsForProjectType(type?: string | null): string[] {
+  if (!type) return [];
+  return PROJECT_TYPE_DEPARTMENTS[normalizeOrgName(type)] ?? [];
+}
+
+/**
+ * Manual labour departments where HR is not expected to record academic or
+ * job-relevant qualifications.
+ */
+export const QUALIFICATION_EXEMPT_DEPARTMENTS = new Set([
+  'GRADE 4',
+  'REPAIR AND DEVELOPMENT',
+]);
+
+export function departmentRequiresQualification(name?: string | null): boolean {
+  if (!name) return true;
+  return !QUALIFICATION_EXEMPT_DEPARTMENTS.has(normalizeOrgName(name));
+}
+
 /** Organization-level departments excluded from hospital manager scopes. */
 export const ORG_LEVEL_DEPARTMENTS = new Set([
   'HUMAN RESOURCES',

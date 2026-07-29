@@ -1158,7 +1158,7 @@ export function EmployeeProfilePage() {
                 Generate Letter
               </Button>
             )}
-            {canHrJobActions && (
+            {canHrJobActions && employee.status !== 'PENDING_APPROVAL' && (
               <Button
                 variant="outline"
                 className="w-full"
@@ -1166,6 +1166,12 @@ export function EmployeeProfilePage() {
               >
                 Change Status
               </Button>
+            )}
+            {canHrJobActions && employee.status === 'PENDING_APPROVAL' && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                Pending executive approval — status updates only when the
+                assigned approver reviews the onboarding request.
+              </p>
             )}
             {canHrJobActions && (
               <Button

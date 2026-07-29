@@ -48,6 +48,9 @@ export class EmployeeOnboardingService {
           include: {
             currentBranch: { select: { name: true, abbreviation: true } },
             currentDepartment: { select: { name: true } },
+            academicQualifications: true,
+            previousEmployments: true,
+            stipendRecords: { orderBy: { effectiveFrom: 'desc' }, take: 1 },
           },
         },
         submittedBy: {
@@ -287,6 +290,13 @@ export class EmployeeOnboardingService {
   }
 
   async reject(id: string, user: ActingUser, reviewNote?: string) {
+    const reason = reviewNote?.trim();
+    if (!reason) {
+      throw new BadRequestException(
+        'A reason is required to reject this application',
+      );
+    }
+
     const approval = await this.getPendingForReview(id, user);
 
     await this.prisma.$transaction(async (tx) => {
@@ -296,7 +306,7 @@ export class EmployeeOnboardingService {
           status: EmployeeOnboardingStatus.REJECTED,
           reviewedById: user.id,
           reviewedAt: new Date(),
-          reviewNote: reviewNote?.trim() || null,
+          reviewNote: reason,
         },
       });
 
@@ -320,7 +330,7 @@ export class EmployeeOnboardingService {
         changes: {
           employeeId: approval.employeeId,
           approverTarget: approval.approverTarget,
-          reviewNote,
+          reviewNote: reason,
         },
       },
     });

@@ -21,4 +21,8 @@ export class DepartmentQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;
+
+  @IsOptional()
+  @IsString()
+  projectId?: string;
 }
