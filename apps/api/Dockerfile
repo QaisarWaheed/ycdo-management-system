@@ -2,7 +2,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 RUN apk add --no-cache \
-  chromium nss freetype harfbuzz ca-certificates ttf-freefont
+  chromium nss freetype harfbuzz ca-certificates ttf-freefont ttf-liberation font-noto fontconfig
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser

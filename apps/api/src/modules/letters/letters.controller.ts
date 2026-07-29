@@ -18,7 +18,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { AccessScopeService } from '../permissions/access-scope.service';
-import { GenerateLetterDto, LetterQueryDto } from './letters.dto';
+import { GenerateLetterDto, LetterQueryDto, PreviewLetterDto } from './letters.dto';
 import { LettersService } from './letters.service';
 
 @Controller('letters')
@@ -28,6 +28,32 @@ export class LettersController {
     private lettersService: LettersService,
     private accessScopeService: AccessScopeService,
   ) {}
+
+  @Get('templates')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.HR_ADMIN_MANAGER,
+  )
+  listTemplates() {
+    return this.lettersService.listTemplates();
+  }
+
+  @Post('preview')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  preview(
+    @Body() dto: PreviewLetterDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.lettersService.preview(dto, user.id, user.role);
+  }
 
   @Post()
   @Roles(

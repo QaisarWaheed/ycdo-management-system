@@ -9,6 +9,12 @@ export interface LetterFieldDef {
 export const LETTER_FIELD_CONFIG: Partial<
   Record<LetterType, LetterFieldDef[]>
 > = {
+  APPOINTMENT: [
+    { key: 'stipendAmount', label: 'Stipend Amount (Rs.)', type: 'number' },
+    { key: 'hoursPerDay', label: 'Hours Per Day', type: 'number' },
+    { key: 'shiftName', label: 'Shift Name' },
+    { key: 'capacity', label: 'Capacity (e.g. Full Time)' },
+  ],
   WARNING: [
     { key: 'warningReason', label: 'Warning Reason', type: 'textarea' },
     { key: 'incidentDate', label: 'Incident Date', type: 'date' },
@@ -105,12 +111,20 @@ export function letterTypeBadgeClass(type: string): string {
 }
 
 export function letterReference(letter: {
+  letterNo?: string | null
   fileUrl?: string | null
   id: string
 }): string {
-  if (letter.fileUrl) {
+  if (letter.letterNo) return letter.letterNo
+  if (letter.fileUrl && !letter.fileUrl.startsWith('http')) {
     const name = letter.fileUrl.split('/').pop() ?? ''
     return name.replace(/\.pdf$/i, '').replace(/_/g, '/')
   }
   return letter.id.slice(0, 8).toUpperCase()
+}
+
+export function isLetterPdfUnavailable(letter: {
+  fileUrl?: string | null
+}): boolean {
+  return !letter.fileUrl
 }

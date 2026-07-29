@@ -15,6 +15,20 @@ export class GenerateLetterDto {
   extraFields?: Record<string, unknown>;
 }
 
+export class PreviewLetterDto {
+  @IsUUID()
+  @IsNotEmpty()
+  employeeId: string;
+
+  @IsEnum(LetterType)
+  @IsNotEmpty()
+  letterType: LetterType;
+
+  @IsOptional()
+  @IsObject()
+  extraFields?: Record<string, unknown>;
+}
+
 export class LetterQueryDto {
   @IsOptional()
   @IsUUID()

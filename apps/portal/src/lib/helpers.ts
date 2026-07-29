@@ -1,6 +1,7 @@
 import type { Letter } from '@/types'
 
 export function letterReference(letter: Letter): string {
+  if (letter.letterNo) return letter.letterNo
   if (!letter.fileUrl) return letter.id.slice(0, 8).toUpperCase()
   const name = letter.fileUrl.split('/').pop()?.replace(/\.pdf$/i, '')
   return name?.replace(/_/g, '/') ?? letter.id.slice(0, 8)

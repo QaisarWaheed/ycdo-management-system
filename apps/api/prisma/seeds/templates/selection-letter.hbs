@@ -1,0 +1,236 @@
+<!--
+  YCDO — SELECTION / APPOINTMENT LETTER
+  Transcribed verbatim from the approved printed format (Letter No. 2455/YCDO/2026).
+
+  NOTE 1: The "Notification — It is notified that following format for
+  Appointment/Selection Letter is approved" block on the original scan is the
+  internal memo APPROVING this format. It is deliberately NOT reproduced here —
+  it must not appear on letters issued to employees.
+
+  NOTE 2: Wording is preserved EXACTLY as approved, including known typos
+  ("patty expenses", "medical raps", "will be proceed"). See the typo list
+  supplied separately — do not silently correct an approved format.
+
+  NOTE 3: Policy constants (03 months probation, 15%, four leaves, 30 days
+  notice, Rs. 10,000 minimum fine, SOP sections 06/07/08/10) are literal text
+  in this template on purpose. They do not vary per employee — change them by
+  editing the template, not by passing variables.
+
+  Rendering: Handlebars -> HTML -> Puppeteer PDF, A4, margins set in @page.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 20mm 18mm 18mm 18mm; }
+
+  body {
+    font-family: "Times New Roman", "Liberation Serif", Times, Georgia, serif;
+    font-size: 12.5pt;
+    line-height: 1.5;
+    color: #000;
+    margin: 0;
+  }
+
+  .letterhead { text-align: center; margin-bottom: 14pt; }
+  .letterhead img { max-height: 70px; }
+  .letterhead .org { font-size: 15pt; font-weight: bold; margin-top: 4pt; }
+  .letterhead .meta { font-size: 9.5pt; }
+  .rule { border-bottom: 1.5px solid #000; margin: 8pt 0 14pt; }
+
+  h1.title {
+    text-align: center;
+    font-size: 14pt;
+    font-weight: bold;
+    margin: 0 0 16pt;
+  }
+
+  .refrow {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+    margin-bottom: 18pt;
+  }
+
+  .recipient { margin-bottom: 14pt; }
+  .recipient div { margin-bottom: 3pt; }
+  .recipient .label { font-weight: bold; }
+
+  p { margin: 0 0 10pt; text-align: justify; text-indent: 28pt; }
+  p.noindent { text-indent: 0; }
+
+  .grades {
+    display: flex;
+    justify-content: space-around;
+    margin: 10pt 0 12pt;
+  }
+
+  h2.section {
+    font-size: 12.5pt;
+    font-weight: bold;
+    margin: 14pt 0 8pt;
+  }
+
+  ol.terms { margin: 0; padding-left: 18pt; }
+  ol.terms li { margin-bottom: 8pt; text-align: justify; }
+
+  .fill {
+    display: inline-block;
+    min-width: 120pt;
+    border-bottom: 1px solid #000;
+    text-align: center;
+    font-weight: bold;
+  }
+  .fill.sm { min-width: 60pt; }
+  .fill.lg { min-width: 200pt; }
+
+  .pagebreak { page-break-before: always; }
+
+  .acceptance { margin-top: 26pt; }
+  .siglines { margin-top: 22pt; }
+  .sigline {
+    display: inline-block;
+    min-width: 170pt;
+    border-bottom: 1px solid #000;
+    height: 14pt;
+  }
+
+  .signblock { margin-top: 40pt; }
+  .signblock .sigimg { height: 60px; display: block; margin-bottom: 2pt; }
+  .signblock .name { font-weight: bold; }
+  .signblock .ruleShort {
+    width: 190pt; border-bottom: 1px solid #000; height: 1px; margin-bottom: 3pt;
+  }
+
+  .ackbox {
+    margin-top: 18pt; padding: 8pt 10pt;
+    border: 1px solid #000; font-size: 10pt; text-indent: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ PAGE 1 ============ -->
+
+<!-- Letterhead: supply logo + org details, or delete this block if printing
+     on pre-printed letterhead paper. -->
+<div class="letterhead">
+  {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
+  <div class="org">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION (YCDO)</div>
+  <div class="meta">{{orgAddress}} &nbsp;|&nbsp; {{orgPhone}} &nbsp;|&nbsp; {{orgEmail}}</div>
+</div>
+<div class="rule"></div>
+
+<h1 class="title">Selection Letter</h1>
+
+<div class="refrow">
+  <span>Letter No.: {{letterNo}}</span>
+  <span>Date: {{issueDate}}</span>
+</div>
+
+<div class="recipient">
+  <div><span class="label">{{salutation}}</span> <span class="fill lg">{{employeeName}}</span></div>
+  <div><span class="label">CNIC No.:</span> <span class="fill lg">{{cnic}}</span></div>
+  <div><span class="label">Phone:</span> <span class="fill lg">{{phone}}</span></div>
+</div>
+
+<p class="noindent"><strong>Assalam o Alaikum!</strong></p>
+
+<p>We&rsquo;re pleased to inform you that you have been selected as a Volunteer for
+Medical Services in the <strong>YCDO Group of Hospitals</strong> for charity. YCDO is
+unable to pay the salary due to lack of resources but for your patty expenses,
+we&rsquo;ll pay stipend Rs. <span class="fill sm">{{stipendAmount}}</span> against
+<span class="fill sm">{{hoursPerDay}}</span> Hours per day for
+<span class="fill sm">{{shiftName}}</span> shift. Incentives are applicable
+depends on your quality of services as given below;</p>
+
+<div class="grades">
+  <span>-Poor</span><span>- Satisfactory</span><span>-Good</span><span>-Excellent</span>
+</div>
+
+<p>Your First <strong>03 months</strong> will be considered as probationary period.
+During your probationary period, <strong>15%</strong> stipend and incentives will not
+be paid. Your pending dues will be paid after successful completion of probationary
+period, if you failed then it&rsquo;ll be forfeited.</p>
+
+<p>You&rsquo;re appointed as <span class="fill">{{designation}}</span> in the
+<span class="fill">{{department}}</span> Department on the capacity of
+<span class="fill">{{capacity}}</span> at YCDO Hospital
+<span class="fill">{{branchName}}</span> and your working schedule is
+<span class="fill sm">{{scheduleFrom}}</span> to
+<span class="fill sm">{{scheduleTo}}</span>.</p>
+
+<h2 class="section">Terms &amp; Conditions;</h2>
+
+<ol class="terms">
+  <li>You&rsquo;re bound to follow the SOP&rsquo;s of YCDO &amp; directions from the
+  Head Office. Also bound to attend the calls and directions from the representatives
+  of different department of YCDO.</li>
+
+  <li>You are not allowed to refer the patients of YCDO at your personal clinic or any
+  other private hospital and private clinic, except government hospitals/institutions
+  if necessary. You are not allowed to present your personal visiting card or phone
+  number to any patient at YCDO hospital during services. You&rsquo;re also not allowed
+  to meet the medical raps except authorized persons of companies. You&rsquo;re not
+  allowed to prescribe the medicine from the medical store except YCDO Pharmacy.</li>
+
+  <!-- ============ PAGE 2 ============ -->
+  <li class="pagebreak">You&rsquo;re bound to follow the online Medicine Management
+  System, HRMS, Lab Management System, Reception Management System and Surgical
+  Management System.</li>
+
+  <li>You&rsquo;ve four Leaves are allowed in a month.</li>
+
+  <li>You&rsquo;ve to give <strong>30 days&rsquo; written notice</strong> for resign or
+  separation if you left suddenly then your pending dues will be forfeited. YCDO
+  reserves the right to terminate volunteer for misconduct, violation of organizational
+  policies, or unsatisfactory performance.</li>
+
+  <li>You&rsquo;re bound to follow the First part of SOP strictly if you failed then
+  suspension or termination will be proceed. It&rsquo;s directed you that follow the
+  section No. 06, 07,08,10 strictly, if you violate these sections of your job
+  description/sop. If you violate these sections then fine will be impose not less
+  than Rs. 10,000/-</li>
+</ol>
+
+<div class="acceptance">
+  <h2 class="section">Acceptance</h2>
+
+  <p>I accept the appointment as <span class="fill lg">{{designation}}</span> with
+  <strong>YCDO Group of Hospitals</strong> and agree to abide by all organizational
+  rules, policies, and terms of volunteer/selection.</p>
+
+  {{#if digitalAcceptance}}
+    <!-- Portal delivery: acknowledgement replaces the wet signature. -->
+    <div class="ackbox">
+      Accepted electronically by <strong>{{employeeName}}</strong> on
+      <strong>{{acceptedAt}}</strong> via the YCDO HRMS Employee Portal.<br>
+      Acknowledgement reference: {{acceptanceRef}}
+    </div>
+  {{else}}
+    <!-- Print-and-sign: blanks preserved exactly as the approved format. -->
+    <div class="siglines">
+      <strong>Name:</strong> <span class="sigline"></span>
+      &nbsp;&nbsp;&nbsp;
+      <strong>Volunteer Signature:</strong> <span class="sigline"></span>
+    </div>
+  {{/if}}
+</div>
+
+<div class="signblock">
+  <div class="ruleShort"></div>
+  <div>Chairman Admin Department</div>
+  <div class="name">Youth Community Development Organization (YCDO)</div>
+</div>
+
+<div class="signblock">
+  {{#if founderSignatureUrl}}
+    <img class="sigimg" src="{{founderSignatureUrl}}" alt="">
+  {{/if}}
+  <div class="name">Founder/Head of Organization</div>
+  <div class="name">YCDO Pakistan</div>
+</div>
+
+</body>
+</html>
