@@ -355,6 +355,66 @@ function PayrollDetailDialog({
           <DialogTitle>Payroll Detail</DialogTitle>
         </DialogHeader>
 
+        {data.hourlyBreakdown && (
+          <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+            <p className="font-semibold">Hourly calculation</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <span className="text-text-secondary">Contractual basic</span>
+              <span className="text-right">
+                {formatPKR(data.hourlyBreakdown.contractualBasicStipend)}
+              </span>
+              <span className="text-text-secondary">Hourly rate</span>
+              <span className="text-right">
+                {formatPKR(data.hourlyBreakdown.hourlyRate)}/hr
+              </span>
+              <span className="text-text-secondary">Scheduled hours</span>
+              <span className="text-right">
+                {data.hourlyBreakdown.scheduledHours}h
+              </span>
+              <span className="text-text-secondary">Worked hours</span>
+              <span className="text-right">
+                {data.hourlyBreakdown.workedHours}h
+              </span>
+              <span className="text-text-secondary">Paid leave hours</span>
+              <span className="text-right">
+                {data.hourlyBreakdown.paidLeaveHours}h
+              </span>
+              <span className="text-text-secondary">Payable hours</span>
+              <span className="text-right font-medium">
+                {data.hourlyBreakdown.payableHours}h
+              </span>
+              <span className="text-text-secondary">Hourly basic earned</span>
+              <span className="text-right font-medium text-primary">
+                {formatPKR(data.hourlyBreakdown.hourlyBasicEarned)}
+              </span>
+              <span className="text-text-secondary">Fixed allowances</span>
+              <span className="text-right">
+                {formatPKR(data.hourlyBreakdown.fixedAllowances)}
+              </span>
+              <span className="text-text-secondary">Extra allowances (OT etc.)</span>
+              <span className="text-right">
+                {formatPKR(data.hourlyBreakdown.extraAllowances)}
+              </span>
+              <span className="text-text-secondary">Fixed package deductions</span>
+              <span className="text-right text-red-600">
+                {formatPKR(data.hourlyBreakdown.fixedPackageDeductions)}
+              </span>
+              <span className="text-text-secondary">
+                Discipline deductions (3/6/9 late, uninformed)
+              </span>
+              <span className="text-right text-red-600">
+                {formatPKR(data.hourlyBreakdown.disciplineDeductions)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
+              <span>Net stipend</span>
+              <span className="text-primary">
+                {formatPKR(data.hourlyBreakdown.netStipend)}
+              </span>
+            </div>
+          </div>
+        )}
+
         {data.stipendRecord && (
           <div className="space-y-3 rounded-lg border border-border bg-surface p-4 text-sm">
             <p className="font-semibold">Stipend Package</p>
@@ -392,7 +452,7 @@ function PayrollDetailDialog({
               </div>
             </div>
             <div className="flex items-center justify-between border-t border-border pt-2 font-semibold">
-              <span>Lumpsum Total</span>
+              <span>Package reference (full month)</span>
               <span className="text-primary">
                 {formatPKR(
                   data.stipendRecord.lumpsumTotal ??

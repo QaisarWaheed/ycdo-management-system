@@ -1,5 +1,9 @@
 import api from '../axios'
-import type { PayrollEntry, PayrollSummary } from '@/types'
+import type {
+  HourlyPayrollBreakdown,
+  PayrollEntry,
+  PayrollSummary,
+} from '@/types'
 
 export interface CreatePayrollEntryPayload {
   employeeId: string
@@ -68,7 +72,11 @@ export const payrollApi = {
   getEntryFull: (id: string) =>
     api.get<
       unknown,
-      PayrollEntry & { totalRelieverHours: number; allowances?: unknown[] }
+      PayrollEntry & {
+        totalRelieverHours: number
+        allowances?: unknown[]
+        hourlyBreakdown?: HourlyPayrollBreakdown
+      }
     >(`/payroll/entries/${id}/full`),
   createEntry: (data: CreatePayrollEntryPayload) =>
     api.post<unknown, PayrollEntry>('/payroll/entries', data),

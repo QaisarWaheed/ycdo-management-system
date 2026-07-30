@@ -117,8 +117,8 @@ export function EmployeeOnboardingReviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[95vh] max-w-5xl overflow-hidden p-0">
-        <div className="no-print border-b px-6 py-4">
+      <DialogContent className="flex !max-h-[95vh] max-w-5xl !flex-col !gap-0 overflow-hidden p-0">
+        <div className="no-print shrink-0 border-b px-6 py-4">
           <DialogHeader>
             <DialogTitle>Verify employee application</DialogTitle>
           </DialogHeader>
@@ -155,7 +155,7 @@ export function EmployeeOnboardingReviewDialog({
           </div>
         </div>
 
-        <div className="employee-information-form-print-area max-h-[calc(95vh-260px)] overflow-y-auto bg-gray-100 px-4 py-4 sm:px-6">
+        <div className="employee-information-form-print-area min-h-0 flex-1 overflow-y-auto bg-gray-100 px-4 py-4 sm:px-6">
           {tab === 'physical' ? (
             <PhysicalFormViewer
               url={record.physicalFormUrl}
@@ -172,8 +172,8 @@ export function EmployeeOnboardingReviewDialog({
           )}
         </div>
 
-        {pending && !isExecutive && (
-          <div className="no-print space-y-2 border-t px-6 py-3">
+        {pending && !isExecutive && !rejecting && (
+          <div className="no-print shrink-0 space-y-2 border-t px-6 py-3">
             <Label htmlFor="reviewNote">Review note (optional)</Label>
             <Textarea
               id="reviewNote"
@@ -186,7 +186,7 @@ export function EmployeeOnboardingReviewDialog({
         )}
 
         {pending && rejecting && (
-          <div className="no-print space-y-2 border-t bg-red-50/60 px-6 py-3">
+          <div className="no-print shrink-0 space-y-2 border-t bg-red-50/60 px-6 py-3">
             <Label htmlFor="rejectReason">Reason for rejection *</Label>
             <Textarea
               id="rejectReason"
@@ -198,17 +198,20 @@ export function EmployeeOnboardingReviewDialog({
             />
             <p className="text-xs text-text-secondary">
               This reason is recorded against the application and shown to HR.
+              {reasonTooShort
+                ? ` Enter at least ${MIN_REASON_LENGTH} characters to continue.`
+                : ''}
             </p>
           </div>
         )}
 
         {record.reviewNote && !pending && (
-          <p className="no-print px-6 pb-2 text-sm text-text-secondary">
+          <p className="no-print shrink-0 px-6 py-2 text-sm text-text-secondary">
             Note: {record.reviewNote}
           </p>
         )}
 
-        <DialogFooter className="no-print gap-2 border-t px-6 py-4 sm:gap-0">
+        <DialogFooter className="no-print shrink-0 gap-2 border-t px-6 py-4 sm:gap-0">
           <Button
             variant="outline"
             onClick={() => window.print()}

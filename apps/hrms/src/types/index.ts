@@ -575,6 +575,26 @@ export interface PayrollDeduction {
   description?: string | null
 }
 
+export interface HourlyPayrollBreakdown {
+  contractualBasicStipend: number
+  dailyDutyHours: number
+  daysInMonth: number
+  scheduledHours: number
+  hourlyRate: number
+  workedMinutes: number
+  workedHours: number
+  paidLeaveMinutes: number
+  paidLeaveHours: number
+  payableMinutes: number
+  payableHours: number
+  hourlyBasicEarned: number
+  fixedAllowances: number
+  fixedPackageDeductions: number
+  disciplineDeductions: number
+  extraAllowances: number
+  netStipend: number
+}
+
 export interface PayrollEntry {
   id: string
   month: number
@@ -587,6 +607,7 @@ export interface PayrollEntry {
   deductions?: PayrollDeduction[]
   allowances?: PayrollAllowance[]
   totalRelieverHours?: number
+  hourlyBreakdown?: HourlyPayrollBreakdown
   stipendRecord?: StipendRecord & {
     employee?: {
       id: string
