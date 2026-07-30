@@ -228,35 +228,83 @@ async function applyUninformedAbsentDeduction(
   employeeId: string,
   date: Date,
 ): Promise<void> {
-  const basicStipend = await getBasicStipend(tx, employeeId);
-  if (basicStipend <= 0) return;
+  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const dayKey = date.toISOString().slice(0, 10);
 
-  const deductionAmount = (basicStipend / 30) * 2;
-  const month = date.getMonth() + 1;
-  const year = date.getFullYear();
-  const payrollEntry = await getOrCreatePayrollEntry(
-    tx,
-    employeeId,
-    month,
-    year,
+  // Count unique uninformed-absent days this month, including the current day
+  // (the attendance log may not be written yet when discipline runs).
+  const priorDays = await tx.attendanceLog.findMany({
+    where: {
+      employeeId,
+      date: { gte: startOfMonth, lte: endOfMonth },
+      status: AttendanceStatus.UNINFORMED_ABSENT,
+    },
+    select: { date: true },
+  });
+
+  const uniqueDays = new Set(
+    priorDays.map((row) => row.date.toISOString().slice(0, 10)),
   );
+  uniqueDays.add(dayKey);
+  const uninformedCount = uniqueDays.size;
 
-  await tx.payrollDeduction.create({
-    data: {
-      payrollEntryId: payrollEntry.id,
-      reason: DeductionType.UNINFORMED_ABSENCE,
-      amount: deductionAmount,
-      description: 'Uninformed absence deduction (2 days)',
-    },
-  });
+  const basicStipend = await getBasicStipend(tx, employeeId);
+  if (basicStipend > 0) {
+    const deductionAmount = (basicStipend / 30) * 2;
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    const payrollEntry = await getOrCreatePayrollEntry(
+      tx,
+      employeeId,
+      month,
+      year,
+    );
 
-  await tx.payrollEntry.update({
-    where: { id: payrollEntry.id },
-    data: {
-      totalDeductions: { increment: deductionAmount },
-      netStipend: { decrement: deductionAmount },
-    },
-  });
+    await tx.payrollDeduction.create({
+      data: {
+        payrollEntryId: payrollEntry.id,
+        reason: DeductionType.UNINFORMED_ABSENCE,
+        amount: deductionAmount,
+        description: 'Uninformed absence deduction (2 days)',
+      },
+    });
+
+    await tx.payrollEntry.update({
+      where: { id: payrollEntry.id },
+      data: {
+        totalDeductions: { increment: deductionAmount },
+        netStipend: { decrement: deductionAmount },
+      },
+    });
+  }
+
+  // More than 2 uninformed-absent days in a month → automatic suspension.
+  if (uninformedCount > 2) {
+    const employee = await tx.employee.findUnique({
+      where: { id: employeeId },
+      select: { status: true },
+    });
+
+    if (employee?.status !== EmployeeStatus.SUSPENDED) {
+      await tx.employee.update({
+        where: { id: employeeId },
+        data: { status: EmployeeStatus.SUSPENDED },
+      });
+      await tx.user.updateMany({
+        where: { employeeId },
+        data: { isActive: false },
+      });
+
+      await tx.notification.create({
+        data: {
+          employeeId,
+          message: `You have been suspended due to ${uninformedCount} uninformed absence day(s) this month (more than 2 days). Please contact HR.`,
+          type: 'SUSPENSION_ISSUED',
+        },
+      });
+    }
+  }
 }
 
 async function getOrCreatePayrollEntry(
