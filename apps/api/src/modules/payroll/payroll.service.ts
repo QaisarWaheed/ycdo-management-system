@@ -2,6 +2,7 @@ import {
   calculateLumpsumTotal,
   stipendRecordToPackage,
 } from '../../common/stipend.util';
+import { getDutyWindow } from '../../common/duty.util';
 import {
   BadRequestException,
   Injectable,
@@ -9,6 +10,7 @@ import {
 } from '@nestjs/common';
 import {
   AllowanceType,
+  AttendanceLogType,
   Permission,
   PayrollStatus,
   Prisma,
@@ -25,6 +27,15 @@ import {
   SalaryIncrementDto,
   UpdatePayrollStatusDto,
 } from './payroll.dto';
+import {
+  buildHourlyPayrollBreakdown,
+  computeHourlyRate,
+  leaveCreditMinutes,
+  payableMinutesWithinDutyWindow,
+  resolveDailyDutyHours,
+  roundMoney,
+  type HourlyPayrollBreakdown,
+} from './payroll-hours.util';
 
 @Injectable()
 export class PayrollService {
@@ -54,6 +65,7 @@ export class PayrollService {
           orderBy: { effectiveFrom: 'desc' },
           take: 1,
         },
+        shift: { select: { startTime: true, endTime: true } },
       },
     });
 
@@ -78,40 +90,57 @@ export class PayrollService {
           year: dto.year,
         },
       },
-      include: { deductions: true },
+      include: { deductions: true, allowances: true },
     });
 
-    if (existing) {
+    if (
+      existing &&
+      (existing.status === PayrollStatus.PROCESSED ||
+        existing.status === PayrollStatus.PAID)
+    ) {
       return existing;
     }
 
-    const pkg = stipendRecordToPackage(activeStipendRecord);
-    const basicStipend = dto.basicStipend ?? pkg.basicStipend;
-    const totalAllowances =
-      dto.totalAllowances ??
-      (pkg.allowances || 0) +
-        (pkg.reward || 0) +
-        (pkg.progressReward || 0) +
-        (pkg.fuelAllowance || 0);
-    const fixedDeductions =
-      (pkg.loanDeduction || 0) +
-      (pkg.advanceDeduction || 0) +
-      (pkg.fineDeduction || 0) +
-      (pkg.healthDeduction || 0);
-    const netStipend = pkg.lumpsumTotal;
+    const breakdown = await this.computeHourlyBreakdown(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      {
+        stipendRecord: activeStipendRecord,
+        employee,
+        existingDeductions: existing?.deductions ?? [],
+        existingAllowances: existing?.allowances ?? [],
+      },
+    );
+
+    if (existing) {
+      return this.prisma.payrollEntry.update({
+        where: { id: existing.id },
+        data: {
+          basicStipend: breakdown.hourlyBasicEarned,
+          totalAllowances:
+            breakdown.fixedAllowances + breakdown.extraAllowances,
+          totalDeductions:
+            breakdown.fixedPackageDeductions + breakdown.disciplineDeductions,
+          netStipend: breakdown.netStipend,
+        },
+        include: { deductions: true, allowances: true },
+      });
+    }
 
     return this.prisma.payrollEntry.create({
       data: {
         stipendRecordId: activeStipendRecord.id,
         month: dto.month,
         year: dto.year,
-        basicStipend,
-        totalAllowances,
-        totalDeductions: fixedDeductions,
-        netStipend,
+        basicStipend: breakdown.hourlyBasicEarned,
+        totalAllowances: breakdown.fixedAllowances + breakdown.extraAllowances,
+        totalDeductions:
+          breakdown.fixedPackageDeductions + breakdown.disciplineDeductions,
+        netStipend: breakdown.netStipend,
         status: PayrollStatus.PENDING,
       },
-      include: { deductions: true },
+      include: { deductions: true, allowances: true },
     });
   }
 
@@ -161,15 +190,28 @@ export class PayrollService {
   ) {
     const entry = await this.prisma.payrollEntry.findUnique({
       where: { id: entryId },
+      include: {
+        stipendRecord: { select: { employeeId: true } },
+      },
     });
 
     if (!entry) {
-      throw new NotFoundException(
-        `Payroll entry with id ${entryId} not found`,
-      );
+      throw new NotFoundException(`Payroll entry with id ${entryId} not found`);
     }
 
     this.validateStatusTransition(entry.status, dto.status);
+
+    // Freeze the hourly calculation just before processing.
+    if (
+      entry.status === PayrollStatus.PENDING &&
+      dto.status === PayrollStatus.PROCESSED
+    ) {
+      await this.createOrGetEntry({
+        employeeId: entry.stipendRecord.employeeId,
+        month: entry.month,
+        year: entry.year,
+      });
+    }
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.payrollEntry.update({
@@ -179,7 +221,7 @@ export class PayrollService {
           processedAt:
             dto.status === PayrollStatus.PROCESSED ? new Date() : undefined,
         },
-        include: { deductions: true },
+        include: { deductions: true, allowances: true },
       });
 
       await tx.auditLog.create({
@@ -294,18 +336,13 @@ export class PayrollService {
     // Clicking Apply Overtime is the HR approval step for payroll.
     const overtimeMinutes = otAgg._sum.overtimeMinutes ?? 0;
     const pendingOvertimeMinutes = pendingAgg._sum.overtimeMinutes ?? 0;
-    const overtimeHours =
-      Math.round((overtimeMinutes / 60) * 100) / 100;
+    const overtimeHours = Math.round((overtimeMinutes / 60) * 100) / 100;
 
-    const dailyHours = this.resolveDailyDutyHours(employee);
+    const dailyHours = resolveDailyDutyHours(employee);
     const monthlyWorkingHours = dailyHours * daysInMonth;
     const basicStipend = Number(stipend.basicStipend);
-    const hourlyRate =
-      monthlyWorkingHours > 0
-        ? Math.round((basicStipend / monthlyWorkingHours) * 100) / 100
-        : 0;
-    const amount =
-      Math.round(overtimeHours * hourlyRate * 100) / 100;
+    const hourlyRate = computeHourlyRate(basicStipend, dailyHours, daysInMonth);
+    const amount = roundMoney(overtimeHours * hourlyRate);
 
     const existingEntry = await this.prisma.payrollEntry.findFirst({
       where: {
@@ -336,9 +373,7 @@ export class PayrollService {
       hourlyRate,
       amount,
       alreadyApplied: Boolean(existingOvertime),
-      existingAmount: existingOvertime
-        ? Number(existingOvertime.amount)
-        : null,
+      existingAmount: existingOvertime ? Number(existingOvertime.amount) : null,
       payrollEntryId: existingEntry?.id ?? null,
       payrollStatus: existingEntry?.status ?? null,
     };
@@ -478,29 +513,6 @@ export class PayrollService {
     });
   }
 
-  private resolveDailyDutyHours(employee: {
-    dutyTotalHours?: number | null;
-    dutyStartTime?: string | null;
-    dutyEndTime?: string | null;
-    shift?: { startTime: string; endTime: string } | null;
-  }): number {
-    if (employee.dutyTotalHours && employee.dutyTotalHours > 0) {
-      return employee.dutyTotalHours;
-    }
-
-    const start = employee.dutyStartTime ?? employee.shift?.startTime;
-    const end = employee.dutyEndTime ?? employee.shift?.endTime;
-    if (start && end) {
-      const [sh, sm] = start.split(':').map(Number);
-      const [eh, em] = end.split(':').map(Number);
-      let minutes = eh * 60 + (em || 0) - (sh * 60 + (sm || 0));
-      if (minutes <= 0) minutes += 24 * 60;
-      return Math.round((minutes / 60) * 100) / 100;
-    }
-
-    return 8;
-  }
-
   async getEntryWithAllowances(entryId: string) {
     const entry = await this.prisma.payrollEntry.findUnique({
       where: { id: entryId },
@@ -514,8 +526,14 @@ export class PayrollService {
                 id: true,
                 fullName: true,
                 employeeCode: true,
-                currentBranch: { select: { id: true, name: true, address: true } },
+                dutyStartTime: true,
+                dutyEndTime: true,
+                dutyTotalHours: true,
+                currentBranch: {
+                  select: { id: true, name: true, address: true },
+                },
                 currentDepartment: { select: { id: true, name: true } },
+                shift: { select: { startTime: true, endTime: true } },
               },
             },
           },
@@ -524,10 +542,35 @@ export class PayrollService {
     });
 
     if (!entry) {
-      throw new NotFoundException(
-        `Payroll entry with id ${entryId} not found`,
-      );
+      throw new NotFoundException(`Payroll entry with id ${entryId} not found`);
     }
+
+    let current = entry;
+    if (entry.status === PayrollStatus.PENDING) {
+      const refreshed = await this.createOrGetEntry({
+        employeeId: entry.stipendRecord.employeeId,
+        month: entry.month,
+        year: entry.year,
+      });
+      current = {
+        ...entry,
+        ...refreshed,
+        stipendRecord: entry.stipendRecord,
+      };
+    }
+
+    const employee = entry.stipendRecord.employee;
+    const breakdown = await this.computeHourlyBreakdown(
+      entry.stipendRecord.employeeId,
+      entry.month,
+      entry.year,
+      {
+        stipendRecord: entry.stipendRecord,
+        employee,
+        existingDeductions: current.deductions ?? [],
+        existingAllowances: current.allowances ?? [],
+      },
+    );
 
     const relieverSummary = await this.prisma.relieverSession.aggregate({
       where: {
@@ -543,9 +586,121 @@ export class PayrollService {
     const totalRelieverMinutes = relieverSummary._sum.totalMinutes ?? 0;
 
     return {
-      ...entry,
+      ...current,
       totalRelieverHours: Math.round((totalRelieverMinutes / 60) * 100) / 100,
+      hourlyBreakdown: breakdown,
     };
+  }
+
+  private async computeHourlyBreakdown(
+    employeeId: string,
+    month: number,
+    year: number,
+    context: {
+      stipendRecord: {
+        basicStipend: unknown;
+        allowances?: unknown;
+        reward?: unknown;
+        progressReward?: unknown;
+        fuelAllowance?: unknown;
+        loanDeduction?: unknown;
+        advanceDeduction?: unknown;
+        fineDeduction?: unknown;
+        healthDeduction?: unknown;
+        lumpsumTotal?: unknown;
+      };
+      employee: {
+        dutyTotalHours?: number | null;
+        dutyStartTime?: string | null;
+        dutyEndTime?: string | null;
+        shift?: { startTime: string; endTime: string } | null;
+      };
+      existingDeductions: Array<{ amount: unknown }>;
+      existingAllowances: Array<{ amount: unknown }>;
+    },
+  ): Promise<HourlyPayrollBreakdown> {
+    const pkg = stipendRecordToPackage(context.stipendRecord);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const dailyDutyHours = resolveDailyDutyHours(context.employee);
+    const dailyDutyMinutes = Math.round(dailyDutyHours * 60);
+    const win = getDutyWindow({
+      dutyStartTime:
+        context.employee.dutyStartTime ?? context.employee.shift?.startTime,
+      dutyEndTime:
+        context.employee.dutyEndTime ?? context.employee.shift?.endTime,
+    });
+
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+    const logs = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId,
+        type: AttendanceLogType.REGULAR,
+        date: { gte: monthStart, lte: monthEnd },
+      },
+      select: {
+        checkIn: true,
+        checkOut: true,
+        status: true,
+        note: true,
+      },
+    });
+
+    let workedMins = 0;
+    let paidLeaveMins = 0;
+
+    for (const log of logs) {
+      const leaveMins = leaveCreditMinutes(
+        log.status,
+        log.note,
+        dailyDutyMinutes,
+      );
+      if (leaveMins > 0) {
+        paidLeaveMins += leaveMins;
+        continue;
+      }
+
+      if (log.checkIn && log.checkOut) {
+        const { minutes, anomalous } = payableMinutesWithinDutyWindow(
+          log.checkIn,
+          log.checkOut,
+          win,
+        );
+        if (!anomalous) workedMins += minutes;
+      }
+    }
+
+    const fixedAllowances =
+      (pkg.allowances || 0) +
+      (pkg.reward || 0) +
+      (pkg.progressReward || 0) +
+      (pkg.fuelAllowance || 0);
+    const fixedPackageDeductions =
+      (pkg.loanDeduction || 0) +
+      (pkg.advanceDeduction || 0) +
+      (pkg.fineDeduction || 0) +
+      (pkg.healthDeduction || 0);
+    const disciplineDeductions = context.existingDeductions.reduce(
+      (sum, d) => sum + Number(d.amount),
+      0,
+    );
+    const extraAllowances = context.existingAllowances.reduce(
+      (sum, a) => sum + Number(a.amount),
+      0,
+    );
+
+    return buildHourlyPayrollBreakdown({
+      contractualBasicStipend: pkg.basicStipend,
+      dailyDutyHours,
+      daysInMonth,
+      workedMinutes: workedMins,
+      paidLeaveMinutes: paidLeaveMins,
+      fixedAllowances,
+      fixedPackageDeductions,
+      disciplineDeductions,
+      extraAllowances,
+    });
   }
 
   async findAll(
@@ -607,7 +762,9 @@ export class PayrollService {
                 id: true,
                 fullName: true,
                 employeeCode: true,
-                currentBranch: { select: { id: true, name: true, address: true } },
+                currentBranch: {
+                  select: { id: true, name: true, address: true },
+                },
                 currentDepartment: { select: { id: true, name: true } },
               },
             },
@@ -630,7 +787,9 @@ export class PayrollService {
                 id: true,
                 fullName: true,
                 employeeCode: true,
-                currentBranch: { select: { id: true, name: true, address: true } },
+                currentBranch: {
+                  select: { id: true, name: true, address: true },
+                },
                 currentDepartment: { select: { id: true, name: true } },
               },
             },
@@ -640,9 +799,7 @@ export class PayrollService {
     });
 
     if (!entry) {
-      throw new NotFoundException(
-        `Payroll entry with id ${entryId} not found`,
-      );
+      throw new NotFoundException(`Payroll entry with id ${entryId} not found`);
     }
 
     return entry;
@@ -654,9 +811,7 @@ export class PayrollService {
     });
 
     if (!employee) {
-      throw new NotFoundException(
-        `Employee with id ${employeeId} not found`,
-      );
+      throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
     return this.prisma.payrollEntry.findMany({
@@ -811,10 +966,7 @@ export class PayrollService {
       throw new BadRequestException('Cannot revert payroll entry to pending');
     }
 
-    if (
-      current === PayrollStatus.PENDING &&
-      next === PayrollStatus.PROCESSED
-    ) {
+    if (current === PayrollStatus.PENDING && next === PayrollStatus.PROCESSED) {
       return;
     }
 

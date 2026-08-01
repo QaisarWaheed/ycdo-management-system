@@ -1,3 +1,4 @@
+import { assessCheckIn, LATE_GRACE_MINUTES } from '../../common/duty.util';
 import {
   parseTimeToMinutes,
   toPakistanDateOnly,
@@ -55,12 +56,13 @@ export function statusFromLateMinutes(
 export function calculateLateMinutesFromCheckIn(
   checkIn: Date,
   dutyStartTime: string,
-  graceMinutes = 15,
+  graceMinutes = LATE_GRACE_MINUTES,
 ): number {
-  const checkInMinutes = toPakistanMinutesOfDay(checkIn);
-  const dutyStart = parseTimeToMinutes(dutyStartTime);
-  const late = minutesSinceShiftStart(checkInMinutes, dutyStart) - graceMinutes;
-  return late > 0 ? late : 0;
+  return assessCheckIn(
+    toPakistanMinutesOfDay(checkIn),
+    parseTimeToMinutes(dutyStartTime),
+    graceMinutes,
+  ).lateMinutes;
 }
 
 export const ATTENDANCE_MARKING_GRACE_MINUTES = 15;

@@ -62,6 +62,24 @@ export function labelToFatherStatus(label: string): string {
   return FATHER_STATUS_OPTIONS.find((o) => o.label === label)?.value ?? label
 }
 
+/** Relation of the emergency contact to the employee. */
+export const EMERGENCY_RELATION_OPTIONS = [
+  'Father',
+  'Mother',
+  'Brother',
+  'Sister',
+  'Son',
+  'Daughter',
+  'Husband',
+  'Wife',
+  'Uncle',
+  'Aunt',
+  'Cousin',
+  'Guardian',
+  'Friend',
+  'Other',
+] as const
+
 export const CHANGE_TYPE_LABELS: Record<string, string> = {
   TRANSFERRED: 'Transferred',
   PROMOTED: 'Promoted',

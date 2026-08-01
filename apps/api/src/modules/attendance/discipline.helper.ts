@@ -6,6 +6,7 @@ import {
   LetterType,
   Prisma,
 } from '@prisma/client';
+import { stipendRecordToPackage } from '../../common/stipend.util';
 
 export type DisciplineOptions = {
   lateMinutes?: number;
@@ -20,8 +21,11 @@ export async function applyDisciplineRules(
 ): Promise<AttendanceStatus> {
   const lateMinutes = options.lateMinutes ?? 0;
 
+  // Late > 1 hour is recorded as HALF_DAY for attendance display only.
+  // Pay is reduced naturally by unpaid hours; cash penalties apply only at
+  // the 3rd / 6th / 9th late occurrence via applyLateDiscipline.
   if (status === AttendanceStatus.LATE && lateMinutes > 60) {
-    await applyHalfDayLateDeduction(tx, employeeId, date, lateMinutes);
+    await applyLateDiscipline(tx, employeeId, date);
     return AttendanceStatus.HALF_DAY;
   }
 
@@ -58,52 +62,6 @@ async function getBasicStipend(
   });
 
   return Number(employee?.stipendRecords[0]?.basicStipend ?? 0);
-}
-
-async function applyHalfDayLateDeduction(
-  tx: Prisma.TransactionClient,
-  employeeId: string,
-  date: Date,
-  lateMinutes: number,
-): Promise<void> {
-  const basicStipend = await getBasicStipend(tx, employeeId);
-  if (basicStipend <= 0) return;
-
-  const deductionAmount = basicStipend / 30 / 2;
-  const month = date.getMonth() + 1;
-  const year = date.getFullYear();
-  const payrollEntry = await getOrCreatePayrollEntry(
-    tx,
-    employeeId,
-    month,
-    year,
-  );
-
-  await tx.payrollDeduction.create({
-    data: {
-      payrollEntryId: payrollEntry.id,
-      reason: DeductionType.LATE_ARRIVAL,
-      amount: deductionAmount,
-      description: `Half day deduction - late arrival over 1 hour (${lateMinutes} min)`,
-    },
-  });
-
-  await tx.payrollEntry.update({
-    where: { id: payrollEntry.id },
-    data: {
-      totalDeductions: { increment: deductionAmount },
-      netStipend: { decrement: deductionAmount },
-    },
-  });
-
-  await tx.notification.create({
-    data: {
-      employeeId,
-      message:
-        'You have been marked as Half Day due to late arrival of more than 1 hour. Half day stipend has been deducted.',
-      type: 'HALF_DAY_DEDUCTION',
-    },
-  });
 }
 
 async function applyAbsentDeduction(
@@ -170,16 +128,36 @@ async function applyLateDiscipline(
   const basicStipend = await getBasicStipend(tx, employeeId);
   const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
   const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
 
-  const lateCount = await tx.attendanceLog.count({
+  // Count LATE and late-driven HALF_DAY days. Short-leave HALF_DAY is excluded.
+  // Include the current day even if the log has not been written yet.
+  const priorLateDays = await tx.attendanceLog.findMany({
     where: {
       employeeId,
-      status: AttendanceStatus.LATE,
       date: { gte: startOfMonth, lte: endOfMonth },
+      OR: [
+        { status: AttendanceStatus.LATE },
+        {
+          status: AttendanceStatus.HALF_DAY,
+          NOT: {
+            note: { contains: 'short leave', mode: 'insensitive' },
+          },
+          lateMinutes: { gt: 0 },
+        },
+      ],
     },
+    select: { date: true },
   });
 
-  if (lateCount % 3 === 0) {
+  const uniqueDays = new Set(
+    priorLateDays.map((row) => row.date.toISOString().slice(0, 10)),
+  );
+  uniqueDays.add(dayStart.toISOString().slice(0, 10));
+  const lateCount = uniqueDays.size;
+
+  if (lateCount === 3 || lateCount === 6 || lateCount === 9) {
     const deductionAmount = basicStipend / 30;
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
@@ -190,22 +168,34 @@ async function applyLateDiscipline(
       year,
     );
 
-    await tx.payrollDeduction.create({
-      data: {
+    const alreadyDeducted = await tx.payrollDeduction.findFirst({
+      where: {
         payrollEntryId: payrollEntry.id,
         reason: DeductionType.LATE_ARRIVAL,
-        amount: deductionAmount,
-        description: `Late arrival deduction (${lateCount} lates this month)`,
+        description: {
+          contains: `${lateCount} late`,
+        },
       },
     });
 
-    await tx.payrollEntry.update({
-      where: { id: payrollEntry.id },
-      data: {
-        totalDeductions: { increment: deductionAmount },
-        netStipend: { decrement: deductionAmount },
-      },
-    });
+    if (!alreadyDeducted && basicStipend > 0) {
+      await tx.payrollDeduction.create({
+        data: {
+          payrollEntryId: payrollEntry.id,
+          reason: DeductionType.LATE_ARRIVAL,
+          amount: deductionAmount,
+          description: `Late arrival deduction (${lateCount} lates this month)`,
+        },
+      });
+
+      await tx.payrollEntry.update({
+        where: { id: payrollEntry.id },
+        data: {
+          totalDeductions: { increment: deductionAmount },
+          netStipend: { decrement: deductionAmount },
+        },
+      });
+    }
 
     if (lateCount === 3) {
       await autoGenerateLateWarningLetter(tx, employeeId, 1, lateCount);
@@ -238,35 +228,83 @@ async function applyUninformedAbsentDeduction(
   employeeId: string,
   date: Date,
 ): Promise<void> {
-  const basicStipend = await getBasicStipend(tx, employeeId);
-  if (basicStipend <= 0) return;
+  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const dayKey = date.toISOString().slice(0, 10);
 
-  const deductionAmount = (basicStipend / 30) * 2;
-  const month = date.getMonth() + 1;
-  const year = date.getFullYear();
-  const payrollEntry = await getOrCreatePayrollEntry(
-    tx,
-    employeeId,
-    month,
-    year,
+  // Count unique uninformed-absent days this month, including the current day
+  // (the attendance log may not be written yet when discipline runs).
+  const priorDays = await tx.attendanceLog.findMany({
+    where: {
+      employeeId,
+      date: { gte: startOfMonth, lte: endOfMonth },
+      status: AttendanceStatus.UNINFORMED_ABSENT,
+    },
+    select: { date: true },
+  });
+
+  const uniqueDays = new Set(
+    priorDays.map((row) => row.date.toISOString().slice(0, 10)),
   );
+  uniqueDays.add(dayKey);
+  const uninformedCount = uniqueDays.size;
 
-  await tx.payrollDeduction.create({
-    data: {
-      payrollEntryId: payrollEntry.id,
-      reason: DeductionType.UNINFORMED_ABSENCE,
-      amount: deductionAmount,
-      description: 'Uninformed absence deduction (2 days)',
-    },
-  });
+  const basicStipend = await getBasicStipend(tx, employeeId);
+  if (basicStipend > 0) {
+    const deductionAmount = (basicStipend / 30) * 2;
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    const payrollEntry = await getOrCreatePayrollEntry(
+      tx,
+      employeeId,
+      month,
+      year,
+    );
 
-  await tx.payrollEntry.update({
-    where: { id: payrollEntry.id },
-    data: {
-      totalDeductions: { increment: deductionAmount },
-      netStipend: { decrement: deductionAmount },
-    },
-  });
+    await tx.payrollDeduction.create({
+      data: {
+        payrollEntryId: payrollEntry.id,
+        reason: DeductionType.UNINFORMED_ABSENCE,
+        amount: deductionAmount,
+        description: 'Uninformed absence deduction (2 days)',
+      },
+    });
+
+    await tx.payrollEntry.update({
+      where: { id: payrollEntry.id },
+      data: {
+        totalDeductions: { increment: deductionAmount },
+        netStipend: { decrement: deductionAmount },
+      },
+    });
+  }
+
+  // More than 2 uninformed-absent days in a month → automatic suspension.
+  if (uninformedCount > 2) {
+    const employee = await tx.employee.findUnique({
+      where: { id: employeeId },
+      select: { status: true },
+    });
+
+    if (employee?.status !== EmployeeStatus.SUSPENDED) {
+      await tx.employee.update({
+        where: { id: employeeId },
+        data: { status: EmployeeStatus.SUSPENDED },
+      });
+      await tx.user.updateMany({
+        where: { employeeId },
+        data: { isActive: false },
+      });
+
+      await tx.notification.create({
+        data: {
+          employeeId,
+          message: `You have been suspended due to ${uninformedCount} uninformed absence day(s) this month (more than 2 days). Please contact HR.`,
+          type: 'SUSPENSION_ISSUED',
+        },
+      });
+    }
+  }
 }
 
 async function getOrCreatePayrollEntry(
@@ -298,14 +336,28 @@ async function getOrCreatePayrollEntry(
     return existing;
   }
 
+  const pkg = stipendRecordToPackage(stipendRecord);
+  const fixedAllowances =
+    (pkg.allowances || 0) +
+    (pkg.reward || 0) +
+    (pkg.progressReward || 0) +
+    (pkg.fuelAllowance || 0);
+  const fixedDeductions =
+    (pkg.loanDeduction || 0) +
+    (pkg.advanceDeduction || 0) +
+    (pkg.fineDeduction || 0) +
+    (pkg.healthDeduction || 0);
+
   return tx.payrollEntry.create({
     data: {
       stipendRecordId: stipendRecord.id,
       month,
       year,
-      basicStipend: stipendRecord.basicStipend,
-      netStipend: stipendRecord.basicStipend,
-      totalDeductions: 0,
+      // Placeholder until hourly recalculation runs for the pending entry.
+      basicStipend: pkg.basicStipend,
+      totalAllowances: fixedAllowances,
+      totalDeductions: fixedDeductions,
+      netStipend: pkg.lumpsumTotal,
       status: 'PENDING',
     },
   });
@@ -319,6 +371,17 @@ async function autoGenerateLateWarningLetter(
 ): Promise<void> {
   const letterType =
     warningNumber === 3 ? LetterType.SUSPENSION : LetterType.WARNING;
+
+  const existingLetter = await tx.letter.findFirst({
+    where: {
+      employeeId,
+      letterType,
+      generatedAt: {
+        gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      },
+    },
+  });
+  if (existingLetter) return;
 
   const letterCount = await tx.letter.count({
     where: { letterType },

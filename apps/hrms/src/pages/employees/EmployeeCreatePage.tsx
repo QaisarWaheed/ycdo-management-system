@@ -1,7 +1,18 @@
 import { Component, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { GraduationCap, Plus, Trash2, Upload, UserPlus, Users, X, FileUp } from 'lucide-react'
+import {
+  CheckCircle2,
+  FileText,
+  FileUp,
+  GraduationCap,
+  Plus,
+  Trash2,
+  Upload,
+  UserPlus,
+  Users,
+  X,
+} from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { useLocation, useNavigate, Navigate } from 'react-router-dom'
@@ -30,6 +41,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { isMedicineManagerRole } from '@/lib/medicineScope'
 import {
   BLOOD_GROUP_OPTIONS,
+  EMERGENCY_RELATION_OPTIONS,
   FATHER_STATUS_LABELS,
   GENDER_OPTIONS,
   genderToLabel,
@@ -77,6 +89,15 @@ import { toast } from '@/hooks/use-toast'
 import type { DocumentType, EmployeePrefill, QualType, StaffType } from '@/types'
 
 const cnicRegex = /^\d{5}-\d{7}-\d{1}$/
+
+/**
+ * Manual-labour departments where HR is not expected to record qualifications.
+ * Every other department must have at least one academic qualification.
+ */
+const QUALIFICATION_EXEMPT_DEPARTMENTS = [
+  'GRADE 4',
+  'REPAIR AND DEVELOPMENT',
+]
 const phoneOptional = z
   .string()
   .optional()
@@ -116,11 +137,49 @@ const STAFF_TYPE_OPTIONS: {
   },
 ]
 
-const newStaffStep1Schema = z.object({
+/**
+ * Father contact is asked when the father is alive, guardian contact when he is
+ * deceased — both forms share the rule.
+ */
+const refineFatherContacts = (
+  data: {
+    fatherStatus?: 'ALIVE' | 'DECEASED'
+    fatherContactNumber?: string
+    guardianContact?: string
+  },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.fatherStatus === 'ALIVE') {
+    if (
+      !data.fatherContactNumber ||
+      !/^0\d{10}$/.test(data.fatherContactNumber)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: "Father's contact number is required",
+        path: ['fatherContactNumber'],
+      })
+    }
+  }
+  if (data.fatherStatus === 'DECEASED') {
+    if (!data.guardianContact || !/^0\d{10}$/.test(data.guardianContact)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: "Guardian's contact number is required",
+        path: ['guardianContact'],
+      })
+    }
+  }
+}
+
+const newStaffStep1Schema = z
+  .object({
   fullName: z.string().min(1, 'Full name is required'),
   fatherName: z.string().min(1, 'Father name is required'),
-  fatherStatus: z.enum(['ALIVE', 'DECEASED']).optional(),
-  fatherContactNumber: phoneRequired,
+  fatherStatus: z.enum(['ALIVE', 'DECEASED'], {
+    message: 'Father status is required',
+  }),
+  fatherContactNumber: phoneOptional,
   guardianContact: phoneOptional,
   cnic: z
     .string()
@@ -133,7 +192,7 @@ const newStaffStep1Schema = z.object({
     .enum(['MARRIED', 'UNMARRIED', 'DIVORCED', 'WIDOW'])
     .optional(),
   emergencyContactName: z.string().min(1, 'Emergency contact name is required'),
-  emergencyRelation: z.string().optional(),
+  emergencyRelation: z.string().min(1, 'Emergency contact relation is required'),
   emergencyContactNumber: phoneRequired,
   spouseName: z.string().optional(),
   spouseContactNumber: phoneOptional,
@@ -150,7 +209,8 @@ const newStaffStep1Schema = z.object({
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
   currentAddress: z.string().min(1, 'Current address is required'),
   permanentAddress: z.string().min(1, 'Permanent address is required'),
-})
+  })
+  .superRefine(refineFatherContacts)
 
 const existingStaffStep1Schema = z
   .object({
@@ -172,7 +232,9 @@ const existingStaffStep1Schema = z
       message: 'Marital status is required',
     }),
     emergencyContactName: z.string().min(1, 'Emergency contact name is required'),
-    emergencyRelation: z.string().min(1, 'Emergency relation is required'),
+    emergencyRelation: z
+      .string()
+      .min(1, 'Emergency contact relation is required'),
     emergencyContactNumber: phoneRequired,
     spouseName: z.string().optional(),
     spouseContactNumber: phoneOptional,
@@ -191,24 +253,7 @@ const existingStaffStep1Schema = z
     permanentAddress: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.fatherStatus === 'ALIVE') {
-      if (!data.fatherContactNumber || !/^0\d{10}$/.test(data.fatherContactNumber)) {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'Father contact number is required',
-          path: ['fatherContactNumber'],
-        })
-      }
-    }
-    if (data.fatherStatus === 'DECEASED') {
-      if (!data.guardianContact || !/^0\d{10}$/.test(data.guardianContact)) {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'Guardian contact is required',
-          path: ['guardianContact'],
-        })
-      }
-    }
+    refineFatherContacts(data, ctx)
     if (data.maritalStatus === 'MARRIED') {
       if (!data.spouseName?.trim()) {
         ctx.addIssue({
@@ -337,6 +382,74 @@ interface PrevEmpRow {
   totalExperience: string
 }
 
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Thumbnail for images, icon for PDFs — so HR can see what was attached. */
+function DocumentPreview({
+  file,
+  onRemove,
+}: {
+  file: File
+  onRemove: () => void
+}) {
+  const isImage = file.type.startsWith('image/')
+  const previewUrl = useMemo(
+    () => (isImage ? URL.createObjectURL(file) : null),
+    [file, isImage],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-2">
+      <a
+        href={previewUrl ?? undefined}
+        target="_blank"
+        rel="noreferrer"
+        className="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-surface"
+        onClick={(e) => {
+          if (!previewUrl) e.preventDefault()
+        }}
+      >
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt={file.name}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center text-text-secondary">
+            <FileText className="h-6 w-6" />
+            <span className="text-[10px]">PDF</span>
+          </div>
+        )}
+      </a>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-1 text-xs font-medium text-primary">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Uploaded
+        </p>
+        <p className="truncate text-sm font-medium">{file.name}</p>
+        <p className="text-xs text-text-secondary">
+          {formatFileSize(file.size)}
+          {previewUrl ? ' · click thumbnail to view' : ''}
+        </p>
+      </div>
+      <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
+
 function MultiFileUpload({
   label,
   subLabel,
@@ -375,19 +488,8 @@ function MultiFileUpload({
       {files.length > 0 && (
         <ul className="space-y-2">
           {files.map((file, index) => (
-            <li
-              key={`${file.name}-${index}`}
-              className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-            >
-              <span className="truncate">{file.name}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onRemove(index)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+            <li key={`${file.name}-${index}`}>
+              <DocumentPreview file={file} onRemove={() => onRemove(index)} />
             </li>
           ))}
         </ul>
@@ -517,18 +619,22 @@ function FileDropZone({
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium">{label}</p>
-      <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-surface p-4 transition-colors hover:bg-muted">
-        <Upload className="h-6 w-6 text-text-secondary" />
-        <span className="text-sm text-text-secondary">
-          {file ? file.name : 'Click or drag file to upload'}
-        </span>
-        <input
-          type="file"
-          className="hidden"
-          accept=".jpg,.jpeg,.png,.pdf"
-          onChange={(e) => onChange(e.target.files?.[0] ?? null)}
-        />
-      </label>
+      {file ? (
+        <DocumentPreview file={file} onRemove={() => onChange(null)} />
+      ) : (
+        <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-surface p-4 transition-colors hover:bg-muted">
+          <Upload className="h-6 w-6 text-text-secondary" />
+          <span className="text-sm text-text-secondary">
+            Click or drag file to upload
+          </span>
+          <input
+            type="file"
+            className="hidden"
+            accept=".jpg,.jpeg,.png,.pdf"
+            onChange={(e) => onChange(e.target.files?.[0] ?? null)}
+          />
+        </label>
+      )}
     </div>
   )
 }
@@ -617,9 +723,9 @@ function setFormErrors(
 }
 
 export function EmployeeCreatePage() {
-  const { user } = useAuth()
-  if (isMedicineManagerRole(user?.role)) {
-    return <Navigate to="/attendance" replace />
+  const { user, hasPermission } = useAuth()
+  if (isMedicineManagerRole(user?.role) || !hasPermission('EMPLOYEES_CREATE')) {
+    return <Navigate to="/employees" replace />
   }
   return <EmployeeCreatePageForm />
 }
@@ -646,6 +752,7 @@ function EmployeeCreatePageForm() {
   const [approverTarget, setApproverTarget] =
     useState<EmployeeApproverTarget | null>(null)
   const [docErrors, setDocErrors] = useState<string | null>(null)
+  const [qualError, setQualError] = useState<string | null>(null)
   const [qualifications, setQualifications] = useState<QualRow[]>([])
   const [previousEmployments, setPreviousEmployments] = useState<PrevEmpRow[]>(
     [],
@@ -804,12 +911,25 @@ function EmployeeCreatePageForm() {
       ),
   })
 
+  // Departments are scoped to the chosen branch's project so HR only sees the
+  // ones that actually exist at that posting.
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments'],
-    queryFn: () => departmentsApi.getAll(),
+    queryKey: ['departments', branchId || selectedProjectId || 'all'],
+    queryFn: () =>
+      departmentsApi.getAll(
+        branchId
+          ? { branchId }
+          : selectedProjectId
+            ? { projectId: selectedProjectId }
+            : undefined,
+      ),
   })
 
   const selectedDepartment = departments.find((d) => d.id === departmentId)
+
+  const qualificationRequired = !QUALIFICATION_EXEMPT_DEPARTMENTS.includes(
+    (selectedDepartment?.name ?? '').trim().toUpperCase(),
+  )
 
   const designationParams = useMemo(() => {
     if (!selectedDepartment) return undefined
@@ -1092,6 +1212,29 @@ function EmployeeCreatePageForm() {
     }
     setStepError(null)
     setStep(5)
+  }
+
+  const onStep4Next = () => {
+    const hasAcademicQualification = qualifications.some(
+      (q) =>
+        q.qualType === 'ACADEMIC' &&
+        q.degree.trim() &&
+        q.boardUniversity.trim(),
+    )
+    if (qualificationRequired && !hasAcademicQualification) {
+      setQualError(
+        `At least one academic qualification (degree and board/university) is required for ${
+          selectedDepartment?.name ?? 'this department'
+        }.`,
+      )
+      return
+    }
+    setQualError(null)
+    if (staffType === 'EXISTING' || staffType === 'INTERNEE') {
+      finishWithoutApproval()
+    } else {
+      goToApprovalStep()
+    }
   }
 
   const updateQual = (key: string, field: keyof QualRow, value: string) => {
@@ -1383,47 +1526,36 @@ function EmployeeCreatePageForm() {
                   </FormItem>
                 )}
               />
-              {isExistingStaff && (
-                <FormField
-                  control={form1.control}
-                  name="fatherStatus"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Father Status *</FormLabel>
-                      <FormControl>
-                        <SearchableSelect
-                          options={[...FATHER_STATUS_LABELS]}
-                          value={
-                            field.value
-                              ? fatherStatusToLabel(field.value)
-                              : ''
-                          }
-                          onChange={(label) =>
-                            field.onChange(labelToFatherStatus(label))
-                          }
-                          placeholder="Select father status"
-                          error={form1.formState.errors.fatherStatus?.message}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-              {(isExistingStaff
-                ? selectedFatherStatus === 'ALIVE'
-                : true) && (
+              <FormField
+                control={form1.control}
+                name="fatherStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Father Status *</FormLabel>
+                    <FormControl>
+                      <SearchableSelect
+                        options={[...FATHER_STATUS_LABELS]}
+                        value={
+                          field.value ? fatherStatusToLabel(field.value) : ''
+                        }
+                        onChange={(label) =>
+                          field.onChange(labelToFatherStatus(label))
+                        }
+                        placeholder="Select father status"
+                        error={form1.formState.errors.fatherStatus?.message}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {selectedFatherStatus === 'ALIVE' && (
                 <FormField
                   control={form1.control}
                   name="fatherContactNumber"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        Father Contact Number
-                        {(isExistingStaff
-                          ? selectedFatherStatus === 'ALIVE'
-                          : true) && ' *'}
-                      </FormLabel>
+                      <FormLabel>Father&apos;s Contact Number *</FormLabel>
                       <FormControl>
                         <PhoneInput
                           value={field.value ?? ''}
@@ -1435,13 +1567,13 @@ function EmployeeCreatePageForm() {
                   )}
                 />
               )}
-              {isExistingStaff && selectedFatherStatus === 'DECEASED' && (
+              {selectedFatherStatus === 'DECEASED' && (
                 <FormField
                   control={form1.control}
                   name="guardianContact"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Guardian Contact *</FormLabel>
+                      <FormLabel>Guardian&apos;s Contact Number *</FormLabel>
                       <FormControl>
                         <PhoneInput
                           value={field.value ?? ''}
@@ -1466,21 +1598,25 @@ function EmployeeCreatePageForm() {
                   </FormItem>
                 )}
               />
-              {isExistingStaff && (
-                <FormField
-                  control={form1.control}
-                  name="emergencyRelation"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Emergency Relation *</FormLabel>
-                      <FormControl>
-                        <TextOnlyInput {...field} value={field.value ?? ''} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
+              <FormField
+                control={form1.control}
+                name="emergencyRelation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Emergency Contact Relation *</FormLabel>
+                    <FormControl>
+                      <SearchableSelect
+                        options={[...EMERGENCY_RELATION_OPTIONS]}
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        placeholder="Select relation"
+                        error={form1.formState.errors.emergencyRelation?.message}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form1.control}
                 name="emergencyContactNumber"
@@ -1886,8 +2022,23 @@ function EmployeeCreatePageForm() {
         <div className="space-y-6">
           <h2 className="text-lg font-semibold">Qualifications & Experience</h2>
 
-          {renderQualTable('ACADEMIC', 'Academic Qualifications')}
+          <p className="text-sm text-text-secondary">
+            {qualificationRequired
+              ? 'At least one academic qualification is required for this department.'
+              : `Qualifications are optional for ${selectedDepartment?.name ?? 'this department'}.`}
+          </p>
+
+          {renderQualTable(
+            'ACADEMIC',
+            qualificationRequired
+              ? 'Academic Qualifications *'
+              : 'Academic Qualifications',
+          )}
           {renderQualTable('JOB_RELEVANT', 'Job-Relevant Qualifications')}
+
+          {qualError && (
+            <p className="text-sm text-destructive">{qualError}</p>
+          )}
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -2019,13 +2170,7 @@ function EmployeeCreatePageForm() {
               type="button"
               className="bg-primary hover:bg-primary-dark"
               disabled={createMutation.isPending}
-              onClick={() => {
-                if (staffType === 'EXISTING' || staffType === 'INTERNEE') {
-                  finishWithoutApproval()
-                } else {
-                  goToApprovalStep()
-                }
-              }}
+              onClick={onStep4Next}
             >
               {createMutation.isPending
                 ? 'Creating...'
@@ -2085,22 +2230,13 @@ function EmployeeCreatePageForm() {
                   <FileUp className="mr-2 h-4 w-4" />
                   {physicalFormFile ? 'Change file' : 'Upload physical form'}
                 </Button>
-                {physicalFormFile && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-medium text-text-primary">
-                      {physicalFormFile.name}
-                    </span>
-                    <button
-                      type="button"
-                      className="text-text-secondary hover:text-red-600"
-                      onClick={() => setPhysicalFormFile(null)}
-                      aria-label="Remove physical form"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
               </div>
+              {physicalFormFile && (
+                <DocumentPreview
+                  file={physicalFormFile}
+                  onRemove={() => setPhysicalFormFile(null)}
+                />
+              )}
             </div>
 
             {draftFormData && (

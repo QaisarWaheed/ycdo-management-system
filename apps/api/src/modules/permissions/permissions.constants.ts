@@ -56,8 +56,7 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
   EMPLOYEES_CREATE: [
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
-    UserRole.ADMIN_OFFICER,
-    UserRole.ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
   ],
   EMPLOYEES_EDIT: [
     UserRole.HR_EXECUTIVE,

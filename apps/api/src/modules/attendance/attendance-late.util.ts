@@ -1,3 +1,5 @@
+import { assessCheckIn, LATE_GRACE_MINUTES } from '../../common/duty.util';
+
 export function parseTimeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + (minutes ?? 0);
@@ -8,7 +10,11 @@ const PK_OFFSET_MS = 5 * 60 * 60 * 1000;
 export function toPakistanDateOnly(date: Date): Date {
   const pkDate = new Date(date.getTime() + PK_OFFSET_MS);
   return new Date(
-    Date.UTC(pkDate.getUTCFullYear(), pkDate.getUTCMonth(), pkDate.getUTCDate()),
+    Date.UTC(
+      pkDate.getUTCFullYear(),
+      pkDate.getUTCMonth(),
+      pkDate.getUTCDate(),
+    ),
   );
 }
 
@@ -28,31 +34,16 @@ export function parseAttendanceDateTime(iso: string | Date): Date {
   return new Date(`${iso}+05:00`);
 }
 
-const OVERNIGHT_SHIFT_START = 18 * 60;
-
-function minutesSinceShiftStart(
-  currentMinutes: number,
-  shiftStartMinutes: number,
-): number {
-  if (shiftStartMinutes >= OVERNIGHT_SHIFT_START) {
-    if (currentMinutes >= shiftStartMinutes) {
-      return currentMinutes - shiftStartMinutes;
-    }
-    return 1440 - shiftStartMinutes + currentMinutes;
-  }
-  return currentMinutes - shiftStartMinutes;
-}
-
 export function computeLateMinutesFromCheckIn(
   checkIn: Date,
   dutyStartTime: string,
-  graceMinutes = 15,
+  graceMinutes = LATE_GRACE_MINUTES,
 ): number {
-  const checkInMinutes = toPakistanMinutesOfDay(checkIn);
-  const dutyStart = parseTimeToMinutes(dutyStartTime);
-  const late =
-    minutesSinceShiftStart(checkInMinutes, dutyStart) - graceMinutes;
-  return late > 0 ? late : 0;
+  return assessCheckIn(
+    toPakistanMinutesOfDay(checkIn),
+    parseTimeToMinutes(dutyStartTime),
+    graceMinutes,
+  ).lateMinutes;
 }
 
 export function resolveDutyStartTime(employee: {

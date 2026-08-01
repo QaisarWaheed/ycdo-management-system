@@ -1,4 +1,5 @@
 import { AttendanceStatus } from '@prisma/client';
+import { assessCheckIn } from '../../common/duty.util';
 import {
   parseTimeToMinutes,
   toPakistanDateOnly,
@@ -96,7 +97,11 @@ export function computeBiometricLateMinutes(
     dutyStartTime?: string | null;
     dutyEndTime?: string | null;
     dutyTotalHours?: number | null;
-    shift?: { name?: string | null; startTime: string; endTime?: string } | null;
+    shift?: {
+      name?: string | null;
+      startTime: string;
+      endTime?: string;
+    } | null;
   },
 ): number {
   if (
@@ -121,10 +126,54 @@ export function computeBiometricLateMinutes(
     return 0;
   }
 
-  const checkInMinutes = toPakistanMinutesOfDay(checkIn);
-  const dutyStartMinutes = parseTimeToMinutes(dutyStart);
-  const late = checkInMinutes - dutyStartMinutes - 15;
-  return late > 0 ? late : 0;
+  return assessCheckIn(
+    toPakistanMinutesOfDay(checkIn),
+    parseTimeToMinutes(dutyStart),
+  ).lateMinutes;
+}
+
+/**
+ * Overtime earned before duty start. A check-in more than
+ * EARLY_OVERTIME_THRESHOLD_MINUTES early credits the whole span from the punch
+ * up to duty start; anything closer is just a normal early arrival.
+ */
+export function computePreDutyOvertimeMinutes(
+  checkIn: Date,
+  employee: {
+    dutyStartTime?: string | null;
+    dutyEndTime?: string | null;
+    dutyTotalHours?: number | null;
+    shift?: {
+      name?: string | null;
+      startTime: string;
+      endTime?: string;
+    } | null;
+  },
+): number {
+  const dutyStart = employee.dutyStartTime ?? null;
+  if (!dutyStart) return 0;
+
+  if (
+    is24HourShift({
+      dutyStartTime: employee.dutyStartTime,
+      dutyEndTime: employee.dutyEndTime,
+      dutyTotalHours: employee.dutyTotalHours,
+      shift: employee.shift
+        ? {
+            name: employee.shift.name,
+            startTime: employee.shift.startTime,
+            endTime: employee.shift.endTime ?? employee.shift.startTime,
+          }
+        : null,
+    })
+  ) {
+    return 0;
+  }
+
+  return assessCheckIn(
+    toPakistanMinutesOfDay(checkIn),
+    parseTimeToMinutes(dutyStart),
+  ).preDutyOvertimeMinutes;
 }
 
 export function determineBiometricCheckInStatus(
@@ -137,11 +186,7 @@ export function determineBiometricCheckInStatus(
     return AttendanceStatus.PRESENT;
   }
 
-  if (
-    lateMinutes > 60 &&
-    employee.dutyStartTime &&
-    sessionMinutes >= 240
-  ) {
+  if (lateMinutes > 60 && employee.dutyStartTime && sessionMinutes >= 240) {
     return AttendanceStatus.HALF_DAY;
   }
 
@@ -154,7 +199,8 @@ export function computeBiometricOvertimeMinutes(
   employee: {
     dutyEndTime?: string | null;
     dutyStartTime?: string | null;
-    shift?: { startTime: string; endTime: string } | null;
+    dutyTotalHours?: number | null;
+    shift?: { name?: string | null; startTime: string; endTime: string } | null;
   },
 ): number {
   const sessionMinutes = Math.round(
@@ -168,12 +214,16 @@ export function computeBiometricOvertimeMinutes(
   const shiftEnd = resolveShiftEndTime(employee);
   const shiftStart = resolveShiftStartTime(employee);
   const checkOutMinutes = toPakistanMinutesOfDay(checkOut);
-  const shiftEndMinutes = shiftEnd
-    ? parseTimeToMinutes(shiftEnd)
-    : 18 * 60;
+  const shiftEndMinutes = shiftEnd ? parseTimeToMinutes(shiftEnd) : 18 * 60;
   const overnight = isOvernightShift(shiftStart, shiftEnd);
 
-  return calculateOvertime(checkOutMinutes, shiftEndMinutes, overnight);
+  const afterDuty = calculateOvertime(
+    checkOutMinutes,
+    shiftEndMinutes,
+    overnight,
+  );
+
+  return computePreDutyOvertimeMinutes(checkIn, employee) + afterDuty;
 }
 
 export { toPakistanDateOnly };

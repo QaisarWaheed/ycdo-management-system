@@ -343,7 +343,13 @@ export const ruleBookCategories: FlowCategory[] = [
           },
           {
             title: '3 hours later',
-            detail: 'Still no check-in → upgraded to UNINFORMED_ABSENT with stipend deduction rules.',
+            detail:
+              'Still no check-in → upgraded to UNINFORMED_ABSENT. Each day deducts 2 days stipend.',
+          },
+          {
+            title: 'More than 2 days in a month',
+            detail:
+              '3rd+ uninformed-absent day in the same month → employee is auto-suspended, login deactivated, and a portal notification is sent.',
           },
         ],
       },
@@ -567,7 +573,8 @@ export const ruleBookCategories: FlowCategory[] = [
           },
           {
             title: 'Auto rules',
-            detail: 'Half day / uninformed absent can trigger stipend deductions via discipline helper.',
+            detail:
+              'Uninformed absent: 2 days stipend per day; more than 2 uninformed days in a month auto-suspends. Late: cash penalty + warning at 3rd/6th/9th (9th also suspends).',
           },
         ],
         links: [{ label: 'Disciplinary', path: '/disciplinary' }],

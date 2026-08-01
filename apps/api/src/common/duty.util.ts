@@ -74,6 +74,73 @@ export function isOnDutyAt(
   return minutesOfDay >= startWithGrace || minutesOfDay <= endWithGrace;
 }
 
+/** Minutes after duty start that are still counted as on time. */
+export const LATE_GRACE_MINUTES = 15;
+
+/**
+ * A check-in earlier than this many minutes before duty start is credited as
+ * overtime instead of treated as a plain early arrival. Arriving up to and
+ * including this many minutes early is a normal check-in.
+ */
+export const EARLY_OVERTIME_THRESHOLD_MINUTES = 60;
+
+/**
+ * Signed minutes between a punch and duty start, resolved to the nearest
+ * occurrence of that duty time. Positive means after duty start, negative
+ * means before it.
+ *
+ * Without the wrap, an early punch on a night shift (19:30 against a 20:00
+ * start) reads as ~23.5 hours *since* the previous day's start and produced
+ * absurd late totals.
+ */
+export function signedMinutesFromDutyStart(
+  minutesOfDay: number,
+  dutyStartMin: number,
+): number {
+  let diff = minutesOfDay - dutyStartMin;
+  if (diff > 720) diff -= 1440;
+  if (diff <= -720) diff += 1440;
+  return diff;
+}
+
+export interface CheckInAssessment {
+  /** Minutes late beyond the grace period. 0 when on time or early. */
+  lateMinutes: number;
+  /** Minutes the punch landed before duty start. 0 when on time or late. */
+  earlyMinutes: number;
+  /**
+   * Early arrival credited as overtime — the whole span from the punch to duty
+   * start, counted only once the early arrival passes the threshold.
+   */
+  preDutyOvertimeMinutes: number;
+}
+
+export function assessCheckIn(
+  minutesOfDay: number,
+  dutyStartMin: number,
+  graceMinutes = LATE_GRACE_MINUTES,
+  earlyOvertimeThreshold = EARLY_OVERTIME_THRESHOLD_MINUTES,
+): CheckInAssessment {
+  const offset = signedMinutesFromDutyStart(minutesOfDay, dutyStartMin);
+
+  if (offset >= 0) {
+    const late = offset - graceMinutes;
+    return {
+      lateMinutes: late > 0 ? late : 0,
+      earlyMinutes: 0,
+      preDutyOvertimeMinutes: 0,
+    };
+  }
+
+  const earlyMinutes = -offset;
+  return {
+    lateMinutes: 0,
+    earlyMinutes,
+    preDutyOvertimeMinutes:
+      earlyMinutes > earlyOvertimeThreshold ? earlyMinutes : 0,
+  };
+}
+
 /** Canonical display format: "08:00 AM" */
 export function formatDuty12h(value: string): string {
   const mins = parseDutyTimeToMinutes(value);

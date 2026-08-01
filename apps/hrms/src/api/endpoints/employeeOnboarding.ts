@@ -32,9 +32,14 @@ export interface EmployeeOnboardingApproval {
       degree: string
       boardUniversity: string
       qualType: string
+      obtainedMarks?: string | null
+      divisionGrade?: string | null
     }>
     previousEmployments?: Array<{
       organizationName: string
+      ownerAdminName?: string | null
+      contactNumber?: string | null
+      postalAddress?: string | null
       totalExperience?: string | null
     }>
     stipendRecords?: Array<{ basicStipend: number | string }>
@@ -93,7 +98,7 @@ export const employeeOnboardingApi = {
       `/employee-onboarding/${id}/approve`,
       { reviewNote },
     ),
-  reject: (id: string, reviewNote?: string) =>
+  reject: (id: string, reviewNote: string) =>
     api.post<unknown, EmployeeOnboardingApproval>(
       `/employee-onboarding/${id}/reject`,
       { reviewNote },

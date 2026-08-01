@@ -53,15 +53,25 @@ export class EmployeesController {
   @Post()
   @Roles(
     UserRole.SUPER_ADMIN,
+    UserRole.HR_EXECUTIVE,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
-    UserRole.ADMIN_OFFICER,
-    UserRole.ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
   )
-  create(
+  async create(
     @Body() dto: CreateEmployeeDto,
     @CurrentUser() user: { id: string; role: UserRole; branchId?: string | null },
   ) {
+    const canCreate = await this.permissionsService.userHasPermission(
+      user.id,
+      user.role,
+      Permission.EMPLOYEES_CREATE,
+    );
+    if (!canCreate) {
+      throw new ForbiddenException(
+        'Only HR roles and Super Admin can add employees',
+      );
+    }
     return this.employeesService.create(dto, user);
   }
 

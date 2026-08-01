@@ -38,18 +38,29 @@ export function ChangeStatusDialog({
   const [reason, setReason] = useState('')
 
   // ON_LEAVE is managed through leave records, not manual status changes.
+  // PENDING_APPROVAL is only cleared by the executive onboarding approver.
   const availableStatuses = EMPLOYEE_STATUSES.filter(
-    (s) => s !== currentStatus && s !== 'DISMISSED' && s !== 'ON_LEAVE',
+    (s) =>
+      s !== currentStatus &&
+      s !== 'DISMISSED' &&
+      s !== 'ON_LEAVE' &&
+      s !== 'PENDING_APPROVAL',
   )
 
   const statusOptions = availableStatuses.map(enumValueToLabel)
 
   const isDismissed = currentStatus === 'DISMISSED'
+  const isPendingApproval = currentStatus === 'PENDING_APPROVAL'
+  const statusLocked = isDismissed || isPendingApproval
 
   useEffect(() => {
     if (open) {
       const next = EMPLOYEE_STATUSES.filter(
-        (s) => s !== currentStatus && s !== 'DISMISSED' && s !== 'ON_LEAVE',
+        (s) =>
+          s !== currentStatus &&
+          s !== 'DISMISSED' &&
+          s !== 'ON_LEAVE' &&
+          s !== 'PENDING_APPROVAL',
       )
       if (next.length > 0) setStatus(next[0])
     }
@@ -89,6 +100,14 @@ export function ChangeStatusDialog({
             </p>
           )}
 
+          {isPendingApproval && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              This employee is pending executive approval. Status becomes Active
+              (or Terminated on rejection) only when the assigned President,
+              Founder, or Chairman reviews the onboarding request.
+            </p>
+          )}
+
           <div>
             <Label className="text-text-secondary">Current Status</Label>
             <div className="mt-1">
@@ -106,7 +125,7 @@ export function ChangeStatusDialog({
               )
             }
             placeholder="Select status"
-            disabled={isDismissed}
+            disabled={statusLocked}
           />
 
           <div className="space-y-2">
@@ -115,7 +134,7 @@ export function ChangeStatusDialog({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Reason for status change"
-              disabled={isDismissed}
+              disabled={statusLocked}
             />
           </div>
         </div>
@@ -126,7 +145,7 @@ export function ChangeStatusDialog({
           </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={isDismissed || !reason.trim() || mutation.isPending}
+            disabled={statusLocked || !reason.trim() || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Updating...' : 'Update Status'}

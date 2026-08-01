@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { BadgeCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type {
@@ -81,6 +81,45 @@ function QualList({
   )
 }
 
+function PhotoBox({
+  url,
+  fullName,
+}: {
+  url?: string | null
+  fullName: string
+}) {
+  const [failed, setFailed] = useState(false)
+
+  const initials = fullName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+
+  return (
+    <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+      {url && !failed ? (
+        <img
+          src={url}
+          alt={fullName}
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-slate-400">
+          <span className="text-2xl font-semibold text-slate-500">
+            {initials || '—'}
+          </span>
+          <span className="text-[10px]">
+            {failed ? 'Photo unavailable' : 'No photo'}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ApproverChip({
   label,
   highlight,
@@ -116,13 +155,14 @@ export function EmployeeInformationForm({
   data,
   className,
   showPendingApprover,
+  hideApprovalRouting,
 }: {
   data: EmployeeInformationFormData
   className?: string
   showPendingApprover?: boolean
+  /** Executive reviewers only need the employee's details, not the routing. */
+  hideApprovalRouting?: boolean
 }) {
-  const job = data.previousJobs[0]
-
   return (
     <div
       className={cn(
@@ -157,19 +197,11 @@ export function EmployeeInformationForm({
       <div className="space-y-4 p-4 sm:p-5">
         <Section title="Personal details">
           <div className="mb-4 flex flex-col gap-4 sm:flex-row">
-            <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-              {data.photoUrl ? (
-                <img
-                  src={data.photoUrl}
-                  alt={data.fullName}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
-                  No photo
-                </div>
-              )}
-            </div>
+            <PhotoBox
+              key={data.photoUrl ?? 'no-photo'}
+              url={data.photoUrl}
+              fullName={data.fullName}
+            />
             <div className="min-w-0 flex-1">
               <InfoGrid
                 items={[
@@ -189,6 +221,38 @@ export function EmployeeInformationForm({
           </div>
         </Section>
 
+        <Section title="Family & emergency contacts">
+          <InfoGrid
+            items={[
+              { label: 'Father status', value: data.fatherStatus },
+              ...(data.fatherStatus === 'DECEASED'
+                ? [
+                    {
+                      label: "Guardian's contact",
+                      value: data.guardianContact,
+                    },
+                  ]
+                : [
+                    {
+                      label: "Father's contact",
+                      value: data.fatherContact,
+                    },
+                  ]),
+              {
+                label: 'Emergency contact name',
+                value: data.emergencyContactName,
+              },
+              { label: 'Emergency relation', value: data.emergencyRelation },
+              {
+                label: 'Emergency contact number',
+                value: data.emergencyContactNumber,
+              },
+              { label: 'Spouse', value: data.spouseName },
+              { label: 'Spouse contact', value: data.spouseContact },
+            ]}
+          />
+        </Section>
+
         <Section title="Address & domicile">
           <InfoGrid
             items={[
@@ -196,15 +260,12 @@ export function EmployeeInformationForm({
               { label: 'District', value: data.district },
               { label: 'Tehsil', value: data.tehsil },
               { label: 'Police station', value: data.policeStation },
+              { label: 'Province', value: data.province },
+              { label: 'City', value: data.city },
               { label: 'Current address', value: data.currentAddress },
+              { label: 'Permanent province', value: data.permanentProvince },
+              { label: 'Permanent city', value: data.permanentCity },
               { label: 'Permanent address', value: data.permanentAddress },
-              {
-                label: 'Emergency contact',
-                value: data.emergencyGuardianContact,
-              },
-              { label: 'Spouse', value: data.spouseName },
-              { label: 'Spouse contact', value: data.spouseContact },
-              { label: 'Father contact', value: data.fatherContact },
             ]}
           />
         </Section>
@@ -215,6 +276,8 @@ export function EmployeeInformationForm({
               { label: 'Joining date', value: data.joiningDate },
               { label: 'Posting / branch', value: data.postingPlace },
               { label: 'Designation', value: data.designation },
+              { label: 'Staff type', value: data.staffType },
+              { label: 'Duty timings', value: data.dutyTimings },
               { label: 'Stipend', value: data.stipend },
               { label: 'Submitted by', value: data.submittedBy },
             ]}
@@ -235,30 +298,28 @@ export function EmployeeInformationForm({
         </Section>
 
         <Section title="Previous employment">
-          <InfoGrid
-            items={[
-              {
-                label: 'Organization',
-                value: job?.organizationName ?? '',
-              },
-              {
-                label: 'Owner / admin',
-                value: job?.ownerAdminName ?? '',
-              },
-              { label: 'Contact', value: job?.contactNumber ?? '' },
-              {
-                label: 'Postal address',
-                value: job?.postalAddress ?? '',
-              },
-            ]}
-          />
-          {data.experienceNotes ? (
-            <p className="mt-3 whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              {data.experienceNotes}
-            </p>
-          ) : null}
+          {data.previousJobs.length === 0 ? (
+            <p className="text-sm text-slate-400">None recorded</p>
+          ) : (
+            <div className="space-y-3">
+              {data.previousJobs.map((job, i) => (
+                <div key={i} className="rounded-lg bg-slate-50 p-3">
+                  <InfoGrid
+                    items={[
+                      { label: 'Organization', value: job.organizationName },
+                      { label: 'Owner / admin', value: job.ownerAdminName },
+                      { label: 'Contact', value: job.contactNumber },
+                      { label: 'Postal address', value: job.postalAddress },
+                      { label: 'Experience', value: job.totalExperience },
+                    ]}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </Section>
 
+        {!hideApprovalRouting && (
         <Section title="Approval routing">
           <p className="mb-3 text-xs text-slate-500">
             Confirm that the physical form matches this system record before
@@ -286,6 +347,7 @@ export function EmployeeInformationForm({
             </div>
           )}
         </Section>
+        )}
       </div>
     </div>
   )
