@@ -12,6 +12,7 @@ import {
 } from '../../config/cloudinary.config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessScopeService } from '../permissions/access-scope.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import {
   GenerateLetterDto,
   LetterQueryDto,
@@ -41,6 +42,7 @@ export class LettersService {
   constructor(
     private prisma: PrismaService,
     private accessScopeService: AccessScopeService,
+    private whatsappService: WhatsAppService,
   ) {}
 
   async nextLetterNo(): Promise<string> {
@@ -177,6 +179,17 @@ export class LettersService {
       return record;
     });
 
+    await this.whatsappService.deliverAfterLetterGenerated({
+      letterId: letter.id,
+      employeeId: dto.employeeId,
+      employeeName: String(variables.employeeName),
+      letterType: LetterType.APPOINTMENT,
+      phone: prepared.phone,
+      fileUrl,
+      pdfBuffer,
+      filename: `${sanitizeRefForFilename(letterNo)}.pdf`,
+    });
+
     return { letter, previewHtml: htmlContent };
   }
 
@@ -264,6 +277,7 @@ export class LettersService {
       variables,
       bodyHtml: template.bodyHtml,
       templateVersion: template.version,
+      phone: employee.phone,
     };
   }
 
@@ -397,6 +411,17 @@ export class LettersService {
       }
 
       return record;
+    });
+
+    await this.whatsappService.deliverAfterLetterGenerated({
+      letterId: letter.id,
+      employeeId: dto.employeeId,
+      employeeName: employee.fullName,
+      letterType: dto.letterType,
+      phone: employee.phone,
+      fileUrl,
+      pdfBuffer,
+      filename: fileName,
     });
 
     return { letter, previewHtml: htmlContent };

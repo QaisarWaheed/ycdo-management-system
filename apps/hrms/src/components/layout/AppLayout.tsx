@@ -14,6 +14,7 @@ const pageTitles: Record<string, string> = {
   '/leave': 'Leave Management',
   '/payroll': 'Payroll',
   '/letters': 'Letters',
+  '/failed-whatsapp': 'Failed WhatsApp',
   '/disciplinary': 'Disciplinary',
   '/recruitment': 'Recruitment',
   '/broadcasts': 'Broadcasts',

@@ -538,6 +538,7 @@ export interface AttendanceLog {
     currentDepartmentId?: string | null
     currentDepartment?: { name: string } | null
     dutyStartTime?: string | null
+    dutyEndTime?: string | null
     shift?: { name?: string; startTime?: string; endTime?: string } | null
     user?: {
       role?: string
