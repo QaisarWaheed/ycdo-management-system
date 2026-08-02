@@ -184,6 +184,7 @@ model Employee {
   relieverRequestsReceived   RelieverRequest[] @relation("RelieverEmployee")
   stipendReceipts            StipendReceipt[]
   incentives                 Incentive[]
+  additionalWorkingDays      AdditionalWorkingDay[]
   portalAttendances          PortalAttendance[]
   advanceLoanRequests        AdvanceLoanRequest[]
   faceSyncJobs               FaceSyncJob[]
@@ -474,6 +475,7 @@ enum AllowanceType {
   OVERTIME
   RELIEVER
   CUSTOM
+  ADDITIONAL_WORKING_DAYS
 }
 
 model PayrollDeduction {
@@ -777,6 +779,24 @@ model Incentive {
   addedByUser User     @relation(fields: [addedBy], references: [id])
 }
 
+/// Extra full duty-days credited by HR (e.g. covering double duty).
+/// Payroll: days in month × dailyDutyHours × hourlyRate as separate slip line.
+model AdditionalWorkingDay {
+  id         String   @id @default(uuid())
+  employeeId String
+  date       DateTime @db.Date
+  note       String?
+  addedById  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  addedBy  User     @relation(fields: [addedById], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([employeeId, date])
+}
+
 // ─── AUTH & USERS ─────────────────────────────────────────
 
 model User {
@@ -795,6 +815,7 @@ model User {
   auditLogs  AuditLog[]
   broadcasts NotificationBroadcast[]
   incentivesAdded Incentive[]
+  additionalWorkingDaysAdded AdditionalWorkingDay[]
   leaveApprovals LeaveApproval[] @relation("LeaveApprovals")
   passwordRecord UserPassword?
   permissions    UserPermission[]

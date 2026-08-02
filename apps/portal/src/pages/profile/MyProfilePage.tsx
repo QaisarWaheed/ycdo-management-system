@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { ExternalLink, Pencil, ShieldCheck, Upload, X } from 'lucide-react'
 import { employeesApi } from '@/api/endpoints/employees'
+import { additionalWorkingDaysApi } from '@/api/endpoints/additionalWorkingDays'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -46,6 +47,18 @@ export function MyProfilePage() {
     queryFn: () => employeesApi.getDocuments(employeeId),
     enabled: !!employeeId,
   })
+
+  const { data: additionalDays = [], isLoading: loadingAdditionalDays } =
+    useQuery({
+      queryKey: ['additional-working-days', employeeId],
+      queryFn: () => additionalWorkingDaysApi.getByEmployee(employeeId),
+      enabled: !!employeeId,
+    })
+
+  const dutyHours =
+    employee?.dutyTotalHours && employee.dutyTotalHours > 0
+      ? employee.dutyTotalHours
+      : 8
 
   useEffect(() => {
     if (employee) {
@@ -176,6 +189,9 @@ export function MyProfilePage() {
         <TabsList>
           <TabsTrigger value="personal">Personal Info</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsTrigger value="additional-working-days">
+            Additional working days
+          </TabsTrigger>
           {isFemale && (
             <TabsTrigger value="privacy">Privacy & Biometric</TabsTrigger>
           )}
@@ -394,9 +410,72 @@ export function MyProfilePage() {
               </TableBody>
             </Table>
           </div>
-        </TabsContent>
+          </TabsContent>
 
-        {isFemale && (
+          <TabsContent value="additional-working-days" className="mt-4">
+            <Card className="border-border shadow-sm">
+              <CardContent className="p-0">
+                <div className="border-b border-border px-6 py-4">
+                  <h3 className="font-semibold">Additional working days</h3>
+                  <p className="text-sm text-text-secondary">
+                    Extra duty days credited by HR. Each day counts as{' '}
+                    {dutyHours} hours on payroll.
+                  </p>
+                </div>
+                {loadingAdditionalDays ? (
+                  <div className="space-y-2 p-6">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-10 w-full" />
+                    ))}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Hours</TableHead>
+                        <TableHead>Note</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {additionalDays.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={3}
+                            className="text-text-secondary"
+                          >
+                            No additional working days recorded
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        <>
+                          {additionalDays.map((row) => (
+                            <TableRow key={row.id}>
+                              <TableCell>
+                                {format(new Date(row.date), 'dd/MM/yyyy')}
+                              </TableCell>
+                              <TableCell>{dutyHours}h</TableCell>
+                              <TableCell>{row.note ?? '—'}</TableCell>
+                            </TableRow>
+                          ))}
+                          <TableRow className="bg-muted/40 font-semibold">
+                            <TableCell>Total</TableCell>
+                            <TableCell>
+                              {additionalDays.length} day(s) ·{' '}
+                              {additionalDays.length * dutyHours}h
+                            </TableCell>
+                            <TableCell />
+                          </TableRow>
+                        </>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {isFemale && (
           <TabsContent value="privacy" className="mt-4">
             <Card className="border-border shadow-sm">
               <CardContent className="space-y-6 p-6">

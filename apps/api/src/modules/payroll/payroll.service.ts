@@ -101,19 +101,32 @@ export class PayrollService {
       return existing;
     }
 
-    const breakdown = await this.computeHourlyBreakdown(
-      dto.employeeId,
-      dto.month,
-      dto.year,
-      {
-        stipendRecord: activeStipendRecord,
-        employee,
-        existingDeductions: existing?.deductions ?? [],
-        existingAllowances: existing?.allowances ?? [],
-      },
-    );
+    const contractualBasic = Number(activeStipendRecord.basicStipend);
 
     if (existing) {
+      await this.upsertAdditionalWorkingDaysAllowanceRow(
+        existing.id,
+        dto.employeeId,
+        dto.month,
+        dto.year,
+        employee,
+        contractualBasic,
+      );
+      const refreshed = await this.prisma.payrollEntry.findUnique({
+        where: { id: existing.id },
+        include: { deductions: true, allowances: true },
+      });
+      const breakdown = await this.computeHourlyBreakdown(
+        dto.employeeId,
+        dto.month,
+        dto.year,
+        {
+          stipendRecord: activeStipendRecord,
+          employee,
+          existingDeductions: refreshed?.deductions ?? [],
+          existingAllowances: refreshed?.allowances ?? [],
+        },
+      );
       return this.prisma.payrollEntry.update({
         where: { id: existing.id },
         data: {
@@ -128,7 +141,19 @@ export class PayrollService {
       });
     }
 
-    return this.prisma.payrollEntry.create({
+    const breakdown = await this.computeHourlyBreakdown(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      {
+        stipendRecord: activeStipendRecord,
+        employee,
+        existingDeductions: [],
+        existingAllowances: [],
+      },
+    );
+
+    const created = await this.prisma.payrollEntry.create({
       data: {
         stipendRecordId: activeStipendRecord.id,
         month: dto.month,
@@ -141,6 +166,115 @@ export class PayrollService {
         status: PayrollStatus.PENDING,
       },
       include: { deductions: true, allowances: true },
+    });
+
+    await this.upsertAdditionalWorkingDaysAllowanceRow(
+      created.id,
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      employee,
+      contractualBasic,
+    );
+
+    const refreshed = await this.prisma.payrollEntry.findUnique({
+      where: { id: created.id },
+      include: { deductions: true, allowances: true },
+    });
+    const withAwd = await this.computeHourlyBreakdown(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      {
+        stipendRecord: activeStipendRecord,
+        employee,
+        existingDeductions: refreshed?.deductions ?? [],
+        existingAllowances: refreshed?.allowances ?? [],
+      },
+    );
+
+    return this.prisma.payrollEntry.update({
+      where: { id: created.id },
+      data: {
+        basicStipend: withAwd.hourlyBasicEarned,
+        totalAllowances: withAwd.fixedAllowances + withAwd.extraAllowances,
+        totalDeductions:
+          withAwd.fixedPackageDeductions + withAwd.disciplineDeductions,
+        netStipend: withAwd.netStipend,
+      },
+      include: { deductions: true, allowances: true },
+    });
+  }
+
+  /** Upserts or removes ADDITIONAL_WORKING_DAYS allowance row only (totals recalculated by caller). */
+  private async upsertAdditionalWorkingDaysAllowanceRow(
+    payrollEntryId: string,
+    employeeId: string,
+    month: number,
+    year: number,
+    employee: {
+      dutyTotalHours?: number | null;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      shift?: { startTime: string; endTime: string } | null;
+    },
+    contractualBasic: number,
+  ) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+    const dayCount = await this.prisma.additionalWorkingDay.count({
+      where: {
+        employeeId,
+        date: { gte: monthStart, lte: monthEnd },
+      },
+    });
+
+    const dailyHours = resolveDailyDutyHours(employee);
+    const hourlyRate = computeHourlyRate(
+      contractualBasic,
+      dailyHours,
+      daysInMonth,
+    );
+    const hours = roundMoney(dayCount * dailyHours);
+    const amount = roundMoney(hours * hourlyRate);
+
+    const existing = await this.prisma.allowance.findFirst({
+      where: {
+        payrollEntryId,
+        type: AllowanceType.ADDITIONAL_WORKING_DAYS,
+      },
+    });
+
+    if (dayCount <= 0 || amount <= 0) {
+      if (existing) {
+        await this.prisma.allowance.delete({ where: { id: existing.id } });
+      }
+      return;
+    }
+
+    const monthLabel = new Date(year, month - 1, 1).toLocaleString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+    const description = `Additional working days: ${dayCount} day(s) × ${dailyHours}h = ${hours}h @ PKR ${hourlyRate}/hr (${monthLabel})`;
+
+    if (existing) {
+      await this.prisma.allowance.update({
+        where: { id: existing.id },
+        data: { hours, amount, description },
+      });
+      return;
+    }
+
+    await this.prisma.allowance.create({
+      data: {
+        payrollEntryId,
+        type: AllowanceType.ADDITIONAL_WORKING_DAYS,
+        hours,
+        amount,
+        description,
+      },
     });
   }
 

@@ -26,6 +26,7 @@ import { lettersApi } from '@/api/endpoints/letters'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { incentivesApi } from '@/api/endpoints/incentives'
+import { AdditionalWorkingDaysTab } from '@/components/employees/AdditionalWorkingDaysTab'
 import { EmployeePayrollTab } from '@/components/employees/EmployeePayrollTab'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
@@ -657,6 +658,13 @@ export function EmployeeProfilePage() {
     user?.role === 'HR_ADMIN_MANAGER' ||
     user?.role === 'ADMIN_OFFICER'
 
+  const canEditAdditionalWorkingDays =
+    user?.role === 'SUPER_ADMIN' ||
+    user?.role === 'HR_MANAGER' ||
+    user?.role === 'HR_ADMIN_MANAGER' ||
+    user?.role === 'HR_OPERATIONS_MANAGER' ||
+    user?.role === 'ADMIN_OFFICER'
+
   const incentiveTotal = (incentives as Incentive[]).reduce(
     (sum, i) => sum + Number(i.amount),
     0,
@@ -1207,6 +1215,9 @@ export function EmployeeProfilePage() {
           <TabsTrigger value="qualifications">Qualifications</TabsTrigger>
           <TabsTrigger value="previous-employment">Previous Employment</TabsTrigger>
           <TabsTrigger value="incentives">Incentives</TabsTrigger>
+          <TabsTrigger value="additional-working-days">
+            Additional working days
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -2151,6 +2162,14 @@ export function EmployeeProfilePage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="additional-working-days" className="space-y-4">
+          <AdditionalWorkingDaysTab
+            employeeId={id}
+            dailyDutyHours={employee.dutyTotalHours}
+            canEdit={canEditAdditionalWorkingDays}
+          />
         </TabsContent>
       </Tabs>
 

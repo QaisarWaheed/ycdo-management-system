@@ -5,6 +5,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import * as path from 'path';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AcknowledgementsModule } from './modules/acknowledgements/acknowledgements.module';
+import { AdditionalWorkingDaysModule } from './modules/additional-working-days/additional-working-days.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BiometricDevicesModule } from './modules/biometric-devices/biometric-devices.module';
@@ -75,6 +76,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PreviousEmploymentModule,
     OutstationModule,
     AcknowledgementsModule,
+    AdditionalWorkingDaysModule,
     StipendReceiptsModule,
     IncentivesModule,
     UserPasswordsModule,
