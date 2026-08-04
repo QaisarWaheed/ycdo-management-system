@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Length,
   MinLength,
 } from 'class-validator';
 
@@ -24,6 +25,22 @@ export class LoginDto {
   @IsOptional()
   @IsIn(['portal', 'hrms'])
   client?: AuthClient;
+}
+
+export class VerifyLoginOtpDto {
+  @IsUUID()
+  @IsNotEmpty()
+  challengeId: string;
+
+  @IsString()
+  @Length(6, 6)
+  otp: string;
+}
+
+export class ResendLoginOtpDto {
+  @IsUUID()
+  @IsNotEmpty()
+  challengeId: string;
 }
 
 export class RegisterDto {

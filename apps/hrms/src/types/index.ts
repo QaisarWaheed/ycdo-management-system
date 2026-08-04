@@ -15,6 +15,21 @@ export interface AuthLoginResponse {
   user: User
 }
 
+export interface AuthOtpChallengeResponse {
+  requiresOtp: true
+  challengeId: string
+  message: string
+  expiresInSeconds: number
+}
+
+export type AuthLoginResult = AuthLoginResponse | AuthOtpChallengeResponse
+
+export function isAuthOtpChallenge(
+  result: AuthLoginResult,
+): result is AuthOtpChallengeResponse {
+  return 'requiresOtp' in result && result.requiresOtp === true
+}
+
 export type EmployeeStatus =
   | 'ACTIVE'
   | 'PENDING_APPROVAL'

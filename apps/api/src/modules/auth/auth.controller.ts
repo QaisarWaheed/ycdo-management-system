@@ -5,7 +5,9 @@ import {
   ChangePasswordDto,
   LoginDto,
   RegisterDto,
+  ResendLoginOtpDto,
   ResetPasswordDto,
+  VerifyLoginOtpDto,
 } from './auth.dto';
 import { CurrentUser } from './current-user.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -19,6 +21,16 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('verify-otp')
+  verifyOtp(@Body() dto: VerifyLoginOtpDto) {
+    return this.authService.verifyLoginOtp(dto);
+  }
+
+  @Post('resend-otp')
+  resendOtp(@Body() dto: ResendLoginOtpDto) {
+    return this.authService.resendLoginOtp(dto);
   }
 
   @Post('register')

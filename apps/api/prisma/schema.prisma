@@ -824,6 +824,22 @@ model User {
   submittedOnboardingApprovals EmployeeOnboardingApproval[] @relation("SubmittedOnboardingApprovals")
   reviewedOnboardingApprovals  EmployeeOnboardingApproval[] @relation("ReviewedOnboardingApprovals")
   mutualSwapsCreated           MutualSwap[]
+  loginOtpChallenges           LoginOtpChallenge[]
+}
+
+model LoginOtpChallenge {
+  id         String    @id @default(uuid())
+  userId     String
+  codeHash   String
+  sentTo     String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model UserAdditionalRole {

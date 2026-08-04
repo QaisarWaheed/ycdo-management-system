@@ -354,16 +354,41 @@ export function MyLettersPage() {
   const handleDownload = async (letter: Letter) => {
     try {
       const blob = await lettersApi.getPdf(letter.id)
-      const url = URL.createObjectURL(blob as Blob)
+
+      // Axios can surface API errors as JSON blobs with a 2xx proxy rewrite,
+      // or the browser may still "download" an error body — treat JSON as failure.
+      if (blob.type?.includes('application/json')) {
+        let message = 'Failed to download letter'
+        try {
+          const parsed = JSON.parse(await blob.text()) as {
+            message?: string | string[]
+          }
+          if (parsed.message) {
+            message = Array.isArray(parsed.message)
+              ? parsed.message.join(', ')
+              : parsed.message
+          }
+        } catch {
+          /* keep default */
+        }
+        throw new Error(message)
+      }
+
+      const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `${letterReference(letter)}.pdf`
+      a.rel = 'noopener'
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
-      await lettersApi.markPrinted(letter.id)
-    } catch {
+      a.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+
+      toast({ title: 'Letter downloaded' })
+    } catch (err) {
       toast({
         title: 'Failed to download letter',
+        description: err instanceof Error ? err.message : undefined,
         variant: 'destructive',
       })
     }

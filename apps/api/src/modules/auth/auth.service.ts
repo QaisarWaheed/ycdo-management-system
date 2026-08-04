@@ -8,20 +8,30 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { randomInt } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   buildEffectiveRoles,
   canAccessHrms,
+  hasAnyRole,
 } from '../../common/user-roles.util';
 import { PermissionsService } from '../permissions/permissions.service';
 import {
   ChangePasswordDto,
   LoginDto,
   RegisterDto,
+  ResendLoginOtpDto,
   ResetPasswordDto,
+  VerifyLoginOtpDto,
 } from './auth.dto';
+import {
+  sendOtpEmail,
+  superAdminOtpDestination,
+} from './otp-email.helper';
 
 type UserWithoutPassword = Omit<User, 'password'>;
+
+const OTP_TTL_MS = 10 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -67,6 +77,131 @@ export class AuthService {
       );
     }
 
+    if (hasAnyRole(roles, [UserRole.SUPER_ADMIN])) {
+      return this.startSuperAdminOtpChallenge(user);
+    }
+
+    return this.issueSession(user, roles);
+  }
+
+  async verifyLoginOtp(dto: VerifyLoginOtpDto) {
+    const challenge = await this.prisma.loginOtpChallenge.findUnique({
+      where: { id: dto.challengeId },
+      include: {
+        user: { include: { additionalRoles: { select: { role: true } } } },
+      },
+    });
+
+    if (!challenge || challenge.consumedAt) {
+      throw new UnauthorizedException('Invalid or expired OTP');
+    }
+
+    if (challenge.expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedException('OTP has expired. Please sign in again.');
+    }
+
+    const valid = await bcrypt.compare(dto.otp.trim(), challenge.codeHash);
+    if (!valid) {
+      throw new UnauthorizedException('Invalid OTP');
+    }
+
+    await this.prisma.loginOtpChallenge.update({
+      where: { id: challenge.id },
+      data: { consumedAt: new Date() },
+    });
+
+    const user = challenge.user;
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is inactive');
+    }
+
+    const roles = buildEffectiveRoles(user.role, user.additionalRoles);
+    if (!hasAnyRole(roles, [UserRole.SUPER_ADMIN])) {
+      throw new ForbiddenException('OTP verification is only for Super Admin');
+    }
+
+    return this.issueSession(user, roles);
+  }
+
+  async resendLoginOtp(dto: ResendLoginOtpDto) {
+    const existing = await this.prisma.loginOtpChallenge.findUnique({
+      where: { id: dto.challengeId },
+      include: { user: true },
+    });
+
+    if (!existing || existing.consumedAt) {
+      throw new UnauthorizedException('Invalid or expired OTP challenge');
+    }
+
+    if (!existing.user.isActive) {
+      throw new UnauthorizedException('Account is inactive');
+    }
+
+    return this.startSuperAdminOtpChallenge(existing.user, existing.id);
+  }
+
+  private async startSuperAdminOtpChallenge(
+    user: User,
+    replaceChallengeId?: string,
+  ) {
+    const code = String(randomInt(100000, 1000000));
+    const codeHash = await bcrypt.hash(code, 10);
+    const sentTo = superAdminOtpDestination();
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+
+    let challengeId = replaceChallengeId;
+
+    if (replaceChallengeId) {
+      await this.prisma.loginOtpChallenge.update({
+        where: { id: replaceChallengeId },
+        data: { codeHash, sentTo, expiresAt, consumedAt: null },
+      });
+    } else {
+      // Invalidate prior open challenges for this user.
+      await this.prisma.loginOtpChallenge.updateMany({
+        where: { userId: user.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+
+      const created = await this.prisma.loginOtpChallenge.create({
+        data: {
+          userId: user.id,
+          codeHash,
+          sentTo,
+          expiresAt,
+        },
+      });
+      challengeId = created.id;
+    }
+
+    try {
+      await sendOtpEmail({
+        to: sentTo,
+        code,
+        loginEmail: user.email,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Email send failed';
+      console.error('[OTP] Failed to send Super Admin OTP email:', message);
+      throw new UnauthorizedException(
+        'Could not send login OTP email. Check SMTP configuration.',
+      );
+    }
+
+    const masked = this.maskEmail(sentTo);
+
+    return {
+      requiresOtp: true as const,
+      challengeId: challengeId!,
+      message: `A verification code was sent to ${masked}`,
+      expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
+    };
+  }
+
+  private async issueSession(
+    user: User,
+    roles: UserRole[],
+  ) {
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLogin: new Date() },
@@ -95,6 +230,13 @@ export class AuthService {
         permissions,
       },
     };
+  }
+
+  private maskEmail(email: string): string {
+    const [local, domain] = email.split('@');
+    if (!local || !domain) return '***';
+    const visible = local.slice(0, Math.min(2, local.length));
+    return `${visible}***@${domain}`;
   }
 
   async getMe(userId: string) {
