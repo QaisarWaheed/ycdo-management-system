@@ -1,7 +1,9 @@
-import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
+import { employeesApi } from '@/api/endpoints/employees'
 import { lettersApi } from '@/api/endpoints/letters'
+import { UrduLetterCanvas } from '@/components/letters/UrduLetterCanvas'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -24,6 +26,7 @@ import { toast } from '@/hooks/use-toast'
 import {
   getLetterExtraFields,
   getLetterRequiredFields,
+  isUrduLetterType,
   letterReference,
 } from '@/lib/letterFieldConfig'
 import { LETTER_TYPES, type LetterType } from '@/types'
@@ -40,12 +43,39 @@ export function GenerateLetterDialog({
   employeeId,
 }: GenerateLetterDialogProps) {
   const queryClient = useQueryClient()
-  const [letterType, setLetterType] = useState<LetterType>('APPOINTMENT')
+  const [letterType, setLetterType] = useState<LetterType>('WARNING')
   const [fields, setFields] = useState<Record<string, string>>({})
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
 
   const extraFields = getLetterExtraFields(letterType)
   const requiredFields = getLetterRequiredFields(letterType)
+  const urduMode = isUrduLetterType(letterType)
+  const templateFields = useMemo(
+    () => extraFields.filter((f) => f.onTemplate),
+    [extraFields],
+  )
+  const sideFields = useMemo(
+    () => extraFields.filter((f) => !f.onTemplate),
+    [extraFields],
+  )
+
+  const { data: employee } = useQuery({
+    queryKey: ['employee', employeeId],
+    queryFn: () => employeesApi.getOne(employeeId),
+    enabled: open && !!employeeId,
+  })
+
+  // Prefill identity from profile when opening / switching type (Urdu letters).
+  useEffect(() => {
+    if (!open || !employee || !urduMode) return
+    setFields((prev) => ({
+      ...prev,
+      senderTitle: prev.senderTitle || 'کوآرڈینیٹر پروجیکٹس',
+      employeeName: prev.employeeName || employee.fullName || '',
+      designation: prev.designation || employee.currentDesignation || '',
+      branch: prev.branch || employee.currentBranch?.name || '',
+    }))
+  }, [open, employee, urduMode, letterType])
 
   const buildExtraFieldsPayload = () => {
     const payload: Record<string, string> = {}
@@ -83,6 +113,16 @@ export function GenerateLetterDialog({
       })
     },
   })
+
+  // Live Urdu preview while typing on the template
+  useEffect(() => {
+    if (!open || !urduMode || !requiredFieldsFilled) return
+    const t = window.setTimeout(() => {
+      previewMutation.mutate()
+    }, 500)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fields, letterType, open, urduMode, requiredFieldsFilled])
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -128,6 +168,11 @@ export function GenerateLetterDialog({
     },
   })
 
+  const setField = (key: string, value: string) => {
+    setPreviewHtml(null)
+    setFields((f) => ({ ...f, [key]: value }))
+  }
+
   return (
     <Dialog
       open={open}
@@ -139,9 +184,11 @@ export function GenerateLetterDialog({
         }
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[95vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Generate Letter</DialogTitle>
+          <DialogTitle>
+            {urduMode ? 'اردو خط تیار کریں / Generate Urdu Letter' : 'Generate Letter'}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -168,64 +215,97 @@ export function GenerateLetterDialog({
             </Select>
           </div>
 
-          <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-            Employee profile fields are filled automatically. Preview uses the
-            seeded Urdu/English template and does not consume a letter number.
-          </p>
+          {urduMode ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              خط کا اصل ٹیمپلیٹ نیچے دکھایا گیا ہے۔ نام، عہدہ، وجہ اور خلاف ورزیاں{' '}
+              <strong>اردو</strong> میں ٹائپ کریں۔ دائیں جانب حقیقی پیش منظر نظر آئے گا۔
+            </p>
+          ) : (
+            <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              This letter type uses the approved English format. Preview before
+              issuing.
+            </p>
+          )}
 
-          {extraFields.map((field) => (
-            <div key={field.key} className="space-y-2">
-              <Label>{field.label}</Label>
-              {field.type === 'textarea' ? (
-                <Textarea
-                  value={fields[field.key] ?? ''}
-                  onChange={(e) => {
-                    setPreviewHtml(null)
-                    setFields((f) => ({ ...f, [field.key]: e.target.value }))
-                  }}
-                />
-              ) : (
-                <Input
-                  type={
-                    field.type === 'number'
-                      ? 'number'
-                      : field.type === 'date'
-                        ? 'date'
-                        : 'text'
-                  }
-                  value={fields[field.key] ?? ''}
-                  onChange={(e) => {
-                    setPreviewHtml(null)
-                    setFields((f) => ({ ...f, [field.key]: e.target.value }))
-                  }}
-                />
-              )}
-              {field.hint ? (
-                <p className="text-xs text-text-secondary">{field.hint}</p>
+          <div
+            className={
+              urduMode
+                ? 'grid gap-4 lg:grid-cols-2'
+                : 'space-y-4'
+            }
+          >
+            {urduMode ? (
+              <UrduLetterCanvas
+                letterType={letterType}
+                fields={fields}
+                onChange={setField}
+                templateFields={templateFields}
+              />
+            ) : null}
+
+            <div className="space-y-3">
+              {(urduMode ? sideFields : extraFields).map((field) => (
+                <div key={field.key} className="space-y-2">
+                  <Label>{field.label}</Label>
+                  {field.type === 'textarea' ? (
+                    <Textarea
+                      dir={urduMode ? 'rtl' : undefined}
+                      lang={urduMode ? 'ur' : undefined}
+                      value={fields[field.key] ?? ''}
+                      onChange={(e) => setField(field.key, e.target.value)}
+                    />
+                  ) : (
+                    <Input
+                      dir={urduMode && field.type !== 'date' ? 'rtl' : undefined}
+                      lang={urduMode ? 'ur' : undefined}
+                      type={
+                        field.type === 'number'
+                          ? 'number'
+                          : field.type === 'date'
+                            ? 'date'
+                            : 'text'
+                      }
+                      value={fields[field.key] ?? ''}
+                      onChange={(e) => setField(field.key, e.target.value)}
+                    />
+                  )}
+                  {field.hint ? (
+                    <p className="text-xs text-text-secondary">{field.hint}</p>
+                  ) : null}
+                </div>
+              ))}
+
+              {previewHtml ? (
+                <div className="space-y-1">
+                  <Label>اصل خط کا پیش منظر / Live preview</Label>
+                  <iframe
+                    title="Letter preview"
+                    className="h-[55vh] w-full rounded border bg-white"
+                    srcDoc={previewHtml}
+                  />
+                </div>
+              ) : urduMode ? (
+                <div className="flex h-40 items-center justify-center rounded border border-dashed text-sm text-text-secondary">
+                  ٹیمپلیٹ بھریں — پیش منظر خود لوڈ ہوگا
+                </div>
               ) : null}
             </div>
-          ))}
-
-          {previewHtml && (
-            <iframe
-              title="Letter preview"
-              className="h-[45vh] w-full rounded border bg-white"
-              srcDoc={previewHtml}
-            />
-          )}
+          </div>
         </div>
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            variant="outline"
-            disabled={previewMutation.isPending || !requiredFieldsFilled}
-            onClick={() => previewMutation.mutate()}
-          >
-            {previewMutation.isPending ? 'Rendering...' : 'Preview'}
-          </Button>
+          {!urduMode && (
+            <Button
+              variant="outline"
+              disabled={previewMutation.isPending || !requiredFieldsFilled}
+              onClick={() => previewMutation.mutate()}
+            >
+              {previewMutation.isPending ? 'Rendering...' : 'Preview'}
+            </Button>
+          )}
           <Button
             className="bg-primary hover:bg-primary-dark"
             onClick={() => mutation.mutate()}

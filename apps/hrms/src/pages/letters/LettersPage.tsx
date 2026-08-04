@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { differenceInHours, format, parseISO } from 'date-fns'
 import {
@@ -71,9 +71,12 @@ import {
   getLetterExtraFields,
   getLetterRequiredFields,
   isLetterPdfUnavailable,
+  isUrduLetterType,
   letterReference,
   letterTypeBadgeClass,
 } from '@/lib/letterFieldConfig'
+import { UrduLetterCanvas } from '@/components/letters/UrduLetterCanvas'
+import { employeesApi } from '@/api/endpoints/employees'
 import { cn } from '@/lib/utils'
 import {
   LETTER_TYPES,
@@ -333,7 +336,7 @@ function GenerateLetterWizard({
   const queryClient = useQueryClient()
   const [step, setStep] = useState(1)
   const [employeeId, setEmployeeId] = useState('')
-  const [letterType, setLetterType] = useState<LetterType>('APPOINTMENT')
+  const [letterType, setLetterType] = useState<LetterType>('WARNING')
   const [fields, setFields] = useState<Record<string, string>>({})
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [downloadPrompt, setDownloadPrompt] = useState<{
@@ -344,13 +347,33 @@ function GenerateLetterWizard({
   const reset = () => {
     setStep(1)
     setEmployeeId('')
-    setLetterType('APPOINTMENT')
+    setLetterType('WARNING')
     setFields({})
     setPreviewHtml(null)
   }
 
   const extraFields = getLetterExtraFields(letterType)
   const requiredFields = getLetterRequiredFields(letterType)
+  const urduMode = isUrduLetterType(letterType)
+  const templateFields = extraFields.filter((f) => f.onTemplate)
+  const sideFields = extraFields.filter((f) => !f.onTemplate)
+
+  const { data: employee } = useQuery({
+    queryKey: ['employee', employeeId],
+    queryFn: () => employeesApi.getOne(employeeId),
+    enabled: open && !!employeeId && step >= 3 && urduMode,
+  })
+
+  useEffect(() => {
+    if (!employee || !urduMode || step !== 3) return
+    setFields((prev) => ({
+      ...prev,
+      senderTitle: prev.senderTitle || 'کوآرڈینیٹر پروجیکٹس',
+      employeeName: prev.employeeName || employee.fullName || '',
+      designation: prev.designation || employee.currentDesignation || '',
+      branch: prev.branch || employee.currentBranch?.name || '',
+    }))
+  }, [employee, urduMode, step, letterType])
 
   const buildExtraFieldsPayload = () => {
     const payload: Record<string, string> = {}
@@ -429,7 +452,7 @@ function GenerateLetterWizard({
           if (!v) reset()
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[95vh] overflow-y-auto sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>
               Generate Letter — Step {step} of {totalSteps}
@@ -475,54 +498,114 @@ function GenerateLetterWizard({
 
           {step === 3 && (
             <div className="space-y-4">
-              <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-                Profile fields are filled automatically from the employee
-                record. Urdu templates are used for disciplinary letters;
-                Appointment, Transfer, and Salary Increment keep their English
-                approved formats.
-              </p>
-              <p className="text-sm text-text-secondary">
-                {LETTER_TYPES.find((t) => t.value === letterType)?.label} —
-                template fields
-              </p>
-              {extraFields.map((field) => (
-                <div key={field.key} className="space-y-2">
-                  <Label>{field.label}</Label>
-                  {field.type === 'textarea' ? (
-                    <Textarea
-                      value={fields[field.key] ?? ''}
-                      onChange={(e) => {
-                        setPreviewHtml(null)
-                        setFields((f) => ({
-                          ...f,
-                          [field.key]: e.target.value,
-                        }))
-                      }}
-                    />
-                  ) : (
-                    <Input
-                      type={
-                        field.type === 'number'
-                          ? 'number'
-                          : field.type === 'date'
-                            ? 'date'
-                            : 'text'
-                      }
-                      value={fields[field.key] ?? ''}
-                      onChange={(e) => {
-                        setPreviewHtml(null)
-                        setFields((f) => ({
-                          ...f,
-                          [field.key]: e.target.value,
-                        }))
-                      }}
-                    />
-                  )}
-                  {field.hint ? (
-                    <p className="text-xs text-text-secondary">{field.hint}</p>
-                  ) : null}
+              {urduMode ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                  نیچے اصل اردو ٹیمپلیٹ ہے۔ نام، عہدہ اور وجوہات اردو میں ٹائپ
+                  کریں۔
+                </p>
+              ) : (
+                <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                  This letter type uses the approved English format.
+                </p>
+              )}
+
+              {urduMode ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <UrduLetterCanvas
+                    letterType={letterType}
+                    fields={fields}
+                    onChange={(key, value) => {
+                      setPreviewHtml(null)
+                      setFields((f) => ({ ...f, [key]: value }))
+                    }}
+                    templateFields={templateFields}
+                  />
+                  <div className="space-y-3">
+                    {sideFields.map((field) => (
+                      <div key={field.key} className="space-y-2">
+                        <Label>{field.label}</Label>
+                        {field.type === 'textarea' ? (
+                          <Textarea
+                            dir="rtl"
+                            lang="ur"
+                            value={fields[field.key] ?? ''}
+                            onChange={(e) => {
+                              setPreviewHtml(null)
+                              setFields((f) => ({
+                                ...f,
+                                [field.key]: e.target.value,
+                              }))
+                            }}
+                          />
+                        ) : (
+                          <Input
+                            dir={field.type === 'date' ? undefined : 'rtl'}
+                            lang="ur"
+                            type={
+                              field.type === 'number'
+                                ? 'number'
+                                : field.type === 'date'
+                                  ? 'date'
+                                  : 'text'
+                            }
+                            value={fields[field.key] ?? ''}
+                            onChange={(e) => {
+                              setPreviewHtml(null)
+                              setFields((f) => ({
+                                ...f,
+                                [field.key]: e.target.value,
+                              }))
+                            }}
+                          />
+                        )}
+                        {field.hint ? (
+                          <p className="text-xs text-text-secondary">
+                            {field.hint}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              ) : (
+                <div className="space-y-4">
+                  {extraFields.map((field) => (
+                    <div key={field.key} className="space-y-2">
+                      <Label>{field.label}</Label>
+                      {field.type === 'textarea' ? (
+                        <Textarea
+                          value={fields[field.key] ?? ''}
+                          onChange={(e) => {
+                            setPreviewHtml(null)
+                            setFields((f) => ({
+                              ...f,
+                              [field.key]: e.target.value,
+                            }))
+                          }}
+                        />
+                      ) : (
+                        <Input
+                          type={
+                            field.type === 'number'
+                              ? 'number'
+                              : field.type === 'date'
+                                ? 'date'
+                                : 'text'
+                          }
+                          value={fields[field.key] ?? ''}
+                          onChange={(e) => {
+                            setPreviewHtml(null)
+                            setFields((f) => ({
+                              ...f,
+                              [field.key]: e.target.value,
+                            }))
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

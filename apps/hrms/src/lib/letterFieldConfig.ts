@@ -5,7 +5,37 @@ export interface LetterFieldDef {
   label: string
   type?: 'textarea' | 'number' | 'date'
   hint?: string
+  /** Place this field inside the on-template canvas (Urdu RTL). */
+  onTemplate?: boolean
 }
+
+/** Shared identity fields typed in Urdu on the letter itself. */
+const URDU_IDENTITY_FIELDS: LetterFieldDef[] = [
+  {
+    key: 'employeeName',
+    label: 'نام (بجانب)',
+    onTemplate: true,
+    hint: 'اردو میں نام لکھیں',
+  },
+  {
+    key: 'designation',
+    label: 'عہدہ',
+    onTemplate: true,
+    hint: 'اردو میں عہدہ لکھیں',
+  },
+  {
+    key: 'branch',
+    label: 'برانچ / مقام',
+    onTemplate: true,
+    hint: 'اردو میں برانچ لکھیں',
+  },
+  {
+    key: 'senderTitle',
+    label: 'منجانب',
+    onTemplate: true,
+    hint: 'مثلاً: کوآرڈینیٹر پروجیکٹس',
+  },
+]
 
 export const LETTER_FIELD_CONFIG: Partial<
   Record<LetterType, LetterFieldDef[]>
@@ -17,69 +47,133 @@ export const LETTER_FIELD_CONFIG: Partial<
     { key: 'capacity', label: 'Capacity (e.g. Full Time)' },
   ],
   WARNING: [
+    ...URDU_IDENTITY_FIELDS,
     {
       key: 'violations',
-      label: 'Violations / خلاف ورزیاں (one per line)',
+      label: 'خلاف ورزیاں (ہر سطر ایک خلاف ورزی)',
       type: 'textarea',
-      hint: 'Each line becomes a violation bullet on the Urdu warning template.',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں — ہر لائن الگ خلاف ورزی بنے گی',
     },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
   ],
   ADVICE: [
-    { key: 'adviceReason', label: 'Advice Reason', type: 'textarea' },
-    { key: 'adviceDetails', label: 'Additional Details', type: 'textarea' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    ...URDU_IDENTITY_FIELDS,
+    {
+      key: 'adviceReason',
+      label: 'وجہ / تفصیل',
+      type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
+    },
+    {
+      key: 'adviceDetails',
+      label: 'اضافی ہدایت (اختیاری)',
+      type: 'textarea',
+      onTemplate: true,
+    },
   ],
   DISCIPLINARY: [
+    ...URDU_IDENTITY_FIELDS,
     {
       key: 'disciplinaryReason',
-      label: 'Reason / Incident Detail',
+      label: 'تفصیلِ واقعہ',
       type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
     },
-    { key: 'incidentDate', label: 'Incident Date', type: 'date' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    { key: 'incidentDate', label: 'تاریخِ واقعہ', type: 'date', onTemplate: true },
   ],
   EXPLANATION: [
+    ...URDU_IDENTITY_FIELDS,
     {
       key: 'issueDescription',
-      label: 'Issue Description',
+      label: 'مسئلہ / تفصیل',
       type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
     },
-    { key: 'responseDeadline', label: 'Response Deadline', type: 'date' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    {
+      key: 'responseDeadline',
+      label: 'آخری تاریخِ جواب',
+      type: 'date',
+      onTemplate: true,
+    },
   ],
   SHOW_CAUSE: [
-    { key: 'allegation', label: 'Allegation', type: 'textarea' },
-    { key: 'responseDeadline', label: 'Response Deadline', type: 'date' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    ...URDU_IDENTITY_FIELDS,
+    {
+      key: 'allegation',
+      label: 'الزام / تفصیل',
+      type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
+    },
+    {
+      key: 'responseDeadline',
+      label: 'آخری تاریخِ جواب',
+      type: 'date',
+      onTemplate: true,
+    },
   ],
   FINE: [
-    { key: 'fineReason', label: 'Fine Reason', type: 'textarea' },
-    { key: 'fineAmount', label: 'Fine Amount (e.g. 500/- or ایک یوم تنخواہ)' },
-    { key: 'deductionMonth', label: 'Deduction Month' },
+    ...URDU_IDENTITY_FIELDS,
+    {
+      key: 'fineReason',
+      label: 'وجہِ جرمانہ',
+      type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
+    },
+    {
+      key: 'fineAmount',
+      label: 'رقم / کٹوتی (مثلاً 500/- یا دو یوم تنخواہ)',
+      onTemplate: true,
+    },
+    {
+      key: 'deductionMonth',
+      label: 'ماہِ کٹوتی',
+      onTemplate: true,
+      hint: 'مثلاً: اگست 2026',
+    },
     {
       key: 'attendanceRows',
-      label: 'Late evidence rows (optional)',
+      label: 'حاضری ثبوت (اختیاری)',
       type: 'textarea',
-      hint: 'One per line: date | inTime | outTime  — or JSON array.',
+      hint: 'ہر سطر: تاریخ | آمد | روانگی',
     },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
   ],
   INQUIRY: [
-    { key: 'inquiryReason', label: 'Inquiry Reason', type: 'textarea' },
-    { key: 'inquiryDate', label: 'Inquiry Date', type: 'date' },
-    { key: 'committeeMembers', label: 'Committee Members' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    ...URDU_IDENTITY_FIELDS,
+    {
+      key: 'inquiryReason',
+      label: 'وجہِ انکوائری',
+      type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
+    },
+    { key: 'inquiryDate', label: 'تاریخِ انکوائری', type: 'date', onTemplate: true },
+    {
+      key: 'committeeMembers',
+      label: 'کمیٹی ممبران',
+      onTemplate: true,
+    },
   ],
   APPRECIATION: [
-    { key: 'appreciationReason', label: 'Reason', type: 'textarea' },
+    ...URDU_IDENTITY_FIELDS,
+    {
+      key: 'appreciationReason',
+      label: 'وجہِ تعریف',
+      type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
+    },
     {
       key: 'achievementDetails',
-      label: 'Achievement Details',
+      label: 'تفصیلِ کارکردگی',
       type: 'textarea',
+      onTemplate: true,
     },
-    { key: 'rewardAmount', label: 'Reward Amount (optional)' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    { key: 'rewardAmount', label: 'انعام کی رقم (اختیاری)', onTemplate: true },
   ],
   TRANSFER: [
     { key: 'fromBranch', label: 'From Branch / Posting' },
@@ -89,43 +183,77 @@ export const LETTER_FIELD_CONFIG: Partial<
     { key: 'senderTitle', label: 'Signatory Title (optional)' },
   ],
   SUSPENSION: [
+    ...URDU_IDENTITY_FIELDS,
     {
       key: 'suspensionReason',
-      label: 'Suspension Reason',
+      label: 'وجہِ معطلی',
       type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
     },
-    { key: 'suspensionStartDate', label: 'Start Date', type: 'date' },
-    { key: 'suspensionDuration', label: 'Duration' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    {
+      key: 'suspensionStartDate',
+      label: 'آغاز تاریخ',
+      type: 'date',
+      onTemplate: true,
+    },
+    { key: 'suspensionDuration', label: 'مدت', onTemplate: true },
   ],
   TERMINATION: [
+    ...URDU_IDENTITY_FIELDS,
     {
       key: 'terminationReason',
-      label: 'Termination Reason',
+      label: 'وجہِ ختمِ ملازمت',
       type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
     },
-    { key: 'terminationDate', label: 'Termination Date', type: 'date' },
+    {
+      key: 'terminationDate',
+      label: 'آخری یومِ ملازمت',
+      type: 'date',
+      onTemplate: true,
+    },
     {
       key: 'settlementDetails',
-      label: 'Settlement Details',
+      label: 'تصفیہ کی تفصیل',
       type: 'textarea',
+      onTemplate: true,
     },
     {
       key: 'violations',
-      label: 'Violations (optional, one per line)',
+      label: 'خلاف ورزیاں (اختیاری، ہر سطر ایک)',
       type: 'textarea',
+      onTemplate: true,
     },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
   ],
   REINSTATEMENT: [
-    { key: 'reinstatementDate', label: 'Reinstatement Date', type: 'date' },
-    { key: 'reinstatedDesignation', label: 'Reinstated Designation' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    ...URDU_IDENTITY_FIELDS,
+    {
+      key: 'reinstatementDate',
+      label: 'تاریخِ بحالی',
+      type: 'date',
+      onTemplate: true,
+    },
+    {
+      key: 'reinstatedDesignation',
+      label: 'عہدہِ بحالی',
+      onTemplate: true,
+    },
   ],
   REJOINING: [
-    { key: 'rejoiningDate', label: 'Rejoining Date', type: 'date' },
-    { key: 'rejoiningDesignation', label: 'Rejoining Designation' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    ...URDU_IDENTITY_FIELDS,
+    {
+      key: 'rejoiningDate',
+      label: 'تاریخِ واپسی',
+      type: 'date',
+      onTemplate: true,
+    },
+    {
+      key: 'rejoiningDesignation',
+      label: 'عہدہ',
+      onTemplate: true,
+    },
   ],
   SALARY_INCREMENT: [
     { key: 'previousSalary', label: 'Previous Stipend', type: 'number' },
@@ -139,11 +267,32 @@ export const LETTER_FIELD_CONFIG: Partial<
     { key: 'senderTitle', label: 'Signatory Title (optional)' },
   ],
   EXPERIENCE: [
-    { key: 'lastWorkingDate', label: 'Last Working Date', type: 'date' },
-    { key: 'totalExperience', label: 'Total Experience' },
-    { key: 'jobDescription', label: 'Job Description', type: 'textarea' },
-    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+    ...URDU_IDENTITY_FIELDS,
+    {
+      key: 'lastWorkingDate',
+      label: 'آخری یومِ ملازمت',
+      type: 'date',
+      onTemplate: true,
+    },
+    { key: 'totalExperience', label: 'کل تجربہ', onTemplate: true },
+    {
+      key: 'jobDescription',
+      label: 'ذمہ داریاں',
+      type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں',
+    },
   ],
+}
+
+const ENGLISH_LETTER_TYPES = new Set<LetterType>([
+  'APPOINTMENT',
+  'TRANSFER',
+  'SALARY_INCREMENT',
+])
+
+export function isUrduLetterType(letterType: LetterType): boolean {
+  return !ENGLISH_LETTER_TYPES.has(letterType)
 }
 
 export function getLetterExtraFields(letterType: LetterType): LetterFieldDef[] {
@@ -154,7 +303,6 @@ export function getLetterExtraFields(letterType: LetterType): LetterFieldDef[] {
   )
 }
 
-/** Required for generate button — optional fields like senderTitle are skipped. */
 export function getLetterRequiredFields(
   letterType: LetterType,
 ): LetterFieldDef[] {
@@ -165,7 +313,6 @@ export function getLetterRequiredFields(
     'rewardAmount',
     'timing',
     'incrementReason',
-    'violations', // optional on TERMINATION only; WARNING treats as required via config presence
     'totalExperience',
     'jobDescription',
     'reinstatedDesignation',
@@ -178,12 +325,25 @@ export function getLetterRequiredFields(
     'suspensionStartDate',
     'suspensionDuration',
     'terminationDate',
+    'designation',
+    'branch',
+    'department',
   ])
 
-  // WARNING violations is required
   if (letterType === 'WARNING') {
+    return getLetterExtraFields(letterType).filter((f) =>
+      ['employeeName', 'violations'].includes(f.key),
+    )
+  }
+
+  if (letterType === 'TERMINATION') {
     return getLetterExtraFields(letterType).filter(
-      (f) => f.key === 'violations',
+      (f) =>
+        !optionalKeys.has(f.key) &&
+        f.key !== 'violations' &&
+        f.key !== 'employeeName',
+    ).concat(
+      getLetterExtraFields(letterType).filter((f) => f.key === 'employeeName'),
     )
   }
 
@@ -237,4 +397,21 @@ export function isLetterPdfUnavailable(letter: {
   fileUrl?: string | null
 }): boolean {
   return !letter.fileUrl
+}
+
+/** Default Urdu subjects shown on the canvas. */
+export const URDU_LETTER_SUBJECT: Partial<Record<LetterType, string>> = {
+  WARNING: 'لیٹر آف وارننگ',
+  ADVICE: 'ایڈوائس / Letter of Advice',
+  DISCIPLINARY: 'Letter of Displeasure',
+  EXPLANATION: 'تحریری وضاحت طلب',
+  SHOW_CAUSE: 'شو کاز نوٹس / قانونی نوٹس',
+  FINE: 'فائن / جرمانہ',
+  INQUIRY: 'انکوائری نوٹس',
+  APPRECIATION: 'Letter of Appreciation',
+  SUSPENSION: 'معطلی نوٹس / Suspension',
+  TERMINATION: 'ختمِ ملازمت / Termination',
+  REINSTATEMENT: 'بحالیِ ملازمت / Reinstatement',
+  REJOINING: 'واپسیِ ملازمت / Rejoining',
+  EXPERIENCE: 'تجربہ سرٹیفکیٹ',
 }

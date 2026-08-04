@@ -372,22 +372,34 @@ export class LettersService {
 
     const variables: Record<string, unknown> = {
       letterNo,
-      issueDate: formatIssueDatePkt(),
+      issueDate:
+        String(normalized.issueDate ?? '').trim() || formatIssueDatePkt(),
       senderTitle:
         String(normalized.senderTitle ?? '').trim() || DEFAULT_SENDER_TITLE,
       subject:
         String(normalized.subject ?? '').trim() ||
         defaultSubjectFor(letterType),
-      employeeName: employee.fullName,
       employeeCode: employee.employeeCode,
-      designation: employee.currentDesignation ?? '',
-      department: employee.currentDepartment?.name ?? '',
-      branch: employee.currentBranch?.name ?? '',
       cnic: employee.cnic ?? '',
       joiningDate: employee.joiningDate
         ? this.formatDate(employee.joiningDate)
         : '',
       ...normalized,
+      // Prefer HR-typed Urdu overrides (set after spread so they win over empties)
+      employeeName:
+        String(normalized.employeeName ?? '').trim() || employee.fullName,
+      designation:
+        String(normalized.designation ?? '').trim() ||
+        employee.currentDesignation ||
+        '',
+      department:
+        String(normalized.department ?? '').trim() ||
+        employee.currentDepartment?.name ||
+        '',
+      branch:
+        String(normalized.branch ?? '').trim() ||
+        employee.currentBranch?.name ||
+        '',
       violations: parseViolationLines(
         normalized.violations ?? normalized.warningReason,
       ),
