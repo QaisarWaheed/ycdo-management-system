@@ -35,6 +35,7 @@ import {
   isCloudinaryEnabled,
 } from '../../config/cloudinary.config';
 import { LettersService } from '../letters/letters.service';
+import { appointmentExtraFieldsFromEmployee } from '../letters/selection-letter.helper';
 import { FaceSyncService } from '../face-sync/face-sync.service';
 import {
   toPakistanMinutesOfDay,
@@ -360,24 +361,14 @@ export class EmployeesService {
           result.staffType !== StaffType.EXISTING &&
           result.status === EmployeeStatus.ACTIVE
         ) {
-          await this.lettersService.generate(
-            {
-              employeeId: result.id,
-              letterType: LetterType.ADVICE,
-              extraFields: {
-                adviceReason: 'Training / Joining Notification',
-                adviceDetails: `Welcome to YCDO. This letter serves as your training and joining notification. Joining Date: ${this.formatDate(result.joiningDate)}. Designation: ${result.currentDesignation}. Department: ${result.currentDepartment.name}. Branch: ${result.currentBranch.name}. Basic Stipend: PKR ${dto.basicStipend}. Working Hours: 9:00 AM - 5:00 PM. Probation Period: 3 months.`,
-                joiningDate: this.formatDate(result.joiningDate),
-                designation: result.currentDesignation,
-                department: result.currentDepartment.name,
-                branch: result.currentBranch.name,
-                basicStipend: dto.basicStipend,
-                workingHours: '9:00 AM - 5:00 PM',
-                probationPeriod: '3 months',
-              },
-            },
-            'SYSTEM',
-          );
+          await this.lettersService.generateSystemLetter({
+            employeeId: result.id,
+            letterType: LetterType.APPOINTMENT,
+            extraFields: appointmentExtraFieldsFromEmployee(
+              result,
+              dto.basicStipend,
+            ),
+          });
         }
       } catch (error) {
         const message =

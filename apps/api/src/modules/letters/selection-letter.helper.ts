@@ -57,3 +57,24 @@ export function scheduleFromDuty(emp: {
     scheduleTo: emp.dutyEndTime ? formatDuty12h(emp.dutyEndTime) : '',
   };
 }
+
+/** Fields required by the SELECTION_LETTER / Appointment template. */
+export function appointmentExtraFieldsFromEmployee(
+  emp: {
+    dutyTotalHours?: number | string | null;
+    shift?: { name?: string | null } | null;
+  },
+  stipendAmount: number | string,
+  capacity = 'Full Time',
+): Record<string, string> {
+  const hoursNum = Number(emp.dutyTotalHours);
+  const hoursPerDay =
+    Number.isFinite(hoursNum) && hoursNum > 0 ? String(hoursNum) : '8';
+
+  return {
+    stipendAmount: String(stipendAmount),
+    hoursPerDay,
+    shiftName: emp.shift?.name?.trim() || 'General',
+    capacity,
+  };
+}

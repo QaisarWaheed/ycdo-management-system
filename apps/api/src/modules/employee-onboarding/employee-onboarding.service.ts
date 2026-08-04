@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LettersService } from '../letters/letters.service';
+import { appointmentExtraFieldsFromEmployee } from '../letters/selection-letter.helper';
 import { LetterType, StaffType } from '@prisma/client';
 import { normalizePakistanPhone } from '../whatsapp/phone.util';
 import {
@@ -244,6 +245,7 @@ export class EmployeeOnboardingService {
       include: {
         currentBranch: { select: { name: true } },
         currentDepartment: { select: { name: true } },
+        shift: { select: { name: true } },
         stipendRecords: { orderBy: { effectiveFrom: 'desc' }, take: 1 },
       },
     });
@@ -256,24 +258,15 @@ export class EmployeeOnboardingService {
           stipendRecord ?? snapshot.basicStipend ?? 0,
         );
 
-        await this.lettersService.generate(
-          {
-            employeeId: employee.id,
-            letterType: LetterType.ADVICE,
-            extraFields: {
-              adviceReason: 'Training / Joining Notification',
-              adviceDetails: `Welcome to YCDO. Joining Date: ${this.formatDate(employee.joiningDate)}. Designation: ${employee.currentDesignation}. Department: ${employee.currentDepartment?.name ?? '—'}. Branch: ${employee.currentBranch.name}.`,
-              joiningDate: this.formatDate(employee.joiningDate),
-              designation: employee.currentDesignation ?? '',
-              department: employee.currentDepartment?.name ?? '',
-              branch: employee.currentBranch.name,
-              basicStipend,
-              workingHours: '9:00 AM - 5:00 PM',
-              probationPeriod: '3 months',
-            },
-          },
-          'SYSTEM',
-        );
+        // Appointment/Selection letter — also creates portal notification + My Letters entry
+        await this.lettersService.generateSystemLetter({
+          employeeId: employee.id,
+          letterType: LetterType.APPOINTMENT,
+          extraFields: appointmentExtraFieldsFromEmployee(
+            employee,
+            basicStipend,
+          ),
+        });
       } catch (error) {
         console.error('Post-approval letter generation failed:', error);
       }
@@ -423,20 +416,32 @@ export class EmployeeOnboardingService {
 
     const loginUrl = `${hrmsBase}/login`;
 
-    const message = [
+    // WhatsApp inherits paragraph direction from the first strong character.
+    // Isolate Urdu (RTL) and English (LTR) so each block aligns correctly.
+    const RLI = '\u2067';
+    const LRI = '\u2066';
+    const PDI = '\u2069';
+
+    const employeeLine = `${employeeName}${employeeCode ? ` (${employeeCode})` : ''}`;
+
+    const urdu = [
       `السلام علیکم ${label} صاحب،`,
       '',
       `ایک نیا ملازم آن بورڈنگ کی درخواست آپ کی منظوری کا منتظر ہے:`,
-      `نام: ${employeeName}${employeeCode ? ` (${employeeCode})` : ''}`,
+      `نام: ${employeeLine}`,
       '',
       `براہ کرم HRMS میں لاگ اِن کر کے Approve / Reject کریں:`,
       loginUrl,
-      '',
+    ].join('\n');
+
+    const english = [
       `Assalam-o-Alaikum ${label},`,
-      `A new employee onboarding request awaits your approval: ${employeeName}${employeeCode ? ` (${employeeCode})` : ''}.`,
+      `A new employee onboarding request awaits your approval: ${employeeLine}.`,
       `Please login to HRMS to Approve or Reject:`,
       loginUrl,
     ].join('\n');
+
+    const message = `${RLI}${urdu}${PDI}\n\n${LRI}${english}${PDI}`;
 
     const encoded = encodeURIComponent(message);
     const waUrl = phoneE164
@@ -497,12 +502,5 @@ export class EmployeeOnboardingService {
     }
 
     return null;
-  }
-
-  private formatDate(date: Date): string {
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
   }
 }
