@@ -28,6 +28,7 @@ export interface Employee {
   domicile?: string | null
   dutyStartTime?: string | null
   dutyEndTime?: string | null
+  dutyTotalHours?: number | null
   status: string
   joiningDate: string
   currentDesignation: string

@@ -100,7 +100,11 @@ export interface Shift {
   _count?: { employees: number }
 }
 
-export type AllowanceType = 'OVERTIME' | 'RELIEVER' | 'CUSTOM'
+export type AllowanceType =
+  | 'OVERTIME'
+  | 'RELIEVER'
+  | 'CUSTOM'
+  | 'ADDITIONAL_WORKING_DAYS'
 
 export interface PayrollAllowance {
   id: string
@@ -174,6 +178,7 @@ export const ALLOWANCE_TYPES: { value: AllowanceType; label: string }[] = [
   { value: 'OVERTIME', label: 'Overtime' },
   { value: 'RELIEVER', label: 'Reliever' },
   { value: 'CUSTOM', label: 'Custom' },
+  { value: 'ADDITIONAL_WORKING_DAYS', label: 'Additional working days' },
 ]
 
 export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {

@@ -14,6 +14,7 @@ import { IncentivesPage } from '@/pages/incentives/IncentivesPage'
 import { PayrollPage } from '@/pages/payroll/PayrollPage'
 import { ReportsPage } from '@/pages/reports/ReportsPage'
 import { LettersPage } from '@/pages/letters/LettersPage'
+import { FailedWhatsAppPage } from '@/pages/whatsapp/FailedWhatsAppPage'
 import { DisciplinaryPage } from '@/pages/disciplinary/DisciplinaryPage'
 import { RecruitmentPage } from '@/pages/recruitment/RecruitmentPage'
 import { BranchesPage } from '@/pages/branches/BranchesPage'
@@ -129,6 +130,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <LettersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/failed-whatsapp"
+        element={
+          <ProtectedRoute>
+            <FailedWhatsAppPage />
           </ProtectedRoute>
         }
       />

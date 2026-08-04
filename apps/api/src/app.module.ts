@@ -5,6 +5,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import * as path from 'path';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AcknowledgementsModule } from './modules/acknowledgements/acknowledgements.module';
+import { AdditionalWorkingDaysModule } from './modules/additional-working-days/additional-working-days.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BiometricDevicesModule } from './modules/biometric-devices/biometric-devices.module';
@@ -19,6 +20,7 @@ import { EmployeesModule } from './modules/employees/employees.module';
 import { LeaveModule } from './modules/leave/leave.module';
 import { LetterRepliesModule } from './modules/letter-replies/letter-replies.module';
 import { LettersModule } from './modules/letters/letters.module';
+import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OutstationModule } from './modules/outstation/outstation.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
@@ -61,6 +63,7 @@ import { PrismaModule } from './prisma/prisma.module';
     LeaveModule,
     PayrollModule,
     LettersModule,
+    WhatsAppModule,
     DisciplinaryModule,
     SeparationModule,
     RecruitmentModule,
@@ -73,6 +76,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PreviousEmploymentModule,
     OutstationModule,
     AcknowledgementsModule,
+    AdditionalWorkingDaysModule,
     StipendReceiptsModule,
     IncentivesModule,
     UserPasswordsModule,
