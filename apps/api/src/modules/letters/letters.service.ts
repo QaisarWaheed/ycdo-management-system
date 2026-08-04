@@ -18,10 +18,13 @@ import {
   PreviewLetterDto,
 } from './letters.dto';
 import {
-  getLetterTypeShort,
-  LetterData,
+  DEFAULT_SENDER_TITLE,
+  defaultSubjectFor,
+  parseAttendanceRows,
+  parseViolationLines,
+  renderLetterHtml,
   sanitizeRefForFilename,
-  TEMPLATE_GENERATORS,
+  templateCodeForLetterType,
 } from './letter-templates.helper';
 import { generatePdf } from './pdf.helper';
 import {
@@ -35,6 +38,17 @@ import {
 } from './selection-letter.helper';
 
 const SELECTION_TEMPLATE_CODE = 'SELECTION_LETTER';
+
+const ACKNOWLEDGEMENT_TYPES: LetterType[] = [
+  LetterType.WARNING,
+  LetterType.SHOW_CAUSE,
+  LetterType.SUSPENSION,
+  LetterType.TERMINATION,
+  LetterType.FINE,
+  LetterType.DISCIPLINARY,
+  LetterType.EXPLANATION,
+  LetterType.APPOINTMENT,
+];
 
 @Injectable()
 export class LettersService {
@@ -68,7 +82,11 @@ export class LettersService {
     });
   }
 
-  async preview(dto: PreviewLetterDto, actingUserId: string, actingRole: UserRole) {
+  async preview(
+    dto: PreviewLetterDto,
+    actingUserId: string,
+    actingRole: UserRole,
+  ) {
     await this.accessScopeService.assertEmployeeAccess(
       actingUserId,
       actingRole,
@@ -76,19 +94,22 @@ export class LettersService {
       dto.employeeId,
     );
 
-    if (dto.letterType !== LetterType.APPOINTMENT) {
-      throw new BadRequestException(
-        'Preview is only supported for Appointment / Selection letters',
+    if (dto.letterType === LetterType.APPOINTMENT) {
+      const { htmlContent, variables } = await this.buildSelectionLetterHtml(
+        dto.employeeId,
+        dto.extraFields ?? {},
+        { letterNo: 'PREVIEW/YCDO/0000', consumeNumber: false },
       );
+      return { previewHtml: htmlContent, variables };
     }
 
-    const { htmlContent, variables } = await this.buildSelectionLetterHtml(
+    const built = await this.buildTemplatedLetterHtml(
       dto.employeeId,
+      dto.letterType,
       dto.extraFields ?? {},
-      { letterNo: 'PREVIEW/YCDO/0000', consumeNumber: false },
+      'PREVIEW/YCDO/0000',
     );
-
-    return { previewHtml: htmlContent, variables };
+    return { previewHtml: built.htmlContent, variables: built.variables };
   }
 
   async generate(
@@ -107,14 +128,27 @@ export class LettersService {
       return this.generateSelectionLetter(dto, actingUserId);
     }
 
-    return this.generateLegacyLetter(dto, actingUserId);
+    return this.generateTemplatedLetter(dto, actingUserId);
+  }
+
+  /**
+   * System / internal callers that already checked access.
+   * Renders the seeded template PDF and creates the Letter row.
+   */
+  async generateSystemLetter(
+    dto: GenerateLetterDto,
+    actingUserId = 'SYSTEM',
+  ) {
+    if (dto.letterType === LetterType.APPOINTMENT) {
+      return this.generateSelectionLetter(dto, actingUserId);
+    }
+    return this.generateTemplatedLetter(dto, actingUserId);
   }
 
   private async generateSelectionLetter(
     dto: GenerateLetterDto,
     actingUserId: string,
   ) {
-    // Validate profile + required vars BEFORE consuming a sequence number
     const prepared = await this.buildSelectionLetterHtml(
       dto.employeeId,
       dto.extraFields ?? {},
@@ -178,6 +212,216 @@ export class LettersService {
     });
 
     return { letter, previewHtml: htmlContent };
+  }
+
+  private async generateTemplatedLetter(
+    dto: GenerateLetterDto,
+    actingUserId: string,
+  ) {
+    await this.buildTemplatedLetterHtml(
+      dto.employeeId,
+      dto.letterType,
+      dto.extraFields ?? {},
+      'PENDING',
+    );
+
+    const letterNo = await this.nextLetterNo();
+    const built = await this.buildTemplatedLetterHtml(
+      dto.employeeId,
+      dto.letterType,
+      dto.extraFields ?? {},
+      letterNo,
+    );
+
+    const pdfBuffer = await generatePdf(built.htmlContent);
+    const fileUrl = await this.persistPdf(pdfBuffer, letterNo, dto.employeeId);
+
+    const replyDeadline =
+      dto.letterType === LetterType.SHOW_CAUSE
+        ? new Date(Date.now() + 48 * 60 * 60 * 1000)
+        : undefined;
+
+    const letter = await this.prisma.$transaction(async (tx) => {
+      const record = await tx.letter.create({
+        data: {
+          employeeId: dto.employeeId,
+          letterType: dto.letterType,
+          content: (dto.extraFields ?? {}) as Prisma.InputJsonValue,
+          fileUrl,
+          letterNo,
+          variables: built.variables as Prisma.InputJsonValue,
+          templateVersion: built.templateVersion,
+          replyDeadline,
+          requiresAcknowledgement: ACKNOWLEDGEMENT_TYPES.includes(
+            dto.letterType,
+          ),
+        },
+      });
+
+      if (actingUserId !== 'SYSTEM') {
+        await tx.auditLog.create({
+          data: {
+            userId: actingUserId,
+            action: 'LETTER_GENERATED',
+            entity: 'Letter',
+            entityId: record.id,
+            changes: {
+              letterType: dto.letterType,
+              letterNo,
+            },
+          },
+        });
+      }
+
+      await tx.notification.create({
+        data: {
+          employeeId: dto.employeeId,
+          type: 'LETTER_ISSUED',
+          message: `A ${dto.letterType.replace(/_/g, ' ')} letter (${letterNo}) has been issued to you.`,
+        },
+      });
+
+      return record;
+    });
+
+    return { letter, previewHtml: built.htmlContent };
+  }
+
+  private async buildTemplatedLetterHtml(
+    employeeId: string,
+    letterType: LetterType,
+    extraFields: Record<string, unknown>,
+    letterNo: string,
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: {
+        currentBranch: { select: { name: true, address: true } },
+        currentDepartment: { select: { name: true } },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with id ${employeeId} not found`,
+      );
+    }
+
+    const code = templateCodeForLetterType(letterType);
+    const template = await this.prisma.letterTemplate.findFirst({
+      where: { code, active: true },
+    });
+
+    if (!template) {
+      throw new NotFoundException(
+        `Letter template ${code} is not seeded. Run prisma db seed.`,
+      );
+    }
+
+    const normalized = this.normalizeExtraFields(letterType, extraFields);
+
+    const requiredMissing: string[] = [];
+    for (const key of template.requiredVars) {
+      const value = normalized[key];
+      if (key === 'violations') {
+        const lines = parseViolationLines(value);
+        if (!lines.length) requiredMissing.push(key);
+        continue;
+      }
+      if (value === undefined || value === null || String(value).trim() === '') {
+        requiredMissing.push(key);
+      }
+    }
+    if (requiredMissing.length) {
+      throw new BadRequestException(
+        `Missing required fields: ${requiredMissing.join(', ')}`,
+      );
+    }
+
+    const previousSalary = Number(normalized.previousSalary ?? 0);
+    const newSalary = Number(normalized.newSalary ?? 0);
+    const incrementAmount =
+      normalized.incrementAmount ??
+      (newSalary && previousSalary
+        ? String(newSalary - previousSalary)
+        : (normalized.enhancement ?? ''));
+
+    const variables: Record<string, unknown> = {
+      letterNo,
+      issueDate: formatIssueDatePkt(),
+      senderTitle:
+        String(normalized.senderTitle ?? '').trim() || DEFAULT_SENDER_TITLE,
+      subject:
+        String(normalized.subject ?? '').trim() ||
+        defaultSubjectFor(letterType),
+      employeeName: employee.fullName,
+      employeeCode: employee.employeeCode,
+      designation: employee.currentDesignation ?? '',
+      department: employee.currentDepartment?.name ?? '',
+      branch: employee.currentBranch?.name ?? '',
+      cnic: employee.cnic ?? '',
+      joiningDate: employee.joiningDate
+        ? this.formatDate(employee.joiningDate)
+        : '',
+      ...normalized,
+      violations: parseViolationLines(
+        normalized.violations ?? normalized.warningReason,
+      ),
+      attendanceRows: parseAttendanceRows(normalized.attendanceRows),
+      incrementAmount: String(incrementAmount),
+      timing: String(normalized.timing ?? '').trim() || 'As per duty roster',
+    };
+
+    const htmlContent = renderLetterHtml(template.bodyHtml, variables);
+
+    return {
+      htmlContent,
+      variables,
+      templateVersion: template.version,
+    };
+  }
+
+  private normalizeExtraFields(
+    letterType: LetterType,
+    extra: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const out: Record<string, unknown> = { ...extra };
+
+    if (letterType === LetterType.WARNING) {
+      if (!out.violations && out.warningReason) {
+        out.violations = out.warningReason;
+      }
+    }
+    if (letterType === LetterType.DISCIPLINARY) {
+      if (!out.disciplinaryReason && out.violationType) {
+        out.disciplinaryReason = [
+          out.violationType,
+          out.actionTaken,
+          out.incidentDate,
+        ]
+          .filter(Boolean)
+          .join(' — ');
+      }
+    }
+    if (letterType === LetterType.EXPLANATION) {
+      if (!out.issueDescription && out.additionalNotes) {
+        out.issueDescription = out.additionalNotes;
+      }
+    }
+    if (letterType === LetterType.ADVICE) {
+      if (!out.adviceReason && out.additionalNotes) {
+        out.adviceReason = out.additionalNotes;
+      }
+    }
+    if (letterType === LetterType.SALARY_INCREMENT) {
+      if (!out.incrementAmount && out.previousSalary && out.newSalary) {
+        out.incrementAmount = String(
+          Number(out.newSalary) - Number(out.previousSalary),
+        );
+      }
+    }
+
+    return out;
   }
 
   private async buildSelectionLetterHtml(
@@ -286,122 +530,6 @@ export class LettersService {
     return `/uploads/letters/${employeeId}/${fileName}`;
   }
 
-  private async generateLegacyLetter(
-    dto: GenerateLetterDto,
-    actingUserId: string,
-  ) {
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: dto.employeeId },
-      include: {
-        currentBranch: { select: { name: true, address: true } },
-        currentDepartment: { select: { name: true } },
-        stipendRecords: {
-          orderBy: { effectiveFrom: 'desc' },
-          take: 1,
-        },
-      },
-    });
-
-    if (!employee) {
-      throw new NotFoundException(
-        `Employee with id ${dto.employeeId} not found`,
-      );
-    }
-
-    const year = new Date().getFullYear();
-    const typeShort = getLetterTypeShort(dto.letterType);
-    const existingCount = await this.prisma.letter.count({
-      where: { letterType: dto.letterType },
-    });
-    const seq = (existingCount + 1).toString().padStart(4, '0');
-    const refNumber = `YCDO/${typeShort}/${year}/${seq}`;
-
-    const letterData: LetterData = {
-      refNumber,
-      date: this.formatDate(new Date()),
-      employeeName: employee.fullName,
-      employeeCode: employee.employeeCode,
-      designation: employee.currentDesignation ?? '',
-      department: employee.currentDepartment?.name ?? '',
-      branch: employee.currentBranch?.name ?? '',
-      cnic: employee.cnic ?? '',
-      joiningDate: this.formatDate(employee.joiningDate),
-      ...(dto.extraFields ?? {}),
-    };
-
-    const generateTemplate = TEMPLATE_GENERATORS[dto.letterType];
-    if (!generateTemplate) {
-      throw new BadRequestException(
-        `No template generator for letter type ${dto.letterType}`,
-      );
-    }
-    const htmlContent = generateTemplate(letterData);
-    const pdfBuffer = await generatePdf(htmlContent);
-
-    const fileName = `${sanitizeRefForFilename(refNumber)}.pdf`;
-    const dir = path.join(
-      process.cwd(),
-      'uploads',
-      'letters',
-      dto.employeeId,
-    );
-    fs.mkdirSync(dir, { recursive: true });
-    const filePath = path.join(dir, fileName);
-    fs.writeFileSync(filePath, pdfBuffer);
-    const fileUrl = `/uploads/letters/${dto.employeeId}/${fileName}`;
-
-    const letter = await this.prisma.$transaction(async (tx) => {
-      const replyDeadline =
-        dto.letterType === LetterType.SHOW_CAUSE
-          ? new Date(Date.now() + 48 * 60 * 60 * 1000)
-          : undefined;
-
-      const acknowledgementTypes: LetterType[] = [
-        LetterType.WARNING,
-        LetterType.SHOW_CAUSE,
-        LetterType.SUSPENSION,
-        LetterType.TERMINATION,
-        LetterType.FINE,
-        LetterType.DISCIPLINARY,
-        LetterType.EXPLANATION,
-        LetterType.APPOINTMENT,
-      ];
-      const requiresAcknowledgement = acknowledgementTypes.includes(
-        dto.letterType,
-      );
-
-      const record = await tx.letter.create({
-        data: {
-          employeeId: dto.employeeId,
-          letterType: dto.letterType,
-          content: (dto.extraFields ?? {}) as Prisma.InputJsonValue,
-          fileUrl,
-          replyDeadline,
-          requiresAcknowledgement,
-        },
-      });
-
-      if (actingUserId !== 'SYSTEM') {
-        await tx.auditLog.create({
-          data: {
-            userId: actingUserId,
-            action: 'LETTER_GENERATED',
-            entity: 'Letter',
-            entityId: record.id,
-            changes: {
-              letterType: dto.letterType,
-              refNumber,
-            },
-          },
-        });
-      }
-
-      return record;
-    });
-
-    return { letter, previewHtml: htmlContent };
-  }
-
   async findAll(
     query: LetterQueryDto,
     actingUser?: { id: string; role: UserRole },
@@ -478,7 +606,10 @@ export class LettersService {
       throw new NotFoundException('PDF file not found for this letter');
     }
 
-    if (letter.fileUrl.startsWith('http://') || letter.fileUrl.startsWith('https://')) {
+    if (
+      letter.fileUrl.startsWith('http://') ||
+      letter.fileUrl.startsWith('https://')
+    ) {
       const response = await fetch(letter.fileUrl);
       if (!response.ok) {
         throw new NotFoundException(

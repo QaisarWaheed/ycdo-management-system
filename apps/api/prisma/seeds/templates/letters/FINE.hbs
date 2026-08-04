@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>{{{letterStyles}}}</style>
+</head>
+<body>
+<div class="page">
+  <div class="meta-row">
+    <div class="letter-no">Letter No. {{letterNo}}</div>
+    <div class="meta-block">
+      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
+      <div class="row">YCDO ملتان پاکستان</div>
+      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
+      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
+      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
+      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
+    </div>
+  </div>
+
+  <p class="salutation">السلام علیکم!</p>
+
+  <div class="body">
+    <p>
+      تحریر ہے کہ آپ {{#if designation}}{{designation}}{{else}}اسٹاف{{/if}} کی حیثیت سے
+      {{#if branch}}{{branch}}{{else}}YCDO{{/if}} پر فائز ہیں۔
+      {{#if fineReason}}{{fineReason}}{{else}}آپ نے ادارہ کی SOP کی خلاف ورزی کی ہے۔{{/if}}
+    </p>
+
+    {{#if attendanceRows}}
+    <table class="attendance-table">
+      <thead>
+        <tr><th>Date</th><th>In time</th><th>Out time</th></tr>
+      </thead>
+      <tbody>
+        {{#each attendanceRows}}
+        <tr>
+          <td>{{date}}</td>
+          <td>{{inTime}}</td>
+          <td>{{outTime}}</td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    {{/if}}
+
+    <p>
+      لہٰذا ادارہ کی SOP کے مطابق آپ پر
+      {{#if fineAmount}}{{fineAmount}}{{else}}مقررہ{{/if}}
+      کا جرمانہ عائد کیا جاتا ہے جو
+      {{#if deductionMonth}}ماہ {{deductionMonth}}{{else}}آئندہ{{/if}}
+      کی تنخواہ سے منہا کر لیا جائے گا۔
+      آپ کو ہدایت کی جاتی ہے کہ آئندہ ادارہ کی SOP پر سختی سے عمل کریں ورنہ سخت کارروائی عمل میں لائی جائے گی۔
+    </p>
+  </div>
+
+  <div class="signature">
+    <div>{{senderTitle}}</div>
+    <div>YCDO ملتان پاکستان</div>
+  </div>
+</div>
+</body>
+</html>

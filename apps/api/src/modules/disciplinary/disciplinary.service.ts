@@ -495,6 +495,7 @@ export class DisciplinaryService {
             employeeId,
             letterType: LetterType.WARNING,
             extraFields: {
+              violations: reason,
               warningReason: reason,
               incidentDate: formattedDate,
               warningNumber: this.ordinal(warningCount),

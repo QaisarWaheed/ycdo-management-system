@@ -46,7 +46,16 @@ export async function generatePdf(htmlContent: string): Promise<Buffer> {
 
   try {
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'load' });
+    await page.setContent(htmlContent, { waitUntil: 'load', timeout: 20000 });
+    // Allow webfonts (Urdu) a moment to paint when network is available.
+    await page
+      .evaluate(async () => {
+        if (document.fonts?.ready) {
+          await document.fonts.ready;
+        }
+      })
+      .catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 300));
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,

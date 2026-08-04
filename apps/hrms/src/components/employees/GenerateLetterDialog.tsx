@@ -21,7 +21,11 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
-import { getLetterExtraFields, letterReference } from '@/lib/letterFieldConfig'
+import {
+  getLetterExtraFields,
+  getLetterRequiredFields,
+  letterReference,
+} from '@/lib/letterFieldConfig'
 import { LETTER_TYPES, type LetterType } from '@/types'
 
 interface GenerateLetterDialogProps {
@@ -41,7 +45,7 @@ export function GenerateLetterDialog({
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
 
   const extraFields = getLetterExtraFields(letterType)
-  const isAppointment = letterType === 'APPOINTMENT'
+  const requiredFields = getLetterRequiredFields(letterType)
 
   const buildExtraFieldsPayload = () => {
     const payload: Record<string, string> = {}
@@ -54,7 +58,7 @@ export function GenerateLetterDialog({
     return payload
   }
 
-  const requiredFieldsFilled = extraFields.every(
+  const requiredFieldsFilled = requiredFields.every(
     (field) => (fields[field.key] ?? '').trim().length > 0,
   )
 
@@ -66,11 +70,15 @@ export function GenerateLetterDialog({
         extraFields: buildExtraFieldsPayload(),
       }),
     onSuccess: (data) => setPreviewHtml(data.previewHtml),
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+    onError: (err: {
+      response?: { data?: { message?: string | string[] } }
+    }) => {
       const msg = err.response?.data?.message
       toast({
         title: 'Preview failed',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        description: Array.isArray(msg)
+          ? msg.join(', ')
+          : String(msg ?? 'Error'),
         variant: 'destructive',
       })
     },
@@ -106,11 +114,15 @@ export function GenerateLetterDialog({
         }
       }
     },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+    onError: (err: {
+      response?: { data?: { message?: string | string[] } }
+    }) => {
       const msg = err.response?.data?.message
       toast({
         title: 'Failed to generate letter',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        description: Array.isArray(msg)
+          ? msg.join(', ')
+          : String(msg ?? 'Error'),
         variant: 'destructive',
       })
     },
@@ -156,12 +168,10 @@ export function GenerateLetterDialog({
             </Select>
           </div>
 
-          {isAppointment && (
-            <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-              Profile fields and duty times are filled automatically. Preview
-              before issuing (does not consume a letter number).
-            </p>
-          )}
+          <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+            Employee profile fields are filled automatically. Preview uses the
+            seeded Urdu/English template and does not consume a letter number.
+          </p>
 
           {extraFields.map((field) => (
             <div key={field.key} className="space-y-2">
@@ -169,9 +179,10 @@ export function GenerateLetterDialog({
               {field.type === 'textarea' ? (
                 <Textarea
                   value={fields[field.key] ?? ''}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setPreviewHtml(null)
                     setFields((f) => ({ ...f, [field.key]: e.target.value }))
-                  }
+                  }}
                 />
               ) : (
                 <Input
@@ -183,15 +194,19 @@ export function GenerateLetterDialog({
                         : 'text'
                   }
                   value={fields[field.key] ?? ''}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setPreviewHtml(null)
                     setFields((f) => ({ ...f, [field.key]: e.target.value }))
-                  }
+                  }}
                 />
               )}
+              {field.hint ? (
+                <p className="text-xs text-text-secondary">{field.hint}</p>
+              ) : null}
             </div>
           ))}
 
-          {isAppointment && previewHtml && (
+          {previewHtml && (
             <iframe
               title="Letter preview"
               className="h-[45vh] w-full rounded border bg-white"
@@ -204,28 +219,21 @@ export function GenerateLetterDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          {isAppointment && (
-            <Button
-              variant="outline"
-              disabled={previewMutation.isPending || !requiredFieldsFilled}
-              onClick={() => previewMutation.mutate()}
-            >
-              {previewMutation.isPending ? 'Rendering...' : 'Preview'}
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            disabled={previewMutation.isPending || !requiredFieldsFilled}
+            onClick={() => previewMutation.mutate()}
+          >
+            {previewMutation.isPending ? 'Rendering...' : 'Preview'}
+          </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
             onClick={() => mutation.mutate()}
             disabled={
-              mutation.isPending ||
-              (isAppointment && (!requiredFieldsFilled || !previewHtml))
+              mutation.isPending || !requiredFieldsFilled || !previewHtml
             }
           >
-            {mutation.isPending
-              ? 'Generating...'
-              : isAppointment
-                ? 'Issue Letter'
-                : 'Generate'}
+            {mutation.isPending ? 'Generating...' : 'Issue Letter'}
           </Button>
         </DialogFooter>
       </DialogContent>

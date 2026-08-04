@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>{{{letterStyles}}}</style>
+</head>
+<body>
+<div class="page">
+  <div class="meta-row">
+    <div class="letter-no">Letter No. {{letterNo}}</div>
+    <div class="meta-block">
+      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
+      <div class="row">YCDO ملتان پاکستان</div>
+      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
+      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
+      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
+      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
+    </div>
+  </div>
+
+  <p class="salutation">السلام علیکم!</p>
+
+  <div class="body">
+    <p>
+      تحریر ہے کہ آپ کی ادارہ کیلئے کاوشوں اور لگن کو سراہا جاتا ہے۔
+      {{#if appreciationReason}}{{appreciationReason}}{{/if}}
+      {{#if achievementDetails}}{{achievementDetails}}{{/if}}
+      {{#if rewardAmount}}آپ کو نقد انعام بطور {{rewardAmount}} روپے دیا جا رہا ہے۔{{/if}}
+      امید ہے کہ آپ مستقبل میں بھی اسی جذبے اور لگن کے ساتھ خدمات سرانجام دیتے رہیں گے۔
+    </p>
+  </div>
+
+  <div class="signature">
+    <div>{{senderTitle}}</div>
+    <div>YCDO ملتان پاکستان</div>
+  </div>
+</div>
+</body>
+</html>

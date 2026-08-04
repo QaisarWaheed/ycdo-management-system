@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>{{{letterStyles}}}</style>
+</head>
+<body>
+<div class="page">
+  <div class="meta-row">
+    <div class="letter-no">Letter No. {{letterNo}}</div>
+    <div class="meta-block">
+      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
+      <div class="row">YCDO ملتان پاکستان</div>
+      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
+      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
+      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
+      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
+    </div>
+  </div>
+
+  <p class="salutation">السلام علیکم!</p>
+
+  <div class="body">
+    <p>
+      تحریر ہے کہ افسوس کے ساتھ مطلع کیا جاتا ہے کہ آپ کی خدمات YCDO سے ختم کی جا رہی ہیں۔
+    </p>
+    <p><strong>وجہ:</strong> {{terminationReason}}</p>
+    {{#if terminationDate}}<p>آخری یومِ ملازمت: {{terminationDate}}</p>{{/if}}
+    {{#if settlementDetails}}<p>تصفیہ کی تفصیل: {{settlementDetails}}</p>{{/if}}
+    <div class="violations">
+      <div class="heading">خلاف ورزیاں / تفصیل:</div>
+      <ul>
+        {{#each violations}}
+          <li>{{this}}</li>
+        {{/each}}
+      </ul>
+    </div>
+    <p>
+      براہ کرم ہینڈ اوور مکمل کریں اور ادارہ کی تمام جائیداد واپس کریں۔ حتمی تصفیہ ادارہ کی پالیسی کے مطابق ہوگا۔
+    </p>
+  </div>
+
+  <div class="signature">
+    <div>{{senderTitle}}</div>
+    <div>YCDO ملتان پاکستان</div>
+  </div>
+</div>
+</body>
+</html>

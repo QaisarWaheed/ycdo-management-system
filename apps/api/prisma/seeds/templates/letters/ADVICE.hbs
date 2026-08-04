@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>{{{letterStyles}}}</style>
+</head>
+<body>
+<div class="page">
+  <div class="meta-row">
+    <div class="letter-no">Letter No. {{letterNo}}</div>
+    <div class="meta-block">
+      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
+      <div class="row">YCDO ملتان پاکستان</div>
+      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
+      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
+      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
+      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
+    </div>
+  </div>
+
+  <p class="salutation">السلام علیکم!</p>
+
+  <div class="body">
+    <p>
+      تحریر ہے کہ آپ {{#if designation}}{{designation}}{{else}}اسٹاف{{/if}} کی حیثیت سے
+      {{#if branch}}{{branch}}{{else}}YCDO{{/if}} پر فائز ہیں۔
+      ادارہ کی SOP کے مطابق تمام اسٹاف کو وقت پر ڈیوٹی پر آنا اور جانا لازمی ہے لیکن
+      {{#if adviceReason}}{{adviceReason}}{{else}}آپ کی طرف سے SOP کی خلاف ورزی دیکھی گئی ہے۔{{/if}}
+      جو کہ ادارہ کی SOP کی سنگین خلاف ورزی ہے۔ آپ کو ہدایت کی جاتی ہے کہ آئندہ وقت کی پابندی کریں
+      ورنہ مزید خلاف ورزی کی صورت میں تنخواہ سے کٹوتی عمل میں لائی جائے گی۔
+    </p>
+    {{#if adviceDetails}}
+    <p>{{adviceDetails}}</p>
+    {{/if}}
+  </div>
+
+  <div class="signature">
+    <div>{{senderTitle}}</div>
+    <div>YCDO ملتان پاکستان</div>
+  </div>
+</div>
+</body>
+</html>

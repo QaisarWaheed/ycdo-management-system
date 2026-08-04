@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>{{{letterStyles}}}</style>
+</head>
+<body>
+<div class="page">
+  <div class="center-title">Notification<br/>Prescribed Letter of Warning</div>
+  <p style="text-align:center;font-size:10pt;margin-top:-8pt;">
+    It is notified that following notified format is approved for warning Letter
+  </p>
+
+  <div class="meta-block" style="margin-top:18pt;">
+    <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
+    <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
+    {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
+    <div class="row"><span class="label">لیٹر نمبر:</span> <span class="ltr">{{letterNo}}</span></div>
+    <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
+    <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
+  </div>
+
+  <p class="salutation">السلام علیکم!</p>
+
+  <div class="body">
+    <p>
+      تحریر ہے کہ آپ کو متعدد بار تاکید کی گئی کہ آپ ادارہ کی SOP's پر عملدرآمد کریں
+      لیکن باوجود تاکید اور باضابطہ ٹریننگ کے آپ ذیل SOP's کی خلاف ورزی کر رہے ہیں۔
+    </p>
+  </div>
+
+  <div class="violations">
+    <div class="heading">Violations / خلاف ورزیاں:</div>
+    <ul>
+      {{#each violations}}
+        <li>{{this}}</li>
+      {{else}}
+        <li></li>
+        <li></li>
+        <li></li>
+        <li></li>
+      {{/each}}
+    </ul>
+  </div>
+
+  <div class="body">
+    <p>
+      تمام SOP's مریض اور اسٹاف کو بہترین سہولیات مہیا کرنے اور تمام Volunteers / اسٹاف
+      کو ڈسپلن کا پابند رکھنے کیلئے ترتیب دی گئی ہیں۔ امید ہے کہ YCDO کے خدمت کے اس سفر
+      میں ہمارے شانہ بشانہ رہیں گے۔
+    </p>
+  </div>
+
+  <div class="closing">
+    <p>اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+    <p>والسلام</p>
+  </div>
+
+  <div class="signature">
+    <div>{{senderTitle}}</div>
+    <div>YCDO ملتان پاکستان</div>
+  </div>
+</div>
+</body>
+</html>

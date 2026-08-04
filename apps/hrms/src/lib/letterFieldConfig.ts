@@ -4,6 +4,7 @@ export interface LetterFieldDef {
   key: string
   label: string
   type?: 'textarea' | 'number' | 'date'
+  hint?: string
 }
 
 export const LETTER_FIELD_CONFIG: Partial<
@@ -16,61 +17,132 @@ export const LETTER_FIELD_CONFIG: Partial<
     { key: 'capacity', label: 'Capacity (e.g. Full Time)' },
   ],
   WARNING: [
-    { key: 'warningReason', label: 'Warning Reason', type: 'textarea' },
+    {
+      key: 'violations',
+      label: 'Violations / خلاف ورزیاں (one per line)',
+      type: 'textarea',
+      hint: 'Each line becomes a violation bullet on the Urdu warning template.',
+    },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+  ],
+  ADVICE: [
+    { key: 'adviceReason', label: 'Advice Reason', type: 'textarea' },
+    { key: 'adviceDetails', label: 'Additional Details', type: 'textarea' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+  ],
+  DISCIPLINARY: [
+    {
+      key: 'disciplinaryReason',
+      label: 'Reason / Incident Detail',
+      type: 'textarea',
+    },
     { key: 'incidentDate', label: 'Incident Date', type: 'date' },
-    { key: 'warningNumber', label: 'Warning Number (1st/2nd/3rd)' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
   ],
-  FINE: [
-    { key: 'fineReason', label: 'Fine Reason', type: 'textarea' },
-    { key: 'fineAmount', label: 'Fine Amount', type: 'number' },
-    { key: 'deductionMonth', label: 'Deduction Month' },
-  ],
-  SUSPENSION: [
-    { key: 'suspensionReason', label: 'Suspension Reason', type: 'textarea' },
-    { key: 'suspensionStartDate', label: 'Start Date', type: 'date' },
-    { key: 'suspensionDuration', label: 'Duration' },
-  ],
-  TERMINATION: [
-    { key: 'terminationReason', label: 'Termination Reason', type: 'textarea' },
-    { key: 'terminationDate', label: 'Termination Date', type: 'date' },
-    { key: 'settlementDetails', label: 'Settlement Details', type: 'textarea' },
+  EXPLANATION: [
+    {
+      key: 'issueDescription',
+      label: 'Issue Description',
+      type: 'textarea',
+    },
+    { key: 'responseDeadline', label: 'Response Deadline', type: 'date' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
   ],
   SHOW_CAUSE: [
     { key: 'allegation', label: 'Allegation', type: 'textarea' },
     { key: 'responseDeadline', label: 'Response Deadline', type: 'date' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
   ],
-  APPRECIATION: [
-    { key: 'appreciationReason', label: 'Reason', type: 'textarea' },
-    { key: 'achievementDetails', label: 'Achievement Details', type: 'textarea' },
-  ],
-  TRANSFER: [
-    { key: 'fromBranch', label: 'From Branch' },
-    { key: 'toBranch', label: 'To Branch' },
-    { key: 'effectiveDate', label: 'Effective Date', type: 'date' },
-  ],
-  EXPERIENCE: [
-    { key: 'lastWorkingDate', label: 'Last Working Date', type: 'date' },
-    { key: 'totalExperience', label: 'Total Experience' },
-    { key: 'jobDescription', label: 'Job Description', type: 'textarea' },
-  ],
-  SALARY_INCREMENT: [
-    { key: 'previousSalary', label: 'Previous Stipend', type: 'number' },
-    { key: 'newSalary', label: 'New Stipend', type: 'number' },
-    { key: 'effectiveDate', label: 'Effective Date', type: 'date' },
-    { key: 'incrementReason', label: 'Increment Reason', type: 'textarea' },
-  ],
-  REINSTATEMENT: [
-    { key: 'reinstatementDate', label: 'Reinstatement Date', type: 'date' },
-    { key: 'reinstatedDesignation', label: 'Reinstated Designation' },
-  ],
-  REJOINING: [
-    { key: 'rejoiningDate', label: 'Rejoining Date', type: 'date' },
-    { key: 'rejoiningDesignation', label: 'Rejoining Designation' },
+  FINE: [
+    { key: 'fineReason', label: 'Fine Reason', type: 'textarea' },
+    { key: 'fineAmount', label: 'Fine Amount (e.g. 500/- or ایک یوم تنخواہ)' },
+    { key: 'deductionMonth', label: 'Deduction Month' },
+    {
+      key: 'attendanceRows',
+      label: 'Late evidence rows (optional)',
+      type: 'textarea',
+      hint: 'One per line: date | inTime | outTime  — or JSON array.',
+    },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
   ],
   INQUIRY: [
     { key: 'inquiryReason', label: 'Inquiry Reason', type: 'textarea' },
     { key: 'inquiryDate', label: 'Inquiry Date', type: 'date' },
     { key: 'committeeMembers', label: 'Committee Members' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+  ],
+  APPRECIATION: [
+    { key: 'appreciationReason', label: 'Reason', type: 'textarea' },
+    {
+      key: 'achievementDetails',
+      label: 'Achievement Details',
+      type: 'textarea',
+    },
+    { key: 'rewardAmount', label: 'Reward Amount (optional)' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+  ],
+  TRANSFER: [
+    { key: 'fromBranch', label: 'From Branch / Posting' },
+    { key: 'toBranch', label: 'To Branch / Posting' },
+    { key: 'effectiveDate', label: 'Effective Date', type: 'date' },
+    { key: 'timing', label: 'Timing (optional)' },
+    { key: 'senderTitle', label: 'Signatory Title (optional)' },
+  ],
+  SUSPENSION: [
+    {
+      key: 'suspensionReason',
+      label: 'Suspension Reason',
+      type: 'textarea',
+    },
+    { key: 'suspensionStartDate', label: 'Start Date', type: 'date' },
+    { key: 'suspensionDuration', label: 'Duration' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+  ],
+  TERMINATION: [
+    {
+      key: 'terminationReason',
+      label: 'Termination Reason',
+      type: 'textarea',
+    },
+    { key: 'terminationDate', label: 'Termination Date', type: 'date' },
+    {
+      key: 'settlementDetails',
+      label: 'Settlement Details',
+      type: 'textarea',
+    },
+    {
+      key: 'violations',
+      label: 'Violations (optional, one per line)',
+      type: 'textarea',
+    },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+  ],
+  REINSTATEMENT: [
+    { key: 'reinstatementDate', label: 'Reinstatement Date', type: 'date' },
+    { key: 'reinstatedDesignation', label: 'Reinstated Designation' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+  ],
+  REJOINING: [
+    { key: 'rejoiningDate', label: 'Rejoining Date', type: 'date' },
+    { key: 'rejoiningDesignation', label: 'Rejoining Designation' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
+  ],
+  SALARY_INCREMENT: [
+    { key: 'previousSalary', label: 'Previous Stipend', type: 'number' },
+    { key: 'newSalary', label: 'New Stipend', type: 'number' },
+    { key: 'effectiveDate', label: 'Effective Date', type: 'date' },
+    {
+      key: 'incrementReason',
+      label: 'Increment Reason (optional)',
+      type: 'textarea',
+    },
+    { key: 'senderTitle', label: 'Signatory Title (optional)' },
+  ],
+  EXPERIENCE: [
+    { key: 'lastWorkingDate', label: 'Last Working Date', type: 'date' },
+    { key: 'totalExperience', label: 'Total Experience' },
+    { key: 'jobDescription', label: 'Job Description', type: 'textarea' },
+    { key: 'senderTitle', label: 'From / منجانب (optional)' },
   ],
 }
 
@@ -79,6 +151,44 @@ export function getLetterExtraFields(letterType: LetterType): LetterFieldDef[] {
     LETTER_FIELD_CONFIG[letterType] ?? [
       { key: 'additionalNotes', label: 'Additional Notes', type: 'textarea' },
     ]
+  )
+}
+
+/** Required for generate button — optional fields like senderTitle are skipped. */
+export function getLetterRequiredFields(
+  letterType: LetterType,
+): LetterFieldDef[] {
+  const optionalKeys = new Set([
+    'senderTitle',
+    'adviceDetails',
+    'attendanceRows',
+    'rewardAmount',
+    'timing',
+    'incrementReason',
+    'violations', // optional on TERMINATION only; WARNING treats as required via config presence
+    'totalExperience',
+    'jobDescription',
+    'reinstatedDesignation',
+    'rejoiningDesignation',
+    'settlementDetails',
+    'committeeMembers',
+    'inquiryDate',
+    'responseDeadline',
+    'incidentDate',
+    'suspensionStartDate',
+    'suspensionDuration',
+    'terminationDate',
+  ])
+
+  // WARNING violations is required
+  if (letterType === 'WARNING') {
+    return getLetterExtraFields(letterType).filter(
+      (f) => f.key === 'violations',
+    )
+  }
+
+  return getLetterExtraFields(letterType).filter(
+    (f) => !optionalKeys.has(f.key),
   )
 }
 

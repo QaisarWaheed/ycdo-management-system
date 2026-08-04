@@ -7,6 +7,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { stipendRecordToPackage } from '../../common/stipend.util';
+import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
 
 export type DisciplineOptions = {
   lateMinutes?: number;
@@ -296,12 +297,20 @@ async function applyUninformedAbsentDeduction(
         data: { isActive: false },
       });
 
-      await tx.notification.create({
-        data: {
-          employeeId,
-          message: `You have been suspended due to ${uninformedCount} uninformed absence day(s) this month (more than 2 days). Please contact HR.`,
-          type: 'SUSPENSION_ISSUED',
+      const reason = `اس ماہ ${uninformedCount} دن بغیر اطلاع غیر حاضری (2 دن سے زیادہ) — خودکار معطلی۔`;
+      await issueAutoTemplatedLetter(tx, {
+        employeeId,
+        letterType: LetterType.SUSPENSION,
+        extraFields: {
+          suspensionReason: reason,
+          suspensionStartDate: dayKey,
+          suspensionDuration: 'Pending HR review',
+          violations: reason,
         },
+        requiresAcknowledgement: true,
+        replyDeadline: null,
+        notificationMessage: `You have been suspended due to ${uninformedCount} uninformed absence day(s) this month (more than 2 days). Please contact HR.`,
+        notificationType: 'SUSPENSION_ISSUED',
       });
     }
   }
@@ -383,43 +392,35 @@ async function autoGenerateLateWarningLetter(
   });
   if (existingLetter) return;
 
-  const letterCount = await tx.letter.count({
-    where: { letterType },
-  });
+  const reason = `اس ماہ ${lateCount} مرتبہ لیٹ آمد (وارننگ نمبر ${warningNumber})۔`;
+  const isSuspension = warningNumber === 3;
 
-  const typeShort = warningNumber === 3 ? 'SUS' : 'WRN';
-  const refNumber = `YCDO-${typeShort}-${new Date().getFullYear()}-${String(letterCount + 1).padStart(4, '0')}`;
-
-  const content = {
-    refNumber,
-    warningNumber,
-    lateCount,
-    reason: `Late arrival ${lateCount} times this month`,
-    incidentDate: new Date().toISOString(),
-  };
-
-  await tx.letter.create({
-    data: {
-      employeeId,
-      letterType,
-      content,
-      requiresAcknowledgement: true,
-      replyDeadline:
-        letterType === LetterType.SUSPENSION
-          ? null
-          : new Date(Date.now() + 48 * 60 * 60 * 1000),
-      fileUrl: null,
-    },
-  });
-
-  await tx.notification.create({
-    data: {
-      employeeId,
-      message:
-        warningNumber === 3
-          ? 'You have been suspended due to repeated late arrivals (9 lates this month).'
-          : `Warning Letter ${warningNumber} has been issued due to ${lateCount} late arrivals this month.`,
-      type: warningNumber === 3 ? 'SUSPENSION_ISSUED' : 'WARNING_ISSUED',
-    },
+  await issueAutoTemplatedLetter(tx, {
+    employeeId,
+    letterType,
+    extraFields: isSuspension
+      ? {
+          suspensionReason: reason,
+          suspensionStartDate: new Date().toISOString().slice(0, 10),
+          suspensionDuration: 'Pending inquiry',
+          violations: reason,
+          warningNumber,
+          lateCount,
+        }
+      : {
+          violations: reason,
+          warningReason: reason,
+          warningNumber,
+          lateCount,
+          incidentDate: new Date().toISOString().slice(0, 10),
+        },
+    requiresAcknowledgement: true,
+    replyDeadline: isSuspension
+      ? null
+      : new Date(Date.now() + 48 * 60 * 60 * 1000),
+    notificationMessage: isSuspension
+      ? 'You have been suspended due to repeated late arrivals (9 lates this month).'
+      : `Warning Letter ${warningNumber} has been issued due to ${lateCount} late arrivals this month.`,
+    notificationType: isSuspension ? 'SUSPENSION_ISSUED' : 'WARNING_ISSUED',
   });
 }

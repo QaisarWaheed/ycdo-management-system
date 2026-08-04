@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>{{{letterStyles}}}</style>
+</head>
+<body>
+<div class="page en-body">
+  <div class="header-row">
+    <div>Letter No. {{letterNo}}</div>
+    <div>Dated: {{issueDate}}</div>
+  </div>
+
+  <p>
+    {{employeeName}}<br/>
+    {{designation}}<br/>
+    YCDO Pakistan.
+  </p>
+
+  <h1>NOTIFICATION</h1>
+
+  <p>
+    You are working as <strong>{{designation}}</strong> based at
+    <strong>{{branch}}</strong>. We are pleased to inform you that your monthly
+    emoluments are being revised with effect from <strong>{{effectiveDate}}</strong>,
+    the detail is given hereunder:-
+  </p>
+
+  <table style="width:70%;">
+    <tr>
+      <td>01 Current Stipend</td>
+      <td style="text-align:right;"><strong>{{previousSalary}} Per Month</strong></td>
+    </tr>
+    <tr>
+      <td>02 Enhancement</td>
+      <td style="text-align:right;"><strong>{{incrementAmount}} Per Month</strong></td>
+    </tr>
+  </table>
+
+  <p>
+    With the enhancement of <strong>Rs.{{incrementAmount}}/-</strong>, your total
+    emoluments will be <strong>Rs.{{newSalary}}/-</strong> per month.
+    {{#if incrementReason}}{{incrementReason}}{{else}}We expect that your services will be more effective and vigilant for our esteemed Organization.{{/if}}
+    Best of Luck for future.
+  </p>
+
+  <div class="sign">
+    <div>{{senderTitle}}</div>
+    <div>YCDO Multan, Pakistan.</div>
+  </div>
+</div>
+</body>
+</html>

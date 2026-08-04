@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>{{{letterStyles}}}</style>
+</head>
+<body>
+<div class="page">
+  <div class="meta-row">
+    <div class="letter-no">Letter No. {{letterNo}}</div>
+    <div class="meta-block">
+      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
+      <div class="row">YCDO ملتان پاکستان</div>
+      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
+      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
+      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
+      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
+    </div>
+  </div>
+
+  <p class="salutation">السلام علیکم!</p>
+
+  <div class="body">
+    <p>
+      تحریر ہے کہ
+      {{#if disciplinaryReason}}{{disciplinaryReason}}{{else}}آپ کی جانب سے ادارہ کی ہدایات کی خلاف ورزی سامنے آئی ہے۔{{/if}}
+      جو کہ انتہائی تشویش ناک ہے۔ لہذا آپ کو ہدایت کی جاتی ہے کہ آئندہ ہیڈ آفس کی طرف سے
+      جاری کردہ ہدایات پر سختی سے عمل کریں ورنہ مزید سخت کارروائی عمل میں لائی جا سکتی ہے۔
+    </p>
+    {{#if incidentDate}}
+    <p>واقعہ کی تاریخ: {{incidentDate}}</p>
+    {{/if}}
+  </div>
+
+  <div class="signature">
+    <div>{{senderTitle}}</div>
+    <div>YCDO ملتان پاکستان</div>
+  </div>
+</div>
+</body>
+</html>

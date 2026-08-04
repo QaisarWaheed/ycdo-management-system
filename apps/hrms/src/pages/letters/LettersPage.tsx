@@ -69,6 +69,7 @@ import { toast } from '@/hooks/use-toast'
 import { usePagination } from '@/hooks/usePagination'
 import {
   getLetterExtraFields,
+  getLetterRequiredFields,
   isLetterPdfUnavailable,
   letterReference,
   letterTypeBadgeClass,
@@ -349,7 +350,7 @@ function GenerateLetterWizard({
   }
 
   const extraFields = getLetterExtraFields(letterType)
-  const isAppointment = letterType === 'APPOINTMENT'
+  const requiredFields = getLetterRequiredFields(letterType)
 
   const buildExtraFieldsPayload = () => {
     const payload: Record<string, string> = {}
@@ -365,7 +366,7 @@ function GenerateLetterWizard({
     return payload
   }
 
-  const requiredFieldsFilled = extraFields.every(
+  const requiredFieldsFilled = requiredFields.every(
     (field) => (fields[field.key] ?? '').trim().length > 0,
   )
 
@@ -417,7 +418,7 @@ function GenerateLetterWizard({
     },
   })
 
-  const totalSteps = isAppointment ? 4 : 3
+  const totalSteps = 4
 
   return (
     <>
@@ -474,15 +475,15 @@ function GenerateLetterWizard({
 
           {step === 3 && (
             <div className="space-y-4">
-              {isAppointment && (
-                <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-                  Name, CNIC, phone, designation, department, branch, and duty
-                  times are filled automatically from the employee record.
-                </p>
-              )}
+              <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                Profile fields are filled automatically from the employee
+                record. Urdu templates are used for disciplinary letters;
+                Appointment, Transfer, and Salary Increment keep their English
+                approved formats.
+              </p>
               <p className="text-sm text-text-secondary">
-                {LETTER_TYPES.find((t) => t.value === letterType)?.label} —{' '}
-                {isAppointment ? 'HR-supplied fields' : 'extra fields'}
+                {LETTER_TYPES.find((t) => t.value === letterType)?.label} —
+                template fields
               </p>
               {extraFields.map((field) => (
                 <div key={field.key} className="space-y-2">
@@ -490,9 +491,13 @@ function GenerateLetterWizard({
                   {field.type === 'textarea' ? (
                     <Textarea
                       value={fields[field.key] ?? ''}
-                      onChange={(e) =>
-                        setFields((f) => ({ ...f, [field.key]: e.target.value }))
-                      }
+                      onChange={(e) => {
+                        setPreviewHtml(null)
+                        setFields((f) => ({
+                          ...f,
+                          [field.key]: e.target.value,
+                        }))
+                      }}
                     />
                   ) : (
                     <Input
@@ -504,17 +509,24 @@ function GenerateLetterWizard({
                             : 'text'
                       }
                       value={fields[field.key] ?? ''}
-                      onChange={(e) =>
-                        setFields((f) => ({ ...f, [field.key]: e.target.value }))
-                      }
+                      onChange={(e) => {
+                        setPreviewHtml(null)
+                        setFields((f) => ({
+                          ...f,
+                          [field.key]: e.target.value,
+                        }))
+                      }}
                     />
                   )}
+                  {field.hint ? (
+                    <p className="text-xs text-text-secondary">{field.hint}</p>
+                  ) : null}
                 </div>
               ))}
             </div>
           )}
 
-          {step === 4 && isAppointment && (
+          {step === 4 && (
             <div className="space-y-3">
               <p className="text-sm text-text-secondary">
                 Preview the letter before issuing. Preview does not consume a
@@ -545,18 +557,18 @@ function GenerateLetterWizard({
                 className="bg-primary hover:bg-primary-dark"
                 disabled={
                   (step === 1 && !employeeId) ||
-                  (step === 3 && isAppointment && !requiredFieldsFilled)
+                  (step === 3 && !requiredFieldsFilled)
                 }
                 onClick={() => {
                   setStep((s) => s + 1)
-                  if (step === 3 && isAppointment) {
+                  if (step === 3) {
                     setPreviewHtml(null)
                   }
                 }}
               >
                 Next
               </Button>
-            ) : isAppointment ? (
+            ) : (
               <>
                 <Button
                   variant="outline"
@@ -573,14 +585,6 @@ function GenerateLetterWizard({
                   {mutation.isPending ? 'Issuing...' : 'Issue Letter'}
                 </Button>
               </>
-            ) : (
-              <Button
-                className="bg-primary hover:bg-primary-dark"
-                disabled={mutation.isPending}
-                onClick={() => mutation.mutate()}
-              >
-                {mutation.isPending ? 'Generating...' : 'Generate'}
-              </Button>
             )}
           </DialogFooter>
         </DialogContent>
