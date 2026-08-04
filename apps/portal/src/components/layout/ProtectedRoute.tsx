@@ -1,19 +1,19 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { isPortalEmployeeUser } from '@/lib/portalRoles'
+import { canAccessPortal } from '@/lib/portalRoles'
 import { PortalLayout } from './PortalLayout'
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuth()
   const location = useLocation()
 
-  if (!isAuthenticated || !isPortalEmployeeUser(user)) {
+  if (!isAuthenticated || !canAccessPortal(user)) {
     return (
       <Navigate
         to="/login"
         replace
         state={{
-          error: 'Access denied. Use HRMS for system access.',
+          error: 'Please sign in to continue.',
           from: location.pathname,
         }}
       />

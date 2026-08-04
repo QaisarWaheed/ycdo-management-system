@@ -93,19 +93,31 @@ export function PortalHeader() {
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 flex h-[60px] items-center justify-between border-b border-border bg-white px-4 print:hidden">
-      <Link to="/dashboard" className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
+      <Link to="/dashboard" className="flex min-w-0 items-center gap-2.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
           Y
         </div>
-        <div className="hidden sm:block">
+        <div className="min-w-0">
           <p className="text-sm font-bold text-primary">YCDO</p>
-          <p className="text-[10px] text-text-secondary">Employee Portal</p>
+          <p className="truncate text-[10px] text-text-secondary">
+            Employee Portal
+          </p>
         </div>
       </Link>
 
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="relative" asChild>
-          <Link to="/letters" aria-label="My Letters">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          asChild
+          disabled={!user?.employeeId}
+        >
+          <Link
+            to="/letters"
+            aria-label="My Letters"
+            className={!user?.employeeId ? 'pointer-events-none opacity-40' : undefined}
+          >
             <FileText className="h-5 w-5 text-text-secondary" />
             {pendingAckCount > 0 && (
               <Badge className="absolute -right-1 -top-1 h-5 min-w-5 justify-center bg-red-600 px-1 text-[10px] text-white hover:bg-red-600">

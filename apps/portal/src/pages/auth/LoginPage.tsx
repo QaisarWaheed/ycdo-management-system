@@ -6,7 +6,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { authApi } from '@/api/endpoints/auth'
 import { useAuth } from '@/hooks/useAuth'
-import { isPortalEmployeeUser } from '@/lib/portalRoles'
+import { canAccessPortal } from '@/lib/portalRoles'
 import { getApiErrorMessage } from '@/lib/apiErrorMessage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,13 +18,6 @@ const loginSchema = z.object({
 })
 
 type LoginForm = z.infer<typeof loginSchema>
-
-const features = [
-  'View Attendance & Timer',
-  'Apply for Leave',
-  'Access Payslips',
-  'Respond to Letters',
-]
 
 export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
@@ -51,15 +44,15 @@ export function LoginPage() {
     setError('')
     try {
       const response = await authApi.login(data.email, data.password)
-      if (!isPortalEmployeeUser(response.user)) {
-        setError('System accounts cannot sign in here. Use HRMS.')
+      if (!canAccessPortal(response.user)) {
+        setError('This account cannot sign in to the Employee Portal.')
         return
       }
       login(response.access_token, response.user)
       navigate('/dashboard')
     } catch (err) {
       if (err instanceof Error && err.message === 'PORTAL_ACCESS_DENIED') {
-        setError('System accounts cannot sign in here. Use HRMS.')
+        setError('This account cannot sign in to the Employee Portal.')
         return
       }
       setError(getApiErrorMessage(err, 'Invalid email or password'))
@@ -67,57 +60,52 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
-      <div className="flex w-full flex-col justify-between bg-primary p-8 text-white md:w-[40%] md:p-12">
-        <div>
-          <div className="mb-8 flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-2xl font-bold text-primary">
-              Y
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold">YCDO</h1>
-              <p className="text-sm text-white/80">
-                Youth Community Development Organization
-              </p>
-            </div>
+    <div className="flex min-h-[100dvh] flex-col bg-surface">
+      {/* Compact brand header — full width on all sizes */}
+      <header className="bg-primary px-5 pb-8 pt-10 text-white sm:px-8 sm:pt-12">
+        <div className="mx-auto flex max-w-md items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-xl font-bold text-primary sm:h-14 sm:w-14 sm:text-2xl">
+            Y
           </div>
-          <p className="text-lg italic text-white/90">Employee Portal</p>
-          <div className="mt-2 h-1 w-16 rounded bg-accent" />
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold leading-tight sm:text-3xl">YCDO</h1>
+            <p className="truncate text-xs text-white/80 sm:text-sm">
+              Youth Community Development Organization
+            </p>
+          </div>
         </div>
+        <div className="mx-auto mt-5 max-w-md">
+          <p className="text-base font-medium text-white/95 sm:text-lg">
+            Employee Portal
+          </p>
+          <div className="mt-2 h-1 w-14 rounded bg-accent" />
+          <p className="mt-3 text-sm text-white/75">
+            Employees · Founder · Chairman Admin · President
+          </p>
+        </div>
+      </header>
 
-        <ul className="mt-8 space-y-3 md:mt-0">
-          {features.map((item) => (
-            <li key={item} className="flex items-center gap-2 text-white/90">
-              <span className="text-accent">✓</span>
-              {item}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="flex w-full flex-1 items-center justify-center bg-white px-8 py-12">
-        <div className="w-full max-w-[400px]">
-          <div className="mb-8 flex justify-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-bold text-white">
-              Y
-            </div>
-          </div>
-
+      {/* Form card sits under brand — never side-by-side on phones */}
+      <div className="relative z-10 -mt-4 flex flex-1 flex-col px-4 pb-8 sm:px-6">
+        <div className="mx-auto w-full max-w-md flex-1 rounded-2xl border border-border bg-white px-5 py-7 shadow-sm sm:px-8 sm:py-9">
           <p className="text-center text-sm text-text-secondary">Welcome back</p>
-          <h2 className="mt-1 text-center text-2xl font-bold text-text-primary">
-            Sign in to Employee Portal
+          <h2 className="mt-1 text-center text-xl font-bold text-text-primary sm:text-2xl">
+            Sign in
           </h2>
           <p className="mt-2 text-center text-sm text-text-secondary">
-            Access your attendance, leave, payroll and more
+            Attendance, leave, payroll, letters &amp; joining approvals
           </p>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-5">
+          <form onSubmit={handleSubmit(onSubmit)} className="mt-7 space-y-5">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="employee@ycdo.org"
+                inputMode="email"
+                autoComplete="username"
+                placeholder="you@ycdo.org"
+                className="h-12 text-base"
                 {...register('email')}
               />
               {errors.email && (
@@ -131,18 +119,21 @@ export function LoginPage() {
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   placeholder="••••••••"
+                  className="h-12 pr-11 text-base"
                   {...register('password')}
                 />
                 <button
                   type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-text-secondary"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
+                    <EyeOff className="h-5 w-5" />
                   ) : (
-                    <Eye className="h-4 w-4" />
+                    <Eye className="h-5 w-5" />
                   )}
                 </button>
               </div>
@@ -162,7 +153,7 @@ export function LoginPage() {
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-primary hover:bg-primary-dark"
+              className="h-12 w-full bg-primary text-base hover:bg-primary-dark"
             >
               {isSubmitting ? (
                 <>
@@ -174,11 +165,11 @@ export function LoginPage() {
               )}
             </Button>
           </form>
-
-          <p className="mt-10 text-center text-xs text-text-secondary">
-            YCDO Employee Portal v1.0 · Powered by YCDO IT Team
-          </p>
         </div>
+
+        <p className="mt-6 text-center text-xs text-text-secondary">
+          YCDO Employee Portal v1.0 · Powered by YCDO IT Team
+        </p>
       </div>
     </div>
   )

@@ -1,4 +1,11 @@
-import { IsBooleanString, IsNotEmpty, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import {
+  IsBooleanString,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MinLength,
+} from 'class-validator';
 
 export class UpdateUserPasswordDto {
   @IsString()
@@ -23,4 +30,19 @@ export class UserPasswordsQueryDto {
   @IsOptional()
   @IsUUID()
   projectId?: string;
+}
+
+export class PortalWhatsAppSharesQueryDto {
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  /** Override portal login base URL (default PORTAL_PUBLIC_URL). */
+  @IsOptional()
+  @IsString()
+  portalBaseUrl?: string;
 }

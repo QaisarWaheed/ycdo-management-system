@@ -2,6 +2,8 @@ export interface User {
   id: string
   email: string
   role: string
+  /** All effective roles including primary + additional */
+  roles?: string[]
   employeeId?: string | null
   branchId?: string | null
 }

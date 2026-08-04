@@ -71,10 +71,19 @@ export class AuthService {
       }
     }
 
-    if (dto.client === 'portal' && !user.employeeId) {
-      throw new ForbiddenException(
-        'System accounts cannot sign in to the Employee Portal. Use HRMS.',
-      );
+    if (dto.client === 'portal') {
+      const isExecutive = hasAnyRole(roles, [
+        UserRole.FOUNDER,
+        UserRole.CHAIRMAN,
+        UserRole.PRESIDENT,
+      ]);
+      // Executives may use the portal for mobile onboarding approvals
+      // even without a linked employee profile.
+      if (!user.employeeId && !isExecutive) {
+        throw new ForbiddenException(
+          'System accounts cannot sign in to the Employee Portal. Use HRMS.',
+        );
+      }
     }
 
     if (hasAnyRole(roles, [UserRole.SUPER_ADMIN])) {
