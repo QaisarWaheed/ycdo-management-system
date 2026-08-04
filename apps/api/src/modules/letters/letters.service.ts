@@ -557,7 +557,12 @@ export class LettersService {
     const publicId = letterNo.replace(/\//g, '-');
 
     if (isCloudinaryEnabled()) {
-      return uploadPdfToCloudinary(pdfBuffer, publicId, 'letters');
+      try {
+        return await uploadPdfToCloudinary(pdfBuffer, publicId, 'letters');
+      } catch (err) {
+        // Fall back to local disk so download/regenerate still works.
+        console.error('Cloudinary letter upload failed; using local uploads:', err);
+      }
     }
 
     const fileName = `${sanitizeRefForFilename(letterNo)}.pdf`;
@@ -640,6 +645,30 @@ export class LettersService {
   async getPdf(letterId: string) {
     const letter = await this.findOne(letterId);
 
+    // Prefer existing file when present on disk / Cloudinary.
+    if (letter.fileUrl) {
+      try {
+        return await this.loadExistingPdf(letter);
+      } catch {
+        // Fall through to regenerate from stored template variables.
+      }
+    }
+
+    const repaired = await this.regeneratePdfForLetter(letter);
+    if (repaired) {
+      return repaired;
+    }
+
+    throw new NotFoundException(
+      'File unavailable — please reissue this letter',
+    );
+  }
+
+  private async loadExistingPdf(letter: {
+    id: string;
+    letterNo: string | null;
+    fileUrl: string | null;
+  }): Promise<{ buffer: Buffer; filename: string }> {
     if (!letter.fileUrl) {
       throw new NotFoundException('PDF file not found for this letter');
     }
@@ -675,6 +704,101 @@ export class LettersService {
     const filename = path.basename(fullPath);
 
     return { buffer, filename };
+  }
+
+  /**
+   * Rebuild PDF from stored Handlebars variables when the file was lost
+   * (ephemeral Docker disk, multi-instance, failed Cloudinary fetch, etc.).
+   */
+  private async regeneratePdfForLetter(letter: {
+    id: string;
+    employeeId: string;
+    letterType: LetterType;
+    letterNo: string | null;
+    variables: Prisma.JsonValue | null;
+    content: Prisma.JsonValue;
+  }): Promise<{ buffer: Buffer; filename: string } | null> {
+    const storedVars =
+      letter.variables &&
+      typeof letter.variables === 'object' &&
+      !Array.isArray(letter.variables)
+        ? (letter.variables as Record<string, unknown>)
+        : null;
+
+    const content =
+      letter.content &&
+      typeof letter.content === 'object' &&
+      !Array.isArray(letter.content)
+        ? (letter.content as Record<string, unknown>)
+        : {};
+
+    const letterNo =
+      letter.letterNo ??
+      storedVars?.letterNo?.toString() ??
+      `REISSUE-${letter.id.slice(0, 8)}`;
+
+    try {
+      let htmlContent: string;
+
+      if (letter.letterType === LetterType.APPOINTMENT) {
+        const template = await this.prisma.letterTemplate.findFirst({
+          where: { code: SELECTION_TEMPLATE_CODE, active: true },
+        });
+        if (!template || !storedVars) return null;
+        htmlContent = renderHandlebarsTemplate(template.bodyHtml, {
+          ...storedVars,
+          letterNo: String(letterNo),
+        } as SelectionLetterVariables);
+      } else {
+        const code = templateCodeForLetterType(letter.letterType);
+        const template = await this.prisma.letterTemplate.findFirst({
+          where: { code, active: true },
+        });
+        if (!template) return null;
+
+        const merged: Record<string, unknown> = {
+          ...content,
+          ...(storedVars ?? {}),
+          letterNo: String(letterNo),
+        };
+
+        // Ensure list fields are real arrays for Handlebars.
+        merged.violations = parseViolationLines(
+          merged.violations ?? merged.warningReason,
+        );
+        merged.attendanceRows = parseAttendanceRows(merged.attendanceRows);
+
+        if (!merged.issueDate) {
+          merged.issueDate = formatIssueDatePkt();
+        }
+        if (!merged.subject) {
+          merged.subject = defaultSubjectFor(letter.letterType);
+        }
+        if (!merged.senderTitle) {
+          merged.senderTitle = DEFAULT_SENDER_TITLE;
+        }
+
+        htmlContent = renderLetterHtml(template.bodyHtml, merged);
+      }
+
+      const pdfBuffer = await generatePdf(htmlContent);
+      const fileUrl = await this.persistPdf(
+        pdfBuffer,
+        String(letterNo),
+        letter.employeeId,
+      );
+
+      await this.prisma.letter.update({
+        where: { id: letter.id },
+        data: { fileUrl },
+      });
+
+      const filename = `${sanitizeRefForFilename(String(letterNo))}.pdf`;
+      return { buffer: pdfBuffer, filename };
+    } catch (err) {
+      console.error(`Failed to regenerate PDF for letter ${letter.id}:`, err);
+      return null;
+    }
   }
 
   async markPrinted(letterId: string) {

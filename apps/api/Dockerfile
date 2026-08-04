@@ -5,7 +5,8 @@ RUN apk add --no-cache \
   chromium nss freetype harfbuzz ca-certificates ttf-freefont ttf-liberation font-noto fontconfig
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+# Alpine chromium package installs /usr/bin/chromium (not chromium-browser)
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY apps/api/package*.json ./
 COPY apps/api/tsconfig*.json ./

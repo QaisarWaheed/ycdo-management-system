@@ -27,8 +27,8 @@ function resolveChromePath(): string | undefined {
     );
   } else {
     candidates.push(
-      '/usr/bin/chromium-browser',
       '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
       '/usr/bin/google-chrome',
     );
   }

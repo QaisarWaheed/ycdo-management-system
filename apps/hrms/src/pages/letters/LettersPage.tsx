@@ -685,11 +685,18 @@ function GenerateLetterWizard({
         onConfirm={async () => {
           if (!downloadPrompt) return
           try {
-            const blob = await lettersApi.getPdf(downloadPrompt.id)
-            window.open(URL.createObjectURL(blob), '_blank')
-          } catch {
+            const { downloadLetterPdf } = await import(
+              '@/lib/downloadLetterPdf'
+            )
+            await downloadLetterPdf(
+              downloadPrompt.id,
+              `${downloadPrompt.reference}.pdf`,
+            )
+          } catch (err) {
             toast({
               title: 'File unavailable — please reissue',
+              description:
+                err instanceof Error ? err.message : undefined,
               variant: 'destructive',
             })
           }
@@ -762,19 +769,16 @@ export function LettersPage() {
   })
 
   const downloadPdf = async (letter: Letter) => {
-    if (isLetterPdfUnavailable(letter)) {
-      toast({
-        title: 'File unavailable — please reissue',
-        variant: 'destructive',
-      })
-      return
-    }
     try {
-      const blob = await lettersApi.getPdf(letter.id)
-      window.open(URL.createObjectURL(blob), '_blank')
-    } catch {
+      const { downloadLetterPdf } = await import('@/lib/downloadLetterPdf')
+      await downloadLetterPdf(
+        letter.id,
+        `${letterReference(letter)}.pdf`,
+      )
+    } catch (err) {
       toast({
         title: 'File unavailable — please reissue',
+        description: err instanceof Error ? err.message : undefined,
         variant: 'destructive',
       })
     }
@@ -896,7 +900,7 @@ export function LettersPage() {
                       </Badge>
                       {isLetterPdfUnavailable(letter) && (
                         <p className="text-xs text-amber-700">
-                          File unavailable — please reissue
+                          PDF missing on disk — download will try to rebuild
                         </p>
                       )}
                     </div>
@@ -942,7 +946,6 @@ export function LettersPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          disabled={isLetterPdfUnavailable(letter)}
                           onClick={() => downloadPdf(letter)}
                         >
                           Download PDF

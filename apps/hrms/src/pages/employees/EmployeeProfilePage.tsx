@@ -749,10 +749,15 @@ export function EmployeeProfilePage() {
 
   const downloadPdf = async (letterId: string) => {
     try {
-      const blob = await lettersApi.getPdf(letterId)
-      window.open(URL.createObjectURL(blob), '_blank')
-    } catch {
-      toast({ title: 'Failed to download PDF', variant: 'destructive' })
+      const { downloadLetterPdf } = await import('@/lib/downloadLetterPdf')
+      await downloadLetterPdf(letterId)
+    } catch (err) {
+      toast({
+        title: 'Failed to download PDF',
+        description:
+          err instanceof Error ? err.message : 'File unavailable — please reissue',
+        variant: 'destructive',
+      })
     }
   }
 

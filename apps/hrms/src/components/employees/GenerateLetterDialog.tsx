@@ -144,11 +144,15 @@ export function GenerateLetterDialog({
       setPreviewHtml(null)
       if (data?.letter?.id) {
         try {
-          const blob = await lettersApi.getPdf(data.letter.id)
-          window.open(URL.createObjectURL(blob), '_blank')
-        } catch {
+          const { downloadLetterPdf } = await import('@/lib/downloadLetterPdf')
+          await downloadLetterPdf(
+            data.letter.id,
+            `${letterReference(data.letter)}.pdf`,
+          )
+        } catch (err) {
           toast({
             title: 'File unavailable — please reissue',
+            description: err instanceof Error ? err.message : undefined,
             variant: 'destructive',
           })
         }
