@@ -2,114 +2,30 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
   AttendanceLogType,
-  AttendanceStatus,
   EmployeeStatus,
 } from '@prisma/client';
 import { getDutyWindow } from '../../common/duty.util';
 import { PrismaService } from '../../prisma/prisma.service';
-import { is24HourShift } from './attendance-biometric.util';
-import {
-  parseAttendanceDateTime,
-  toPakistanDateOnly,
-} from './attendance-late.util';
+import { toPakistanDateOnly } from './attendance-late.util';
 
-const AUTO_CHECKOUT_NOTE = 'Auto-checked out at shift end';
 const OT_CHECKIN_PROMPT_TYPE = 'OVERTIME_CHECKIN_PROMPT';
 const OT_CHECKIN_PROMPT_MESSAGE =
   'Your shift has ended. If you are staying for overtime, mark Overtime Check-In from the portal or on the biometric device.';
 
-/** How far back to look for open check-ins (covers overnight + missed cron ticks). */
-const LOOKBACK_DAYS = 2;
-
+/**
+ * Shift-end notifications only. Checkout is never automatic —
+ * employees/admins must check out via biometric or manual attendance.
+ */
 @Injectable()
 export class ShiftCheckoutScheduler {
   private readonly logger = new Logger(ShiftCheckoutScheduler.name);
 
   constructor(private prisma: PrismaService) {}
 
-  /** Auto-checkout open regular sessions once shift end has passed. */
-  @Cron('* * * * *')
-  async autoCheckoutAtShiftEnd() {
-    const now = new Date();
-    const pkToday = toPakistanDateOnly(now);
-    const lookback = new Date(pkToday);
-    lookback.setUTCDate(lookback.getUTCDate() - LOOKBACK_DAYS);
-
-    const openLogs = await this.prisma.attendanceLog.findMany({
-      where: {
-        type: AttendanceLogType.REGULAR,
-        checkIn: { not: null },
-        checkOut: null,
-        date: { gte: lookback, lte: pkToday },
-        status: {
-          in: [
-            AttendanceStatus.PRESENT,
-            AttendanceStatus.LATE,
-            AttendanceStatus.HALF_DAY,
-          ],
-        },
-      },
-      include: {
-        employee: {
-          include: { shift: true },
-        },
-      },
-    });
-
-    let checkedOut = 0;
-
-    for (const log of openLogs) {
-      if (!log.checkIn) continue;
-      if (is24HourShift(log.employee)) continue;
-
-      const win = getDutyWindow(log.employee);
-      if (!win || win.is24h) continue;
-
-      const expectedCheckOut = this.buildExpectedCheckOutFromDuty(
-        log.date,
-        log.checkIn,
-        win.endMin,
-        win.crossesMidnight,
-      );
-
-      if (now.getTime() < expectedCheckOut.getTime()) {
-        continue;
-      }
-
-      const checkOut =
-        expectedCheckOut.getTime() > log.checkIn.getTime()
-          ? expectedCheckOut
-          : new Date(log.checkIn.getTime() + 60_000);
-
-      const note = log.note
-        ? log.note.includes(AUTO_CHECKOUT_NOTE)
-          ? log.note
-          : `${log.note}; ${AUTO_CHECKOUT_NOTE}`
-        : AUTO_CHECKOUT_NOTE;
-
-      await this.prisma.attendanceLog.update({
-        where: { id: log.id },
-        data: {
-          checkOut,
-          overtimeMinutes: 0,
-          note,
-        },
-      });
-
-      await this.sendOvertimePromptIfNeeded(log.employeeId, pkToday);
-      checkedOut++;
-    }
-
-    if (checkedOut > 0) {
-      this.logger.log(
-        `Auto-checked out ${checkedOut} employee(s) at shift end`,
-      );
-    }
-  }
-
   /**
    * Runs every minute. Notifies staff whose shift ended in the last 2 minutes
-   * (PKT), who completed regular attendance, and have not started overtime.
+   * (PKT), who completed regular attendance (checked out), and have not
+   * started overtime.
    */
   @Cron('* * * * *')
   async notifyShiftEndForOvertime() {
@@ -215,30 +131,5 @@ export class ShiftCheckoutScheduler {
       },
     });
     return true;
-  }
-
-  /**
-   * Stamp checkOut from employee duty end on the attendance date (PKT),
-   * rolling to the next day when the window crosses midnight.
-   */
-  private buildExpectedCheckOutFromDuty(
-    logDate: Date,
-    checkIn: Date,
-    endMin: number,
-    crossesMidnight: boolean,
-  ): Date {
-    const y = logDate.getUTCFullYear();
-    const m = String(logDate.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(logDate.getUTCDate()).padStart(2, '0');
-    const hh = String(Math.floor(endMin / 60)).padStart(2, '0');
-    const mm = String(endMin % 60).padStart(2, '0');
-
-    let checkOut = parseAttendanceDateTime(`${y}-${m}-${d}T${hh}:${mm}:00`);
-
-    if (crossesMidnight || checkOut.getTime() <= checkIn.getTime()) {
-      checkOut = new Date(checkOut.getTime() + 24 * 60 * 60 * 1000);
-    }
-
-    return checkOut;
   }
 }

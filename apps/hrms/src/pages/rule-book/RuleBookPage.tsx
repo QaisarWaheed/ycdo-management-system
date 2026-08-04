@@ -82,7 +82,7 @@ function FlowSectionCard({ section }: { section: FlowSection }) {
 function MasterFlowDiagram() {
   const nodes = [
     { group: 'Hiring', items: ['Recruitment', 'Add Employee', 'Executive approval (New only)', 'Active employee'] },
-    { group: 'Daily', items: ['Check-in / Check-out', 'Auto checkout at shift end', 'Daily log', 'Mark leave + reliever'] },
+    { group: 'Daily', items: ['Check-in / Check-out', 'Daily log', 'Mark leave + reliever'] },
     { group: 'Leave', items: ['Apply leave', 'Branch → Dept → Reliever → HR Ops', 'ON_LEAVE on attendance', "Today's relievers"] },
     { group: 'Pay & compliance', items: ['Stipend package', 'Monthly payroll', 'Letters', 'Disciplinary'] },
   ]

@@ -40,7 +40,7 @@ export const ruleBookCategories: FlowCategory[] = [
           {
             title: 'Daily operations',
             detail:
-              'Attendance (check-in/out, auto checkout at shift end) feeds payroll and disciplinary rules. Leave marks ON_LEAVE on attendance days.',
+              'Attendance (check-in/out via biometric or manual) feeds payroll and disciplinary rules. Leave marks ON_LEAVE on attendance days.',
           },
           {
             title: 'Leave coverage',
@@ -265,32 +265,10 @@ export const ruleBookCategories: FlowCategory[] = [
           {
             title: 'Set checkout time',
             detail:
-              'Overnight shifts: checkout datetime moves to next day if needed. Manual checkout always available alongside auto checkout.',
+              'Overnight shifts: checkout datetime moves to next day if needed. Checkout is only via biometric punch or manual mark — never automatic.',
           },
         ],
         links: [{ label: 'Manual checkout', path: '/attendance?tab=manual' }],
-      },
-      {
-        id: 'auto-checkout',
-        title: 'Auto checkout at shift end',
-        summary: 'Background job — no UI button.',
-        where: 'Server (every 15 minutes)',
-        steps: [
-          {
-            title: 'Trigger',
-            detail:
-              'When current time passes employee duty/shift end, open check-in is closed automatically.',
-          },
-          {
-            title: 'Audit',
-            detail: 'Note on log: "Auto-checked out at shift end".',
-          },
-          {
-            title: 'Manual still works',
-            detail: 'HR can check out earlier via Manual Check-Out tab.',
-          },
-        ],
-        notes: ['Overnight shifts (e.g. 20:00–08:00) are supported.'],
       },
       {
         id: 'mark-leave-manual',
@@ -670,8 +648,7 @@ export const masterFlowMermaid = `flowchart TB
 
   subgraph daily [Daily ops]
     ACT --> ATT[Attendance]
-    ATT -->|Check-in/out| LOG[Daily Log]
-    ATT -->|Shift end| AUTO[Auto Checkout]
+    ATT -->|Biometric or manual| LOG[Daily Log]
     ATT -->|Manual| ML[Mark Leave + Reliever]
   end
 
