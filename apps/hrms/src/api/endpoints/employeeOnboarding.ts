@@ -87,6 +87,24 @@ export const employeeOnboardingApi = {
     api.get<unknown, EmployeeOnboardingApproval>(
       `/employee-onboarding/${id}`,
     ),
+  getWhatsAppShare: (params: {
+    approverTarget?: EmployeeApproverTarget
+    employeeId?: string
+    phone?: string
+    hrmsBaseUrl?: string
+  }) =>
+    api.get<
+      unknown,
+      {
+        approverTarget: EmployeeApproverTarget
+        approverLabel: string
+        phoneE164: string | null
+        phoneConfigured: boolean
+        message: string
+        waUrl: string
+        loginUrl: string
+      }
+    >('/employee-onboarding/whatsapp-share', { params }),
   uploadPhysicalForm: (employeeId: string, formData: FormData) =>
     api.post<unknown, EmployeeOnboardingApproval>(
       `/employee-onboarding/employee/${employeeId}/physical-form`,

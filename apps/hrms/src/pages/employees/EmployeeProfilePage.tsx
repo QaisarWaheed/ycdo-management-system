@@ -77,6 +77,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { formatEmployeeShiftDisplay } from '@/lib/dutyTimes'
 import { formatDateTimeTime } from '@/lib/timeFormat'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { openOnboardingWhatsAppShare } from '@/lib/openOnboardingWhatsAppShare'
 import { maritalStatusToLabel } from '@/lib/searchableSelectOptions'
 import type {
   AcademicQualification,
@@ -1176,10 +1177,44 @@ export function EmployeeProfilePage() {
               </Button>
             )}
             {canHrJobActions && employee.status === 'PENDING_APPROVAL' && (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                Pending executive approval — status updates only when the
-                assigned approver reviews the onboarding request.
-              </p>
+              <>
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  Pending executive approval — status updates only when the
+                  assigned approver reviews the onboarding request.
+                </p>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={async () => {
+                    try {
+                      const share = await openOnboardingWhatsAppShare({
+                        employeeId: employee.id,
+                      })
+                      toast({
+                        title: `WhatsApp opened for ${share.approverLabel}`,
+                        description: share.phoneConfigured
+                          ? 'Prefilled approval message with HRMS login link.'
+                          : 'Pick the approver contact in WhatsApp — no number was configured.',
+                      })
+                    } catch (err: unknown) {
+                      const msg = (
+                        err as {
+                          response?: { data?: { message?: string | string[] } }
+                        }
+                      )?.response?.data?.message
+                      toast({
+                        title: 'Could not open WhatsApp',
+                        description: Array.isArray(msg)
+                          ? msg.join(', ')
+                          : String(msg ?? 'Error'),
+                        variant: 'destructive',
+                      })
+                    }
+                  }}
+                >
+                  Send WhatsApp reminder
+                </Button>
+              </>
             )}
             {canHrJobActions && (
               <Button

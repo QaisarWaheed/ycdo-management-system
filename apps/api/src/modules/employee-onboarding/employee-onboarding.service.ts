@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  EmployeeApproverTarget,
   EmployeeOnboardingStatus,
   EmployeeStatus,
   UserRole,
@@ -12,12 +13,17 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { LettersService } from '../letters/letters.service';
 import { LetterType, StaffType } from '@prisma/client';
+import { normalizePakistanPhone } from '../whatsapp/phone.util';
 import {
   APPROVER_TARGET_LABELS,
   approverTargetForUserRole,
   canReviewApproval,
+  userRoleForApproverTarget,
 } from './employee-onboarding.util';
-import type { OnboardingQueryDto } from './employee-onboarding.dto';
+import type {
+  OnboardingQueryDto,
+  WhatsAppShareQueryDto,
+} from './employee-onboarding.dto';
 
 type ActingUser = {
   id: string;
@@ -358,6 +364,139 @@ export class EmployeeOnboardingService {
     }
 
     return approval;
+  }
+
+  /**
+   * Build a WhatsApp Web / wa.me URL so HR can notify the executive with a
+   * prefilled message + HRMS login link (no Meta Cloud API required).
+   */
+  async buildWhatsAppShare(query: WhatsAppShareQueryDto) {
+    let approverTarget = query.approverTarget;
+    let employeeName = 'a new employee';
+    let employeeCode = '';
+
+    if (query.employeeId) {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: query.employeeId },
+        select: { fullName: true, employeeCode: true },
+      });
+      if (employee) {
+        employeeName = employee.fullName;
+        employeeCode = employee.employeeCode;
+      }
+
+      if (!approverTarget) {
+        const pending = await this.prisma.employeeOnboardingApproval.findFirst({
+          where: {
+            employeeId: query.employeeId,
+            status: EmployeeOnboardingStatus.PENDING,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (!pending) {
+          throw new BadRequestException(
+            'No pending onboarding approval found for this employee',
+          );
+        }
+        approverTarget = pending.approverTarget;
+      }
+    }
+
+    if (!approverTarget) {
+      throw new BadRequestException(
+        'approverTarget or employeeId with a pending approval is required',
+      );
+    }
+
+    const label = APPROVER_TARGET_LABELS[approverTarget];
+
+    const phoneE164 =
+      normalizePakistanPhone(query.phone) ??
+      (await this.resolveApproverPhone(approverTarget));
+
+    const hrmsBase = (
+      query.hrmsBaseUrl ||
+      process.env.HRMS_PUBLIC_URL ||
+      process.env.PUBLIC_HRMS_URL ||
+      'https://hrms-web.ycdo.org.pk'
+    ).replace(/\/$/, '');
+
+    const loginUrl = `${hrmsBase}/login`;
+
+    const message = [
+      `السلام علیکم ${label} صاحب،`,
+      '',
+      `ایک نیا ملازم آن بورڈنگ کی درخواست آپ کی منظوری کا منتظر ہے:`,
+      `نام: ${employeeName}${employeeCode ? ` (${employeeCode})` : ''}`,
+      '',
+      `براہ کرم HRMS میں لاگ اِن کر کے Approve / Reject کریں:`,
+      loginUrl,
+      '',
+      `Assalam-o-Alaikum ${label},`,
+      `A new employee onboarding request awaits your approval: ${employeeName}${employeeCode ? ` (${employeeCode})` : ''}.`,
+      `Please login to HRMS to Approve or Reject:`,
+      loginUrl,
+    ].join('\n');
+
+    const encoded = encodeURIComponent(message);
+    const waUrl = phoneE164
+      ? `https://wa.me/${phoneE164}?text=${encoded}`
+      : `https://wa.me/?text=${encoded}`;
+
+    return {
+      approverTarget,
+      approverLabel: label,
+      phoneE164,
+      phoneConfigured: Boolean(phoneE164),
+      message,
+      waUrl,
+      loginUrl,
+    };
+  }
+
+  private async resolveApproverPhone(
+    target: EmployeeApproverTarget,
+  ): Promise<string | null> {
+    const envKeyMap: Record<EmployeeApproverTarget, string> = {
+      [EmployeeApproverTarget.PRESIDENT]: 'ONBOARDING_WHATSAPP_PRESIDENT',
+      [EmployeeApproverTarget.FOUNDER]: 'ONBOARDING_WHATSAPP_FOUNDER',
+      [EmployeeApproverTarget.CHAIRMAN_ADMIN]: 'ONBOARDING_WHATSAPP_CHAIRMAN',
+    };
+
+    const fromEnv = normalizePakistanPhone(process.env[envKeyMap[target]]);
+    if (fromEnv) return fromEnv;
+
+    const role = userRoleForApproverTarget(target);
+    const users = await this.prisma.user.findMany({
+      where: { role, isActive: true },
+      include: {
+        employee: { select: { phone: true } },
+      },
+      take: 10,
+    });
+
+    for (const user of users) {
+      const phone = normalizePakistanPhone(user.employee?.phone);
+      if (phone) return phone;
+    }
+
+    // Also check additional roles
+    const extra = await this.prisma.userAdditionalRole.findMany({
+      where: { role },
+      include: {
+        user: {
+          include: { employee: { select: { phone: true } } },
+        },
+      },
+      take: 10,
+    });
+    for (const row of extra) {
+      if (!row.user.isActive) continue;
+      const phone = normalizePakistanPhone(row.user.employee?.phone);
+      if (phone) return phone;
+    }
+
+    return null;
   }
 
   private formatDate(date: Date): string {

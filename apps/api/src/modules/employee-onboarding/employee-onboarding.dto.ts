@@ -3,9 +3,13 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
 } from 'class-validator';
-import { EmployeeOnboardingStatus } from '@prisma/client';
+import {
+  EmployeeApproverTarget,
+  EmployeeOnboardingStatus,
+} from '@prisma/client';
 
 export class ReviewOnboardingDto {
   @IsOptional()
@@ -25,4 +29,25 @@ export class OnboardingQueryDto {
   @IsOptional()
   @IsEnum(EmployeeOnboardingStatus)
   status?: EmployeeOnboardingStatus;
+}
+
+/** Build a WhatsApp Web deep-link for onboarding approval outreach. */
+export class WhatsAppShareQueryDto {
+  @IsOptional()
+  @IsEnum(EmployeeApproverTarget)
+  approverTarget?: EmployeeApproverTarget;
+
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+
+  /** Optional override if HR wants a different number than the resolved one. */
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  /** Public HRMS URL (e.g. https://hrms-web.ycdo.org.pk) used in the message. */
+  @IsOptional()
+  @IsString()
+  hrmsBaseUrl?: string;
 }

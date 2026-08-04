@@ -37,6 +37,7 @@ import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationF
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { openOnboardingWhatsAppShare } from '@/lib/openOnboardingWhatsAppShare'
 import { useAuth } from '@/hooks/useAuth'
 import { isMedicineManagerRole } from '@/lib/medicineScope'
 import {
@@ -751,6 +752,7 @@ function EmployeeCreatePageForm() {
   const [physicalFormFile, setPhysicalFormFile] = useState<File | null>(null)
   const [approverTarget, setApproverTarget] =
     useState<EmployeeApproverTarget | null>(null)
+  const [approverWhatsAppPhone, setApproverWhatsAppPhone] = useState('')
   const [docErrors, setDocErrors] = useState<string | null>(null)
   const [qualError, setQualError] = useState<string | null>(null)
   const [qualifications, setQualifications] = useState<QualRow[]>([])
@@ -1090,21 +1092,42 @@ function EmployeeCreatePageForm() {
 
       return employee
     },
-    onSuccess: (employee) => {
+    onSuccess: async (employee) => {
       const sentForApproval = staffType === 'NEW' && !!approverTarget
       const approverLabel = APPROVER_OPTIONS.find(
         (o) => o.value === approverTarget,
       )?.label
-      toast({
-        title: sentForApproval
-          ? `Sent to ${approverLabel} for approval`
-          : 'Employee created successfully',
-        description: sentForApproval
-          ? 'The employee will become active after executive approval.'
-          : staffType === 'EXISTING' || staffType === 'INTERNEE'
-            ? 'No approval required — employee is active now.'
-            : undefined,
-      })
+
+      if (sentForApproval && approverTarget) {
+        try {
+          const share = await openOnboardingWhatsAppShare({
+            approverTarget,
+            employeeId: employee.id,
+            phone: approverWhatsAppPhone.trim() || undefined,
+          })
+          toast({
+            title: `Sent to ${share.approverLabel} for approval`,
+            description: share.phoneConfigured
+              ? 'WhatsApp Web opened with a prefilled approval message and HRMS login link.'
+              : 'WhatsApp opened with the message — pick the approver contact if no number was configured.',
+          })
+        } catch {
+          toast({
+            title: `Employee created — WhatsApp open failed`,
+            description: `Request is pending ${approverLabel} approval. Open WhatsApp manually and share the HRMS login link.`,
+            variant: 'destructive',
+          })
+        }
+      } else {
+        toast({
+          title: 'Employee created successfully',
+          description:
+            staffType === 'EXISTING' || staffType === 'INTERNEE'
+              ? 'No approval required — employee is active now.'
+              : undefined,
+        })
+      }
+
       navigate(`/employees/${employee.id}`, {
         replace: true,
         state: { from: '/employees' },
@@ -2277,6 +2300,23 @@ function EmployeeCreatePageForm() {
               </div>
             </div>
 
+            <div className="space-y-2 rounded-lg border border-border bg-white p-4">
+              <Label htmlFor="approver-wa-phone">
+                Approver WhatsApp number (optional)
+              </Label>
+              <p className="text-xs text-text-secondary">
+                Leave blank to use the configured Founder / President / Chairman
+                number. After submit, WhatsApp Web opens with a prefilled
+                message and the HRMS login link.
+              </p>
+              <PhoneInput
+                id="approver-wa-phone"
+                value={approverWhatsAppPhone}
+                onChange={setApproverWhatsAppPhone}
+                placeholder="03XXXXXXXXX"
+              />
+            </div>
+
             <div className="flex justify-between">
               <Button type="button" variant="outline" onClick={() => setStep(4)}>
                 Back
@@ -2293,7 +2333,7 @@ function EmployeeCreatePageForm() {
               >
                 {createMutation.isPending
                   ? 'Submitting...'
-                  : 'Submit for Approval'}
+                  : 'Submit for Approval & Open WhatsApp'}
               </Button>
             </div>
           </div>

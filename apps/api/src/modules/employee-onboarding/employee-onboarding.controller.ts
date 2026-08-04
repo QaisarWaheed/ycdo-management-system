@@ -19,6 +19,7 @@ import {
   OnboardingQueryDto,
   RejectOnboardingDto,
   ReviewOnboardingDto,
+  WhatsAppShareQueryDto,
 } from './employee-onboarding.dto';
 import { EmployeeOnboardingService } from './employee-onboarding.service';
 import { physicalFormMulterConfig } from './physical-form.multer.config';
@@ -37,6 +38,19 @@ export class EmployeeOnboardingController {
   )
   findPending(@CurrentUser() user: { id: string; role: UserRole }) {
     return this.service.findPending(user);
+  }
+
+  @Get('whatsapp-share')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.HR_EXECUTIVE,
+  )
+  whatsappShare(@Query() query: WhatsAppShareQueryDto) {
+    return this.service.buildWhatsAppShare(query);
   }
 
   @Get()

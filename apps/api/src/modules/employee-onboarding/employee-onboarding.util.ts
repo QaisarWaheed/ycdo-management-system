@@ -34,4 +34,17 @@ export function canReviewApproval(
   return approverTargetForUserRole(userRole) === approverTarget;
 }
 
+export function userRoleForApproverTarget(
+  target: EmployeeApproverTarget,
+): UserRole {
+  switch (target) {
+    case EmployeeApproverTarget.PRESIDENT:
+      return UserRole.PRESIDENT;
+    case EmployeeApproverTarget.FOUNDER:
+      return UserRole.FOUNDER;
+    case EmployeeApproverTarget.CHAIRMAN_ADMIN:
+      return UserRole.CHAIRMAN;
+  }
+}
+
 export { EmployeeOnboardingStatus, EmployeeApproverTarget, EmployeeStatus };
