@@ -6,31 +6,21 @@
 </head>
 <body>
 <div class="page">
-  <div class="meta-row">
-    <div class="letter-no">Letter No. {{letterNo}}</div>
-    <div class="meta-block">
-      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
-      <div class="row">YCDO ملتان پاکستان</div>
-      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
-      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
-      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
-      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-    </div>
-  </div>
+  {{> ycdoLetterHeader}}
 
   <p class="salutation">السلام علیکم!</p>
 
   <div class="body">
     <p>
       تحریر ہے کہ آپ {{#if designation}}{{designation}}{{else}}اسٹاف{{/if}} کی حیثیت سے
-      {{#if branch}}{{branch}}{{else}}YCDO{{/if}} پر فائز ہیں۔
+      {{#if branch}}{{branch}}{{else}}وائی سی ڈی او{{/if}} پر فائز ہیں۔
       {{#if fineReason}}{{fineReason}}{{else}}آپ نے ادارہ کی SOP کی خلاف ورزی کی ہے۔{{/if}}
     </p>
 
     {{#if attendanceRows}}
     <table class="attendance-table">
       <thead>
-        <tr><th>Date</th><th>In time</th><th>Out time</th></tr>
+        <tr><th>تاریخ</th><th>اِن ٹائم</th><th>آؤٹ ٹائم</th></tr>
       </thead>
       <tbody>
         {{#each attendanceRows}}
@@ -54,10 +44,9 @@
     </p>
   </div>
 
-  <div class="signature">
-    <div>{{senderTitle}}</div>
-    <div>YCDO ملتان پاکستان</div>
-  </div>
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

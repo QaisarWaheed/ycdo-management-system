@@ -6,36 +6,24 @@
 </head>
 <body>
 <div class="page">
-  <div class="meta-row">
-    <div class="letter-no">Letter No. {{letterNo}}</div>
-    <div class="meta-block">
-      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
-      <div class="row">YCDO ملتان پاکستان</div>
-      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
-      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
-      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
-      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-    </div>
-  </div>
+  {{> ycdoLetterHeader}}
 
   <p class="salutation">السلام علیکم!</p>
 
   <div class="body">
     <p>
-      تحریر ہے کہ آپ کو درج ذیل معاملے پر تحریری وضاحت طلب کی جاتی ہے:
+      تحریر ہے کہ درج ذیل معاملے کی بابت آپ سے تحریری وضاحت درکار ہے:
     </p>
     <p><strong>{{issueDescription}}</strong></p>
     <p>
-      براہ کرم اپنی تحریری وضاحت
-      {{#if responseDeadline}}مورخہ {{responseDeadline}} تک{{else}}مقررہ مدت کے اندر{{/if}}
-      ایچ آر ڈیپارٹمنٹ کو جمع کروائیں۔ عدم جواب کی صورت میں انتظامی کارروائی عمل میں لائی جا سکتی ہے۔
+      آپ کو ہدایت کی جاتی ہے کہ اپنی وضاحت جلد از جلد متعلقہ دفتر میں جمع کروائیں تاکہ
+      معاملے کا جائزہ لیا جا سکے۔
     </p>
   </div>
 
-  <div class="signature">
-    <div>{{senderTitle}}</div>
-    <div>YCDO ملتان پاکستان</div>
-  </div>
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

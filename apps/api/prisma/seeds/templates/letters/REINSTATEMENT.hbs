@@ -6,33 +6,21 @@
 </head>
 <body>
 <div class="page">
-  <div class="meta-row">
-    <div class="letter-no">Letter No. {{letterNo}}</div>
-    <div class="meta-block">
-      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
-      <div class="row">YCDO ملتان پاکستان</div>
-      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
-      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
-      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
-      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-    </div>
-  </div>
+  {{> ycdoLetterHeader}}
 
   <p class="salutation">السلام علیکم!</p>
 
   <div class="body">
     <p>
-      خوشی کے ساتھ مطلع کیا جاتا ہے کہ آپ کو اپنی سابقہ / مقررہ ذمہ داری پر بحال کیا جا رہا ہے۔
+      تحریر ہے کہ آپ کو مورخہ {{reinstatementDate}} سے بحال کر کے ڈیوٹی پر واپس بلایا جاتا ہے۔
+      {{#if reinstatementNotes}}{{reinstatementNotes}}{{/if}}
+      آپ کو ہدایت کی جاتی ہے کہ مقررہ تاریخ پر متعلقہ برانچ / شعبے میں رپورٹ کریں۔
     </p>
-    {{#if reinstatementDate}}<p>بحالی کی تاریخ: {{reinstatementDate}}</p>{{/if}}
-    {{#if reinstatedDesignation}}<p>عہدہ: {{reinstatedDesignation}}</p>{{/if}}
-    <p>براہ کرم مقررہ تاریخ پر اپنی ڈیوٹی دوبارہ شروع کریں اور ادارہ کی تمام پالیسیوں پر عمل کریں۔</p>
   </div>
 
-  <div class="signature">
-    <div>{{senderTitle}}</div>
-    <div>YCDO ملتان پاکستان</div>
-  </div>
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

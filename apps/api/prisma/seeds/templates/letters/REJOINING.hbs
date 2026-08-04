@@ -6,33 +6,21 @@
 </head>
 <body>
 <div class="page">
-  <div class="meta-row">
-    <div class="letter-no">Letter No. {{letterNo}}</div>
-    <div class="meta-block">
-      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
-      <div class="row">YCDO ملتان پاکستان</div>
-      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
-      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
-      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
-      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-    </div>
-  </div>
+  {{> ycdoLetterHeader}}
 
   <p class="salutation">السلام علیکم!</p>
 
   <div class="body">
     <p>
-      تحریر ہے کہ آپ کی ڈیوٹی پر واپسی (Rejoining) کو قبول کیا جاتا ہے۔
+      تحریر ہے کہ آپ مورخہ {{rejoiningDate}} کو ڈیوٹی پر واپس آ چکے ہیں / واپس آ رہے ہیں۔
+      {{#if rejoiningNotes}}{{rejoiningNotes}}{{/if}}
+      آپ کو ہدایت کی جاتی ہے کہ ادارہ کی تمام SOP's اور ڈیوٹی اوقات کی پابندی کریں۔
     </p>
-    {{#if rejoiningDate}}<p>تاریخِ واپسی: {{rejoiningDate}}</p>{{/if}}
-    {{#if rejoiningDesignation}}<p>عہدہ: {{rejoiningDesignation}}</p>{{/if}}
-    <p>براہ کرم مقررہ تاریخ پر ڈیپارٹمنٹ میں رپورٹ کریں۔ ادارہ کی تمام SOP آپ پر لاگو رہیں گی۔</p>
   </div>
 
-  <div class="signature">
-    <div>{{senderTitle}}</div>
-    <div>YCDO ملتان پاکستان</div>
-  </div>
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

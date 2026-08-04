@@ -6,39 +6,25 @@
 </head>
 <body>
 <div class="page">
-  <div class="meta-row">
-    <div class="letter-no">Letter No. {{letterNo}}</div>
-    <div class="meta-block">
-      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
-      <div class="row">YCDO ملتان پاکستان</div>
-      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
-      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-    </div>
-  </div>
+  {{> ycdoLetterHeader}}
 
-  <p class="salutation">بخدمت متعلقہ افسر / ادارہ</p>
+  <p class="salutation">السلام علیکم!</p>
 
   <div class="body">
     <p>
-      تصدیق کی جاتی ہے کہ <strong>{{employeeName}}</strong>
-      {{#if cnic}}(شناختی کارڈ: <span class="ltr">{{cnic}}</span>){{/if}}
-      {{#if employeeCode}}، کوڈ: <span class="ltr">{{employeeCode}}</span>{{/if}}
-      YCDO میں خدمات سرانجام دیتے / دیتی رہے۔
+      تصدیق کی جاتی ہے کہ {{employeeName}}{{#if designation}} ({{designation}}){{/if}}
+      نے وائی سی ڈی او میں
+      {{#if joiningDate}}مورخہ {{joiningDate}} سے{{/if}}
+      {{#if lastWorkingDate}} تا {{lastWorkingDate}}{{/if}}
+      خدمات انجام دیں۔
+      {{#if experienceNotes}}{{experienceNotes}}{{/if}}
+      ان کی خدمات کے دوران ان کا طرزِ عمل اور کارکردگی اطمینان بخش رہی۔
     </p>
-    {{#if designation}}<p>عہدہ: {{designation}}</p>{{/if}}
-    {{#if department}}<p>ڈیپارٹمنٹ: {{department}}</p>{{/if}}
-    {{#if branch}}<p>برانچ: {{branch}}</p>{{/if}}
-    {{#if joiningDate}}<p>تاریخِ تقرری: {{joiningDate}}</p>{{/if}}
-    {{#if lastWorkingDate}}<p>آخری یومِ ملازمت: {{lastWorkingDate}}</p>{{/if}}
-    {{#if totalExperience}}<p>کل تجربہ: {{totalExperience}}</p>{{/if}}
-    {{#if jobDescription}}<p>ذمہ داریاں: {{jobDescription}}</p>{{/if}}
-    <p>دورانِ ملازمت کارکردگی اطمینان بخش رہی۔ ہم انہیں مستقبل کیلئے نیک خواہشات پیش کرتے ہیں۔</p>
   </div>
 
-  <div class="signature">
-    <div>{{senderTitle}}</div>
-    <div>YCDO ملتان پاکستان</div>
-  </div>
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

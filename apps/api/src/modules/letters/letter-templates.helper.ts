@@ -1,3 +1,4 @@
+import Handlebars from 'handlebars';
 import { LetterType } from '@prisma/client';
 import { URDU_LETTER_STYLES } from './urdu-letter-styles';
 import { renderHandlebarsTemplate } from './selection-letter.helper';
@@ -18,25 +19,126 @@ export interface LetterRenderVariables {
   [key: string]: unknown;
 }
 
-export const DEFAULT_SENDER_TITLE = 'کوآرڈینیٹر پروجیکٹس';
+/** Matches official warning PDF signatory. */
+export const DEFAULT_SENDER_TITLE = 'چیئرمین ایڈمن ڈیپارٹمنٹ';
 
+export const DEFAULT_ORG_LINE = 'وائی سی ڈی او ملتان، پاکستان';
+
+/** Urdu subjects shown on the letter (centered / عنوان). */
 export const LETTER_TYPE_SUBJECT: Record<LetterType, string> = {
   APPOINTMENT: 'Appointment / Selection Letter',
   WARNING: 'لیٹر آف وارننگ',
-  ADVICE: 'ایڈوائس / Letter of Advice',
-  DISCIPLINARY: 'Letter of Displeasure',
+  ADVICE: 'ایڈوائس لیٹر',
+  DISCIPLINARY: 'لیٹر آف ڈسپلیژر',
   EXPLANATION: 'تحریری وضاحت طلب',
-  SHOW_CAUSE: 'شو کاز نوٹس / قانونی نوٹس',
-  FINE: 'فائن / جرمانہ',
+  SHOW_CAUSE: 'شو کاز نوٹس',
+  FINE: 'فائن / جرمانہ نوٹس',
   INQUIRY: 'انکوائری نوٹس',
-  APPRECIATION: 'Letter of Appreciation',
-  TRANSFER: 'NOTIFICATION — Transfer / Posting',
-  SUSPENSION: 'معطلی نوٹس / Suspension',
-  TERMINATION: 'ختمِ ملازمت / Termination',
-  REINSTATEMENT: 'بحالیِ ملازمت / Reinstatement',
-  REJOINING: 'واپسیِ ملازمت / Rejoining',
-  SALARY_INCREMENT: 'NOTIFICATION — Stipend Enhancement',
-  EXPERIENCE: 'تجربہ سرٹیفکیٹ / Experience Certificate',
+  APPRECIATION: 'تعریفی خط',
+  TRANSFER: 'ٹرانسفر / پوسٹنگ نوٹیفکیشن',
+  SUSPENSION: 'معطلی نوٹس',
+  TERMINATION: 'ختمِ ملازمت',
+  REINSTATEMENT: 'بحالیِ ملازمت',
+  REJOINING: 'واپسیِ ملازمت',
+  SALARY_INCREMENT: 'تنخواہ / الاؤنس اضافہ',
+  EXPERIENCE: 'تجربہ سرٹیفکیٹ',
+};
+
+/** English top heading + subheading only (per official PDF shell). */
+export const LETTER_TYPE_EN_HEADER: Record<
+  Exclude<LetterType, 'APPOINTMENT'>,
+  { title: string; prescribed: string; subtitle: string }
+> = {
+  WARNING: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Letter of Warning"',
+    subtitle:
+      'It is notified that the following notified format is approved for Letter of Warning.',
+  },
+  ADVICE: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Letter of Advice"',
+    subtitle:
+      'It is notified that the following notified format is approved for Letter of Advice.',
+  },
+  DISCIPLINARY: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Letter of Displeasure"',
+    subtitle:
+      'It is notified that the following notified format is approved for Letter of Displeasure.',
+  },
+  EXPLANATION: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Explanation Request"',
+    subtitle:
+      'It is notified that the following notified format is approved for Explanation Request.',
+  },
+  SHOW_CAUSE: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Show Cause Notice"',
+    subtitle:
+      'It is notified that the following notified format is approved for Show Cause Notice.',
+  },
+  FINE: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Fine / Penalty Letter"',
+    subtitle:
+      'It is notified that the following notified format is approved for Fine / Penalty Letter.',
+  },
+  INQUIRY: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Inquiry Notice"',
+    subtitle:
+      'It is notified that the following notified format is approved for Inquiry Notice.',
+  },
+  APPRECIATION: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Letter of Appreciation"',
+    subtitle:
+      'It is notified that the following notified format is approved for Letter of Appreciation.',
+  },
+  TRANSFER: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Transfer / Posting"',
+    subtitle:
+      'It is notified that the following notified format is approved for Transfer / Posting.',
+  },
+  SUSPENSION: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Suspension Notice"',
+    subtitle:
+      'It is notified that the following notified format is approved for Suspension Notice.',
+  },
+  TERMINATION: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Termination Letter"',
+    subtitle:
+      'It is notified that the following notified format is approved for Termination Letter.',
+  },
+  REINSTATEMENT: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Reinstatement Letter"',
+    subtitle:
+      'It is notified that the following notified format is approved for Reinstatement Letter.',
+  },
+  REJOINING: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Rejoining Letter"',
+    subtitle:
+      'It is notified that the following notified format is approved for Rejoining Letter.',
+  },
+  SALARY_INCREMENT: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Salary Increment"',
+    subtitle:
+      'It is notified that the following notified format is approved for Salary Increment.',
+  },
+  EXPERIENCE: {
+    title: 'Notification',
+    prescribed: 'Prescribed "Experience Certificate"',
+    subtitle:
+      'It is notified that the following notified format is approved for Experience Certificate.',
+  },
 };
 
 export const LETTER_TEMPLATE_META: Record<
@@ -76,7 +178,7 @@ export const LETTER_TEMPLATE_META: Record<
     requiredVars: ['appreciationReason'],
   },
   TRANSFER: {
-    name: 'Transfer / Posting Notification (English)',
+    name: 'Transfer / Posting Notification (Urdu)',
     requiredVars: ['fromBranch', 'toBranch', 'effectiveDate'],
   },
   SUSPENSION: {
@@ -96,7 +198,7 @@ export const LETTER_TEMPLATE_META: Record<
     requiredVars: ['rejoiningDate'],
   },
   SALARY_INCREMENT: {
-    name: 'Salary Increment Notification (English)',
+    name: 'Salary Increment Notification (Urdu)',
     requiredVars: ['previousSalary', 'newSalary', 'effectiveDate'],
   },
   EXPERIENCE: {
@@ -140,6 +242,13 @@ export function defaultSubjectFor(letterType: LetterType): string {
   return LETTER_TYPE_SUBJECT[letterType];
 }
 
+export function buildLetterRef(letterType: LetterType, letterNo: string): string {
+  const short = getLetterTypeShort(letterType);
+  const first = letterNo.split('/')[0]?.replace(/\D/g, '') || '0';
+  const padded = first.slice(-3).padStart(3, '0');
+  return `HRMS/${short}/${padded}`;
+}
+
 /** Split newline / bullet text into violation lines for WARNING templates. */
 export function parseViolationLines(raw: unknown): string[] {
   if (Array.isArray(raw)) {
@@ -181,7 +290,6 @@ export function parseAttendanceRows(raw: unknown): AttendanceRow[] {
       const parsed = JSON.parse(raw) as unknown;
       return parseAttendanceRows(parsed);
     } catch {
-      // One row per line: date | in | out
       return raw
         .split(/\r?\n/)
         .map((line) => line.trim())
@@ -201,13 +309,75 @@ export function parseAttendanceRows(raw: unknown): AttendanceRow[] {
   return [];
 }
 
+const YCDO_LETTER_HEADER = `
+<div class="letter-shell-top">
+  <div class="letterhead-row">
+    <div>
+      {{#if letterheadLogoUrl}}
+        <img class="letterhead-logo" src="{{letterheadLogoUrl}}" alt="YCDO" />
+      {{else}}
+        <div class="letterhead-logo-fallback">YCDO<br/>SERVE HUMANITY</div>
+      {{/if}}
+    </div>
+    <div class="letter-nos">
+      <div class="letter-no-line">Letter No. {{letterNo}}</div>
+      <div class="ref-line"><span class="ltr">{{letterRef}}</span> :بحوالہ</div>
+    </div>
+  </div>
+  <div class="notification-block">
+    <p class="en-title">{{enTitle}}</p>
+    <p class="en-prescribed">{{enPrescribed}}</p>
+    <p class="en-subtitle">{{enSubtitle}}</p>
+  </div>
+  <hr class="hr-line" />
+</div>
+
+<div class="meta-block">
+  <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
+  <div class="row"><span class="label">منجانب:</span></div>
+  <div class="row">{{senderTitle}}</div>
+  <div class="row">{{orgLine}}</div>
+  <div class="row"><span class="label">بجانب:</span></div>
+  <div class="row">{{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
+  {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
+  <div class="row"><span class="label">عنوان:</span> {{#if subjectLine}}{{subjectLine}}{{/if}}</div>
+</div>
+
+{{#if subject}}
+<div class="subject-center">{{subject}}</div>
+{{/if}}
+`;
+
+const YCDO_LETTER_FOOTER = `
+<div class="closing">
+  <p>والسلام</p>
+</div>
+<div class="signature">
+  <div class="sig-line"></div>
+  <div>{{senderTitle}}</div>
+  <div>{{orgLine}}</div>
+</div>
+`;
+
+let partialsRegistered = false;
+
+function ensurePartials() {
+  if (partialsRegistered) return;
+  Handlebars.registerPartial('ycdoLetterHeader', YCDO_LETTER_HEADER);
+  Handlebars.registerPartial('ycdoLetterFooter', YCDO_LETTER_FOOTER);
+  partialsRegistered = true;
+}
+
 export function renderLetterHtml(
   bodyHtml: string,
   variables: Record<string, unknown>,
 ): string {
+  ensurePartials();
   return renderHandlebarsTemplate(bodyHtml, {
     letterStyles: URDU_LETTER_STYLES,
     senderTitle: DEFAULT_SENDER_TITLE,
+    orgLine: DEFAULT_ORG_LINE,
+    letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || '',
     ...variables,
   });
 }

@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { Eye, EyeOff, Plus, RefreshCw, Settings2, Shield } from 'lucide-react'
+import {
+  Eye,
+  EyeOff,
+  MessageCircle,
+  Plus,
+  RefreshCw,
+  Settings2,
+  Shield,
+} from 'lucide-react'
 import { branchesApi } from '@/api/endpoints/branches'
 import { projectsApi } from '@/api/endpoints/projects'
 import {
@@ -10,6 +18,8 @@ import {
   type PermissionOverrideInput,
   type UserAccessRecord,
 } from '@/api/endpoints/userAccess'
+import { userPasswordsApi } from '@/api/endpoints/userPasswords'
+import { PortalCredentialsWhatsAppDialog } from '@/components/admin/PortalCredentialsWhatsAppDialog'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
@@ -47,8 +57,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePagination } from '@/hooks/usePagination'
+import { getApiErrorMessage } from '@/lib/apiErrorMessage'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 
 type LoginTypeFilter = 'all' | 'employee' | 'system'
@@ -501,6 +513,8 @@ function CreateSystemLoginDialog({
 
 export function LoginAccessPage() {
   const queryClient = useQueryClient()
+  const { hasRole } = useAuth()
+  const isSuperAdmin = hasRole(['SUPER_ADMIN'])
   const [loginType, setLoginType] = useState<LoginTypeFilter>('all')
   const [projectId, setProjectId] = useState('')
   const [branchId, setBranchId] = useState('')
@@ -510,6 +524,8 @@ export function LoginAccessPage() {
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>(
     {},
   )
+  const [waOpen, setWaOpen] = useState(false)
+  const [waEnabled, setWaEnabled] = useState(false)
 
   const debouncedSearch = useDebounce(search, 300)
 
@@ -543,6 +559,20 @@ export function LoginAccessPage() {
   const { data: summary } = useQuery({
     queryKey: ['login-access-summary'],
     queryFn: () => userAccessApi.getSummary(),
+  })
+
+  const {
+    data: waShares,
+    isFetching: waLoading,
+    refetch: refetchWaShares,
+  } = useQuery({
+    queryKey: ['portal-whatsapp-shares', projectId, branchId],
+    queryFn: () =>
+      userPasswordsApi.getPortalWhatsAppShares({
+        projectId: projectId || undefined,
+        branchId: branchId || undefined,
+      }),
+    enabled: waEnabled && isSuperAdmin,
   })
 
   const syncMutation = useMutation({
@@ -593,6 +623,42 @@ export function LoginAccessPage() {
     setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
+  const startBulkWhatsApp = async () => {
+    setWaEnabled(true)
+    setWaOpen(true)
+    const result = await refetchWaShares()
+    if (result.error) {
+      toast({
+        title: 'Could not prepare WhatsApp links',
+        description: getApiErrorMessage(result.error, 'Error'),
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const sendOneWhatsApp = async (record: UserAccessRecord) => {
+    try {
+      const { item } = await userPasswordsApi.getOnePortalWhatsAppShare(
+        record.id,
+      )
+      if (!item.ready || !item.waUrl) {
+        toast({
+          title: 'Cannot open WhatsApp',
+          description: item.skipReason ?? 'Missing phone or password',
+          variant: 'destructive',
+        })
+        return
+      }
+      window.open(item.waUrl, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      toast({
+        title: 'WhatsApp share failed',
+        description: getApiErrorMessage(err, 'Error'),
+        variant: 'destructive',
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -617,6 +683,12 @@ export function LoginAccessPage() {
                 className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`}
               />
               Sync {summary?.missingEmployeeLogins} missing logins
+            </Button>
+          )}
+          {isSuperAdmin && (
+            <Button variant="outline" onClick={startBulkWhatsApp}>
+              <MessageCircle className="mr-2 h-4 w-4" />
+              WhatsApp portal credentials
             </Button>
           )}
           <Button
@@ -754,7 +826,7 @@ export function LoginAccessPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Password</TableHead>
                 <TableHead>Last login</TableHead>
-                <TableHead className="w-[120px]">Actions</TableHead>
+                <TableHead className="w-[220px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -863,6 +935,16 @@ export function LoginAccessPage() {
                         >
                           {record.isActive ? 'Disable' : 'Enable'}
                         </Button>
+                        {isSuperAdmin && record.employeeId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title="Send portal credentials via WhatsApp"
+                            onClick={() => sendOneWhatsApp(record)}
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -896,6 +978,13 @@ export function LoginAccessPage() {
       />
 
       <CreateSystemLoginDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      <PortalCredentialsWhatsAppDialog
+        open={waOpen}
+        onOpenChange={setWaOpen}
+        data={waShares}
+        isLoading={waLoading}
+      />
     </div>
   )
 }

@@ -6,44 +6,27 @@
 </head>
 <body>
 <div class="page">
-  <div class="meta-row">
-    <div class="letter-no">Letter No. {{letterNo}}</div>
-    <div class="meta-block">
-      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
-      <div class="row">YCDO ملتان پاکستان</div>
-      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
-      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
-      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
-      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-    </div>
-  </div>
+  {{> ycdoLetterHeader}}
 
   <p class="salutation">السلام علیکم!</p>
 
   <div class="body">
     <p>
-      تحریر ہے کہ افسوس کے ساتھ مطلع کیا جاتا ہے کہ آپ کی خدمات YCDO سے ختم کی جا رہی ہیں۔
+      تحریر ہے کہ درج ذیل وجہ کی بنا پر آپ کی ملازمت فوری اثر سے ختم کی جاتی ہے:
     </p>
-    <p><strong>وجہ:</strong> {{terminationReason}}</p>
-    {{#if terminationDate}}<p>آخری یومِ ملازمت: {{terminationDate}}</p>{{/if}}
-    {{#if settlementDetails}}<p>تصفیہ کی تفصیل: {{settlementDetails}}</p>{{/if}}
-    <div class="violations">
-      <div class="heading">خلاف ورزیاں / تفصیل:</div>
-      <ul>
-        {{#each violations}}
-          <li>{{this}}</li>
-        {{/each}}
-      </ul>
-    </div>
+    <p><strong>{{terminationReason}}</strong></p>
+    {{#if lastWorkingDate}}
+    <p>آخری یومِ ملازمت: {{lastWorkingDate}}</p>
+    {{/if}}
     <p>
-      براہ کرم ہینڈ اوور مکمل کریں اور ادارہ کی تمام جائیداد واپس کریں۔ حتمی تصفیہ ادارہ کی پالیسی کے مطابق ہوگا۔
+      آپ کو ہدایت کی جاتی ہے کہ ادارہ کی تمام اشیاء / دستاویزات متعلقہ آفیسر کے حوالے کر دیں
+      اور کلیئرنس مکمل کریں۔
     </p>
   </div>
 
-  <div class="signature">
-    <div>{{senderTitle}}</div>
-    <div>YCDO ملتان پاکستان</div>
-  </div>
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

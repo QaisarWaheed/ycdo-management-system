@@ -1,78 +1,65 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ur" dir="rtl">
 <head>
 <meta charset="utf-8">
 <style>{{{letterStyles}}}</style>
 </head>
 <body>
-<div class="page en-body">
-  <div style="text-align:center;font-weight:bold;font-size:13pt;text-decoration:underline;margin-bottom:4pt;">
-    YOUTH COMMUNITY DEVELOPMENT ORGANIZATION
-  </div>
-  <h1>NOTIFICATION</h1>
+<div class="page">
+  {{> ycdoLetterHeader}}
 
-  <div class="header-row">
-    <div>Letter No. {{letterNo}}</div>
-    <div>Dated: {{issueDate}}</div>
-  </div>
+  <p class="salutation">السلام علیکم!</p>
 
-  <p>
-    With the approval of Chief Executive following transfers / postings / timings change
-    are hereby ordered, w.e.f {{effectiveDate}} till further orders:
-  </p>
+  <div class="body">
+    <p>
+      تحریر ہے کہ منظوریٔ اعلیٰ کے مطابق درج ذیل ٹرانسفر / پوسٹنگ / ٹائمنگ تبدیلی
+      مورخہ {{effectiveDate}} سے تا امرِ ثانی نافذ العمل ہو گی:
+    </p>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Sr#</th>
-        <th>Name</th>
-        <th>From</th>
-        <th>TO</th>
-        <th>Timing</th>
-        <th>Designation</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{#if transferRows}}
-        {{#each transferRows}}
+    <table class="attendance-table">
+      <thead>
         <tr>
-          <td>{{sr}}</td>
-          <td>{{name}}</td>
-          <td>{{from}}</td>
-          <td>{{to}}</td>
-          <td>{{timing}}</td>
-          <td>{{designation}}</td>
+          <th>نمبر</th>
+          <th>نام</th>
+          <th>منجانب</th>
+          <th>بجانب</th>
+          <th>ٹائمنگ</th>
+          <th>عہدہ</th>
         </tr>
-        {{/each}}
-      {{else}}
-        <tr>
-          <td>01</td>
-          <td>{{employeeName}}</td>
-          <td>{{fromBranch}}</td>
-          <td>{{toBranch}}</td>
-          <td>{{timing}}</td>
-          <td>{{designation}}</td>
-        </tr>
-      {{/if}}
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        {{#if transferRows}}
+          {{#each transferRows}}
+          <tr>
+            <td>{{sr}}</td>
+            <td>{{name}}</td>
+            <td>{{from}}</td>
+            <td>{{to}}</td>
+            <td>{{timing}}</td>
+            <td>{{designation}}</td>
+          </tr>
+          {{/each}}
+        {{else}}
+          <tr>
+            <td>۰۱</td>
+            <td>{{employeeName}}</td>
+            <td>{{fromBranch}}</td>
+            <td>{{toBranch}}</td>
+            <td>{{timing}}</td>
+            <td>{{designation}}</td>
+          </tr>
+        {{/if}}
+      </tbody>
+    </table>
 
-  {{#if additionalNotes}}
-  <p>{{additionalNotes}}</p>
-  {{/if}}
-
-  <div style="margin-top:28pt;display:flex;justify-content:space-between;">
-    <div>
-      <div><strong>Distribution:</strong></div>
-      <div>Chairman Admin Department</div>
-      <div>Chairman Finance Department</div>
-      <div>ALL Concerned Admin Officers</div>
-    </div>
-    <div class="sign">
-      <div>{{senderTitle}}</div>
-      <div>YCDO Pakistan</div>
-    </div>
+    {{#if additionalNotes}}
+    <p>{{additionalNotes}}</p>
+    {{/if}}
   </div>
+
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

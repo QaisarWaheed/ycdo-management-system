@@ -6,36 +6,24 @@
 </head>
 <body>
 <div class="page">
-  <div class="meta-row">
-    <div class="letter-no">Letter No. {{letterNo}}</div>
-    <div class="meta-block">
-      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
-      <div class="row">YCDO ملتان پاکستان</div>
-      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
-      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
-      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
-      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-    </div>
-  </div>
+  {{> ycdoLetterHeader}}
 
   <p class="salutation">السلام علیکم!</p>
 
   <div class="body">
     <p>
-      تحریر ہے کہ درج ذیل وجہ کی بنا پر آپ کے خلاف باضابطہ انکوائری شروع کی جا رہی ہے:
+      تحریر ہے کہ درج ذیل معاملے کی تحقیقات / انکوائری شروع کی جاتی ہے:
     </p>
     <p><strong>{{inquiryReason}}</strong></p>
-    {{#if inquiryDate}}<p>انکوائری کی تاریخ: {{inquiryDate}}</p>{{/if}}
-    {{#if committeeMembers}}<p>کمیٹی ممبران: {{committeeMembers}}</p>{{/if}}
     <p>
-      آپ کو ہدایت کی جاتی ہے کہ مقررہ تاریخ پر انکوائری کمیٹی کے سامنے پیش ہوں اور مکمل تعاون کریں۔
+      آپ کو ہدایت کی جاتی ہے کہ انکوائری کمیٹی سے مکمل تعاون کریں اور جب بھی طلب کیا جائے
+      پیش ہوں۔ عدم تعاون کی صورت میں انتظامی کارروائی عمل میں لائی جا سکتی ہے۔
     </p>
   </div>
 
-  <div class="signature">
-    <div>{{senderTitle}}</div>
-    <div>YCDO ملتان پاکستان</div>
-  </div>
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

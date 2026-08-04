@@ -20,6 +20,8 @@ import {
 } from './letters.dto';
 import {
   DEFAULT_SENDER_TITLE,
+  LETTER_TYPE_EN_HEADER,
+  buildLetterRef,
   defaultSubjectFor,
   parseAttendanceRows,
   parseViolationLines,
@@ -31,6 +33,7 @@ import { generatePdf } from './pdf.helper';
 import {
   buildOrgVariables,
   formatIssueDatePkt,
+  formatIssueDateUrdu,
   pktYear,
   renderHandlebarsTemplate,
   salutationFromGender,
@@ -370,15 +373,25 @@ export class LettersService {
         ? String(newSalary - previousSalary)
         : (normalized.enhancement ?? ''));
 
+    const enHeader =
+      letterType !== LetterType.APPOINTMENT
+        ? LETTER_TYPE_EN_HEADER[letterType]
+        : null;
+
     const variables: Record<string, unknown> = {
       letterNo,
+      letterRef: buildLetterRef(letterType, letterNo),
       issueDate:
-        String(normalized.issueDate ?? '').trim() || formatIssueDatePkt(),
+        String(normalized.issueDate ?? '').trim() || formatIssueDateUrdu(),
       senderTitle:
         String(normalized.senderTitle ?? '').trim() || DEFAULT_SENDER_TITLE,
       subject:
         String(normalized.subject ?? '').trim() ||
         defaultSubjectFor(letterType),
+      subjectLine: String(normalized.subjectLine ?? '').trim(),
+      enTitle: enHeader?.title ?? 'Notification',
+      enPrescribed: enHeader?.prescribed ?? '',
+      enSubtitle: enHeader?.subtitle ?? '',
       employeeCode: employee.employeeCode,
       cnic: employee.cnic ?? '',
       joiningDate: employee.joiningDate
@@ -405,7 +418,7 @@ export class LettersService {
       ),
       attendanceRows: parseAttendanceRows(normalized.attendanceRows),
       incrementAmount: String(incrementAmount),
-      timing: String(normalized.timing ?? '').trim() || 'As per duty roster',
+      timing: String(normalized.timing ?? '').trim() || 'ڈیوٹی روسترکے مطابق',
     };
 
     const htmlContent = renderLetterHtml(template.bodyHtml, variables);
@@ -769,7 +782,7 @@ export class LettersService {
         merged.attendanceRows = parseAttendanceRows(merged.attendanceRows);
 
         if (!merged.issueDate) {
-          merged.issueDate = formatIssueDatePkt();
+          merged.issueDate = formatIssueDateUrdu();
         }
         if (!merged.subject) {
           merged.subject = defaultSubjectFor(letter.letterType);
@@ -777,6 +790,16 @@ export class LettersService {
         if (!merged.senderTitle) {
           merged.senderTitle = DEFAULT_SENDER_TITLE;
         }
+        if (!merged.letterRef) {
+          merged.letterRef = buildLetterRef(
+            letter.letterType,
+            String(letterNo),
+          );
+        }
+        const enHeader = LETTER_TYPE_EN_HEADER[letter.letterType];
+        merged.enTitle = merged.enTitle ?? enHeader.title;
+        merged.enPrescribed = merged.enPrescribed ?? enHeader.prescribed;
+        merged.enSubtitle = merged.enSubtitle ?? enHeader.subtitle;
 
         htmlContent = renderLetterHtml(template.bodyHtml, merged);
       }

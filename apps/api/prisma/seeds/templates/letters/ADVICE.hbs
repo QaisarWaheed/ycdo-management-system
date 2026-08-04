@@ -6,24 +6,14 @@
 </head>
 <body>
 <div class="page">
-  <div class="meta-row">
-    <div class="letter-no">Letter No. {{letterNo}}</div>
-    <div class="meta-block">
-      <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
-      <div class="row">YCDO ملتان پاکستان</div>
-      <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
-      {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
-      <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
-      <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-    </div>
-  </div>
+  {{> ycdoLetterHeader}}
 
   <p class="salutation">السلام علیکم!</p>
 
   <div class="body">
     <p>
       تحریر ہے کہ آپ {{#if designation}}{{designation}}{{else}}اسٹاف{{/if}} کی حیثیت سے
-      {{#if branch}}{{branch}}{{else}}YCDO{{/if}} پر فائز ہیں۔
+      {{#if branch}}{{branch}}{{else}}وائی سی ڈی او{{/if}} پر فائز ہیں۔
       ادارہ کی SOP کے مطابق تمام اسٹاف کو وقت پر ڈیوٹی پر آنا اور جانا لازمی ہے لیکن
       {{#if adviceReason}}{{adviceReason}}{{else}}آپ کی طرف سے SOP کی خلاف ورزی دیکھی گئی ہے۔{{/if}}
       جو کہ ادارہ کی SOP کی سنگین خلاف ورزی ہے۔ آپ کو ہدایت کی جاتی ہے کہ آئندہ وقت کی پابندی کریں
@@ -34,10 +24,9 @@
     {{/if}}
   </div>
 
-  <div class="signature">
-    <div>{{senderTitle}}</div>
-    <div>YCDO ملتان پاکستان</div>
-  </div>
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

@@ -19,6 +19,44 @@ export function formatIssueDatePkt(date = new Date()): string {
   }).format(date);
 }
 
+/** Urdu long date for letter body, e.g. ۱۵ اگست ۲۰۲۶ء */
+export function formatIssueDateUrdu(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Karachi',
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+  }).formatToParts(date);
+
+  const get = (type: string) =>
+    Number(parts.find((p) => p.type === type)?.value ?? 0);
+
+  const day = get('day');
+  const month = get('month');
+  const year = get('year');
+
+  const monthsUrdu = [
+    '',
+    'جنوری',
+    'فروری',
+    'مارچ',
+    'اپریل',
+    'مئی',
+    'جون',
+    'جولائی',
+    'اگست',
+    'ستمبر',
+    'اکتوبر',
+    'نومبر',
+    'دسمبر',
+  ];
+
+  const toEastern = (n: number) =>
+    String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
+
+  return `${toEastern(day)} ${monthsUrdu[month] ?? ''} ${toEastern(year)}ء`;
+}
+
 export function pktYear(date = new Date()): number {
   return Number(
     new Intl.DateTimeFormat('en-GB', {

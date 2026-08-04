@@ -1,53 +1,46 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ur" dir="rtl">
 <head>
 <meta charset="utf-8">
 <style>{{{letterStyles}}}</style>
 </head>
 <body>
-<div class="page en-body">
-  <div class="header-row">
-    <div>Letter No. {{letterNo}}</div>
-    <div>Dated: {{issueDate}}</div>
+<div class="page">
+  {{> ycdoLetterHeader}}
+
+  <p class="salutation">السلام علیکم!</p>
+
+  <div class="body">
+    <p>
+      تحریر ہے کہ آپ {{#if designation}}{{designation}}{{else}}اسٹاف{{/if}} کی حیثیت سے
+      {{#if branch}}{{branch}}{{else}}وائی سی ڈی او{{/if}} پر فائز ہیں۔
+      خوشی کی بات ہے کہ مورخہ {{effectiveDate}} سے آپ کے ماہانہ معاوضے میں اضافہ کیا جا رہا ہے،
+      تفصیل درج ذیل ہے:
+    </p>
+
+    <table class="attendance-table" style="width:80%;">
+      <tr>
+        <td>۰۱ موجودہ الاؤنس / تنخواہ</td>
+        <td><strong>{{previousSalary}} فی ماہ</strong></td>
+      </tr>
+      <tr>
+        <td>۰۲ اضافہ</td>
+        <td><strong>{{incrementAmount}} فی ماہ</strong></td>
+      </tr>
+      <tr>
+        <td>۰۳ نئی کل رقم</td>
+        <td><strong>{{newSalary}} فی ماہ</strong></td>
+      </tr>
+    </table>
+
+    <p>
+      {{#if incrementReason}}{{incrementReason}}{{else}}امید ہے کہ آپ کی خدمات ادارے کے لیے مزید مؤثر اور مستعد رہیں گی۔{{/if}}
+    </p>
   </div>
 
-  <p>
-    {{employeeName}}<br/>
-    {{designation}}<br/>
-    YCDO Pakistan.
-  </p>
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
 
-  <h1>NOTIFICATION</h1>
-
-  <p>
-    You are working as <strong>{{designation}}</strong> based at
-    <strong>{{branch}}</strong>. We are pleased to inform you that your monthly
-    emoluments are being revised with effect from <strong>{{effectiveDate}}</strong>,
-    the detail is given hereunder:-
-  </p>
-
-  <table style="width:70%;">
-    <tr>
-      <td>01 Current Stipend</td>
-      <td style="text-align:right;"><strong>{{previousSalary}} Per Month</strong></td>
-    </tr>
-    <tr>
-      <td>02 Enhancement</td>
-      <td style="text-align:right;"><strong>{{incrementAmount}} Per Month</strong></td>
-    </tr>
-  </table>
-
-  <p>
-    With the enhancement of <strong>Rs.{{incrementAmount}}/-</strong>, your total
-    emoluments will be <strong>Rs.{{newSalary}}/-</strong> per month.
-    {{#if incrementReason}}{{incrementReason}}{{else}}We expect that your services will be more effective and vigilant for our esteemed Organization.{{/if}}
-    Best of Luck for future.
-  </p>
-
-  <div class="sign">
-    <div>{{senderTitle}}</div>
-    <div>YCDO Multan, Pakistan.</div>
-  </div>
+  {{> ycdoLetterFooter}}
 </div>
 </body>
 </html>

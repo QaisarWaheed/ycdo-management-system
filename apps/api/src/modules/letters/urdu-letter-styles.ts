@@ -1,20 +1,19 @@
 /**
- * Shared CSS for Urdu RTL letters. Injected into every Urdu Handlebars
- * template as {{{letterStyles}}}. Uses Google Fonts when online; falls
- * back to common system Urdu fonts for offline Puppeteer runs.
+ * Shared CSS for Urdu RTL letters matching ycdo-warning-letter.pdf shell.
+ * Injected into every Urdu Handlebars template as {{{letterStyles}}}.
  */
 export const URDU_LETTER_STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap');
 
-@page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+@page { size: A4; margin: 14mm 14mm 16mm 14mm; }
 
 * { box-sizing: border-box; }
 
 body {
   font-family: 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', 'Jameel Noori Nastaleeq',
     'Urdu Typesetting', 'Segoe UI', Tahoma, Arial, sans-serif;
-  font-size: 13pt;
-  line-height: 1.85;
+  font-size: 12.5pt;
+  line-height: 1.9;
   color: #000;
   margin: 0;
   padding: 0;
@@ -24,51 +23,112 @@ body {
 
 .ltr { direction: ltr; text-align: left; unicode-bidi: embed; }
 
-.page { min-height: 240mm; }
+.page { min-height: 250mm; }
 
-.meta-row {
+/* ── Letterhead / English notification block (LTR) ── */
+.letter-shell-top {
+  direction: ltr;
+  text-align: left;
+  margin-bottom: 10pt;
+}
+
+.letterhead-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 14pt;
   gap: 12pt;
-  direction: ltr; /* keep Letter No. on the visual left like samples */
+  margin-bottom: 10pt;
 }
 
-.letter-no {
+.letterhead-logo {
+  width: 78pt;
+  height: auto;
+  object-fit: contain;
+}
+
+.letterhead-logo-fallback {
+  width: 78pt;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 9pt;
+  font-weight: 700;
+  color: #1a3a6b;
+  line-height: 1.25;
+}
+
+.letter-nos {
+  text-align: right;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
   direction: ltr;
-  text-align: left;
-  font-weight: bold;
-  font-size: 11pt;
-  white-space: nowrap;
 }
 
+.letter-nos .letter-no-line {
+  font-weight: 700;
+}
+
+.letter-nos .ref-line {
+  direction: rtl;
+  text-align: right;
+  font-family: 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', 'Segoe UI', sans-serif;
+  font-size: 11pt;
+}
+
+.notification-block {
+  text-align: center;
+  direction: ltr;
+  font-family: 'Times New Roman', Times, Georgia, serif;
+  margin: 6pt 0 8pt;
+}
+
+.notification-block .en-title {
+  font-size: 16pt;
+  font-weight: 700;
+  margin: 0 0 4pt;
+}
+
+.notification-block .en-prescribed {
+  font-size: 13pt;
+  font-weight: 700;
+  margin: 0 0 6pt;
+}
+
+.notification-block .en-subtitle {
+  font-size: 10pt;
+  font-weight: 400;
+  margin: 0;
+  color: #222;
+}
+
+.hr-line {
+  border: 0;
+  border-top: 1.5pt solid #222;
+  margin: 10pt 0 14pt;
+}
+
+/* ── Urdu meta (RTL) ── */
 .meta-block {
   text-align: right;
-  font-size: 11.5pt;
-  line-height: 1.7;
+  font-size: 12pt;
+  line-height: 1.75;
+  margin-bottom: 10pt;
 }
 
-.meta-block .row { margin: 0 0 2pt; }
-.meta-block .label { font-weight: bold; }
+.meta-block .row { margin: 0 0 3pt; }
+.meta-block .label { font-weight: 700; }
 
-.center-title {
+.subject-center {
   text-align: center;
-  font-weight: bold;
-  font-size: 14pt;
-  margin: 8pt 0 14pt;
-  direction: ltr;
-}
-
-.subject-line {
-  text-align: right;
-  font-weight: bold;
-  margin: 6pt 0 10pt;
+  font-weight: 700;
+  font-size: 13.5pt;
+  text-decoration: underline;
+  margin: 10pt 0 12pt;
 }
 
 .salutation {
-  margin: 10pt 0;
-  font-weight: bold;
+  margin: 8pt 0 10pt;
+  font-weight: 700;
+  text-align: right;
 }
 
 .body p {
@@ -81,31 +141,27 @@ body {
 }
 
 .violations .heading {
-  font-weight: bold;
-  margin-bottom: 6pt;
+  font-weight: 700;
+  margin-bottom: 8pt;
 }
 
-.violations ul {
-  list-style: none;
-  padding: 0;
+.violations ol {
   margin: 0;
+  padding: 0 22pt 0 0;
 }
 
 .violations li {
-  border-bottom: 1px dashed #333;
-  min-height: 22pt;
-  margin-bottom: 8pt;
-  padding-bottom: 2pt;
+  margin-bottom: 6pt;
+  text-align: right;
 }
 
 .attendance-table {
   width: 100%;
   border-collapse: collapse;
   margin: 12pt 0;
-  direction: ltr;
+  direction: rtl;
   text-align: center;
   font-size: 11pt;
-  font-family: 'Segoe UI', Arial, sans-serif;
 }
 
 .attendance-table th,
@@ -116,62 +172,29 @@ body {
 
 .attendance-table th { background: #f3f3f3; }
 
+.blessing {
+  text-align: center;
+  margin: 16pt 0 8pt;
+  font-weight: 700;
+}
+
 .closing {
-  margin-top: 18pt;
+  margin-top: 8pt;
   text-align: right;
 }
 
 .signature {
-  margin-top: 36pt;
-  text-align: left;
-  direction: rtl;
-  font-size: 11.5pt;
-  line-height: 1.6;
-}
-
-.signature.ltr-sign {
-  direction: ltr;
-  text-align: left;
-}
-
-.en-body {
-  direction: ltr;
-  text-align: left;
-  font-family: 'Times New Roman', Times, Georgia, serif;
-  font-size: 12pt;
-  line-height: 1.55;
-}
-
-.en-body .header-row {
-  display: flex;
-  justify-content: space-between;
-  font-weight: bold;
-  margin-bottom: 16pt;
-}
-
-.en-body h1 {
-  text-align: center;
-  font-size: 14pt;
-  text-decoration: underline;
-  margin: 12pt 0 16pt;
-}
-
-.en-body table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 12pt 0;
-}
-
-.en-body table th,
-.en-body table td {
-  border: 1px solid #333;
-  padding: 6pt 8pt;
-  text-align: left;
-}
-
-.en-body .sign {
-  margin-top: 40pt;
+  margin-top: 28pt;
   text-align: right;
+  font-size: 12pt;
+  line-height: 1.7;
+}
+
+.signature .sig-line {
+  display: inline-block;
+  width: 120pt;
+  border-top: 1px solid #000;
+  margin-bottom: 6pt;
 }
 
 .fill-line {

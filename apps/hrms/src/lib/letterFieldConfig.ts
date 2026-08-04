@@ -285,11 +285,7 @@ export const LETTER_FIELD_CONFIG: Partial<
   ],
 }
 
-const ENGLISH_LETTER_TYPES = new Set<LetterType>([
-  'APPOINTMENT',
-  'TRANSFER',
-  'SALARY_INCREMENT',
-])
+const ENGLISH_LETTER_TYPES = new Set<LetterType>(['APPOINTMENT'])
 
 export function isUrduLetterType(letterType: LetterType): boolean {
   return !ENGLISH_LETTER_TYPES.has(letterType)
@@ -399,19 +395,21 @@ export function isLetterPdfUnavailable(letter: {
   return !letter.fileUrl
 }
 
-/** Default Urdu subjects shown on the canvas. */
+/** Default Urdu subjects shown on the canvas / PDF (centered title). */
 export const URDU_LETTER_SUBJECT: Partial<Record<LetterType, string>> = {
   WARNING: 'لیٹر آف وارننگ',
-  ADVICE: 'ایڈوائس / Letter of Advice',
-  DISCIPLINARY: 'Letter of Displeasure',
+  ADVICE: 'ایڈوائس لیٹر',
+  DISCIPLINARY: 'لیٹر آف ڈسپلیژر',
   EXPLANATION: 'تحریری وضاحت طلب',
-  SHOW_CAUSE: 'شو کاز نوٹس / قانونی نوٹس',
-  FINE: 'فائن / جرمانہ',
+  SHOW_CAUSE: 'شو کاز نوٹس',
+  FINE: 'فائن / جرمانہ نوٹس',
   INQUIRY: 'انکوائری نوٹس',
-  APPRECIATION: 'Letter of Appreciation',
-  SUSPENSION: 'معطلی نوٹس / Suspension',
-  TERMINATION: 'ختمِ ملازمت / Termination',
-  REINSTATEMENT: 'بحالیِ ملازمت / Reinstatement',
-  REJOINING: 'واپسیِ ملازمت / Rejoining',
+  APPRECIATION: 'تعریفی خط',
+  TRANSFER: 'ٹرانسفر / پوسٹنگ نوٹیفکیشن',
+  SUSPENSION: 'معطلی نوٹس',
+  TERMINATION: 'ختمِ ملازمت',
+  REINSTATEMENT: 'بحالیِ ملازمت',
+  REJOINING: 'واپسیِ ملازمت',
+  SALARY_INCREMENT: 'تنخواہ / الاؤنس اضافہ',
   EXPERIENCE: 'تجربہ سرٹیفکیٹ',
 }

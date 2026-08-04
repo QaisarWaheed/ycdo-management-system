@@ -66,7 +66,7 @@ const TEMPLATES: TemplateSeed[] = [
   },
   {
     code: 'TRANSFER',
-    name: 'Transfer / Posting Notification (English)',
+    name: 'Transfer / Posting Notification (Urdu)',
     file: 'letters/TRANSFER.hbs',
     requiredVars: ['fromBranch', 'toBranch', 'effectiveDate'],
   },
@@ -96,7 +96,7 @@ const TEMPLATES: TemplateSeed[] = [
   },
   {
     code: 'SALARY_INCREMENT',
-    name: 'Salary Increment Notification (English)',
+    name: 'Salary Increment Notification (Urdu)',
     file: 'letters/SALARY_INCREMENT.hbs',
     requiredVars: ['previousSalary', 'newSalary', 'effectiveDate'],
   },
