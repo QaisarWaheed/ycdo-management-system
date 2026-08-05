@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Bell, LogOut, User } from 'lucide-react'
+import { ArrowLeft, Bell, LogOut, Menu, User } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { notificationsApi } from '@/api/endpoints/notifications'
 import { useAuth } from '@/hooks/useAuth'
@@ -17,9 +17,10 @@ import {
 
 interface HeaderProps {
   title: string
+  onMenuClick?: () => void
 }
 
-export function Header({ title }: HeaderProps) {
+export function Header({ title, onMenuClick }: HeaderProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -48,28 +49,40 @@ export function Header({ title }: HeaderProps) {
   }
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-white px-6 print:hidden">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-border bg-white px-3 sm:h-16 sm:px-4 md:px-6 print:hidden">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        {onMenuClick ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0 lg:hidden"
+            aria-label="Open menu"
+            onClick={onMenuClick}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        ) : null}
         {showBack && (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="shrink-0 gap-1 text-text-secondary hover:text-text-primary"
+            className="shrink-0 gap-1 px-2 text-text-secondary hover:text-text-primary sm:px-3"
             onClick={() =>
               handleAppBack(navigate, location.pathname, fromState)
             }
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
+            <span className="hidden sm:inline">Back</span>
           </Button>
         )}
-        <h1 className="truncate text-xl font-semibold text-text-primary">
+        <h1 className="truncate text-base font-semibold text-text-primary sm:text-xl">
           {title}
         </h1>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         <button
           type="button"
           className="relative rounded-lg p-2 hover:bg-surface"
@@ -86,7 +99,7 @@ export function Header({ title }: HeaderProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="flex items-center gap-2 rounded-lg p-1 hover:bg-surface">
-              <Avatar className="h-9 w-9">
+              <Avatar className="h-8 w-8 sm:h-9 sm:w-9">
                 <AvatarFallback className="bg-primary text-white">{initials}</AvatarFallback>
               </Avatar>
             </button>

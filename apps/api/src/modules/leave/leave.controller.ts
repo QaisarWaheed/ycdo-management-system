@@ -149,6 +149,7 @@ export class LeaveController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
     UserRole.SUPER_ADMIN,
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,

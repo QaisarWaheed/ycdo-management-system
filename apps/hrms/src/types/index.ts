@@ -136,17 +136,27 @@ export interface RelieverSessionsSummary {
 }
 
 export interface RelieverSession {
-  id: string
+  id: string | null
   employeeId: string
-  checkIn: string
+  checkIn?: string | null
   checkOut?: string | null
   totalMinutes: number
   date: string
   employee?: {
+    id?: string
     fullName: string
     employeeCode: string
   }
   branch?: { name: string; address?: string | null; abbreviation?: string | null }
+  coveringEmployee?: {
+    id: string
+    fullName: string
+    employeeCode: string
+  } | null
+  leaveRecordId?: string | null
+  relieverRequestId?: string | null
+  relieverRequestStatus?: string | null
+  sessionStatus?: 'NOT_STARTED' | 'ACTIVE' | 'COMPLETED'
 }
 
 export type BroadcastTarget =
@@ -633,9 +643,50 @@ export interface PayrollEntry {
       id: string
       fullName: string
       employeeCode: string
-      currentBranch?: { id: string; name: string; address?: string | null }
+      cnic?: string | null
+      currentDesignation?: string | null
+      dutyTotalHours?: number | null
+      currentBranch?: {
+        id: string
+        name: string
+        address?: string | null
+        phone?: string | null
+      }
       currentDepartment?: { id: string; name: string }
     }
+  }
+  slip?: {
+    orgName: string
+    workPlace: string
+    phone: string
+    employeeId: string
+    cnic: string
+    employeeName: string
+    department: string
+    designation: string
+    payPeriod: string
+    totalDays: number
+    dutyHoursPerDay: number
+    presence: number
+    earnings: {
+      stipend: number
+      previousMonth: number
+      rewardOnProgress: number
+      rewards: number
+      otherAllowance: number
+      fuel: number
+      mobileLoad: number
+      extraDuty: number
+    }
+    deductions: {
+      advance: number
+      loan: number
+      mobileLoad: number
+      absence: number
+      fine: number
+      health: number
+    }
+    totalAmount: number
   }
 }
 

@@ -34,7 +34,7 @@ export interface Employee {
   status: string
   joiningDate: string
   currentDesignation: string
-  currentBranch?: { name: string; address?: string | null }
+  currentBranch?: { name: string; address?: string | null; phone?: string | null }
   currentDepartment?: { name: string }
   shift?: { name: string; startTime: string; endTime: string } | null
   photoUrl?: string | null
@@ -158,8 +158,53 @@ export interface PayrollEntry {
   deductions?: PayrollDeduction[]
   allowances?: PayrollAllowance[]
   totalRelieverHours?: number
+  slip?: {
+    orgName: string
+    workPlace: string
+    phone: string
+    employeeId: string
+    cnic: string
+    employeeName: string
+    department: string
+    designation: string
+    payPeriod: string
+    totalDays: number
+    dutyHoursPerDay: number
+    presence: number
+    earnings: {
+      stipend: number
+      previousMonth: number
+      rewardOnProgress: number
+      rewards: number
+      otherAllowance: number
+      fuel: number
+      mobileLoad: number
+      extraDuty: number
+    }
+    deductions: {
+      advance: number
+      loan: number
+      mobileLoad: number
+      absence: number
+      fine: number
+      health: number
+    }
+    totalAmount: number
+  }
   stipendRecord?: {
-    employee?: Employee
+    allowances?: number | string | null
+    reward?: number | string | null
+    progressReward?: number | string | null
+    fuelAllowance?: number | string | null
+    loanDeduction?: number | string | null
+    advanceDeduction?: number | string | null
+    fineDeduction?: number | string | null
+    healthDeduction?: number | string | null
+    employee?: Employee & {
+      cnic?: string | null
+      currentDesignation?: string | null
+      dutyTotalHours?: number | null
+    }
   }
 }
 

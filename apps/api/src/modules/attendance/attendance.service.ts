@@ -15,6 +15,7 @@ import {
   Permission,
   Prisma,
   ProjectType,
+  RelieverRequestStatus,
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -28,6 +29,8 @@ import {
   ManualAttendanceDto,
   MarkAbsenteesDto,
   PortalCheckDto,
+  RelieverCheckInDto,
+  RelieverCheckOutDto,
   RelieverSessionsQueryDto,
   UpdateAttendanceDto,
 } from './attendance.dto';
@@ -1392,36 +1395,270 @@ export class AttendanceService {
     return 'onDutyNow';
   }
 
-  findAllRelieverSessions(query: RelieverSessionsQueryDto) {
-    const where: Prisma.RelieverSessionWhereInput = {};
-
-    if (query.branchId) {
-      where.branchId = query.branchId;
+  /**
+   * Lists assigned relievers for the date (from accepted/HR-assigned RelieverRequest
+   * on APPROVED leave covering that day), merged with any RelieverSession punches.
+   */
+  async findAllRelieverSessions(query: RelieverSessionsQueryDto) {
+    const dateStr = query.startDate ?? query.endDate;
+    if (!dateStr) {
+      throw new BadRequestException('startDate is required');
     }
-
-    if (query.startDate && query.endDate) {
-      where.date = {
-        gte: this.toDateOnly(new Date(query.startDate)),
-        lte: this.toDateOnly(new Date(query.endDate)),
-      };
-    } else if (query.startDate) {
-      where.date = this.toDateOnly(new Date(query.startDate));
-    }
-
+    const dateOnly = this.toDateOnly(new Date(dateStr));
     const employeeWhere = this.buildEmployeeFilterWhere(query);
-    if (employeeWhere) {
-      where.employee = employeeWhere;
+
+    const leaves = await this.prisma.leaveRecord.findMany({
+      where: {
+        status: LeaveStatus.APPROVED,
+        startDate: { lte: dateOnly },
+        endDate: { gte: dateOnly },
+        relieverRequest: {
+          status: {
+            in: [
+              RelieverRequestStatus.ACCEPTED,
+              RelieverRequestStatus.HR_ASSIGNED,
+            ],
+          },
+          reliever: {
+            ...(employeeWhere ?? {}),
+            ...(query.branchId ? { currentBranchId: query.branchId } : {}),
+          },
+        },
+      },
+      include: {
+        employee: {
+          select: { id: true, fullName: true, employeeCode: true },
+        },
+        relieverRequest: {
+          include: {
+            reliever: {
+              select: {
+                id: true,
+                fullName: true,
+                employeeCode: true,
+                currentBranchId: true,
+                currentBranch: { select: BRANCH_LABEL_SELECT },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { startDate: 'asc' },
+    });
+
+    const relieverIds = [
+      ...new Set(
+        leaves
+          .map((l) => l.relieverRequest?.relieverId)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+
+    const sessions =
+      relieverIds.length === 0
+        ? []
+        : await this.prisma.relieverSession.findMany({
+            where: {
+              employeeId: { in: relieverIds },
+              date: dateOnly,
+            },
+            orderBy: { checkIn: 'desc' },
+          });
+
+    const sessionByReliever = new Map<string, (typeof sessions)[number]>();
+    for (const session of sessions) {
+      if (!sessionByReliever.has(session.employeeId)) {
+        sessionByReliever.set(session.employeeId, session);
+      }
     }
 
-    return this.prisma.relieverSession.findMany({
-      where,
+    return leaves
+      .filter((leave) => leave.relieverRequest?.reliever)
+      .map((leave) => {
+        const request = leave.relieverRequest!;
+        const reliever = request.reliever;
+        const session = sessionByReliever.get(reliever.id) ?? null;
+        return {
+          id: session?.id ?? null,
+          employeeId: reliever.id,
+          branchId: session?.branchId ?? reliever.currentBranchId,
+          date: dateOnly,
+          checkIn: session?.checkIn ?? null,
+          checkOut: session?.checkOut ?? null,
+          totalMinutes: session?.totalMinutes ?? 0,
+          employee: {
+            id: reliever.id,
+            fullName: reliever.fullName,
+            employeeCode: reliever.employeeCode,
+          },
+          branch: reliever.currentBranch,
+          coveringEmployee: leave.employee,
+          leaveRecordId: leave.id,
+          relieverRequestId: request.id,
+          relieverRequestStatus: request.status,
+          sessionStatus: !session
+            ? 'NOT_STARTED'
+            : session.checkOut
+              ? 'COMPLETED'
+              : 'ACTIVE',
+        };
+      });
+  }
+
+  async relieverCheckIn(dto: RelieverCheckInDto) {
+    const dateOnly = this.toDateOnly(new Date(dto.date));
+    const checkTime = dto.checkIn
+      ? parseAttendanceDateTime(dto.checkIn)
+      : new Date();
+
+    const assignment = await this.findRelieverAssignment(
+      dto.employeeId,
+      dateOnly,
+    );
+    if (!assignment) {
+      throw new BadRequestException(
+        'Employee is not an assigned reliever for this date',
+      );
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+      select: { id: true, currentBranchId: true, status: true },
+    });
+    if (!employee) {
+      throw new NotFoundException(`Employee with id ${dto.employeeId} not found`);
+    }
+    if (
+      employee.status !== EmployeeStatus.ACTIVE &&
+      employee.status !== EmployeeStatus.APPOINTED &&
+      employee.status !== EmployeeStatus.TRAINEE
+    ) {
+      throw new BadRequestException('Reliever employee is not active');
+    }
+
+    const openSession = await this.prisma.relieverSession.findFirst({
+      where: {
+        employeeId: dto.employeeId,
+        date: dateOnly,
+        checkOut: null,
+      },
+    });
+    if (openSession) {
+      throw new ConflictException('Reliever already has an open session for this date');
+    }
+
+    const completed = await this.prisma.relieverSession.findFirst({
+      where: {
+        employeeId: dto.employeeId,
+        date: dateOnly,
+        checkOut: { not: null },
+      },
+    });
+    if (completed) {
+      throw new ConflictException(
+        'Reliever already completed Extra Duty for this date',
+      );
+    }
+
+    return this.prisma.relieverSession.create({
+      data: {
+        employeeId: dto.employeeId,
+        branchId: employee.currentBranchId,
+        date: dateOnly,
+        checkIn: checkTime,
+      },
       include: {
         employee: {
           select: { id: true, fullName: true, employeeCode: true },
         },
         branch: { select: BRANCH_LABEL_SELECT },
       },
-      orderBy: { checkIn: 'desc' },
+    });
+  }
+
+  async relieverCheckOut(
+    dto: RelieverCheckOutDto,
+    actingUser: { id: string; role: UserRole },
+  ) {
+    const session = await this.prisma.relieverSession.findUnique({
+      where: { id: dto.sessionId },
+    });
+    if (!session) {
+      throw new NotFoundException(`Reliever session ${dto.sessionId} not found`);
+    }
+    if (!session.checkIn) {
+      throw new BadRequestException('Session has no check-in');
+    }
+    if (session.checkOut) {
+      throw new ConflictException('Session already checked out');
+    }
+
+    const checkOut = dto.checkOut
+      ? parseAttendanceDateTime(dto.checkOut)
+      : new Date();
+    if (checkOut.getTime() < session.checkIn.getTime()) {
+      throw new BadRequestException('Check-out must be after check-in');
+    }
+
+    const totalMinutes = Math.max(
+      0,
+      Math.round((checkOut.getTime() - session.checkIn.getTime()) / 60000),
+    );
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.relieverSession.update({
+        where: { id: session.id },
+        data: { checkOut, totalMinutes },
+        include: {
+          employee: {
+            select: { id: true, fullName: true, employeeCode: true },
+          },
+          branch: { select: BRANCH_LABEL_SELECT },
+        },
+      });
+
+      // Extra Duty → Additional Working Day for payroll earnings
+      await tx.additionalWorkingDay.upsert({
+        where: {
+          employeeId_date: {
+            employeeId: session.employeeId,
+            date: session.date,
+          },
+        },
+        create: {
+          employeeId: session.employeeId,
+          date: session.date,
+          note: 'Extra Duty (Reliever)',
+          addedById: actingUser.id,
+        },
+        update: {
+          note: 'Extra Duty (Reliever)',
+        },
+      });
+
+      return result;
+    });
+
+    return updated;
+  }
+
+  private async findRelieverAssignment(employeeId: string, dateOnly: Date) {
+    return this.prisma.relieverRequest.findFirst({
+      where: {
+        relieverId: employeeId,
+        status: {
+          in: [
+            RelieverRequestStatus.ACCEPTED,
+            RelieverRequestStatus.HR_ASSIGNED,
+          ],
+        },
+        leaveRecord: {
+          status: LeaveStatus.APPROVED,
+          startDate: { lte: dateOnly },
+          endDate: { gte: dateOnly },
+        },
+      },
+      select: { id: true, leaveRecordId: true },
     });
   }
 

@@ -27,6 +27,8 @@ import {
   MarkAbsenteesDto,
   OvertimePunchDto,
   PortalCheckDto,
+  RelieverCheckInDto,
+  RelieverCheckOutDto,
   RelieverSessionsQueryDto,
   UpdateAttendanceDto,
 } from './attendance.dto';
@@ -126,11 +128,47 @@ export class AttendanceController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
   findAllRelieverSessions(@Query() query: RelieverSessionsQueryDto) {
     return this.attendanceService.findAllRelieverSessions(query);
+  }
+
+  @Post('reliever-sessions/check-in')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  relieverCheckIn(@Body() dto: RelieverCheckInDto) {
+    return this.attendanceService.relieverCheckIn(dto);
+  }
+
+  @Post('reliever-sessions/check-out')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  relieverCheckOut(
+    @Body() dto: RelieverCheckOutDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.attendanceService.relieverCheckOut(dto, user);
   }
 
   @Get('reliever/:employeeId')

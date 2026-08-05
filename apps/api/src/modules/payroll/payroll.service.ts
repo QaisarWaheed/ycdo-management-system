@@ -11,6 +11,8 @@ import {
 import {
   AllowanceType,
   AttendanceLogType,
+  AttendanceStatus,
+  DeductionType,
   Permission,
   PayrollStatus,
   Prisma,
@@ -223,12 +225,17 @@ export class PayrollService {
     const daysInMonth = new Date(year, month, 0).getDate();
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
-    const dayCount = await this.prisma.additionalWorkingDay.count({
+    const dayRows = await this.prisma.additionalWorkingDay.findMany({
       where: {
         employeeId,
         date: { gte: monthStart, lte: monthEnd },
       },
+      select: { note: true },
     });
+    const dayCount = dayRows.length;
+    const extraDutyCount = dayRows.filter((d) =>
+      (d.note ?? '').toLowerCase().includes('extra duty'),
+    ).length;
 
     const dailyHours = resolveDailyDutyHours(employee);
     const hourlyRate = computeHourlyRate(
@@ -257,7 +264,13 @@ export class PayrollService {
       month: 'long',
       year: 'numeric',
     });
-    const description = `Additional working days: ${dayCount} day(s) × ${dailyHours}h = ${hours}h @ PKR ${hourlyRate}/hr (${monthLabel})`;
+    const label =
+      extraDutyCount > 0 && extraDutyCount === dayCount
+        ? 'Extra Duty / Reliever'
+        : extraDutyCount > 0
+          ? `Additional working days (${extraDutyCount} Extra Duty)`
+          : 'Additional working days';
+    const description = `${label}: ${dayCount} day(s) × ${dailyHours}h = ${hours}h @ PKR ${hourlyRate}/hr (${monthLabel})`;
 
     if (existing) {
       await this.prisma.allowance.update({
@@ -660,11 +673,18 @@ export class PayrollService {
                 id: true,
                 fullName: true,
                 employeeCode: true,
+                cnic: true,
+                currentDesignation: true,
                 dutyStartTime: true,
                 dutyEndTime: true,
                 dutyTotalHours: true,
                 currentBranch: {
-                  select: { id: true, name: true, address: true },
+                  select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    phone: true,
+                  },
                 },
                 currentDepartment: { select: { id: true, name: true } },
                 shift: { select: { startTime: true, endTime: true } },
@@ -706,23 +726,116 @@ export class PayrollService {
       },
     );
 
+    const monthStart = new Date(entry.year, entry.month - 1, 1);
+    const monthEnd = new Date(entry.year, entry.month, 0);
+
     const relieverSummary = await this.prisma.relieverSession.aggregate({
       where: {
         employeeId: entry.stipendRecord.employeeId,
-        date: {
-          gte: new Date(entry.year, entry.month - 1, 1),
-          lte: new Date(entry.year, entry.month, 0),
-        },
+        date: { gte: monthStart, lte: monthEnd },
       },
       _sum: { totalMinutes: true },
     });
 
     const totalRelieverMinutes = relieverSummary._sum.totalMinutes ?? 0;
 
+    const presenceLogs = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId: entry.stipendRecord.employeeId,
+        type: AttendanceLogType.REGULAR,
+        date: { gte: monthStart, lte: monthEnd },
+        status: {
+          in: [
+            AttendanceStatus.PRESENT,
+            AttendanceStatus.LATE,
+            AttendanceStatus.HALF_DAY,
+          ],
+        },
+      },
+      select: { id: true, status: true },
+    });
+
+    const presenceDays = presenceLogs.reduce((sum, log) => {
+      return sum + (log.status === AttendanceStatus.HALF_DAY ? 0.5 : 1);
+    }, 0);
+
+    const absenceDeduction = (current.deductions ?? [])
+      .filter((d) => d.reason === DeductionType.UNINFORMED_ABSENCE)
+      .reduce((sum, d) => sum + Number(d.amount), 0);
+
+    const fineFromEntries = (current.deductions ?? [])
+      .filter(
+        (d) =>
+          d.reason === DeductionType.DISCIPLINARY_FINE ||
+          d.reason === DeductionType.LATE_ARRIVAL,
+      )
+      .reduce((sum, d) => sum + Number(d.amount), 0);
+
+    const pkg = stipendRecordToPackage(entry.stipendRecord);
+    const allowances = current.allowances ?? [];
+    const extraDutyAmount = allowances
+      .filter((a) => a.type === AllowanceType.ADDITIONAL_WORKING_DAYS)
+      .reduce((sum, a) => sum + Number(a.amount), 0);
+    const overtimeAmount = allowances
+      .filter((a) => a.type === AllowanceType.OVERTIME)
+      .reduce((sum, a) => sum + Number(a.amount), 0);
+    const otherExtraAllowances = allowances
+      .filter(
+        (a) =>
+          a.type !== AllowanceType.ADDITIONAL_WORKING_DAYS &&
+          a.type !== AllowanceType.OVERTIME,
+      )
+      .reduce((sum, a) => sum + Number(a.amount), 0);
+
+    const dailyDutyHours = resolveDailyDutyHours(employee);
+    const totalDays = new Date(entry.year, entry.month, 0).getDate();
+
+    const slip = {
+      orgName: 'YCDO IT SERVICES and TRAINING INSTITUTE',
+      workPlace:
+        employee.currentBranch?.address ||
+        employee.currentBranch?.name ||
+        '',
+      phone: employee.currentBranch?.phone || '',
+      employeeId: employee.employeeCode,
+      cnic: employee.cnic || '',
+      employeeName: employee.fullName,
+      department: employee.currentDepartment?.name || '',
+      designation: employee.currentDesignation || '',
+      payPeriod: monthStart.toLocaleString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      }),
+      totalDays,
+      dutyHoursPerDay: dailyDutyHours,
+      presence: presenceDays,
+      earnings: {
+        stipend: Number(current.basicStipend) || 0,
+        previousMonth: 0,
+        rewardOnProgress: pkg.progressReward || 0,
+        rewards: pkg.reward || 0,
+        otherAllowance:
+          (pkg.allowances || 0) + overtimeAmount + otherExtraAllowances,
+        fuel: pkg.fuelAllowance || 0,
+        mobileLoad: 0,
+        extraDuty: extraDutyAmount,
+      },
+      deductions: {
+        advance: pkg.advanceDeduction || 0,
+        loan: pkg.loanDeduction || 0,
+        mobileLoad: 0,
+        absence: absenceDeduction,
+        fine: (pkg.fineDeduction || 0) + fineFromEntries,
+        health: pkg.healthDeduction || 0,
+      },
+      totalAmount: Number(current.netStipend) || 0,
+    };
+
     return {
       ...current,
       totalRelieverHours: Math.round((totalRelieverMinutes / 60) * 100) / 100,
       hourlyBreakdown: breakdown,
+      slip,
     };
   }
 

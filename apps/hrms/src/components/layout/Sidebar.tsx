@@ -149,32 +149,37 @@ function navItemsForRole(role?: string) {
   return allNavItems
 }
 
-export function Sidebar() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
+function useSidebarNavItems() {
+  const { user } = useAuth()
   const roleNavItems = navItemsForRole(user?.role)
   const employeeIndex = roleNavItems.findIndex((item) => item.to === '/employees')
   const insertionIndex =
     employeeIndex >= 0
       ? employeeIndex + 1
       : Math.max(1, roleNavItems.findIndex((item) => item.to === '/dashboard') + 1)
-  const navItems = [
+  return [
     ...roleNavItems.slice(0, insertionIndex),
     biometricIdsNavItem,
     ...roleNavItems.slice(insertionIndex),
     ruleBookNavItem,
   ]
+}
+
+export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const navItems = useSidebarNavItems()
+  const emailName = user?.email?.split('@')[0] ?? 'User'
 
   const handleLogout = () => {
     logout()
+    onNavigate?.()
     navigate('/login')
   }
 
-  const emailName = user?.email?.split('@')[0] ?? 'User'
-
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-[260px] flex-col bg-primary text-white print:hidden">
-      <div className="flex items-center gap-3 border-b border-white/10 px-6 py-5">
+    <div className="flex h-full flex-col bg-primary text-white">
+      <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4 pr-12 sm:px-6 sm:py-5">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg font-bold text-primary">
           Y
         </div>
@@ -189,6 +194,7 @@ export function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            onClick={onNavigate}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
@@ -198,8 +204,8 @@ export function Sidebar() {
               )
             }
           >
-            <Icon className="h-5 w-5" />
-            {label}
+            <Icon className="h-5 w-5 shrink-0" />
+            <span className="truncate">{label}</span>
           </NavLink>
         ))}
       </nav>
@@ -207,6 +213,7 @@ export function Sidebar() {
       <div className="border-t border-white/10 p-4">
         <NavLink
           to="/settings/profile"
+          onClick={onNavigate}
           className={({ isActive }) =>
             cn(
               'mb-3 flex items-center gap-3 rounded-lg px-2 py-2 transition-colors',
@@ -214,10 +221,7 @@ export function Sidebar() {
             )
           }
         >
-          <EmployeeAvatar
-            fullName={emailName}
-            size="sm"
-          />
+          <EmployeeAvatar fullName={emailName} size="sm" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{emailName}</p>
             <p className="text-xs text-white/60">Settings</p>
@@ -238,6 +242,14 @@ export function Sidebar() {
           Logout
         </Button>
       </div>
+    </div>
+  )
+}
+
+export function Sidebar() {
+  return (
+    <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[260px] flex-col print:hidden lg:flex">
+      <SidebarNav />
     </aside>
   )
 }

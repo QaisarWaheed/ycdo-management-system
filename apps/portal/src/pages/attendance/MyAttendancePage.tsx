@@ -190,7 +190,7 @@ export function MyAttendancePage() {
               setMonthYear((prev) => ({ ...prev, month: Number(m) }))
             }
           >
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="w-full min-w-[140px] sm:w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -210,7 +210,7 @@ export function MyAttendancePage() {
               setMonthYear((prev) => ({ ...prev, year: Number(y) }))
             }
           >
-            <SelectTrigger className="w-[100px]">
+            <SelectTrigger className="w-full min-w-[100px] sm:w-[100px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -241,7 +241,7 @@ export function MyAttendancePage() {
       )}
 
       <Tabs defaultValue="log">
-        <TabsList>
+        <TabsList className="w-full justify-start sm:w-auto">
           <TabsTrigger value="log">Attendance Log</TabsTrigger>
           <TabsTrigger value="reliever">Reliever Sessions</TabsTrigger>
         </TabsList>

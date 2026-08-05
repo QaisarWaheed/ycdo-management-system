@@ -314,3 +314,27 @@ export class RelieverSessionsQueryDto {
   @IsString()
   district?: string;
 }
+
+export class RelieverCheckInDto {
+  @IsUUID()
+  @IsNotEmpty()
+  employeeId: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  date: string;
+
+  @IsOptional()
+  @IsDateString()
+  checkIn?: string;
+}
+
+export class RelieverCheckOutDto {
+  @IsUUID()
+  @IsNotEmpty()
+  sessionId: string;
+
+  @IsOptional()
+  @IsDateString()
+  checkOut?: string;
+}

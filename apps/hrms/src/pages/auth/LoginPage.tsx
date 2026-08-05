@@ -129,28 +129,28 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      {/* Left panel */}
-      <div className="flex w-[40%] flex-col justify-between bg-primary p-12 text-white">
+    <div className="flex min-h-[100dvh] flex-col lg:flex-row">
+      {/* Brand panel — compact on mobile, side panel on desktop */}
+      <div className="flex flex-col justify-between bg-primary px-5 py-8 text-white sm:px-8 lg:w-[40%] lg:p-12">
         <div>
-          <div className="mb-8 flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-2xl font-bold text-primary">
+          <div className="mb-4 flex items-center gap-3 sm:mb-8 sm:gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl font-bold text-primary sm:h-16 sm:w-16 sm:text-2xl">
               Y
             </div>
-            <div>
-              <h1 className="text-3xl font-bold">YCDO</h1>
-              <p className="text-sm text-white/80">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold sm:text-3xl">YCDO</h1>
+              <p className="truncate text-xs text-white/80 sm:text-sm">
                 Youth Community Development Organization
               </p>
             </div>
           </div>
-          <p className="text-lg italic text-white/90">
+          <p className="text-base italic text-white/90 sm:text-lg">
             Donate Love, Money and Time
           </p>
           <div className="mt-2 h-1 w-16 rounded bg-accent" />
         </div>
 
-        <ul className="space-y-3">
+        <ul className="mt-6 hidden space-y-3 lg:mt-0 lg:block">
           {features.map((item) => (
             <li key={item} className="flex items-center gap-2 text-white/90">
               <span className="text-accent">✓</span>
@@ -160,10 +160,10 @@ export function LoginPage() {
         </ul>
       </div>
 
-      {/* Right panel */}
-      <div className="flex w-[60%] items-center justify-center bg-white px-8">
+      {/* Form panel */}
+      <div className="flex flex-1 items-start justify-center bg-white px-4 py-8 sm:px-8 sm:py-10 lg:w-[60%] lg:items-center">
         <div className="w-full max-w-[400px]">
-          <div className="mb-8 flex justify-center">
+          <div className="mb-6 hidden justify-center lg:mb-8 lg:flex">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-bold text-white">
               Y
             </div>
@@ -174,7 +174,7 @@ export function LoginPage() {
               <p className="text-center text-sm text-text-secondary">
                 Welcome back
               </p>
-              <h2 className="mt-1 text-center text-2xl font-bold text-text-primary">
+              <h2 className="mt-1 text-center text-xl font-bold text-text-primary sm:text-2xl">
                 Sign in to YCDO HRMS
               </h2>
               <p className="mt-2 text-center text-sm text-text-secondary">
@@ -191,6 +191,8 @@ export function LoginPage() {
                     id="email"
                     type="email"
                     placeholder="admin@ycdo.org"
+                    className="h-11 text-base"
+                    autoComplete="email"
                     {...register('email')}
                   />
                   {errors.email && (
@@ -207,6 +209,8 @@ export function LoginPage() {
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       placeholder="••••••••"
+                      className="h-11 text-base"
+                      autoComplete="current-password"
                       {...register('password')}
                     />
                     <button
@@ -237,7 +241,7 @@ export function LoginPage() {
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full bg-primary hover:bg-primary-dark"
+                  className="h-11 w-full bg-primary hover:bg-primary-dark"
                 >
                   {isSubmitting ? (
                     <>
@@ -255,7 +259,7 @@ export function LoginPage() {
               <p className="text-center text-sm text-text-secondary">
                 Super Admin verification
               </p>
-              <h2 className="mt-1 text-center text-2xl font-bold text-text-primary">
+              <h2 className="mt-1 text-center text-xl font-bold text-text-primary sm:text-2xl">
                 Enter OTP
               </h2>
               <p className="mt-2 text-center text-sm text-text-secondary">
@@ -274,7 +278,7 @@ export function LoginPage() {
                     autoComplete="one-time-code"
                     placeholder="••••••"
                     maxLength={6}
-                    className="tracking-[0.35em] text-center text-lg"
+                    className="h-11 tracking-[0.35em] text-center text-lg"
                     {...registerOtp('otp')}
                   />
                   {otpErrors.otp && (
@@ -293,7 +297,7 @@ export function LoginPage() {
                 <Button
                   type="submit"
                   disabled={otpSubmitting}
-                  className="w-full bg-primary hover:bg-primary-dark"
+                  className="h-11 w-full bg-primary hover:bg-primary-dark"
                 >
                   {otpSubmitting ? (
                     <>

@@ -44,4 +44,11 @@ export const attendanceApi = {
       '/attendance/reliever-sessions',
       { params },
     ),
+  relieverCheckIn: (data: {
+    employeeId: string
+    date: string
+    checkIn?: string
+  }) => api.post('/attendance/reliever-sessions/check-in', data),
+  relieverCheckOut: (data: { sessionId: string; checkOut?: string }) =>
+    api.post('/attendance/reliever-sessions/check-out', data),
 }

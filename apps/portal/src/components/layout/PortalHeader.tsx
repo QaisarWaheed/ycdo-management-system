@@ -138,7 +138,7 @@ export function PortalHeader() {
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
+          <DropdownMenuContent align="end" className="w-[min(20rem,calc(100vw-1.5rem))]">
             <div className="flex items-center justify-between px-2 py-1.5">
               <span className="text-sm font-semibold">Notifications</span>
               {(unread?.count ?? 0) > 0 && (

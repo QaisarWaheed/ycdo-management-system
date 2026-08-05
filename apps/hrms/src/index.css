@@ -11,10 +11,18 @@
     @apply bg-background text-text-primary antialiased;
     margin: 0;
     font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
   }
 
   #root {
-    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    touch-action: manipulation;
   }
 }
 

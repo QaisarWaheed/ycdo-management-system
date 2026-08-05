@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Header } from './Header'
-import { Sidebar } from './Sidebar'
+import { Sidebar, SidebarNav } from './Sidebar'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -34,13 +36,28 @@ function getPageTitle(pathname: string): string {
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation()
   const title = getPageTitle(pathname)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-[100dvh] bg-surface">
       <Sidebar />
-      <div className="ml-[260px] print:ml-0">
-        <Header title={title} />
-        <main className="p-6 print:p-0">{children}</main>
+
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent
+          side="left"
+          className="w-[min(100vw-3rem,280px)] border-0 bg-primary p-0 text-white [&>button]:text-white [&>button]:hover:bg-white/10 [&>button]:hover:text-white"
+        >
+          <SheetTitle className="sr-only">Navigation menu</SheetTitle>
+          <SidebarNav onNavigate={() => setMobileNavOpen(false)} />
+        </SheetContent>
+      </Sheet>
+
+      <div className="lg:ml-[260px] print:ml-0">
+        <Header
+          title={title}
+          onMenuClick={() => setMobileNavOpen(true)}
+        />
+        <main className="p-3 sm:p-4 md:p-6 print:p-0">{children}</main>
       </div>
     </div>
   )

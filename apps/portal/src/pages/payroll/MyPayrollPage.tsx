@@ -7,6 +7,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { stipendReceiptsApi } from '@/api/endpoints/stipendReceipts'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { PayslipDocument } from '@/components/payroll/PayslipDocument'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -31,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { formatPKR } from '@/lib/helpers'
+import { buildPayslipSlipFromEntry } from '@/lib/payslipSlip'
 import type { Incentive, PayrollEntry, StipendReceipt, StipendStatus } from '@/types'
 
 function PayrollStatusBadge({ status }: { status: string }) {
@@ -93,20 +95,21 @@ function PayslipDialog({
   if (!entry) return null
 
   const data = fullEntry ?? entry
-  const deductions = data.deductions ?? []
-  const allowances = data.allowances ?? []
-  const totalDeductions = deductions.reduce(
-    (sum, d) => sum + Number(d.amount),
-    0,
-  )
-  const totalAllowances = allowances.reduce(
-    (sum, a) => sum + Number(a.amount),
-    0,
-  )
+  const slip = data.slip ?? buildPayslipSlipFromEntry({
+      ...data,
+      stipendRecord: {
+        ...data.stipendRecord,
+        employee: {
+          ...data.stipendRecord?.employee,
+          fullName:
+            data.stipendRecord?.employee?.fullName ?? employeeName,
+        },
+      },
+    })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[min(90dvh,90vh)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader className="no-print">
           <DialogTitle>Payslip</DialogTitle>
         </DialogHeader>
@@ -121,109 +124,7 @@ function PayslipDialog({
         {isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
-          <div className="print-content space-y-4">
-            <div className="hidden text-center print:block print:mb-6">
-              <h2 className="text-xl font-bold text-primary">YCDO</h2>
-              <p className="text-sm">Youth Community Development Organization</p>
-              <p className="mt-2 font-semibold">Stipend Payslip</p>
-            </div>
-
-            <div className="rounded-lg border border-border p-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <p className="text-text-secondary">Employee</p>
-                  <p className="font-medium">{employeeName}</p>
-                </div>
-                <div>
-                  <p className="text-text-secondary">Period</p>
-                  <p className="font-medium">
-                    {format(new Date(data.year, data.month - 1, 1), 'MMMM yyyy')}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-text-secondary">Basic Stipend</p>
-                  <p className="font-medium">{formatPKR(data.basicStipend)}</p>
-                </div>
-                <div>
-                  <p className="text-text-secondary">Status</p>
-                  <PayrollStatusBadge status={data.status} />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="mb-2 font-semibold">Deductions</h4>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Reason</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {deductions.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={2} className="text-text-secondary">
-                        No deductions
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    deductions.map((d) => (
-                      <TableRow key={d.id}>
-                        <TableCell>{d.reason.replace(/_/g, ' ')}</TableCell>
-                        <TableCell className="text-right text-red-600">
-                          {formatPKR(d.amount)}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-              <p className="mt-1 text-right text-sm font-semibold">
-                Total: {formatPKR(totalDeductions)}
-              </p>
-            </div>
-
-            <div>
-              <h4 className="mb-2 font-semibold">Allowances</h4>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {allowances.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={2} className="text-text-secondary">
-                        No allowances
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    allowances.map((a) => (
-                      <TableRow key={a.id}>
-                        <TableCell>{a.type.replace(/_/g, ' ')}</TableCell>
-                        <TableCell className="text-right text-green-600">
-                          {formatPKR(a.amount)}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-              <p className="mt-1 text-right text-sm font-semibold">
-                Total: {formatPKR(totalAllowances)}
-              </p>
-            </div>
-
-            <div className="rounded-lg border-2 border-primary bg-primary/5 p-4 text-center">
-              <p className="text-sm text-text-secondary">Net Stipend</p>
-              <p className="text-3xl font-bold text-primary">
-                {formatPKR(data.netStipend)}
-              </p>
-            </div>
-          </div>
+          <PayslipDocument slip={slip} />
         )}
       </DialogContent>
     </Dialog>

@@ -338,7 +338,7 @@ function DailyLogTab({
           <div className="space-y-1">
             <Label>Date</Label>
             <DateInput
-              className="w-[160px]"
+              className="w-full max-w-[160px]"
               value={date}
               onChange={setDate}
             />
@@ -607,12 +607,14 @@ function DailyLogTab({
 }
 
 function RelieverSessionsTab() {
+  const queryClient = useQueryClient()
   const { user } = useAuth()
   const today = format(new Date(), 'yyyy-MM-dd')
   const [date, setDate] = useState(today)
   const [employeeFilters, setEmployeeFilters] = useState(() =>
     createEmployeeFilters(user),
   )
+  const [actionId, setActionId] = useState<string | null>(null)
 
   const { data: shifts = [] } = useQuery({
     queryKey: ['shifts'],
@@ -635,7 +637,50 @@ function RelieverSessionsTab() {
 
   const relieverSessions = sessions as RelieverSession[]
 
-  const activeCount = relieverSessions.filter((s) => !s.checkOut).length
+  const checkInMutation = useMutation({
+    mutationFn: (employeeId: string) =>
+      attendanceApi.relieverCheckIn({ employeeId, date }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reliever-sessions'] })
+      toast({ title: 'Reliever checked in' })
+      setActionId(null)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Check-in failed',
+        description: Array.isArray(msg) ? msg.join(', ') : msg ?? 'Unknown error',
+        variant: 'destructive',
+      })
+      setActionId(null)
+    },
+  })
+
+  const checkOutMutation = useMutation({
+    mutationFn: (sessionId: string) =>
+      attendanceApi.relieverCheckOut({ sessionId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reliever-sessions'] })
+      toast({
+        title: 'Reliever checked out',
+        description: 'Extra Duty recorded as Additional Working Day',
+      })
+      setActionId(null)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Check-out failed',
+        description: Array.isArray(msg) ? msg.join(', ') : msg ?? 'Unknown error',
+        variant: 'destructive',
+      })
+      setActionId(null)
+    },
+  })
+
+  const activeCount = relieverSessions.filter(
+    (s) => s.sessionStatus === 'ACTIVE' || (!s.checkOut && s.checkIn),
+  ).length
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
     relieverSessions,
@@ -647,7 +692,7 @@ function RelieverSessionsTab() {
       <div className="space-y-1">
         <Label>Date</Label>
         <DateInput
-          className="w-[160px]"
+          className="w-full max-w-[160px]"
           value={date}
           onChange={setDate}
         />
@@ -662,7 +707,7 @@ function RelieverSessionsTab() {
 
       <TableRecordCount
         count={total}
-        label="session"
+        label="assigned reliever"
         extra={
           activeCount > 0 ? (
             <p className="text-sm text-text-secondary">{activeCount} active</p>
@@ -675,19 +720,21 @@ function RelieverSessionsTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Code</TableHead>
-              <TableHead>Employee</TableHead>
+              <TableHead>Reliever</TableHead>
+              <TableHead>Covering</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Check In</TableHead>
               <TableHead>Check Out</TableHead>
               <TableHead>Duration</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(7)].map((__, j) => (
+                  {[...Array(9)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -697,51 +744,121 @@ function RelieverSessionsTab() {
             ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={9}
                   className="py-8 text-center text-text-secondary"
                 >
-                  No reliever sessions for this date
+                  No assigned relievers for this date
                 </TableCell>
               </TableRow>
             ) : (
-              paginated.map((session) => (
-                <TableRow key={session.id}>
-                  <TableCell className="font-medium">
-                    {session.employee?.employeeCode ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    <EmployeeNameLink
-                      employee={session.employee}
-                      employeeId={session.employeeId}
-                    />
-                  </TableCell>
-                  <TableCell>{formatBranchTableLabel(session.branch)}</TableCell>
-                  <TableCell>{formatDateTimeTime(session.checkIn)}</TableCell>
-                  <TableCell>{formatDateTimeTime(session.checkOut)}</TableCell>
-                  <TableCell>
-                    {session.checkOut
-                      ? formatDuration(session.totalMinutes)
-                      : '—'}
-                  </TableCell>
-                  <TableCell>
-                    {!session.checkOut ? (
-                      <Badge
-                        variant="outline"
-                        className="border-indigo-200 bg-indigo-100 text-indigo-800"
-                      >
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="border-green-200 bg-green-100 text-green-800"
-                      >
-                        Completed
-                      </Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
+              paginated.map((session) => {
+                const rowKey =
+                  session.id ??
+                  session.relieverRequestId ??
+                  `${session.employeeId}-${session.date}`
+                const status =
+                  session.sessionStatus ??
+                  (!session.checkIn
+                    ? 'NOT_STARTED'
+                    : session.checkOut
+                      ? 'COMPLETED'
+                      : 'ACTIVE')
+                const busy =
+                  actionId === rowKey &&
+                  (checkInMutation.isPending || checkOutMutation.isPending)
+
+                return (
+                  <TableRow key={rowKey}>
+                    <TableCell className="font-medium">
+                      {session.employee?.employeeCode ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      <EmployeeNameLink
+                        employee={session.employee}
+                        employeeId={session.employeeId}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {session.coveringEmployee ? (
+                        <EmployeeNameLink
+                          employee={session.coveringEmployee}
+                          employeeId={session.coveringEmployee.id}
+                        />
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>{formatBranchTableLabel(session.branch)}</TableCell>
+                    <TableCell>
+                      {session.checkIn
+                        ? formatDateTimeTime(session.checkIn)
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {session.checkOut
+                        ? formatDateTimeTime(session.checkOut)
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {session.checkOut
+                        ? formatDuration(session.totalMinutes)
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {status === 'ACTIVE' ? (
+                        <Badge
+                          variant="outline"
+                          className="border-indigo-200 bg-indigo-100 text-indigo-800"
+                        >
+                          Active
+                        </Badge>
+                      ) : status === 'COMPLETED' ? (
+                        <Badge
+                          variant="outline"
+                          className="border-green-200 bg-green-100 text-green-800"
+                        >
+                          Completed
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-200 bg-amber-100 text-amber-800"
+                        >
+                          Not started
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {status === 'NOT_STARTED' ? (
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => {
+                            setActionId(rowKey)
+                            checkInMutation.mutate(session.employeeId)
+                          }}
+                        >
+                          Check In
+                        </Button>
+                      ) : status === 'ACTIVE' && session.id ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => {
+                            setActionId(rowKey)
+                            checkOutMutation.mutate(session.id!)
+                          }}
+                        >
+                          Check Out
+                        </Button>
+                      ) : (
+                        <span className="text-sm text-text-secondary">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>
@@ -781,10 +898,10 @@ export function AttendancePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-text-primary">Attendance</h1>
+      <h1 className="text-xl font-bold text-text-primary sm:text-2xl">Attendance</h1>
 
       <Tabs value={tab} onValueChange={handleTabChange}>
-        <TabsList>
+        <TabsList className="w-full justify-start sm:w-auto">
           <TabsTrigger value="daily">Daily Log</TabsTrigger>
           <TabsTrigger value="reliever">Reliever</TabsTrigger>
           <TabsTrigger value="mutual-swap">Mutual Swap</TabsTrigger>

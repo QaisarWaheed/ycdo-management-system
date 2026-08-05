@@ -2,7 +2,7 @@ import { useMemo, useState, Fragment } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { MoreHorizontal } from 'lucide-react'
+import { MoreHorizontal, Printer } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
@@ -18,7 +18,11 @@ import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { PKRInput } from '@/components/common/PKRInput'
+import { PayslipDocument } from '@/components/payroll/PayslipDocument'
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
+import {
+  buildPayslipSlipFromEntry,
+} from '@/lib/payslipSlip'
 import { calculateLumpsumTotal, DEFAULT_STIPEND_VALUES } from '@/lib/stipendUtils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -342,6 +346,8 @@ function PayrollDetailDialog({
   const relieverH = Math.floor(relieverMins / 60)
   const relieverM = relieverMins % 60
 
+  const slip = data.slip ?? buildPayslipSlipFromEntry(data)
+
   const refresh = async () => {
     queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
     const updated = await refetch()
@@ -350,13 +356,14 @@ function PayrollDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="max-h-[min(90dvh,90vh)] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader className="no-print">
           <DialogTitle>Payroll Detail</DialogTitle>
         </DialogHeader>
 
+        <div className={detailTab === 'payslip' ? 'hidden' : undefined}>
         {data.hourlyBreakdown && (
-          <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+          <div className="mb-4 space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm no-print">
             <p className="font-semibold">Hourly calculation</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
               <span className="text-text-secondary">Contractual basic</span>
@@ -416,7 +423,7 @@ function PayrollDetailDialog({
         )}
 
         {data.stipendRecord && (
-          <div className="space-y-3 rounded-lg border border-border bg-surface p-4 text-sm">
+          <div className="mb-4 space-y-3 rounded-lg border border-border bg-surface p-4 text-sm no-print">
             <p className="font-semibold">Stipend Package</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
               <span className="text-text-secondary">Basic Stipend</span>
@@ -473,13 +480,22 @@ function PayrollDetailDialog({
           </div>
         )}
 
+        </div>
+
         <Tabs value={detailTab} onValueChange={setDetailTab}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="deductions">Deductions</TabsTrigger>
-            <TabsTrigger value="allowances">Allowances</TabsTrigger>
+          <TabsList className="no-print flex h-auto w-full flex-wrap justify-start gap-1 sm:inline-flex sm:h-10 sm:flex-nowrap">
+            <TabsTrigger value="deductions" className="flex-1 sm:flex-none">
+              Deductions
+            </TabsTrigger>
+            <TabsTrigger value="allowances" className="flex-1 sm:flex-none">
+              Allowances
+            </TabsTrigger>
+            <TabsTrigger value="payslip" className="flex-1 sm:flex-none">
+              Payslip
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="deductions" className="space-y-4">
+          <TabsContent value="deductions" className="no-print space-y-4">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -516,7 +532,7 @@ function PayrollDetailDialog({
             )}
           </TabsContent>
 
-          <TabsContent value="allowances" className="space-y-4">
+          <TabsContent value="allowances" className="no-print space-y-4">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -559,6 +575,16 @@ function PayrollDetailDialog({
             {entry.status === 'PENDING' && (
               <AddAllowanceForm payrollEntryId={entry.id} onSuccess={refresh} />
             )}
+          </TabsContent>
+
+          <TabsContent value="payslip" className="space-y-4">
+            <div className="no-print flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => window.print()}>
+                <Printer className="mr-2 h-4 w-4" />
+                Print
+              </Button>
+            </div>
+            <PayslipDocument slip={slip} />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -1472,10 +1498,10 @@ function StipendReceiptsTab() {
 export function PayrollPage() {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-text-primary">Payroll</h1>
+      <h1 className="text-xl font-bold text-text-primary sm:text-2xl">Payroll</h1>
 
       <Tabs defaultValue="monthly">
-        <TabsList>
+        <TabsList className="w-full justify-start sm:w-auto">
           <TabsTrigger value="monthly">Monthly Payroll</TabsTrigger>
           <TabsTrigger value="increment">Stipend Increment</TabsTrigger>
           <TabsTrigger value="summary">Summary</TabsTrigger>
