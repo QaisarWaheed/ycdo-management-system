@@ -1643,7 +1643,47 @@ export class PayrollService {
     month: number,
     year: number,
     branchId?: string,
+    fromDate?: string,
+    toDate?: string,
   ) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
+
+    let periodDays = daysInMonth;
+    if (fromDate || toDate) {
+      if (!fromDate || !toDate) {
+        throw new BadRequestException(
+          'Both fromDate and toDate are required together',
+        );
+      }
+      const from = new Date(`${fromDate}T00:00:00`);
+      const to = new Date(`${toDate}T00:00:00`);
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        throw new BadRequestException('fromDate and toDate must be YYYY-MM-DD');
+      }
+      if (to < from) {
+        throw new BadRequestException('toDate must be on or after fromDate');
+      }
+      if (
+        from.getFullYear() !== year ||
+        from.getMonth() + 1 !== month ||
+        to.getFullYear() !== year ||
+        to.getMonth() + 1 !== month
+      ) {
+        throw new BadRequestException(
+          'fromDate and toDate must fall within the selected month and year',
+        );
+      }
+      if (from < monthStart || to > monthEnd) {
+        throw new BadRequestException(
+          'Date range must be within the selected month',
+        );
+      }
+      periodDays =
+        Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    }
+
     const where: Prisma.PayrollEntryWhereInput = { month, year };
 
     if (branchId) {
@@ -1652,7 +1692,27 @@ export class PayrollService {
       };
     }
 
-    const entries = await this.prisma.payrollEntry.findMany({ where });
+    const entries = await this.prisma.payrollEntry.findMany({
+      where,
+      include: {
+        stipendRecord: {
+          select: {
+            basicStipend: true,
+            employeeId: true,
+            employee: {
+              select: {
+                id: true,
+                fullName: true,
+                employeeCode: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        stipendRecord: { employee: { fullName: 'asc' } },
+      },
+    });
 
     const byStatus = {
       PENDING: 0,
@@ -1664,14 +1724,42 @@ export class PayrollService {
     let totalDeductions = 0;
     let totalAllowances = 0;
     let totalNetSalary = 0;
+    let periodStipendTotal = 0;
 
-    for (const entry of entries) {
+    const employees = entries.map((entry) => {
       byStatus[entry.status]++;
-      totalBasicSalary += Number(entry.basicStipend);
-      totalDeductions += Number(entry.totalDeductions);
-      totalAllowances += Number(entry.totalAllowances);
-      totalNetSalary += Number(entry.netStipend);
-    }
+      const earnedBasic = Number(entry.basicStipend);
+      const contractualBasic = Number(entry.stipendRecord.basicStipend);
+      const deductions = Number(entry.totalDeductions);
+      const allowances = Number(entry.totalAllowances);
+      const net = Number(entry.netStipend);
+      totalBasicSalary += earnedBasic;
+      totalDeductions += deductions;
+      totalAllowances += allowances;
+      totalNetSalary += net;
+
+      const dailyRate =
+        daysInMonth > 0 && contractualBasic > 0
+          ? contractualBasic / daysInMonth
+          : 0;
+      const periodStipend = roundMoney(dailyRate * periodDays);
+      periodStipendTotal = roundMoney(periodStipendTotal + periodStipend);
+
+      return {
+        entryId: entry.id,
+        employeeId: entry.stipendRecord.employee.id,
+        fullName: entry.stipendRecord.employee.fullName,
+        employeeCode: entry.stipendRecord.employee.employeeCode,
+        basicStipend: earnedBasic,
+        contractualBasic,
+        totalDeductions: deductions,
+        totalAllowances: allowances,
+        netStipend: net,
+        status: entry.status,
+        periodDays,
+        periodStipend,
+      };
+    });
 
     return {
       month,
@@ -1682,6 +1770,13 @@ export class PayrollService {
       totalAllowances,
       totalNetSalary,
       byStatus,
+      fromDate: fromDate || null,
+      toDate: toDate || null,
+      periodDays,
+      employees,
+      periodTotals: {
+        periodStipend: periodStipendTotal,
+      },
     };
   }
 

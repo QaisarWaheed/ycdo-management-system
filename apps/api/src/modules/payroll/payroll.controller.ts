@@ -117,11 +117,15 @@ export class PayrollController {
     @Query('month') month: string,
     @Query('year') year: string,
     @Query('branchId') branchId?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
   ) {
     return this.payrollService.getMonthlyPayrollSummary(
       Number(month),
       Number(year),
       branchId,
+      fromDate,
+      toDate,
     );
   }
 

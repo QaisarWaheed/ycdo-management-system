@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">YCDO HRMS</string>
+    <string name="title_activity_main">YCDO HRMS</string>
+    <string name="package_name">org.ycdo.hrms</string>
+    <string name="custom_url_scheme">org.ycdo.hrms</string>
+</resources>

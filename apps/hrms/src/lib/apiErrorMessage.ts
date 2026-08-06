@@ -6,5 +6,13 @@ export function getApiErrorMessage(err: unknown, fallback: string): string {
     if (typeof message === 'string') return message
     if (Array.isArray(message) && message[0]) return message[0]
   }
+  if (
+    err &&
+    typeof err === 'object' &&
+    'isAxiosError' in err &&
+    (err as { response?: unknown }).response == null
+  ) {
+    return 'Cannot reach the server. Check your connection and try again.'
+  }
   return fallback
 }

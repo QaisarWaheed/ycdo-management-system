@@ -1131,9 +1131,23 @@ function SummaryTab() {
     year: now.getFullYear(),
   })
   const [branchId, setBranchId] = useState('')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const [reportLoading, setReportLoading] = useState(false)
 
-  const monthLabel = format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')
+  const monthLabel = format(
+    new Date(monthYear.year, monthYear.month - 1),
+    'MMMM yyyy',
+  )
+  const daysInMonth = new Date(monthYear.year, monthYear.month, 0).getDate()
+  const monthMin = `${monthYear.year}-${String(monthYear.month).padStart(2, '0')}-01`
+  const monthMax = `${monthYear.year}-${String(monthYear.month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
+
+  const rangeReady = Boolean(fromDate && toDate)
+  const dateRangeError =
+    fromDate && toDate && toDate < fromDate
+      ? 'To date must be on or after from date'
+      : ''
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
@@ -1141,19 +1155,37 @@ function SummaryTab() {
   })
 
   const { data: summary, isLoading } = useQuery({
-    queryKey: ['payroll-summary', monthYear, branchId],
+    queryKey: [
+      'payroll-summary',
+      monthYear,
+      branchId,
+      rangeReady ? fromDate : '',
+      rangeReady ? toDate : '',
+    ],
     queryFn: () =>
       payrollApi.getSummary(
         monthYear.month,
         monthYear.year,
         branchId || undefined,
+        rangeReady ? fromDate : undefined,
+        rangeReady ? toDate : undefined,
       ),
+    enabled: !dateRangeError,
   })
 
   const paidPercent =
     summary && summary.totalEmployees > 0
       ? Math.round((summary.byStatus.PAID / summary.totalEmployees) * 100)
       : 0
+
+  const employees = summary?.employees ?? []
+  const hasDateRange = Boolean(summary?.fromDate && summary?.toDate)
+
+  const handleMonthYearChange = (next: { month: number; year: number }) => {
+    setMonthYear(next)
+    setFromDate('')
+    setToDate('')
+  }
 
   const generateReport = async () => {
     if (!branchId) {
@@ -1192,11 +1224,38 @@ function SummaryTab() {
     }
   }
 
+  const kpiCards = [
+    {
+      label: 'Total Employees on Payroll',
+      value: summary?.totalEmployees ?? 0,
+    },
+    {
+      label: 'Total Basic Stipend',
+      value: formatPKR(summary?.totalBasicStipend ?? 0),
+    },
+    {
+      label: 'Total Deductions',
+      value: formatPKR(summary?.totalDeductions ?? 0),
+    },
+    {
+      label: 'Total Net Stipend',
+      value: formatPKR(summary?.totalNetStipend ?? 0),
+    },
+    ...(hasDateRange
+      ? [
+          {
+            label: `Period stipend (${summary?.periodDays ?? 0} days)`,
+            value: formatPKR(summary?.periodTotals?.periodStipend ?? 0),
+          },
+        ]
+      : []),
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3 no-print">
         <div className="flex flex-wrap items-end gap-3">
-          <MonthYearPicker value={monthYear} onChange={setMonthYear} />
+          <MonthYearPicker value={monthYear} onChange={handleMonthYearChange} />
           <div className="space-y-1">
             <Label>Branch</Label>
             <Select
@@ -1216,6 +1275,38 @@ function SummaryTab() {
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1">
+            <Label>From</Label>
+            <DateInput
+              value={fromDate}
+              onChange={setFromDate}
+              min={monthMin}
+              max={monthMax}
+              className="w-[150px]"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>To</Label>
+            <DateInput
+              value={toDate}
+              onChange={setToDate}
+              min={monthMin}
+              max={monthMax}
+              className="w-[150px]"
+            />
+          </div>
+          {(fromDate || toDate) && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setFromDate('')
+                setToDate('')
+              }}
+            >
+              Clear dates
+            </Button>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -1231,10 +1322,25 @@ function SummaryTab() {
         </div>
       </div>
 
+      {dateRangeError ? (
+        <p className="text-sm text-destructive no-print">{dateRangeError}</p>
+      ) : null}
+      {fromDate && !toDate ? (
+        <p className="text-sm text-text-secondary no-print">
+          Select both From and To to apply the period stipend filter.
+        </p>
+      ) : null}
+
       <div id="payroll-summary-print" className="print-content">
         <div className="hidden print:block print-summary-header mb-6 text-center">
           <h2 className="text-xl font-bold">YCDO Central Hospital</h2>
           <p className="text-lg">Payroll Summary — {monthLabel}</p>
+          {hasDateRange ? (
+            <p className="text-sm">
+              Period: {summary?.fromDate} to {summary?.toDate} (
+              {summary?.periodDays} days)
+            </p>
+          ) : null}
         </div>
 
         {isLoading ? (
@@ -1245,25 +1351,13 @@ function SummaryTab() {
           </div>
         ) : summary ? (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {[
-                {
-                  label: 'Total Employees on Payroll',
-                  value: summary.totalEmployees,
-                },
-                {
-                  label: 'Total Basic Stipend',
-                  value: formatPKR(summary.totalBasicStipend),
-                },
-                {
-                  label: 'Total Deductions',
-                  value: formatPKR(summary.totalDeductions),
-                },
-                {
-                  label: 'Total Net Stipend',
-                  value: formatPKR(summary.totalNetStipend),
-                },
-              ].map((card) => (
+            <div
+              className={cn(
+                'grid grid-cols-1 gap-4 md:grid-cols-2',
+                hasDateRange ? 'xl:grid-cols-5' : 'xl:grid-cols-4',
+              )}
+            >
+              {kpiCards.map((card) => (
                 <Card key={card.label}>
                   <CardContent className="p-6">
                     <p className="text-2xl font-bold">{card.value}</p>
@@ -1310,6 +1404,91 @@ function SummaryTab() {
                       style={{ width: `${paidPercent}%` }}
                     />
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="mt-6">
+              <CardContent className="p-0">
+                <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+                  <h3 className="font-semibold">
+                    Employees
+                    {hasDateRange
+                      ? ` — period stipend (${summary.periodDays} days)`
+                      : ''}
+                  </h3>
+                  <TableRecordCount
+                    count={employees.length}
+                    label="employee"
+                  />
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead className="text-right">Basic</TableHead>
+                        <TableHead className="text-right">Deductions</TableHead>
+                        <TableHead className="text-right">Allowances</TableHead>
+                        <TableHead className="text-right">Net</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Days</TableHead>
+                        <TableHead className="text-right">
+                          Period stipend
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {employees.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={8}
+                            className="py-8 text-center text-text-secondary"
+                          >
+                            No payroll entries for this period
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        employees.map((emp) => (
+                          <TableRow key={emp.entryId}>
+                            <TableCell>
+                              <EmployeeNameLink
+                                employee={{
+                                  id: emp.employeeId,
+                                  fullName: emp.fullName,
+                                  employeeCode: emp.employeeCode,
+                                }}
+                              />
+                              <p className="text-xs text-text-secondary">
+                                {emp.employeeCode}
+                              </p>
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatPKR(emp.basicStipend)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatPKR(emp.totalDeductions)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatPKR(emp.totalAllowances)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums font-medium">
+                              {formatPKR(emp.netStipend)}
+                            </TableCell>
+                            <TableCell>
+                              <PayrollStatusBadge status={emp.status} />
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {emp.periodDays}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums font-medium">
+                              {formatPKR(emp.periodStipend)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>

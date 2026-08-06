@@ -88,11 +88,17 @@ export const payrollApi = {
     api.patch<unknown, PayrollEntry>(`/payroll/entries/${id}/status`, data),
   getHistory: (employeeId: string) =>
     api.get<unknown, PayrollEntry[]>(`/payroll/history/${employeeId}`),
-  getSummary: async (month: number, year: number, branchId?: string) => {
+  getSummary: async (
+    month: number,
+    year: number,
+    branchId?: string,
+    fromDate?: string,
+    toDate?: string,
+  ) => {
     const data = await api.get<unknown, PayrollSummaryResponse>(
       '/payroll/summary',
       {
-        params: { month, year, branchId },
+        params: { month, year, branchId, fromDate, toDate },
       },
     )
     return mapPayrollSummary(data)
