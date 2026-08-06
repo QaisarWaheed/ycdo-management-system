@@ -5,6 +5,7 @@ import {
 import { getDutyWindow } from '../../common/duty.util';
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -758,7 +759,10 @@ export class PayrollService {
     });
   }
 
-  async getEntryWithAllowances(entryId: string) {
+  async getEntryWithAllowances(
+    entryId: string,
+    actingUser?: { id: string; role: UserRole; employeeId?: string | null },
+  ) {
     const entry = await this.prisma.payrollEntry.findUnique({
       where: { id: entryId },
       include: {
@@ -796,6 +800,17 @@ export class PayrollService {
 
     if (!entry) {
       throw new NotFoundException(`Payroll entry with id ${entryId} not found`);
+    }
+
+    if (actingUser?.role === UserRole.EMPLOYEE) {
+      if (
+        !actingUser.employeeId ||
+        actingUser.employeeId !== entry.stipendRecord.employeeId
+      ) {
+        throw new ForbiddenException(
+          'You can only view your own payroll entry',
+        );
+      }
     }
 
     let current = entry;
@@ -1512,10 +1527,21 @@ export class PayrollService {
                 id: true,
                 fullName: true,
                 employeeCode: true,
+                cnic: true,
+                currentDesignation: true,
+                dutyStartTime: true,
+                dutyEndTime: true,
+                dutyTotalHours: true,
                 currentBranch: {
-                  select: { id: true, name: true, address: true },
+                  select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    phone: true,
+                  },
                 },
                 currentDepartment: { select: { id: true, name: true } },
+                shift: { select: { startTime: true, endTime: true } },
               },
             },
           },
@@ -1537,10 +1563,21 @@ export class PayrollService {
                 id: true,
                 fullName: true,
                 employeeCode: true,
+                cnic: true,
+                currentDesignation: true,
+                dutyStartTime: true,
+                dutyEndTime: true,
+                dutyTotalHours: true,
                 currentBranch: {
-                  select: { id: true, name: true, address: true },
+                  select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    phone: true,
+                  },
                 },
                 currentDepartment: { select: { id: true, name: true } },
+                shift: { select: { startTime: true, endTime: true } },
               },
             },
           },
@@ -1568,7 +1605,36 @@ export class PayrollService {
       where: {
         stipendRecord: { employeeId },
       },
-      include: { deductions: true, allowances: true },
+      include: {
+        deductions: true,
+        allowances: true,
+        stipendRecord: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                fullName: true,
+                employeeCode: true,
+                cnic: true,
+                currentDesignation: true,
+                dutyStartTime: true,
+                dutyEndTime: true,
+                dutyTotalHours: true,
+                currentBranch: {
+                  select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    phone: true,
+                  },
+                },
+                currentDepartment: { select: { id: true, name: true } },
+                shift: { select: { startTime: true, endTime: true } },
+              },
+            },
+          },
+        },
+      },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     });
   }

@@ -175,9 +175,13 @@ export class PayrollController {
   }
 
   @Get('entries/:id/full')
-  @Roles(...PAYROLL_WRITE_ROLES)
-  getEntryWithAllowances(@Param('id') id: string) {
-    return this.payrollService.getEntryWithAllowances(id);
+  @Roles(...PAYROLL_WRITE_ROLES, UserRole.EMPLOYEE, UserRole.HR_EXECUTIVE)
+  getEntryWithAllowances(
+    @Param('id') id: string,
+    @CurrentUser()
+    user: { id: string; role: UserRole; employeeId?: string | null },
+  ) {
+    return this.payrollService.getEntryWithAllowances(id, user);
   }
 
   @Get('entries/:id')

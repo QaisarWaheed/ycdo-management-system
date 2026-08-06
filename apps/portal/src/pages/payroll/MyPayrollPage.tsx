@@ -33,7 +33,42 @@ import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { formatPKR } from '@/lib/helpers'
 import { buildPayslipSlipFromEntry } from '@/lib/payslipSlip'
-import type { Incentive, PayrollEntry, StipendReceipt, StipendStatus } from '@/types'
+import type { PayslipSlipData } from '@/lib/payslipSlip'
+import type {
+  Employee,
+  Incentive,
+  PayrollEntry,
+  StipendReceipt,
+  StipendStatus,
+} from '@/types'
+
+function enrichSlipWithEmployee(
+  slip: PayslipSlipData,
+  employee?: Employee | null,
+): PayslipSlipData {
+  if (!employee) return slip
+  return {
+    ...slip,
+    cnic: slip.cnic || employee.cnic || '',
+    employeeName: slip.employeeName || employee.fullName || '',
+    employeeId: slip.employeeId || employee.employeeCode || '',
+    designation: slip.designation || employee.currentDesignation || '',
+    department: slip.department || employee.currentDepartment?.name || '',
+    hospital: slip.hospital || employee.currentBranch?.name || '',
+    workPlace:
+      slip.workPlace ||
+      employee.currentBranch?.address ||
+      employee.currentBranch?.name ||
+      '',
+    phone: slip.phone || employee.currentBranch?.phone || '',
+    dutyTime:
+      slip.dutyTime && slip.dutyTime !== 'Nil'
+        ? slip.dutyTime
+        : employee.dutyStartTime && employee.dutyEndTime
+          ? `${employee.dutyStartTime} To ${employee.dutyEndTime}`
+          : slip.dutyTime,
+  }
+}
 
 function PayrollStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -79,33 +114,46 @@ function PayslipDialog({
   entry,
   open,
   onOpenChange,
-  employeeName,
+  employee,
 }: {
   entry: PayrollEntry | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  employeeName: string
+  employee?: Employee | null
 }) {
   const { data: fullEntry, isLoading } = useQuery({
     queryKey: ['payroll-entry-full', entry?.id],
     queryFn: () => payrollApi.getEntryFull(entry!.id),
     enabled: !!entry && open,
+    retry: 1,
   })
 
   if (!entry) return null
 
   const data = fullEntry ?? entry
-  const slip = data.slip ?? buildPayslipSlipFromEntry({
+  const fromEntry = data.stipendRecord?.employee
+  const baseSlip =
+    data.slip ??
+    buildPayslipSlipFromEntry({
       ...data,
       stipendRecord: {
         ...data.stipendRecord,
         employee: {
-          ...data.stipendRecord?.employee,
-          fullName:
-            data.stipendRecord?.employee?.fullName ?? employeeName,
+          fullName: fromEntry?.fullName ?? employee?.fullName,
+          employeeCode: fromEntry?.employeeCode ?? employee?.employeeCode,
+          cnic: fromEntry?.cnic ?? employee?.cnic,
+          currentDesignation:
+            fromEntry?.currentDesignation ?? employee?.currentDesignation,
+          dutyStartTime: fromEntry?.dutyStartTime ?? employee?.dutyStartTime,
+          dutyEndTime: fromEntry?.dutyEndTime ?? employee?.dutyEndTime,
+          dutyTotalHours: fromEntry?.dutyTotalHours ?? employee?.dutyTotalHours,
+          currentBranch: fromEntry?.currentBranch ?? employee?.currentBranch,
+          currentDepartment:
+            fromEntry?.currentDepartment ?? employee?.currentDepartment,
         },
       },
     })
+  const slip = enrichSlipWithEmployee(baseSlip, employee)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -379,9 +427,6 @@ export function MyPayrollPage() {
   })
 
   const currentStipend = employee?.stipendRecords?.[0]
-  const employeeName = employee
-    ? employee.fullName
-    : 'Employee'
 
   const sortedHistory = [...(history as PayrollEntry[])].sort(
     (a, b) =>
@@ -548,7 +593,7 @@ export function MyPayrollPage() {
         entry={viewEntry}
         open={!!viewEntry}
         onOpenChange={(v) => !v && setViewEntry(null)}
-        employeeName={employeeName}
+        employee={employee}
       />
     </div>
   )
