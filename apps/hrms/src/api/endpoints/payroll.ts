@@ -111,4 +111,10 @@ export const payrollApi = {
     month: number
     year: number
   }) => api.post('/payroll/apply-overtime', data),
+
+  downloadReport: (branchId: string, month: number, year: number) =>
+    api.get<unknown, Blob>('/payroll/report', {
+      params: { branchId, month, year },
+      responseType: 'blob',
+    }),
 }

@@ -6,9 +6,11 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
@@ -29,6 +31,7 @@ const PAYROLL_READ_ROLES = [
   UserRole.HR_MANAGER,
   UserRole.HR_ADMIN_MANAGER,
   UserRole.HR_OPERATIONS_MANAGER,
+  UserRole.HR_EXECUTIVE,
   UserRole.IT_ADMIN,
   UserRole.CHAIRMAN,
   UserRole.FOUNDER,
@@ -120,6 +123,33 @@ export class PayrollController {
       Number(year),
       branchId,
     );
+  }
+
+  @Get('report')
+  @Roles(...PAYROLL_READ_ROLES)
+  async downloadPayrollReport(
+    @Query('branchId') branchId: string,
+    @Query('month') month: string,
+    @Query('year') year: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } =
+      await this.payrollService.generateBranchPayrollReport(
+        branchId,
+        Number(month),
+        Number(year),
+        user,
+      );
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    res.send(buffer);
   }
 
   @Get('history/:employeeId')

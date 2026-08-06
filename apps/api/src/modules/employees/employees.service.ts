@@ -937,6 +937,12 @@ export class EmployeesService {
     if (sanitizedDto.bloodGroup !== undefined) data.bloodGroup = sanitizedDto.bloodGroup;
     if (sanitizedDto.dutyStartTime !== undefined) data.dutyStartTime = sanitizedDto.dutyStartTime;
     if (sanitizedDto.dutyEndTime !== undefined) data.dutyEndTime = sanitizedDto.dutyEndTime;
+    if (sanitizedDto.dutyTotalHours !== undefined) {
+      data.dutyTotalHours = sanitizedDto.dutyTotalHours;
+    }
+    if (sanitizedDto.monthlyAllowedLeaves !== undefined) {
+      data.monthlyAllowedLeaves = sanitizedDto.monthlyAllowedLeaves;
+    }
     if (sanitizedDto.province !== undefined) data.province = sanitizedDto.province;
     if (sanitizedDto.city !== undefined) data.city = sanitizedDto.city;
     if (sanitizedDto.permanentProvince !== undefined) {
@@ -1425,6 +1431,9 @@ export class EmployeesService {
       }
       if (dto.dutyTotalHours !== undefined) {
         data.dutyTotalHours = dto.dutyTotalHours;
+      }
+      if (dto.monthlyAllowedLeaves !== undefined) {
+        data.monthlyAllowedLeaves = dto.monthlyAllowedLeaves;
       }
       if (dto.relieverOnly !== undefined) {
         data.relieverOnly = dto.relieverOnly;

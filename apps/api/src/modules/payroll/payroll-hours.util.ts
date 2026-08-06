@@ -118,6 +118,64 @@ export function leaveCreditMinutes(
   return 0;
 }
 
+function dateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Split full ON_LEAVE days into paid vs unpaid using monthly allowance.
+ * null/undefined allowance = all paid (legacy). SHORT leave is not counted here.
+ */
+export function splitPaidUnpaidLeaveDays(input: {
+  onLeaveDates: Date[];
+  monthlyAllowedLeaves: number | null | undefined;
+}): {
+  leaveDays: number;
+  paidLeaveDays: number;
+  unpaidLeaveDays: number;
+  paidLeaveDateKeys: Set<string>;
+} {
+  const uniqueSorted = [
+    ...new Map(
+      input.onLeaveDates.map((d) => [dateKey(d), d] as const),
+    ).values(),
+  ].sort((a, b) => a.getTime() - b.getTime());
+
+  const leaveDays = uniqueSorted.length;
+  if (input.monthlyAllowedLeaves == null) {
+    return {
+      leaveDays,
+      paidLeaveDays: leaveDays,
+      unpaidLeaveDays: 0,
+      paidLeaveDateKeys: new Set(uniqueSorted.map(dateKey)),
+    };
+  }
+
+  const allowance = Math.max(0, Math.floor(input.monthlyAllowedLeaves));
+  const paid = uniqueSorted.slice(0, allowance);
+  const unpaidLeaveDays = Math.max(0, leaveDays - allowance);
+  return {
+    leaveDays,
+    paidLeaveDays: paid.length,
+    unpaidLeaveDays,
+    paidLeaveDateKeys: new Set(paid.map(dateKey)),
+  };
+}
+
+export function unpaidLeaveDeductionAmount(
+  unpaidLeaveDays: number,
+  contractualBasic: number,
+  daysInMonth: number,
+): number {
+  if (unpaidLeaveDays <= 0 || daysInMonth <= 0 || contractualBasic <= 0) {
+    return 0;
+  }
+  return roundMoney((contractualBasic / daysInMonth) * unpaidLeaveDays);
+}
+
 export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }

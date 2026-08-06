@@ -5,6 +5,8 @@ import {
   leaveCreditMinutes,
   payableMinutesWithinDutyWindow,
   resolveDailyDutyHours,
+  splitPaidUnpaidLeaveDays,
+  unpaidLeaveDeductionAmount,
 } from './payroll-hours.util';
 
 /** Build a Date whose Pakistan local clock matches the given HH:mm on 2026-07-01. */
@@ -108,5 +110,33 @@ describe('payroll-hours.util', () => {
     expect(breakdown.payableHours).toBe(176);
     expect(breakdown.hourlyBasicEarned).toBe(22000);
     expect(breakdown.netStipend).toBe(22000 + 5000 + 500 - 1000 - 1000);
+  });
+
+  it('splits paid vs unpaid leave for 3 allowed / 5 taken', () => {
+    const dates = [1, 2, 3, 4, 5].map((d) => new Date(2026, 5, d));
+    const split = splitPaidUnpaidLeaveDays({
+      onLeaveDates: dates,
+      monthlyAllowedLeaves: 3,
+    });
+    expect(split.leaveDays).toBe(5);
+    expect(split.paidLeaveDays).toBe(3);
+    expect(split.unpaidLeaveDays).toBe(2);
+    expect(split.paidLeaveDateKeys.size).toBe(3);
+    expect(split.paidLeaveDateKeys.has('2026-06-01')).toBe(true);
+    expect(split.paidLeaveDateKeys.has('2026-06-03')).toBe(true);
+    expect(split.paidLeaveDateKeys.has('2026-06-04')).toBe(false);
+
+    expect(unpaidLeaveDeductionAmount(2, 30000, 30)).toBe(2000);
+  });
+
+  it('treats null monthlyAllowedLeaves as unlimited paid leave', () => {
+    const dates = [1, 2, 3, 4, 5].map((d) => new Date(2026, 5, d));
+    const split = splitPaidUnpaidLeaveDays({
+      onLeaveDates: dates,
+      monthlyAllowedLeaves: null,
+    });
+    expect(split.paidLeaveDays).toBe(5);
+    expect(split.unpaidLeaveDays).toBe(0);
+    expect(unpaidLeaveDeductionAmount(0, 30000, 30)).toBe(0);
   });
 });

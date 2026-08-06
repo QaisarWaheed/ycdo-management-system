@@ -36,8 +36,23 @@ import {
   payableMinutesWithinDutyWindow,
   resolveDailyDutyHours,
   roundMoney,
+  splitPaidUnpaidLeaveDays,
+  unpaidLeaveDeductionAmount,
   type HourlyPayrollBreakdown,
 } from './payroll-hours.util';
+import {
+  PAYSLIP_ORG_NAME,
+  formatSlipDutyTime,
+  formatSlipMonthTitle,
+  formatSlipPeriod,
+  sanitizeSheetName,
+  computeDeductionsTotal,
+  computeEarningsTotal,
+  type PayslipSlipData,
+} from './payslip-slip.util';
+import ExcelJS from 'exceljs';
+
+const UNPAID_LEAVE_DESC_PREFIX = 'Unpaid leave';
 
 @Injectable()
 export class PayrollService {
@@ -114,6 +129,14 @@ export class PayrollService {
         employee,
         contractualBasic,
       );
+      await this.upsertUnpaidLeaveDeductionRow(
+        existing.id,
+        dto.employeeId,
+        dto.month,
+        dto.year,
+        employee.monthlyAllowedLeaves,
+        contractualBasic,
+      );
       const refreshed = await this.prisma.payrollEntry.findUnique({
         where: { id: existing.id },
         include: { deductions: true, allowances: true },
@@ -176,6 +199,14 @@ export class PayrollService {
       dto.month,
       dto.year,
       employee,
+      contractualBasic,
+    );
+    await this.upsertUnpaidLeaveDeductionRow(
+      created.id,
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      employee.monthlyAllowedLeaves,
       contractualBasic,
     );
 
@@ -285,6 +316,73 @@ export class PayrollService {
         payrollEntryId,
         type: AllowanceType.ADDITIONAL_WORKING_DAYS,
         hours,
+        amount,
+        description,
+      },
+    });
+  }
+
+  private async upsertUnpaidLeaveDeductionRow(
+    payrollEntryId: string,
+    employeeId: string,
+    month: number,
+    year: number,
+    monthlyAllowedLeaves: number | null | undefined,
+    contractualBasic: number,
+  ) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+    const onLeaveLogs = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId,
+        type: AttendanceLogType.REGULAR,
+        status: AttendanceStatus.ON_LEAVE,
+        date: { gte: monthStart, lte: monthEnd },
+      },
+      select: { date: true },
+      orderBy: { date: 'asc' },
+    });
+
+    const split = splitPaidUnpaidLeaveDays({
+      onLeaveDates: onLeaveLogs.map((l) => l.date),
+      monthlyAllowedLeaves,
+    });
+    const amount = unpaidLeaveDeductionAmount(
+      split.unpaidLeaveDays,
+      contractualBasic,
+      daysInMonth,
+    );
+
+    const existing = await this.prisma.payrollDeduction.findFirst({
+      where: {
+        payrollEntryId,
+        reason: DeductionType.UNPAID_LEAVE,
+      },
+    });
+
+    if (split.unpaidLeaveDays <= 0 || amount <= 0) {
+      if (existing) {
+        await this.prisma.payrollDeduction.delete({ where: { id: existing.id } });
+      }
+      return;
+    }
+
+    const description = `${UNPAID_LEAVE_DESC_PREFIX} (${split.unpaidLeaveDays} day(s) beyond allowance of ${monthlyAllowedLeaves ?? 0})`;
+
+    if (existing) {
+      await this.prisma.payrollDeduction.update({
+        where: { id: existing.id },
+        data: { amount, description },
+      });
+      return;
+    }
+
+    await this.prisma.payrollDeduction.create({
+      data: {
+        payrollEntryId,
+        reason: DeductionType.UNPAID_LEAVE,
         amount,
         description,
       },
@@ -678,6 +776,7 @@ export class PayrollService {
                 dutyStartTime: true,
                 dutyEndTime: true,
                 dutyTotalHours: true,
+                monthlyAllowedLeaves: true,
                 currentBranch: {
                   select: {
                     id: true,
@@ -759,11 +858,97 @@ export class PayrollService {
       return sum + (log.status === AttendanceStatus.HALF_DAY ? 0.5 : 1);
     }, 0);
 
-    const absenceDeduction = (current.deductions ?? [])
-      .filter((d) => d.reason === DeductionType.UNINFORMED_ABSENCE)
+    const onLeaveLogs = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId: entry.stipendRecord.employeeId,
+        type: AttendanceLogType.REGULAR,
+        status: AttendanceStatus.ON_LEAVE,
+        date: { gte: monthStart, lte: monthEnd },
+      },
+      select: { date: true },
+      orderBy: { date: 'asc' },
+    });
+    const leaveSplit = splitPaidUnpaidLeaveDays({
+      onLeaveDates: onLeaveLogs.map((l) => l.date),
+      monthlyAllowedLeaves: employee.monthlyAllowedLeaves,
+    });
+
+    const slip = this.buildPayslipSlipData({
+      entry: current,
+      stipendRecord: entry.stipendRecord,
+      employee,
+      presenceDays,
+      leaveSplit,
+    });
+
+    return {
+      ...current,
+      totalRelieverHours: Math.round((totalRelieverMinutes / 60) * 100) / 100,
+      hourlyBreakdown: breakdown,
+      slip,
+    };
+  }
+
+  private buildPayslipSlipData(input: {
+    entry: {
+      month: number;
+      year: number;
+      basicStipend: unknown;
+      netStipend: unknown;
+      deductions?: Array<{ reason: DeductionType; amount: unknown }>;
+      allowances?: Array<{ type: AllowanceType; amount: unknown }>;
+    };
+    stipendRecord: {
+      basicStipend?: unknown;
+      allowances?: unknown;
+      reward?: unknown;
+      progressReward?: unknown;
+      fuelAllowance?: unknown;
+      loanDeduction?: unknown;
+      advanceDeduction?: unknown;
+      fineDeduction?: unknown;
+      healthDeduction?: unknown;
+    };
+    employee: {
+      fullName: string;
+      employeeCode: string;
+      cnic?: string | null;
+      currentDesignation?: string | null;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      dutyTotalHours?: number | null;
+      currentBranch?: {
+        name?: string;
+        address?: string | null;
+        phone?: string | null;
+      } | null;
+      currentDepartment?: { name?: string } | null;
+      shift?: { startTime: string; endTime: string } | null;
+    };
+    presenceDays: number;
+    leaveSplit: {
+      leaveDays: number;
+      paidLeaveDays: number;
+      unpaidLeaveDays: number;
+    };
+  }): PayslipSlipData {
+    const { entry, stipendRecord, employee, presenceDays, leaveSplit } = input;
+    const pkg = stipendRecordToPackage({
+      basicStipend: stipendRecord.basicStipend ?? 0,
+      ...stipendRecord,
+    });
+    const allowances = entry.allowances ?? [];
+    const deductions = entry.deductions ?? [];
+
+    const absenceDeduction = deductions
+      .filter(
+        (d) =>
+          d.reason === DeductionType.UNINFORMED_ABSENCE ||
+          d.reason === DeductionType.UNPAID_LEAVE,
+      )
       .reduce((sum, d) => sum + Number(d.amount), 0);
 
-    const fineFromEntries = (current.deductions ?? [])
+    const fineFromEntries = deductions
       .filter(
         (d) =>
           d.reason === DeductionType.DISCIPLINARY_FINE ||
@@ -771,8 +956,6 @@ export class PayrollService {
       )
       .reduce((sum, d) => sum + Number(d.amount), 0);
 
-    const pkg = stipendRecordToPackage(entry.stipendRecord);
-    const allowances = current.allowances ?? [];
     const extraDutyAmount = allowances
       .filter((a) => a.type === AllowanceType.ADDITIONAL_WORKING_DAYS)
       .reduce((sum, a) => sum + Number(a.amount), 0);
@@ -789,9 +972,43 @@ export class PayrollService {
 
     const dailyDutyHours = resolveDailyDutyHours(employee);
     const totalDays = new Date(entry.year, entry.month, 0).getDate();
+    const payPeriod = new Date(entry.year, entry.month - 1, 1).toLocaleString(
+      'en-US',
+      { month: 'long', year: 'numeric' },
+    );
 
-    const slip = {
-      orgName: 'YCDO IT SERVICES and TRAINING INSTITUTE',
+    const earnings = {
+      stipend: Number(entry.basicStipend) || 0,
+      previousMonth: 0,
+      rewardOnProgress: pkg.progressReward || 0,
+      rewards: pkg.reward || 0,
+      otherAllowance:
+        (pkg.allowances || 0) + overtimeAmount + otherExtraAllowances,
+      fuel: pkg.fuelAllowance || 0,
+      mobileLoad: 0,
+      extraDuty: extraDutyAmount,
+    };
+
+    const deductionsBlock = {
+      advance: pkg.advanceDeduction || 0,
+      loan: pkg.loanDeduction || 0,
+      mobileLoad: 0,
+      absence: absenceDeduction,
+      fine: (pkg.fineDeduction || 0) + fineFromEntries,
+      health: pkg.healthDeduction || 0,
+      providentFund: 0,
+      tax: 0,
+      auditDifference: 0,
+      staffPendingMed: 0,
+    };
+
+    const earningsTotal = computeEarningsTotal(earnings);
+    const deductionsTotal = computeDeductionsTotal(deductionsBlock);
+
+    return {
+      orgName: PAYSLIP_ORG_NAME,
+      title: formatSlipMonthTitle(entry.month, entry.year),
+      hospital: employee.currentBranch?.name || '',
       workPlace:
         employee.currentBranch?.address ||
         employee.currentBranch?.name ||
@@ -802,41 +1019,307 @@ export class PayrollService {
       employeeName: employee.fullName,
       department: employee.currentDepartment?.name || '',
       designation: employee.currentDesignation || '',
-      payPeriod: monthStart.toLocaleString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      }),
+      period: formatSlipPeriod(entry.month, entry.year),
+      payPeriod,
       totalDays,
+      leaveDays: leaveSplit.leaveDays,
+      paidLeaveDays: leaveSplit.paidLeaveDays,
+      unpaidLeaveDays: leaveSplit.unpaidLeaveDays,
+      dutyTime: formatSlipDutyTime(employee),
       dutyHoursPerDay: dailyDutyHours,
       presence: presenceDays,
-      earnings: {
-        stipend: Number(current.basicStipend) || 0,
-        previousMonth: 0,
-        rewardOnProgress: pkg.progressReward || 0,
-        rewards: pkg.reward || 0,
-        otherAllowance:
-          (pkg.allowances || 0) + overtimeAmount + otherExtraAllowances,
-        fuel: pkg.fuelAllowance || 0,
-        mobileLoad: 0,
-        extraDuty: extraDutyAmount,
-      },
-      deductions: {
-        advance: pkg.advanceDeduction || 0,
-        loan: pkg.loanDeduction || 0,
-        mobileLoad: 0,
-        absence: absenceDeduction,
-        fine: (pkg.fineDeduction || 0) + fineFromEntries,
-        health: pkg.healthDeduction || 0,
-      },
-      totalAmount: Number(current.netStipend) || 0,
+      earnings,
+      deductions: deductionsBlock,
+      earningsTotal,
+      deductionsTotal,
+      netPay: Number(entry.netStipend) || 0,
+      totalAmount: Number(entry.netStipend) || 0,
+      paidThrough: 'Nil',
     };
+  }
 
-    return {
-      ...current,
-      totalRelieverHours: Math.round((totalRelieverMinutes / 60) * 100) / 100,
-      hourlyBreakdown: breakdown,
-      slip,
+  async generateBranchPayrollReport(
+    branchId: string,
+    month: number,
+    year: number,
+    actingUser?: { id: string; role: UserRole },
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    if (!branchId) {
+      throw new BadRequestException('branchId is required');
+    }
+    if (!month || month < 1 || month > 12) {
+      throw new BadRequestException('month must be between 1 and 12');
+    }
+    if (!year || year < 2000) {
+      throw new BadRequestException('year is invalid');
+    }
+
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: branchId },
+      select: { id: true, name: true },
+    });
+    if (!branch) {
+      throw new NotFoundException(`Branch ${branchId} not found`);
+    }
+
+    let employeeWhere: Prisma.EmployeeWhereInput = {
+      currentBranchId: branchId,
     };
+    if (actingUser?.id) {
+      employeeWhere =
+        await this.accessScopeService.narrowEmployeeWhereForActor(
+          actingUser.id,
+          actingUser.role,
+          employeeWhere,
+        );
+    }
+
+    const entries = await this.prisma.payrollEntry.findMany({
+      where: {
+        month,
+        year,
+        stipendRecord: {
+          employee: employeeWhere,
+        },
+      },
+      include: {
+        deductions: true,
+        allowances: true,
+        stipendRecord: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                fullName: true,
+                employeeCode: true,
+                cnic: true,
+                currentDesignation: true,
+                dutyStartTime: true,
+                dutyEndTime: true,
+                dutyTotalHours: true,
+                monthlyAllowedLeaves: true,
+                currentBranch: {
+                  select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    phone: true,
+                  },
+                },
+                currentDepartment: { select: { id: true, name: true } },
+                shift: { select: { startTime: true, endTime: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        stipendRecord: { employee: { fullName: 'asc' } },
+      },
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'YCDO HRMS';
+    workbook.created = new Date();
+
+    if (entries.length === 0) {
+      const empty = workbook.addWorksheet('No entries');
+      empty.getCell('A1').value = PAYSLIP_ORG_NAME;
+      empty.getCell('A2').value = formatSlipMonthTitle(month, year);
+      empty.getCell('A3').value = `No payroll entries for ${branch.name}`;
+    }
+
+    const usedNames = new Set<string>();
+
+    for (const entry of entries) {
+      let current = entry;
+      if (entry.status === PayrollStatus.PENDING) {
+        const refreshed = await this.createOrGetEntry({
+          employeeId: entry.stipendRecord.employeeId,
+          month,
+          year,
+        });
+        current = {
+          ...entry,
+          ...refreshed,
+          stipendRecord: entry.stipendRecord,
+        };
+      }
+
+      const employee = entry.stipendRecord.employee;
+      const monthStart = new Date(year, month - 1, 1);
+      const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+      const presenceLogs = await this.prisma.attendanceLog.findMany({
+        where: {
+          employeeId: entry.stipendRecord.employeeId,
+          type: AttendanceLogType.REGULAR,
+          date: { gte: monthStart, lte: monthEnd },
+          status: {
+            in: [
+              AttendanceStatus.PRESENT,
+              AttendanceStatus.LATE,
+              AttendanceStatus.HALF_DAY,
+            ],
+          },
+        },
+        select: { status: true },
+      });
+      const presenceDays = presenceLogs.reduce(
+        (sum, log) =>
+          sum + (log.status === AttendanceStatus.HALF_DAY ? 0.5 : 1),
+        0,
+      );
+
+      const onLeaveLogs = await this.prisma.attendanceLog.findMany({
+        where: {
+          employeeId: entry.stipendRecord.employeeId,
+          type: AttendanceLogType.REGULAR,
+          status: AttendanceStatus.ON_LEAVE,
+          date: { gte: monthStart, lte: monthEnd },
+        },
+        select: { date: true },
+        orderBy: { date: 'asc' },
+      });
+      const leaveSplit = splitPaidUnpaidLeaveDays({
+        onLeaveDates: onLeaveLogs.map((l) => l.date),
+        monthlyAllowedLeaves: employee.monthlyAllowedLeaves,
+      });
+
+      const slip = this.buildPayslipSlipData({
+        entry: current,
+        stipendRecord: entry.stipendRecord,
+        employee,
+        presenceDays,
+        leaveSplit,
+      });
+
+      let sheetName = sanitizeSheetName(
+        employee.fullName,
+        employee.employeeCode || 'Employee',
+      );
+      if (usedNames.has(sheetName)) {
+        const suffix = ` (${employee.employeeCode || usedNames.size})`;
+        sheetName = sanitizeSheetName(
+          `${employee.fullName}`.slice(0, 31 - suffix.length) + suffix,
+          employee.employeeCode || 'Employee',
+        );
+      }
+      usedNames.add(sheetName);
+
+      const ws = workbook.addWorksheet(sheetName);
+      this.writePayslipSheet(ws, slip);
+    }
+
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const monthLabel = String(month).padStart(2, '0');
+    const safeBranch = branch.name.replace(/[^\w\- ]+/g, '').trim() || 'Branch';
+    return {
+      buffer,
+      filename: `Payroll-${safeBranch}-${year}-${monthLabel}.xlsx`,
+    };
+  }
+
+  private writePayslipSheet(
+    ws: ExcelJS.Worksheet,
+    slip: PayslipSlipData,
+  ) {
+    const money = (n: number) => (n ? Math.round(n * 100) / 100 : 'Nil');
+
+    ws.getCell('A1').value = slip.orgName;
+    ws.getCell('A2').value = slip.title;
+
+    ws.getCell('A3').value = 'CNIC';
+    ws.getCell('C3').value = slip.cnic || 'Nil';
+    ws.getCell('G3').value = 'Hospital';
+    ws.getCell('H3').value = slip.hospital || 'Nil';
+
+    ws.getCell('A4').value = 'Name';
+    ws.getCell('C4').value = slip.employeeName || 'Nil';
+    ws.getCell('G4').value = 'Work Place';
+    ws.getCell('H4').value = slip.workPlace || 'Nil';
+
+    ws.getCell('A5').value = 'Designation';
+    ws.getCell('C5').value = slip.designation || 'Nil';
+    ws.getCell('G5').value = 'Period';
+    ws.getCell('H5').value = slip.period;
+
+    ws.getCell('A6').value = 'Total Day ';
+    ws.getCell('C6').value = 'Leave ';
+    ws.getCell('G6').value = 'Time ';
+    ws.getCell('H6').value = slip.dutyTime;
+
+    ws.getCell('A7').value = slip.totalDays;
+    ws.getCell('C7').value = slip.leaveDays;
+    ws.getCell('G7').value = 'Presence';
+    ws.getCell('H7').value = slip.presence;
+
+    ws.getCell('A8').value = 'Pay & Allowances';
+    ws.getCell('D8').value = 'Amount';
+    ws.getCell('E8').value = 'Deduction';
+    ws.getCell('G8').value = 'Amount';
+    ws.getCell('H8').value = 'Paid Through';
+
+    const earnRows: Array<[string, number]> = [
+      ['Stipend', slip.earnings.stipend],
+      ['Extra Day', slip.earnings.extraDuty],
+      ['Previous Month', slip.earnings.previousMonth],
+      ['Reward On Progress', slip.earnings.rewardOnProgress],
+      ['Rewards', slip.earnings.rewards],
+      ['Other Allowance', slip.earnings.otherAllowance],
+      ['Fuel', slip.earnings.fuel],
+      ['Mobile Load', slip.earnings.mobileLoad],
+    ];
+    const dedRows: Array<[string, number]> = [
+      ['Advance', slip.deductions.advance],
+      ['Loan', slip.deductions.loan],
+      ['MobileLoad', slip.deductions.mobileLoad],
+      ['Absence', slip.deductions.absence],
+      ['Fine', slip.deductions.fine],
+      ['Health', slip.deductions.health],
+      ['Provident Fund', slip.deductions.providentFund],
+      ['Tax', slip.deductions.tax],
+    ];
+
+    for (let i = 0; i < Math.max(earnRows.length, dedRows.length); i++) {
+      const row = 9 + i;
+      if (earnRows[i]) {
+        ws.getCell(`A${row}`).value = earnRows[i][0];
+        ws.getCell(`D${row}`).value = money(earnRows[i][1]);
+      }
+      if (dedRows[i]) {
+        ws.getCell(`E${row}`).value = dedRows[i][0];
+        ws.getCell(`G${row}`).value = money(dedRows[i][1]);
+      }
+      if (i === 0) {
+        ws.getCell('H9').value = slip.paidThrough;
+      }
+    }
+
+    const totalRow = 9 + Math.max(earnRows.length, dedRows.length);
+    ws.getCell(`A${totalRow}`).value = 'Stipend & Other Allowances';
+    ws.getCell(`D${totalRow}`).value = money(slip.earningsTotal);
+    ws.getCell(`E${totalRow}`).value = 'Deduction';
+    ws.getCell(`G${totalRow}`).value = money(slip.deductionsTotal);
+    ws.getCell(`H${totalRow}`).value = 'Net Pay';
+    ws.getCell(`J${totalRow}`).value = money(slip.netPay);
+
+    const noteRow = totalRow + 1;
+    ws.getCell(`A${noteRow}`).value =
+      'Bank Charges (if any) will be deducted from Stipend by the bank';
+
+    const sigRow = noteRow + 2;
+    ws.getCell(`B${sigRow}`).value = 'President YCDO ';
+    ws.getCell(`E${sigRow}`).value = 'Chairman Admin YCDO';
+    ws.getCell(`H${sigRow}`).value = 'Chairman Finance YCDO';
+
+    ws.getColumn(1).width = 28;
+    ws.getColumn(3).width = 22;
+    ws.getColumn(4).width = 12;
+    ws.getColumn(5).width = 18;
+    ws.getColumn(7).width = 12;
+    ws.getColumn(8).width = 24;
+    ws.getColumn(10).width = 12;
   }
 
   private async computeHourlyBreakdown(
@@ -860,6 +1343,7 @@ export class PayrollService {
         dutyTotalHours?: number | null;
         dutyStartTime?: string | null;
         dutyEndTime?: string | null;
+        monthlyAllowedLeaves?: number | null;
         shift?: { startTime: string; endTime: string } | null;
       };
       existingDeductions: Array<{ amount: unknown }>;
@@ -887,23 +1371,42 @@ export class PayrollService {
         date: { gte: monthStart, lte: monthEnd },
       },
       select: {
+        date: true,
         checkIn: true,
         checkOut: true,
         status: true,
         note: true,
       },
+      orderBy: { date: 'asc' },
+    });
+
+    const onLeaveDates = logs
+      .filter((l) => l.status === AttendanceStatus.ON_LEAVE)
+      .map((l) => l.date);
+    const leaveSplit = splitPaidUnpaidLeaveDays({
+      onLeaveDates,
+      monthlyAllowedLeaves: context.employee.monthlyAllowedLeaves,
     });
 
     let workedMins = 0;
     let paidLeaveMins = 0;
 
     for (const log of logs) {
+      if (log.status === AttendanceStatus.ON_LEAVE) {
+        const key = `${log.date.getFullYear()}-${String(log.date.getMonth() + 1).padStart(2, '0')}-${String(log.date.getDate()).padStart(2, '0')}`;
+        if (leaveSplit.paidLeaveDateKeys.has(key)) {
+          paidLeaveMins += dailyDutyMinutes;
+        }
+        continue;
+      }
+
       const leaveMins = leaveCreditMinutes(
         log.status,
         log.note,
         dailyDutyMinutes,
       );
       if (leaveMins > 0) {
+        // SHORT leave — does not consume monthly allowance
         paidLeaveMins += leaveMins;
         continue;
       }

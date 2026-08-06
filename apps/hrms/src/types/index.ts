@@ -284,6 +284,8 @@ export interface Employee {
   dutyStartTime?: string | null
   dutyEndTime?: string | null
   dutyTotalHours?: number | null
+  /** Monthly paid leave allowance; null = unlimited. */
+  monthlyAllowedLeaves?: number | null
   employmentHistory?: EmploymentHistory[]
   stipendRecords?: StipendRecord[]
   documents?: EmployeeDocument[]

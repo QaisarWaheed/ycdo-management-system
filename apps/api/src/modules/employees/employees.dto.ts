@@ -28,6 +28,7 @@ import {
   Matches,
   Max,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -233,6 +234,15 @@ export class CreateEmployeeDto {
   @Min(1)
   @Max(24)
   dutyTotalHours?: number;
+
+  /** Monthly paid leave days; omit/null = unlimited paid leave. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(31)
+  monthlyAllowedLeaves?: number | null;
 
   @IsString()
   @IsNotEmpty()
@@ -440,6 +450,15 @@ export class UpdateBranchDutyDto {
   @Min(1)
   @Max(24)
   dutyTotalHours?: number;
+
+  /** Monthly paid leave days; null clears to unlimited. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(31)
+  monthlyAllowedLeaves?: number | null;
 
   /** Reliever-only: no regular duty; excluded from auto-absent. */
   @IsOptional()

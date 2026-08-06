@@ -317,6 +317,7 @@ const step2BaseSchema = z.object({
   dutyTotalHours: z.number().int().min(1).max(24).optional(),
   dutyStartTime: z.string().optional(),
   dutyEndTime: z.string().optional(),
+  monthlyAllowedLeaves: z.number().int().min(0).max(31).optional().nullable(),
 })
 
 const dutyTimeRefine = (data: {
@@ -803,6 +804,7 @@ function EmployeeCreatePageForm() {
       dutyTotalHours: undefined,
       dutyStartTime: '',
       dutyEndTime: '',
+      monthlyAllowedLeaves: undefined,
     },
   })
 
@@ -896,6 +898,7 @@ function EmployeeCreatePageForm() {
         dutyTotalHours: undefined,
         dutyStartTime: '',
         dutyEndTime: '',
+        monthlyAllowedLeaves: undefined,
       })
     }
   }, [prefill, form1, form2])
@@ -1920,6 +1923,35 @@ function EmployeeCreatePageForm() {
                 onEndTimeChange={(value) =>
                   form2.setValue('dutyEndTime', value)
                 }
+              />
+              <FormField
+                control={form2.control}
+                name="monthlyAllowedLeaves"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Allow leave / month</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={31}
+                        placeholder="Leave blank for unlimited"
+                        value={field.value ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          field.onChange(
+                            v === '' ? undefined : Number.parseInt(v, 10),
+                          )
+                        }}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-text-secondary">
+                      Paid leave days per month. Extra leave days are unpaid and
+                      deducted from stipend.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
               <FormField
                 control={form2.control}

@@ -218,6 +218,8 @@ model Employee {
   dutyStartTime          String?
   dutyEndTime            String?
   dutyTotalHours         Int?
+  /// Monthly paid leave allowance; null = unlimited paid leave (legacy).
+  monthlyAllowedLeaves   Int?
   province               String?
   city                   String?
   permanentProvince      String?
@@ -492,6 +494,7 @@ enum DeductionType {
   LATE_ARRIVAL
   UNINFORMED_ABSENCE
   DISCIPLINARY_FINE
+  UNPAID_LEAVE
   OTHER
 }
 

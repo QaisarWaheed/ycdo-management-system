@@ -41,6 +41,7 @@
     "class-validator": "^0.15.1",
     "cloudinary": "^2.10.0",
     "dayjs": "^1.11.21",
+    "exceljs": "^4.4.0",
     "handlebars": "^4.7.9",
     "multer": "^2.1.1",
     "nodemailer": "^9.0.4",

@@ -1131,6 +1131,7 @@ function SummaryTab() {
     year: now.getFullYear(),
   })
   const [branchId, setBranchId] = useState('')
+  const [reportLoading, setReportLoading] = useState(false)
 
   const monthLabel = format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')
 
@@ -1153,6 +1154,43 @@ function SummaryTab() {
     summary && summary.totalEmployees > 0
       ? Math.round((summary.byStatus.PAID / summary.totalEmployees) * 100)
       : 0
+
+  const generateReport = async () => {
+    if (!branchId) {
+      toast({
+        title: 'Select a branch',
+        description: 'Choose a branch before generating the payroll report.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setReportLoading(true)
+    try {
+      const blob = await payrollApi.downloadReport(
+        branchId,
+        monthYear.month,
+        monthYear.year,
+      )
+      const branch = branches.find((b) => b.id === branchId)
+      const label = branch ? formatBranchLabel(branch) : 'Branch'
+      const safe = label.replace(/[^\w\- ]+/g, '').trim() || 'Branch'
+      const mm = String(monthYear.month).padStart(2, '0')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Payroll-${safe}-${monthYear.year}-${mm}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast({ title: 'Payroll report downloaded' })
+    } catch {
+      toast({
+        title: 'Failed to generate report',
+        variant: 'destructive',
+      })
+    } finally {
+      setReportLoading(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -1179,9 +1217,18 @@ function SummaryTab() {
             </Select>
           </div>
         </div>
-        <Button variant="outline" onClick={() => window.print()}>
-          Print Summary
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="default"
+            onClick={generateReport}
+            disabled={reportLoading || !branchId}
+          >
+            {reportLoading ? 'Generating…' : 'Generate report'}
+          </Button>
+          <Button variant="outline" onClick={() => window.print()}>
+            Print Summary
+          </Button>
+        </div>
       </div>
 
       <div id="payroll-summary-print" className="print-content">

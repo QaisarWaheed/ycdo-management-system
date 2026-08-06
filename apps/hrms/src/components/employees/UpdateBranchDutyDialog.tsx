@@ -13,6 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { formatEmployeeShiftDisplay } from '@/lib/dutyTimes'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
@@ -44,6 +46,9 @@ export function UpdateBranchDutyDialog({
   const [relieverOnly, setRelieverOnly] = useState(
     Boolean(employee.relieverOnly),
   )
+  const [monthlyAllowedLeaves, setMonthlyAllowedLeaves] = useState<
+    number | ''
+  >(employee.monthlyAllowedLeaves ?? '')
 
   useEffect(() => {
     if (open) {
@@ -53,6 +58,7 @@ export function UpdateBranchDutyDialog({
       setDutyStartTime(employee.dutyStartTime ?? '')
       setDutyEndTime(employee.dutyEndTime ?? '')
       setRelieverOnly(Boolean(employee.relieverOnly))
+      setMonthlyAllowedLeaves(employee.monthlyAllowedLeaves ?? '')
     }
   }, [open, employee])
 
@@ -78,6 +84,8 @@ export function UpdateBranchDutyDialog({
         dutyStartTime: dutyStartTime || undefined,
         dutyEndTime: dutyEndTime || undefined,
         relieverOnly,
+        monthlyAllowedLeaves:
+          monthlyAllowedLeaves === '' ? null : Number(monthlyAllowedLeaves),
       }),
     onSuccess: () => {
       toast({ title: 'Branch and duty time updated' })
@@ -182,6 +190,26 @@ export function UpdateBranchDutyDialog({
               onEndTimeChange={setDutyEndTime}
             />
           )}
+
+          <div className="space-y-1">
+            <Label htmlFor="monthlyAllowedLeaves">Allow leave / month</Label>
+            <Input
+              id="monthlyAllowedLeaves"
+              type="number"
+              min={0}
+              max={31}
+              placeholder="Blank = unlimited paid leave"
+              value={monthlyAllowedLeaves}
+              onChange={(e) => {
+                const v = e.target.value
+                setMonthlyAllowedLeaves(v === '' ? '' : Number.parseInt(v, 10))
+              }}
+            />
+            <p className="text-xs text-text-secondary">
+              First N leave days each month stay paid; any extra leave is unpaid
+              and deducted from stipend.
+            </p>
+          </div>
 
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
             Changing the branch will create a transfer record in employment
