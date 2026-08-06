@@ -1,3 +1,5 @@
+import type { PayslipSlipData } from '@/lib/payslipSlip'
+
 export interface User {
   id: string
   email: string
@@ -158,39 +160,7 @@ export interface PayrollEntry {
   deductions?: PayrollDeduction[]
   allowances?: PayrollAllowance[]
   totalRelieverHours?: number
-  slip?: {
-    orgName: string
-    workPlace: string
-    phone: string
-    employeeId: string
-    cnic: string
-    employeeName: string
-    department: string
-    designation: string
-    payPeriod: string
-    totalDays: number
-    dutyHoursPerDay: number
-    presence: number
-    earnings: {
-      stipend: number
-      previousMonth: number
-      rewardOnProgress: number
-      rewards: number
-      otherAllowance: number
-      fuel: number
-      mobileLoad: number
-      extraDuty: number
-    }
-    deductions: {
-      advance: number
-      loan: number
-      mobileLoad: number
-      absence: number
-      fine: number
-      health: number
-    }
-    totalAmount: number
-  }
+  slip?: PayslipSlipData
   stipendRecord?: {
     allowances?: number | string | null
     reward?: number | string | null

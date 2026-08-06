@@ -16,6 +16,11 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'http://localhost:5174',
+      // Capacitor Android/iOS WebView origins
+      'https://localhost',
+      'http://localhost',
+      'capacitor://localhost',
+      'ionic://localhost',
       'https://hrms-web.ycdo.org.pk',
       'https://hrms.ycdo.org.pk',
       'https://portal.ycdo.org.pk',

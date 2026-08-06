@@ -92,7 +92,7 @@ export function PortalHeader() {
   }
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-50 flex h-[60px] items-center justify-between border-b border-border bg-white px-4 print:hidden">
+    <header className="fixed left-0 right-0 top-0 z-50 flex min-h-[60px] items-center justify-between border-b border-border bg-white px-4 pt-[env(safe-area-inset-top)] print:hidden">
       <Link to="/dashboard" className="flex min-w-0 items-center gap-2.5">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
           Y

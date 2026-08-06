@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/hooks/use-toast'
 import { formatDuration } from '@/lib/helpers'
+import { getNativePosition } from '@/lib/native'
 import { parseTimeToMinutes } from '@/lib/shiftUtils'
 import { cn } from '@/lib/utils'
 import type { ActiveTimer } from '@/types'
@@ -85,18 +86,10 @@ function getShiftProgress(
   return { percent, markerPercent }
 }
 
-function requestLocation(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not supported by your browser'))
-      return
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 15_000,
-      maximumAge: 0,
-    })
-  })
+function requestLocation(): Promise<{
+  coords: { latitude: number; longitude: number; accuracy: number }
+}> {
+  return getNativePosition()
 }
 
 function ShiftProgressBar({
