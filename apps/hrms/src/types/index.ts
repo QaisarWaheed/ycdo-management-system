@@ -441,6 +441,8 @@ export interface Letter {
   templateVersion?: number | null
   generatedAt: string
   printedAt?: string | null
+  whatsappSharedAt?: string | null
+  whatsappShareChannel?: string | null
   content?: Record<string, unknown>
   replyDeadline?: string | null
   isReplied?: boolean
@@ -448,9 +450,34 @@ export interface Letter {
   requiresAcknowledgement?: boolean
   acknowledgement?: AllegationAcknowledgement | null
   employee?: {
+    id?: string
     fullName: string
     employeeCode: string
+    phone?: string | null
   }
+  whatsappSend?: {
+    status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED'
+    error?: string | null
+    attempts?: number
+    lastTriedAt?: string | null
+  } | null
+}
+
+export interface LetterWhatsAppShare {
+  letterId: string
+  phoneE164: string | null
+  phoneConfigured: boolean
+  waUrl: string
+  message: string
+  filename: string
+  employee: {
+    id: string
+    fullName: string
+    employeeCode: string
+    phone?: string | null
+  }
+  letterType: string
+  letterNo?: string | null
 }
 
 export type LeaveStatus =

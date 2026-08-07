@@ -12,6 +12,7 @@ import {
   Gavel,
   HelpCircle,
   Mail,
+  MessageCircle,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -64,6 +65,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { usePagination } from '@/hooks/usePagination'
@@ -75,6 +77,7 @@ import {
   letterReference,
   letterTypeBadgeClass,
 } from '@/lib/letterFieldConfig'
+import { openLetterWhatsAppShare } from '@/lib/openLetterWhatsAppShare'
 import { UrduLetterCanvas } from '@/components/letters/UrduLetterCanvas'
 import { employeesApi } from '@/api/endpoints/employees'
 import { cn } from '@/lib/utils'
@@ -427,6 +430,7 @@ function GenerateLetterWizard({
         description: `Reference: ${ref}`,
       })
       queryClient.invalidateQueries({ queryKey: ['letters'] })
+      queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
       onOpenChange(false)
       reset()
       setDownloadPrompt({ id: data.letter.id, reference: ref })
@@ -708,9 +712,186 @@ function GenerateLetterWizard({
   )
 }
 
+function PendingLetterShareDialog({
+  letter,
+  open,
+  onOpenChange,
+}: {
+  letter: Letter | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const queryClient = useQueryClient()
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [pdfError, setPdfError] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+
+  const { data: share, isLoading: shareLoading } = useQuery({
+    queryKey: ['letter-whatsapp-share', letter?.id],
+    queryFn: () => lettersApi.getWhatsAppShare(letter!.id),
+    enabled: !!letter && open,
+  })
+
+  useEffect(() => {
+    if (!letter || !open) {
+      setPdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+      setPdfError(null)
+      return
+    }
+
+    let revoked = false
+    let objectUrl: string | null = null
+
+    ;(async () => {
+      try {
+        const blob = await lettersApi.getPdf(letter.id)
+        if (blob.type?.includes('application/json')) {
+          throw new Error('PDF unavailable')
+        }
+        objectUrl = URL.createObjectURL(blob)
+        if (!revoked) setPdfUrl(objectUrl)
+      } catch (err) {
+        if (!revoked) {
+          setPdfError(
+            err instanceof Error ? err.message : 'Failed to load PDF preview',
+          )
+        }
+      }
+    })()
+
+    return () => {
+      revoked = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [letter, open])
+
+  if (!letter) return null
+
+  const ref = letterReference(letter)
+  const phoneOk = Boolean(share?.phoneConfigured)
+
+  const handleSend = async () => {
+    if (!phoneOk) {
+      toast({
+        title: 'Phone missing',
+        description: 'Add a phone number on the employee profile first.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setSending(true)
+    try {
+      await openLetterWhatsAppShare(letter.id)
+      toast({
+        title: 'WhatsApp opened',
+        description:
+          'PDF downloaded — attach it in WhatsApp Web, then send the message.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
+      queryClient.invalidateQueries({ queryKey: ['letters'] })
+      onOpenChange(false)
+    } catch (err) {
+      toast({
+        title: 'Failed to open WhatsApp',
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'destructive',
+      })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[95vh] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Preview & send — {ref}</DialogTitle>
+        </DialogHeader>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Letter PDF</Label>
+            {pdfError ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                {pdfError}
+              </p>
+            ) : pdfUrl ? (
+              <iframe
+                title="Letter PDF preview"
+                src={pdfUrl}
+                className="h-[420px] w-full rounded-md border border-border bg-muted"
+              />
+            ) : (
+              <Skeleton className="h-[420px] w-full" />
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-1 text-sm">
+              <p>
+                <span className="text-text-secondary">Employee: </span>
+                {letter.employee?.fullName ?? '—'} (
+                {letter.employee?.employeeCode ?? '—'})
+              </p>
+              <p>
+                <span className="text-text-secondary">Type: </span>
+                {letter.letterType.replace(/_/g, ' ')}
+              </p>
+              <p>
+                <span className="text-text-secondary">Phone: </span>
+                {shareLoading
+                  ? '…'
+                  : share?.phoneE164
+                    ? `+${share.phoneE164}`
+                    : 'Not set — add on employee profile'}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>WhatsApp message</Label>
+              {shareLoading ? (
+                <Skeleton className="h-40 w-full" />
+              ) : (
+                <Textarea
+                  readOnly
+                  value={share?.message ?? ''}
+                  className="min-h-[160px] font-normal"
+                />
+              )}
+              <p className="text-xs text-text-secondary">
+                WhatsApp Web cannot attach files automatically. Sending
+                downloads the PDF and opens a prefilled chat — attach the PDF
+                in WhatsApp before you send.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            disabled={sending || shareLoading || !phoneOk}
+            onClick={() => void handleSend()}
+          >
+            <MessageCircle className="mr-2 h-4 w-4" />
+            {sending ? 'Opening…' : 'Send letter'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 
 export function LettersPage() {
   const queryClient = useQueryClient()
+  const [tab, setTab] = useState<'all' | 'pending'>('all')
   const [employeeId, setEmployeeId] = useState('')
   const [letterType, setLetterType] = useState(ALL)
   const [startDate, setStartDate] = useState('')
@@ -719,6 +900,7 @@ export function LettersPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [repliesLetter, setRepliesLetter] = useState<Letter | null>(null)
   const [ackLetter, setAckLetter] = useState<Letter | null>(null)
+  const [shareLetter, setShareLetter] = useState<Letter | null>(null)
 
   const filters = useMemo(
     () => ({
@@ -736,14 +918,32 @@ export function LettersPage() {
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchInterval: 30000,
+    enabled: tab === 'all',
+  })
+
+  const { data: pendingLetters = [], isLoading: pendingLoading } = useQuery({
+    queryKey: ['letters-pending'],
+    queryFn: () => lettersApi.getPending(),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000,
   })
 
   const letterList = letters as Letter[]
+  const pendingList = pendingLetters as Letter[]
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
     letterList,
     [filters],
   )
+
+  const {
+    page: pendingPage,
+    setPage: setPendingPage,
+    totalPages: pendingTotalPages,
+    paginated: pendingPaginated,
+    total: pendingTotal,
+  } = usePagination(pendingList, [])
 
   const markPrintedMutation = useMutation({
     mutationFn: (id: string) => lettersApi.markPrinted(id),
@@ -761,6 +961,7 @@ export function LettersPage() {
     onSuccess: () => {
       toast({ title: 'Letter deleted' })
       queryClient.invalidateQueries({ queryKey: ['letters'] })
+      queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
       setDeleteId(null)
     },
     onError: () => {
@@ -807,191 +1008,353 @@ export function LettersPage() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-white p-4">
-        <div className="min-w-[220px] flex-1">
-          <EmployeeSearchSelect
-            label="Employee"
-            value={employeeId}
-            onChange={setEmployeeId}
-            placeholder="Filter by employee..."
-          />
-        </div>
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as 'all' | 'pending')}
+      >
+        <TabsList>
+          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="pending" className="gap-2">
+            Pending
+            {pendingTotal > 0 ? (
+              <Badge
+                variant="secondary"
+                className="h-5 min-w-5 justify-center rounded-full px-1.5 text-xs"
+              >
+                {pendingTotal}
+              </Badge>
+            ) : null}
+          </TabsTrigger>
+        </TabsList>
 
-        <div className="space-y-1">
-          <Label>Letter Type</Label>
-          <Select value={letterType} onValueChange={setLetterType}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All Types</SelectItem>
-              {LETTER_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <TabsContent value="all" className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-white p-4">
+            <div className="min-w-[220px] flex-1">
+              <EmployeeSearchSelect
+                label="Employee"
+                value={employeeId}
+                onChange={setEmployeeId}
+                placeholder="Filter by employee..."
+              />
+            </div>
 
-        <div className="space-y-1">
-          <Label>From</Label>
-          <DateInput
-            className="w-[150px]"
-            value={startDate}
-            onChange={setStartDate}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <Label>To</Label>
-          <DateInput
-            className="w-[150px]"
-            value={endDate}
-            onChange={setEndDate}
-          />
-        </div>
-
-        <Button variant="outline" onClick={clearFilters}>
-          Clear Filters
-        </Button>
-      </div>
-
-      <TableRecordCount count={total} label="letter" />
-
-      <div className="rounded-lg border border-border bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Reference</TableHead>
-              <TableHead>Employee</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Generated</TableHead>
-              <TableHead>Printed</TableHead>
-              <TableHead>Replies</TableHead>
-              <TableHead>Acknowledgement</TableHead>
-              <TableHead className="w-[50px]" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              [...Array(5)].map((_, i) => (
-                <TableRow key={i}>
-                  {[...Array(8)].map((__, j) => (
-                    <TableCell key={j}>
-                      <Skeleton className="h-5 w-full" />
-                    </TableCell>
+            <div className="space-y-1">
+              <Label>Letter Type</Label>
+              <Select value={letterType} onValueChange={setLetterType}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All Types</SelectItem>
+                  {LETTER_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
                   ))}
-                </TableRow>
-              ))
-            ) : paginated.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
-                  No letters found
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginated.map((letter) => (
-                <TableRow key={letter.id}>
-                  <TableCell>
-                    <div className="space-y-1">
-                      <Badge variant="outline" className="font-mono text-xs">
-                        {letter.letterNo ?? letterReference(letter)}
-                      </Badge>
-                      {isLetterPdfUnavailable(letter) && (
-                        <p className="text-xs text-amber-700">
-                          PDF missing on disk — download will try to rebuild
-                        </p>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <EmployeeNameLink employee={letter.employee} />
-                      <p className="font-mono text-xs text-text-secondary">
-                        {letter.employee?.employeeCode ?? '—'}
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={letterTypeBadgeClass(letter.letterType)}
-                    >
-                      {letter.letterType.replace(/_/g, ' ')}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {format(new Date(letter.generatedAt), 'dd/MM/yyyy HH:mm')}
-                  </TableCell>
-                  <TableCell>
-                    {letter.printedAt ? (
-                      <Check className="h-5 w-5 text-green-600" />
-                    ) : (
-                      <span className="text-text-secondary">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <ReplyStatusCell letter={letter} />
-                  </TableCell>
-                  <TableCell>
-                    <AcknowledgementCell letter={letter} />
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => downloadPdf(letter)}
-                        >
-                          Download PDF
-                        </DropdownMenuItem>
-                        {letter.letterType === 'SHOW_CAUSE' && (
-                          <DropdownMenuItem
-                            onClick={() => setRepliesLetter(letter)}
-                          >
-                            View Replies
-                          </DropdownMenuItem>
-                        )}
-                        {letter.requiresAcknowledgement && (
-                          <DropdownMenuItem
-                            onClick={() => setAckLetter(letter)}
-                          >
-                            View Acknowledgement
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          disabled={!!letter.printedAt}
-                          onClick={() => markPrintedMutation.mutate(letter.id)}
-                        >
-                          Mark as Printed
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-red-600"
-                          onClick={() => setDeleteId(letter.id)}
-                        >
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+                </SelectContent>
+              </Select>
+            </div>
 
-        <TablePagination
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          onPageChange={setPage}
-        />
-      </div>
+            <div className="space-y-1">
+              <Label>From</Label>
+              <DateInput
+                className="w-[150px]"
+                value={startDate}
+                onChange={setStartDate}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label>To</Label>
+              <DateInput
+                className="w-[150px]"
+                value={endDate}
+                onChange={setEndDate}
+              />
+            </div>
+
+            <Button variant="outline" onClick={clearFilters}>
+              Clear Filters
+            </Button>
+          </div>
+
+          <TableRecordCount count={total} label="letter" />
+
+          <div className="rounded-lg border border-border bg-white">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Generated</TableHead>
+                  <TableHead>Printed</TableHead>
+                  <TableHead>Replies</TableHead>
+                  <TableHead>Acknowledgement</TableHead>
+                  <TableHead className="w-[50px]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  [...Array(5)].map((_, i) => (
+                    <TableRow key={i}>
+                      {[...Array(8)].map((__, j) => (
+                        <TableCell key={j}>
+                          <Skeleton className="h-5 w-full" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : paginated.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="h-32 text-center text-text-secondary"
+                    >
+                      No letters found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginated.map((letter) => (
+                    <TableRow key={letter.id}>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-xs"
+                          >
+                            {letter.letterNo ?? letterReference(letter)}
+                          </Badge>
+                          {isLetterPdfUnavailable(letter) && (
+                            <p className="text-xs text-amber-700">
+                              PDF missing on disk — download will try to rebuild
+                            </p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <EmployeeNameLink employee={letter.employee} />
+                          <p className="font-mono text-xs text-text-secondary">
+                            {letter.employee?.employeeCode ?? '—'}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={letterTypeBadgeClass(letter.letterType)}
+                        >
+                          {letter.letterType.replace(/_/g, ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {format(
+                          new Date(letter.generatedAt),
+                          'dd/MM/yyyy HH:mm',
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {letter.printedAt ? (
+                          <Check className="h-5 w-5 text-green-600" />
+                        ) : (
+                          <span className="text-text-secondary">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <ReplyStatusCell letter={letter} />
+                      </TableCell>
+                      <TableCell>
+                        <AcknowledgementCell letter={letter} />
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => downloadPdf(letter)}
+                            >
+                              Download PDF
+                            </DropdownMenuItem>
+                            {letter.letterType === 'SHOW_CAUSE' && (
+                              <DropdownMenuItem
+                                onClick={() => setRepliesLetter(letter)}
+                              >
+                                View Replies
+                              </DropdownMenuItem>
+                            )}
+                            {letter.requiresAcknowledgement && (
+                              <DropdownMenuItem
+                                onClick={() => setAckLetter(letter)}
+                              >
+                                View Acknowledgement
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              disabled={!!letter.printedAt}
+                              onClick={() =>
+                                markPrintedMutation.mutate(letter.id)
+                              }
+                            >
+                              Mark as Printed
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => setDeleteId(letter.id)}
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+
+            <TablePagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="pending" className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Letters waiting to be sent via WhatsApp Web (including auto late /
+            warning letters). Preview the PDF, then send — attach the downloaded
+            file in WhatsApp.
+          </p>
+
+          <TableRecordCount count={pendingTotal} label="pending letter" />
+
+          <div className="rounded-lg border border-border bg-white">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Generated</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingLoading ? (
+                  [...Array(5)].map((_, i) => (
+                    <TableRow key={i}>
+                      {[...Array(6)].map((__, j) => (
+                        <TableCell key={j}>
+                          <Skeleton className="h-5 w-full" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : pendingPaginated.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="h-32 text-center text-text-secondary"
+                    >
+                      No pending letters
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  pendingPaginated.map((letter) => {
+                    const hasPhone = Boolean(letter.employee?.phone?.trim())
+                    return (
+                      <TableRow key={letter.id}>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-xs"
+                          >
+                            {letter.letterNo ?? letterReference(letter)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <EmployeeNameLink
+                              employee={{
+                                id: letter.employee?.id ?? letter.employeeId,
+                                fullName: letter.employee?.fullName,
+                                employeeCode: letter.employee?.employeeCode,
+                              }}
+                            />
+                            <p className="font-mono text-xs text-text-secondary">
+                              {letter.employee?.employeeCode ?? '—'}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={letterTypeBadgeClass(letter.letterType)}
+                          >
+                            {letter.letterType.replace(/_/g, ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {format(
+                            new Date(letter.generatedAt),
+                            'dd/MM/yyyy HH:mm',
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {hasPhone ? (
+                            <span className="tabular-nums text-sm">
+                              {letter.employee?.phone}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-amber-700">
+                              Add phone on profile
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShareLetter(letter)}
+                            >
+                              Preview
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="bg-primary hover:bg-primary-dark"
+                              disabled={!hasPhone}
+                              onClick={() => setShareLetter(letter)}
+                            >
+                              <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
+                              Send letter
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+
+            <TablePagination
+              page={pendingPage}
+              totalPages={pendingTotalPages}
+              total={pendingTotal}
+              onPageChange={setPendingPage}
+            />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <GenerateLetterWizard
         open={generateOpen}
@@ -1008,6 +1371,12 @@ export function LettersPage() {
         letter={ackLetter}
         open={!!ackLetter}
         onOpenChange={(v) => !v && setAckLetter(null)}
+      />
+
+      <PendingLetterShareDialog
+        letter={shareLetter}
+        open={!!shareLetter}
+        onOpenChange={(v) => !v && setShareLetter(null)}
       />
 
       <ConfirmDialog

@@ -3,7 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Gender, LetterType, Permission, Prisma, UserRole } from '@prisma/client';
+import {
+  Gender,
+  LetterType,
+  Permission,
+  Prisma,
+  UserRole,
+  WhatsAppSendStatus,
+} from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -12,6 +19,7 @@ import {
 } from '../../config/cloudinary.config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessScopeService } from '../permissions/access-scope.service';
+import { normalizePakistanPhone } from '../whatsapp/phone.util';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import {
   GenerateLetterDto,
@@ -628,6 +636,137 @@ export class LettersService {
         },
       },
       orderBy: { generatedAt: 'desc' },
+    });
+  }
+
+  /**
+   * Letters awaiting HR outbound WhatsApp Web share (wa.me).
+   * Excludes Meta SENT / in-flight PENDING sends and already-shared rows.
+   */
+  async findPending(
+    actingUser?: { id: string; role: UserRole },
+  ) {
+    const where: Prisma.LetterWhereInput = {
+      whatsappSharedAt: null,
+      OR: [
+        { whatsappSend: null },
+        {
+          whatsappSend: {
+            status: {
+              in: [WhatsAppSendStatus.FAILED, WhatsAppSendStatus.SKIPPED],
+            },
+          },
+        },
+      ],
+    };
+
+    if (actingUser?.id) {
+      where.employee =
+        await this.accessScopeService.narrowEmployeeWhereForActor(
+          actingUser.id,
+          actingUser.role,
+          {},
+        );
+    }
+
+    return this.prisma.letter.findMany({
+      where,
+      include: {
+        employee: {
+          select: {
+            id: true,
+            fullName: true,
+            employeeCode: true,
+            phone: true,
+          },
+        },
+        whatsappSend: {
+          select: {
+            status: true,
+            error: true,
+            attempts: true,
+            lastTriedAt: true,
+          },
+        },
+      },
+      orderBy: { generatedAt: 'desc' },
+    });
+  }
+
+  async getWhatsAppShare(letterId: string) {
+    const letter = await this.prisma.letter.findUnique({
+      where: { id: letterId },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            fullName: true,
+            employeeCode: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    if (!letter) {
+      throw new NotFoundException(`Letter with id ${letterId} not found`);
+    }
+
+    const phoneE164 = normalizePakistanPhone(letter.employee.phone);
+    const letterTypeLabel = letter.letterType.replace(/_/g, ' ');
+    const ref = letter.letterNo ?? letter.id.slice(0, 8);
+    const portalBase =
+      process.env.PUBLIC_PORTAL_URL?.replace(/\/$/, '') || '';
+    const portalHint = portalBase
+      ? `\n\nYou can also view this letter in the employee portal: ${portalBase}`
+      : '\n\nYou can also view this letter in the employee portal.';
+
+    const message =
+      `Assalam o Alaikum ${letter.employee.fullName},\n\n` +
+      `Please find your ${letterTypeLabel} letter (${ref}). ` +
+      `The PDF is attached in this chat — please download and review it.` +
+      portalHint +
+      `\n\n— YCDO HR`;
+
+    const encoded = encodeURIComponent(message);
+    const waUrl = phoneE164
+      ? `https://wa.me/${phoneE164}?text=${encoded}`
+      : `https://wa.me/?text=${encoded}`;
+
+    const filename = `${sanitizeRefForFilename(String(ref))}.pdf`;
+
+    return {
+      letterId: letter.id,
+      phoneE164: phoneE164 ?? null,
+      phoneConfigured: Boolean(phoneE164),
+      waUrl,
+      message,
+      filename,
+      employee: letter.employee,
+      letterType: letter.letterType,
+      letterNo: letter.letterNo,
+    };
+  }
+
+  async markWhatsAppShared(letterId: string) {
+    await this.findOne(letterId);
+
+    return this.prisma.letter.update({
+      where: { id: letterId },
+      data: {
+        whatsappSharedAt: new Date(),
+        whatsappShareChannel: 'WA_ME',
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            fullName: true,
+            employeeCode: true,
+            phone: true,
+          },
+        },
+      },
     });
   }
 

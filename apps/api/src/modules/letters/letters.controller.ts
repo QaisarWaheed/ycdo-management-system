@@ -110,6 +110,25 @@ export class LettersController {
     return this.lettersService.findAll(query, user);
   }
 
+  @Get('pending')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  async findPending(
+    @CurrentUser()
+    user: {
+      id: string;
+      role: UserRole;
+    },
+  ) {
+    return this.lettersService.findPending(user);
+  }
+
   @Get(':id/pdf')
   @Roles(
     UserRole.SUPER_ADMIN,
@@ -127,6 +146,30 @@ export class LettersController {
       'Content-Disposition': `attachment; filename="${filename}"`,
     });
     res.send(buffer);
+  }
+
+  @Get(':id/whatsapp-share')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  getWhatsAppShare(@Param('id') id: string) {
+    return this.lettersService.getWhatsAppShare(id);
+  }
+
+  @Post(':id/mark-whatsapp-shared')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  markWhatsAppShared(@Param('id') id: string) {
+    return this.lettersService.markWhatsAppShared(id);
   }
 
   @Get(':id')

@@ -584,6 +584,8 @@ model Letter {
   isReplied     Boolean    @default(false)
   autoEscalated           Boolean @default(false)
   requiresAcknowledgement Boolean @default(false)
+  whatsappSharedAt        DateTime?
+  whatsappShareChannel    String?
 
   employee        Employee                   @relation(fields: [employeeId], references: [id])
   replies         LetterReply[]
