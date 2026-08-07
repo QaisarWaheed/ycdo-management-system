@@ -35,6 +35,7 @@ import { IncentivesModule } from './modules/incentives/incentives.module';
 import { UserAccessModule } from './modules/user-access/user-access.module';
 import { UserPasswordsModule } from './modules/user-passwords/user-passwords.module';
 import { FaceSyncModule } from './modules/face-sync/face-sync.module';
+import { FinanceModule } from './modules/finance/finance.module';
 import { LocationValuesModule } from './modules/location-values/location-values.module';
 import { MutualSwapModule } from './modules/mutual-swap/mutual-swap.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
@@ -62,6 +63,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AttendanceModule,
     LeaveModule,
     PayrollModule,
+    FinanceModule,
     LettersModule,
     WhatsAppModule,
     DisciplinaryModule,

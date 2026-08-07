@@ -14,6 +14,7 @@ import {
   AttendanceLogType,
   AttendanceStatus,
   DeductionType,
+  EmployeeStatus,
   Permission,
   PayrollStatus,
   Prisma,
@@ -30,6 +31,10 @@ import {
   SalaryIncrementDto,
   UpdatePayrollStatusDto,
 } from './payroll.dto';
+import {
+  isPayrollDefaultStatus,
+  PAYROLL_DEFAULT_EMPLOYEE_STATUSES,
+} from './payroll-eligibility.util';
 import {
   buildHourlyPayrollBreakdown,
   computeHourlyRate,
@@ -93,6 +98,28 @@ export class PayrollService {
       );
     }
 
+    const defaultEligible = isPayrollDefaultStatus(employee.status);
+    const forceNonActive = dto.allowNonActive === true;
+
+    if (!defaultEligible && !forceNonActive) {
+      throw new BadRequestException(
+        `Payroll entries are only generated for ACTIVE or ON_REST employees (current status: ${employee.status}). Use approved force-generate for exceptions.`,
+      );
+    }
+
+    if (forceNonActive && !defaultEligible) {
+      if (!dto.approvalReason?.trim()) {
+        throw new BadRequestException(
+          'approvalReason is required when generating payroll for a non-active employee',
+        );
+      }
+      if (!actingUser?.id) {
+        throw new ForbiddenException(
+          'Authenticated user required to force-generate payroll',
+        );
+      }
+    }
+
     const activeStipendRecord = employee.stipendRecords[0];
     if (!activeStipendRecord) {
       throw new NotFoundException(
@@ -117,6 +144,29 @@ export class PayrollService {
         existing.status === PayrollStatus.PAID)
     ) {
       return existing;
+    }
+
+    const markForced =
+      forceNonActive && !defaultEligible
+        ? true
+        : existing?.forcedNonActive === true;
+
+    if (forceNonActive && !defaultEligible && actingUser?.id) {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'PAYROLL_ENTRY_FORCED',
+          entity: 'PayrollEntry',
+          entityId: existing?.id ?? dto.employeeId,
+          changes: {
+            employeeId: dto.employeeId,
+            employeeStatus: employee.status,
+            month: dto.month,
+            year: dto.year,
+            approvalReason: dto.approvalReason?.trim(),
+          },
+        },
+      });
     }
 
     const contractualBasic = Number(activeStipendRecord.basicStipend);
@@ -153,15 +203,12 @@ export class PayrollService {
           existingAllowances: refreshed?.allowances ?? [],
         },
       );
+      const totals = this.clampPayrollTotals(breakdown);
       return this.prisma.payrollEntry.update({
         where: { id: existing.id },
         data: {
-          basicStipend: breakdown.hourlyBasicEarned,
-          totalAllowances:
-            breakdown.fixedAllowances + breakdown.extraAllowances,
-          totalDeductions:
-            breakdown.fixedPackageDeductions + breakdown.disciplineDeductions,
-          netStipend: breakdown.netStipend,
+          ...totals,
+          forcedNonActive: markForced,
         },
         include: { deductions: true, allowances: true },
       });
@@ -179,16 +226,14 @@ export class PayrollService {
       },
     );
 
+    const createdTotals = this.clampPayrollTotals(breakdown);
     const created = await this.prisma.payrollEntry.create({
       data: {
         stipendRecordId: activeStipendRecord.id,
         month: dto.month,
         year: dto.year,
-        basicStipend: breakdown.hourlyBasicEarned,
-        totalAllowances: breakdown.fixedAllowances + breakdown.extraAllowances,
-        totalDeductions:
-          breakdown.fixedPackageDeductions + breakdown.disciplineDeductions,
-        netStipend: breakdown.netStipend,
+        ...createdTotals,
+        forcedNonActive: markForced,
         status: PayrollStatus.PENDING,
       },
       include: { deductions: true, allowances: true },
@@ -227,17 +272,35 @@ export class PayrollService {
       },
     );
 
+    const finalTotals = this.clampPayrollTotals(withAwd);
     return this.prisma.payrollEntry.update({
       where: { id: created.id },
       data: {
-        basicStipend: withAwd.hourlyBasicEarned,
-        totalAllowances: withAwd.fixedAllowances + withAwd.extraAllowances,
-        totalDeductions:
-          withAwd.fixedPackageDeductions + withAwd.disciplineDeductions,
-        netStipend: withAwd.netStipend,
+        ...finalTotals,
+        forcedNonActive: markForced,
       },
       include: { deductions: true, allowances: true },
     });
+  }
+
+  /** Persist non-negative deduction/allowance totals; recompute net from parts. */
+  private clampPayrollTotals(breakdown: HourlyPayrollBreakdown) {
+    const basicStipend = roundMoney(Math.max(0, breakdown.hourlyBasicEarned));
+    const totalAllowances = roundMoney(
+      Math.max(0, breakdown.fixedAllowances + breakdown.extraAllowances),
+    );
+    const totalDeductions = roundMoney(
+      Math.max(
+        0,
+        breakdown.fixedPackageDeductions + breakdown.disciplineDeductions,
+      ),
+    );
+    return {
+      basicStipend,
+      totalAllowances,
+      totalDeductions,
+      netStipend: roundMoney(basicStipend + totalAllowances - totalDeductions),
+    };
   }
 
   /** Upserts or removes ADDITIONAL_WORKING_DAYS allowance row only (totals recalculated by caller). */
@@ -1512,9 +1575,24 @@ export class PayrollService {
         );
     }
 
-    if (Object.keys(employeeFilter).length > 0) {
-      where.stipendRecord = { employee: employeeFilter };
-    }
+    const eligibilityOr: Prisma.PayrollEntryWhereInput[] = [
+      {
+        stipendRecord: {
+          employee: {
+            ...employeeFilter,
+            status: { in: PAYROLL_DEFAULT_EMPLOYEE_STATUSES },
+          },
+        },
+      },
+      {
+        forcedNonActive: true,
+        ...(Object.keys(employeeFilter).length > 0
+          ? { stipendRecord: { employee: employeeFilter } }
+          : {}),
+      },
+    ];
+
+    where.OR = eligibilityOr;
 
     return this.prisma.payrollEntry.findMany({
       where,
@@ -1527,6 +1605,7 @@ export class PayrollService {
                 id: true,
                 fullName: true,
                 employeeCode: true,
+                status: true,
                 cnic: true,
                 currentDesignation: true,
                 dutyStartTime: true,
@@ -1684,13 +1763,30 @@ export class PayrollService {
         Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
     }
 
-    const where: Prisma.PayrollEntryWhereInput = { month, year };
-
-    if (branchId) {
-      where.stipendRecord = {
-        employee: { currentBranchId: branchId },
-      };
-    }
+    const where: Prisma.PayrollEntryWhereInput = {
+      month,
+      year,
+      OR: [
+        {
+          stipendRecord: {
+            employee: {
+              status: { in: PAYROLL_DEFAULT_EMPLOYEE_STATUSES },
+              ...(branchId ? { currentBranchId: branchId } : {}),
+            },
+          },
+        },
+        {
+          forcedNonActive: true,
+          ...(branchId
+            ? {
+                stipendRecord: {
+                  employee: { currentBranchId: branchId },
+                },
+              }
+            : {}),
+        },
+      ],
+    };
 
     const entries = await this.prisma.payrollEntry.findMany({
       where,
@@ -1704,6 +1800,7 @@ export class PayrollService {
                 id: true,
                 fullName: true,
                 employeeCode: true,
+                status: true,
               },
             },
           },
@@ -1728,10 +1825,10 @@ export class PayrollService {
 
     const employees = entries.map((entry) => {
       byStatus[entry.status]++;
-      const earnedBasic = Number(entry.basicStipend);
+      const earnedBasic = Math.max(0, Number(entry.basicStipend));
       const contractualBasic = Number(entry.stipendRecord.basicStipend);
-      const deductions = Number(entry.totalDeductions);
-      const allowances = Number(entry.totalAllowances);
+      const deductions = Math.max(0, Number(entry.totalDeductions));
+      const allowances = Math.max(0, Number(entry.totalAllowances));
       const net = Number(entry.netStipend);
       totalBasicSalary += earnedBasic;
       totalDeductions += deductions;

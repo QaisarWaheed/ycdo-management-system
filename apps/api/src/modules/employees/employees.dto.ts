@@ -380,6 +380,11 @@ export class EmployeeQueryDto {
   @IsEnum(EmployeeStatus)
   status?: EmployeeStatus;
 
+  /** Comma-separated EmployeeStatus values, e.g. ACTIVE,ON_REST */
+  @IsOptional()
+  @IsString()
+  statuses?: string;
+
   @IsOptional()
   @IsEnum(Gender)
   gender?: Gender;

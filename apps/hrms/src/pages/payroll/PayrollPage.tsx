@@ -30,6 +30,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -607,6 +608,12 @@ function MonthlyPayrollTab() {
     null,
   )
   const [confirmGenerate, setConfirmGenerate] = useState(false)
+  const [createSingleOpen, setCreateSingleOpen] = useState(false)
+  const [singleEmployeeId, setSingleEmployeeId] = useState('')
+  const [singleEmployeeStatus, setSingleEmployeeStatus] = useState<string | null>(
+    null,
+  )
+  const [approvalReason, setApprovalReason] = useState('')
   const [confirmStatus, setConfirmStatus] = useState<{
     id: string
     status: PayrollStatus
@@ -640,7 +647,7 @@ function MonthlyPayrollTab() {
   const generateMutation = useMutation({
     mutationFn: async () => {
       const employees = await employeesApi.getAll({
-        status: 'ACTIVE',
+        statuses: 'ACTIVE,ON_REST',
         branchId: branchId || undefined,
       })
       for (const emp of employees) {
@@ -662,6 +669,49 @@ function MonthlyPayrollTab() {
       const msg = err.response?.data?.message
       toast({
         title: 'Failed to generate entries',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const needsForceApproval =
+    !!singleEmployeeStatus &&
+    singleEmployeeStatus !== 'ACTIVE' &&
+    singleEmployeeStatus !== 'ON_REST'
+
+  const createSingleMutation = useMutation({
+    mutationFn: async () => {
+      if (!singleEmployeeId) throw new Error('Select an employee')
+      return payrollApi.createEntry({
+        employeeId: singleEmployeeId,
+        month: monthYear.month,
+        year: monthYear.year,
+        ...(needsForceApproval
+          ? {
+              allowNonActive: true,
+              approvalReason: approvalReason.trim(),
+            }
+          : {}),
+      })
+    },
+    onSuccess: () => {
+      toast({
+        title: needsForceApproval
+          ? 'Forced payroll entry created'
+          : 'Payroll entry created',
+      })
+      queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+      setCreateSingleOpen(false)
+      setSingleEmployeeId('')
+      setSingleEmployeeStatus(null)
+      setApprovalReason('')
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to create entry',
         description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
         variant: 'destructive',
       })
@@ -729,12 +779,17 @@ function MonthlyPayrollTab() {
           </div>
         </div>
 
-        <Button
-          className="bg-primary hover:bg-primary-dark"
-          onClick={() => setConfirmGenerate(true)}
-        >
-          Generate Entries
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setCreateSingleOpen(true)}>
+            Add entry for employee
+          </Button>
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            onClick={() => setConfirmGenerate(true)}
+          >
+            Generate Entries
+          </Button>
+        </div>
       </div>
 
       <TableRecordCount count={total} label="payroll entry" />
@@ -780,6 +835,14 @@ function MonthlyPayrollTab() {
                         <p className="font-mono text-xs text-text-secondary">
                           {emp?.employeeCode ?? '—'}
                         </p>
+                        {entry.forcedNonActive ? (
+                          <Badge
+                            variant="outline"
+                            className="mt-1 border-amber-200 bg-amber-50 text-amber-800"
+                          >
+                            Approved exception
+                          </Badge>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell>{formatPKR(entry.basicStipend)}</TableCell>
@@ -788,7 +851,7 @@ function MonthlyPayrollTab() {
                         Number(entry.totalDeductions) > 0 && 'text-red-600',
                       )}
                     >
-                      {formatPKR(entry.totalDeductions)}
+                      {formatPKR(Math.max(0, Number(entry.totalDeductions)))}
                     </TableCell>
                     <TableCell>{formatPKR(entry.totalAllowances)}</TableCell>
                     <TableCell className="font-medium">
@@ -889,12 +952,80 @@ function MonthlyPayrollTab() {
       <ConfirmDialog
         open={confirmGenerate}
         title="Generate Payroll Entries"
-        description={`Create payroll entries for all active employees for ${format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')}?`}
+        description={`Create payroll entries for all ACTIVE and ON REST employees for ${format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')}?`}
         confirmLabel="Generate"
         loading={generateMutation.isPending}
         onConfirm={() => generateMutation.mutate()}
         onCancel={() => setConfirmGenerate(false)}
       />
+
+      <Dialog
+        open={createSingleOpen}
+        onOpenChange={(open) => {
+          setCreateSingleOpen(open)
+          if (!open) {
+            setSingleEmployeeId('')
+            setSingleEmployeeStatus(null)
+            setApprovalReason('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add payroll entry</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-text-secondary">
+              Month: {format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')}
+              . Default eligibility is ACTIVE / ON REST. Suspended (or other)
+              employees require an approval reason from higher authorities.
+            </p>
+            <EmployeeSearchSelect
+              label="Employee"
+              value={singleEmployeeId}
+              onChange={(id, emp) => {
+                setSingleEmployeeId(id)
+                setSingleEmployeeStatus(emp?.status ?? null)
+                if (!id) setApprovalReason('')
+              }}
+            />
+            {needsForceApproval ? (
+              <div className="space-y-2">
+                <Label>Approval reason (required)</Label>
+                <Textarea
+                  value={approvalReason}
+                  onChange={(e) => setApprovalReason(e.target.value)}
+                  placeholder="e.g. Approved by Chairman to pay suspended employee for this month"
+                  rows={3}
+                />
+                <p className="text-xs text-amber-700">
+                  Employee status: {singleEmployeeStatus}. This will create a
+                  forced payroll entry and write an audit log.
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreateSingleOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-primary hover:bg-primary-dark"
+              disabled={
+                !singleEmployeeId ||
+                createSingleMutation.isPending ||
+                (needsForceApproval && !approvalReason.trim())
+              }
+              onClick={() => createSingleMutation.mutate()}
+            >
+              {createSingleMutation.isPending ? 'Creating…' : 'Create entry'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={!!confirmStatus}
@@ -1234,8 +1365,12 @@ function SummaryTab() {
       value: formatPKR(summary?.totalBasicStipend ?? 0),
     },
     {
+      label: 'Total Allowances',
+      value: formatPKR(summary?.totalAllowances ?? 0),
+    },
+    {
       label: 'Total Deductions',
-      value: formatPKR(summary?.totalDeductions ?? 0),
+      value: formatPKR(Math.max(0, summary?.totalDeductions ?? 0)),
     },
     {
       label: 'Total Net Stipend',
@@ -1354,7 +1489,7 @@ function SummaryTab() {
             <div
               className={cn(
                 'grid grid-cols-1 gap-4 md:grid-cols-2',
-                hasDateRange ? 'xl:grid-cols-5' : 'xl:grid-cols-4',
+                hasDateRange ? 'xl:grid-cols-6' : 'xl:grid-cols-5',
               )}
             >
               {kpiCards.map((card) => (
@@ -1467,7 +1602,7 @@ function SummaryTab() {
                               {formatPKR(emp.basicStipend)}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
-                              {formatPKR(emp.totalDeductions)}
+                              {formatPKR(Math.max(0, emp.totalDeductions))}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {formatPKR(emp.totalAllowances)}

@@ -450,6 +450,8 @@ model PayrollEntry {
   totalAllowances Decimal       @db.Decimal(10, 2) @default(0)
   netStipend      Decimal       @db.Decimal(10, 2)
   status          PayrollStatus @default(PENDING)
+  /** True when HR force-generated for a non-ACTIVE/ON_REST employee (e.g. approved suspended). */
+  forcedNonActive Boolean       @default(false)
   processedAt     DateTime?
   createdAt       DateTime      @default(now())
 

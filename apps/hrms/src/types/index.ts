@@ -665,6 +665,7 @@ export interface PayrollEntry {
   totalDeductions: number | string
   netStipend: number | string
   status: PayrollStatus
+  forcedNonActive?: boolean
   deductions?: PayrollDeduction[]
   allowances?: PayrollAllowance[]
   totalRelieverHours?: number
@@ -674,6 +675,7 @@ export interface PayrollEntry {
       id: string
       fullName: string
       employeeCode: string
+      status?: string
       cnic?: string | null
       currentDesignation?: string | null
       dutyTotalHours?: number | null

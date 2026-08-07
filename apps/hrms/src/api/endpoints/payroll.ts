@@ -11,6 +11,8 @@ export interface CreatePayrollEntryPayload {
   year: number
   basicStipend?: number
   totalAllowances?: number
+  allowNonActive?: boolean
+  approvalReason?: string
 }
 
 export interface OvertimePreview {

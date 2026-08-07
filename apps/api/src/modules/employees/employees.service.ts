@@ -574,7 +574,18 @@ export class EmployeesService {
       where.shiftId = filters.shiftId;
     }
 
-    if (filters.status) {
+    if (filters.statuses) {
+      const parsed = filters.statuses
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean) as EmployeeStatus[];
+      const valid = parsed.filter((s) =>
+        Object.values(EmployeeStatus).includes(s),
+      );
+      if (valid.length > 0) {
+        where.status = { in: valid };
+      }
+    } else if (filters.status) {
       where.status = filters.status;
     }
 

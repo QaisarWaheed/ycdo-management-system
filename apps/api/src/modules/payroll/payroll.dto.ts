@@ -1,6 +1,7 @@
 import { AllowanceType, DeductionType, PayrollStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -12,6 +13,7 @@ import {
   IsUUID,
   Max,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreatePayrollEntryDto {
@@ -43,6 +45,16 @@ export class CreatePayrollEntryDto {
   @IsNumber()
   @Min(0)
   totalAllowances?: number;
+
+  /** Allow create/refresh when employee is not ACTIVE or ON_REST (e.g. approved suspended). */
+  @IsOptional()
+  @IsBoolean()
+  allowNonActive?: boolean;
+
+  @ValidateIf((o: CreatePayrollEntryDto) => o.allowNonActive === true)
+  @IsString()
+  @IsNotEmpty()
+  approvalReason?: string;
 }
 
 export class AddDeductionDto {
