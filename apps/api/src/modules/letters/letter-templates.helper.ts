@@ -328,25 +328,18 @@ const YCDO_LETTER_HEADER = `
   <div class="notification-block">
     <p class="en-title">{{enTitle}}</p>
     <p class="en-prescribed">{{enPrescribed}}</p>
-    <p class="en-subtitle">{{enSubtitle}}</p>
   </div>
   <hr class="hr-line" />
 </div>
 
 <div class="meta-block">
   <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-  <div class="row"><span class="label">منجانب:</span></div>
-  <div class="row">{{senderTitle}}</div>
+  <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
   <div class="row">{{orgLine}}</div>
-  <div class="row"><span class="label">بجانب:</span></div>
-  <div class="row">{{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
+  <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
   {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
-  <div class="row"><span class="label">عنوان:</span> {{#if subjectLine}}{{subjectLine}}{{/if}}</div>
+  <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
 </div>
-
-{{#if subject}}
-<div class="subject-center">{{subject}}</div>
-{{/if}}
 `;
 
 const YCDO_LETTER_FOOTER = `

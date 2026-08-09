@@ -376,7 +376,7 @@ function GenerateLetterWizard({
     if (!employee || !urduMode || step !== 3) return
     setFields((prev) => ({
       ...prev,
-      senderTitle: prev.senderTitle || 'کوآرڈینیٹر پروجیکٹس',
+      senderTitle: prev.senderTitle || 'چیئرمین ایڈمن ڈیپارٹمنٹ',
       employeeName: prev.employeeName || transliterateName(employee.fullName) || '',
       designation:
         prev.designation || translateDesignation(employee.currentDesignation) || '',
