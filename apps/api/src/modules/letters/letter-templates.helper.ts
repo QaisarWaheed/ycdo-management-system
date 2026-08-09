@@ -151,7 +151,7 @@ export const LETTER_TEMPLATE_META: Record<
   },
   ADVICE: {
     name: 'Advice Letter (Urdu)',
-    requiredVars: ['adviceReason'],
+    requiredVars: ['lateTime'],
   },
   DISCIPLINARY: {
     name: 'Disciplinary / Displeasure Letter (Urdu)',
@@ -175,11 +175,11 @@ export const LETTER_TEMPLATE_META: Record<
   },
   APPRECIATION: {
     name: 'Appreciation Letter (Urdu)',
-    requiredVars: ['appreciationReason'],
+    requiredVars: ['reviewMonth', 'rewardAmount'],
   },
   TRANSFER: {
-    name: 'Transfer / Posting Notification (Urdu)',
-    requiredVars: ['fromBranch', 'toBranch', 'effectiveDate'],
+    name: 'Transfer / Posting Notification',
+    requiredVars: ['toPosting', 'timing', 'targetDesignation', 'effectiveDate'],
   },
   SUSPENSION: {
     name: 'Suspension Notice (Urdu)',
@@ -198,7 +198,7 @@ export const LETTER_TEMPLATE_META: Record<
     requiredVars: ['rejoiningDate'],
   },
   SALARY_INCREMENT: {
-    name: 'Salary Increment Notification (Urdu)',
+    name: 'Salary Increment Notification',
     requiredVars: ['previousSalary', 'newSalary', 'effectiveDate'],
   },
   EXPERIENCE: {

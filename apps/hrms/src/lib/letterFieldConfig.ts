@@ -3,10 +3,12 @@ import type { LetterType } from '@/types'
 export interface LetterFieldDef {
   key: string
   label: string
-  type?: 'textarea' | 'number' | 'date'
+  type?: 'textarea' | 'number' | 'date' | 'select'
   hint?: string
   /** Place this field inside the on-template canvas (Urdu RTL). */
   onTemplate?: boolean
+  /** Options for type: 'select'. */
+  options?: { value: string; label: string }[]
 }
 
 /** Shared identity fields typed in Urdu on the letter itself. */
@@ -59,17 +61,10 @@ export const LETTER_FIELD_CONFIG: Partial<
   ADVICE: [
     ...URDU_IDENTITY_FIELDS,
     {
-      key: 'adviceReason',
-      label: 'وجہ / تفصیل',
-      type: 'textarea',
+      key: 'lateTime',
+      label: 'ڈیوٹی پر آنے کا وقت (مثلاً 07:15)',
       onTemplate: true,
-      hint: 'اردو میں لکھیں',
-    },
-    {
-      key: 'adviceDetails',
-      label: 'اضافی ہدایت (اختیاری)',
-      type: 'textarea',
-      onTemplate: true,
+      hint: 'جس وقت کے بعد ملازم ڈیوٹی پر آیا',
     },
   ],
   DISCIPLINARY: [
@@ -116,13 +111,35 @@ export const LETTER_FIELD_CONFIG: Partial<
     },
   ],
   FINE: [
+    {
+      key: 'finePreset',
+      label: 'قسمِ جرمانہ',
+      type: 'select',
+      options: [
+        { value: '', label: 'Custom (free text reason)' },
+        { value: 'ABSENT', label: 'Uninformed Absence (2-day deduction)' },
+        { value: 'LATE_DEDUCTION', label: '3x Late Arrival (1-day deduction)' },
+        { value: 'UNIFORM', label: 'Uniform Non-Compliance (Rs. 200)' },
+        { value: 'ELECTRICITY', label: 'Excess Electricity Usage' },
+      ],
+    },
     ...URDU_IDENTITY_FIELDS,
     {
       key: 'fineReason',
-      label: 'وجہِ جرمانہ',
+      label: 'وجہِ جرمانہ (صرف Custom کے لیے)',
       type: 'textarea',
       onTemplate: true,
-      hint: 'اردو میں لکھیں',
+      hint: 'اردو میں لکھیں — پریسیٹ منتخب کرنے پر یہ نظر انداز ہوتا ہے',
+    },
+    {
+      key: 'absentDate',
+      label: 'تاریخِ غیر حاضری (صرف Uninformed Absence کے لیے)',
+      onTemplate: true,
+    },
+    {
+      key: 'fineDate',
+      label: 'تاریخ (صرف Uniform کے لیے)',
+      onTemplate: true,
     },
     {
       key: 'fineAmount',
@@ -137,7 +154,7 @@ export const LETTER_FIELD_CONFIG: Partial<
     },
     {
       key: 'attendanceRows',
-      label: 'حاضری ثبوت (اختیاری)',
+      label: 'حاضری ثبوت (3x Late Arrival کے لیے لازمی)',
       type: 'textarea',
       hint: 'ہر سطر: تاریخ | آمد | روانگی',
     },
@@ -161,26 +178,19 @@ export const LETTER_FIELD_CONFIG: Partial<
   APPRECIATION: [
     ...URDU_IDENTITY_FIELDS,
     {
-      key: 'appreciationReason',
-      label: 'وجہِ تعریف',
-      type: 'textarea',
+      key: 'reviewMonth',
+      label: 'ماہ (جس کی پراگریس کا جائزہ لیا گیا)',
       onTemplate: true,
-      hint: 'اردو میں لکھیں',
+      hint: 'مثلاً: مارچ',
     },
-    {
-      key: 'achievementDetails',
-      label: 'تفصیلِ کارکردگی',
-      type: 'textarea',
-      onTemplate: true,
-    },
-    { key: 'rewardAmount', label: 'انعام کی رقم (اختیاری)', onTemplate: true },
+    { key: 'rewardAmount', label: 'انعام کی رقم', onTemplate: true },
   ],
   TRANSFER: [
-    { key: 'fromBranch', label: 'From Branch / Posting' },
-    { key: 'toBranch', label: 'To Branch / Posting' },
+    { key: 'fromPosting', label: 'From (optional, defaults to current branch)' },
+    { key: 'toPosting', label: 'To' },
+    { key: 'timing', label: 'Timing (e.g. 09AM to 09PM)' },
+    { key: 'targetDesignation', label: 'Designation' },
     { key: 'effectiveDate', label: 'Effective Date', type: 'date' },
-    { key: 'timing', label: 'Timing (optional)' },
-    { key: 'senderTitle', label: 'Signatory Title (optional)' },
   ],
   SUSPENSION: [
     ...URDU_IDENTITY_FIELDS,
@@ -285,7 +295,11 @@ export const LETTER_FIELD_CONFIG: Partial<
   ],
 }
 
-const ENGLISH_LETTER_TYPES = new Set<LetterType>(['APPOINTMENT'])
+const ENGLISH_LETTER_TYPES = new Set<LetterType>([
+  'APPOINTMENT',
+  'TRANSFER',
+  'SALARY_INCREMENT',
+])
 
 export function isUrduLetterType(letterType: LetterType): boolean {
   return !ENGLISH_LETTER_TYPES.has(letterType)
@@ -304,10 +318,12 @@ export function getLetterRequiredFields(
 ): LetterFieldDef[] {
   const optionalKeys = new Set([
     'senderTitle',
-    'adviceDetails',
+    'finePreset',
+    'fineReason',
+    'absentDate',
+    'fineDate',
+    'fromPosting',
     'attendanceRows',
-    'rewardAmount',
-    'timing',
     'incrementReason',
     'totalExperience',
     'jobDescription',

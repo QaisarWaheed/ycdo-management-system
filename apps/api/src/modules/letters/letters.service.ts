@@ -466,16 +466,26 @@ export class LettersService {
         out.issueDescription = out.additionalNotes;
       }
     }
-    if (letterType === LetterType.ADVICE) {
-      if (!out.adviceReason && out.additionalNotes) {
-        out.adviceReason = out.additionalNotes;
-      }
-    }
     if (letterType === LetterType.SALARY_INCREMENT) {
       if (!out.incrementAmount && out.previousSalary && out.newSalary) {
         out.incrementAmount = String(
           Number(out.newSalary) - Number(out.previousSalary),
         );
+      }
+    }
+    if (letterType === LetterType.FINE && out.finePreset) {
+      const FINE_PRESET_LABELS: Record<string, string> = {
+        ABSENT: 'بغیر اطلاع و اجازت چھٹی',
+        LATE_DEDUCTION: 'مسلسل ڈیوٹی پر لیٹ آنا',
+        UNIFORM: 'یونیفارم کی خلاف ورزی',
+        ELECTRICITY: 'بجلی کا ضرورت سے زیادہ استعمال',
+      };
+      out.isFineAbsent = out.finePreset === 'ABSENT';
+      out.isFineLate = out.finePreset === 'LATE_DEDUCTION';
+      out.isFineUniform = out.finePreset === 'UNIFORM';
+      out.isFineElectricity = out.finePreset === 'ELECTRICITY';
+      if (!out.fineReason) {
+        out.fineReason = FINE_PRESET_LABELS[String(out.finePreset)] ?? '';
       }
     }
 

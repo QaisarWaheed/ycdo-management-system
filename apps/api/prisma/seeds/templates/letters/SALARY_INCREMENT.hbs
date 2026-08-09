@@ -1,46 +1,101 @@
+<!--
+  YCDO — SALARY / STIPEND INCREMENT NOTIFICATION
+  Fixed English notification format (Letter No.2096/YCDO/2026 pattern).
+  Only the figures, date, employee identity, and letter no. are variable —
+  wording around them does not change. Not part of the shared Urdu letter shell.
+-->
 <!DOCTYPE html>
-<html lang="ur" dir="rtl">
+<html>
 <head>
 <meta charset="utf-8">
-<style>{{{letterStyles}}}</style>
+<style>
+  @page { size: A4; margin: 20mm 18mm 18mm 18mm; }
+
+  body {
+    font-family: "Times New Roman", "Liberation Serif", Times, Georgia, serif;
+    font-size: 12.5pt;
+    line-height: 1.5;
+    color: #000;
+    margin: 0;
+  }
+
+  .metarow {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 16pt;
+  }
+
+  .recipient div { margin-bottom: 2pt; }
+
+  .title {
+    text-align: center;
+    font-size: 13pt;
+    font-weight: bold;
+    text-decoration: underline;
+    margin: 16pt 0 14pt;
+  }
+
+  p { margin: 0 0 12pt; text-align: justify; }
+
+  table.increment-table {
+    width: 60%;
+    border-collapse: collapse;
+    margin: 4pt 0 16pt;
+  }
+  table.increment-table td {
+    padding: 4pt 8pt;
+    font-size: 12pt;
+  }
+
+  .signblock { margin-top: 34pt; }
+  .signblock .name { font-weight: bold; }
+</style>
 </head>
 <body>
-<div class="page">
-  {{> ycdoLetterHeader}}
 
-  <p class="salutation">السلام علیکم!</p>
-
-  <div class="body">
-    <p>
-      تحریر ہے کہ آپ {{#if designation}}{{designation}}{{else}}اسٹاف{{/if}} کی حیثیت سے
-      {{#if branch}}{{branch}}{{else}}وائی سی ڈی او{{/if}} پر فائز ہیں۔
-      خوشی کی بات ہے کہ مورخہ {{effectiveDate}} سے آپ کے ماہانہ معاوضے میں اضافہ کیا جا رہا ہے،
-      تفصیل درج ذیل ہے:
-    </p>
-
-    <table class="attendance-table" style="width:80%;">
-      <tr>
-        <td>۰۱ موجودہ الاؤنس / تنخواہ</td>
-        <td><strong>{{previousSalary}} فی ماہ</strong></td>
-      </tr>
-      <tr>
-        <td>۰۲ اضافہ</td>
-        <td><strong>{{incrementAmount}} فی ماہ</strong></td>
-      </tr>
-      <tr>
-        <td>۰۳ نئی کل رقم</td>
-        <td><strong>{{newSalary}} فی ماہ</strong></td>
-      </tr>
-    </table>
-
-    <p>
-      {{#if incrementReason}}{{incrementReason}}{{else}}امید ہے کہ آپ کی خدمات ادارے کے لیے مزید مؤثر اور مستعد رہیں گی۔{{/if}}
-    </p>
-  </div>
-
-  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
-
-  {{> ycdoLetterFooter}}
+<div class="metarow">
+  <span>Letter No. {{letterNo}}</span>
+  <span>Dated: {{issueDate}}</span>
 </div>
+
+<div class="recipient">
+  <div>{{employeeName}}</div>
+  <div>{{#if designation}}{{designation}}{{else}}Staff{{/if}}</div>
+  <div>YCDO Pakistan.</div>
+</div>
+
+<div class="title">NOTIFICATION</div>
+
+<p>
+  You are working as "{{#if designation}}{{designation}}{{else}}Staff{{/if}}" based at
+  {{#if branch}}{{branch}}{{else}}YCDO Hospital{{/if}}. We are pleased to inform you that your
+  monthly emoluments are being revised with effect from {{effectiveDate}}, the detail is given
+  hereunder:-
+</p>
+
+<table class="increment-table">
+  <tr>
+    <td>01</td>
+    <td>Current Stipend</td>
+    <td>{{previousSalary}} Per Month</td>
+  </tr>
+  <tr>
+    <td>02</td>
+    <td>Enhancement</td>
+    <td>{{incrementAmount}} Per Month</td>
+  </tr>
+</table>
+
+<p>
+  With the enhancement of Rs.{{incrementAmount}}/-, your total emoluments will be
+  Rs.{{newSalary}}/- per month. We expect that your services will be more effective and
+  vigilant for our esteemed Organization. Best of Luck for future.
+</p>
+
+<div class="signblock">
+  <div class="name">Coordinator Project</div>
+  <div>YCDO Multan, Pakistan.</div>
+</div>
+
 </body>
 </html>

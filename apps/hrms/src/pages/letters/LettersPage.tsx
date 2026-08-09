@@ -528,7 +528,56 @@ function GenerateLetterWizard({
                     {sideFields.map((field) => (
                       <div key={field.key} className="space-y-2">
                         <Label>{field.label}</Label>
-                        {field.type === 'textarea' ? (
+                        {field.type === 'select' ? (
+                          <Select
+                            value={fields[field.key] ?? ''}
+                            onValueChange={(value) => {
+                              setPreviewHtml(null)
+                              setFields((f) => {
+                                const normalized =
+                                  value === '__custom__' ? '' : value
+                                const next = { ...f, [field.key]: normalized }
+                                if (field.key === 'finePreset') {
+                                  const today = new Date()
+                                  const monthYear = format(today, 'MMMM yyyy')
+                                  if (value === 'UNIFORM') {
+                                    next.fineAmount = next.fineAmount || '200/-'
+                                    next.deductionMonth =
+                                      next.deductionMonth || monthYear
+                                  } else if (value === 'ABSENT') {
+                                    next.fineAmount =
+                                      next.fineAmount || 'دو یوم کی تنخواہ'
+                                    next.deductionMonth =
+                                      next.deductionMonth || monthYear
+                                  } else if (value === 'LATE_DEDUCTION') {
+                                    next.fineAmount =
+                                      next.fineAmount || 'ایک یوم کی تنخواہ'
+                                    next.deductionMonth =
+                                      next.deductionMonth || monthYear
+                                  } else if (value === 'ELECTRICITY') {
+                                    next.deductionMonth =
+                                      next.deductionMonth || monthYear
+                                  }
+                                }
+                                return next
+                              })
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={field.label} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(field.options ?? []).map((opt) => (
+                                <SelectItem
+                                  key={opt.value || '__custom__'}
+                                  value={opt.value || '__custom__'}
+                                >
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : field.type === 'textarea' ? (
                           <Textarea
                             dir="rtl"
                             lang="ur"

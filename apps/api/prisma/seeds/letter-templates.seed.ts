@@ -26,7 +26,7 @@ const TEMPLATES: TemplateSeed[] = [
     code: 'ADVICE',
     name: 'Advice Letter (Urdu)',
     file: 'letters/ADVICE.hbs',
-    requiredVars: ['adviceReason'],
+    requiredVars: ['lateTime'],
   },
   {
     code: 'DISCIPLINARY',
@@ -62,13 +62,13 @@ const TEMPLATES: TemplateSeed[] = [
     code: 'APPRECIATION',
     name: 'Appreciation Letter (Urdu)',
     file: 'letters/APPRECIATION.hbs',
-    requiredVars: ['appreciationReason'],
+    requiredVars: ['reviewMonth', 'rewardAmount'],
   },
   {
     code: 'TRANSFER',
-    name: 'Transfer / Posting Notification (Urdu)',
+    name: 'Transfer / Posting Notification',
     file: 'letters/TRANSFER.hbs',
-    requiredVars: ['fromBranch', 'toBranch', 'effectiveDate'],
+    requiredVars: ['toPosting', 'timing', 'targetDesignation', 'effectiveDate'],
   },
   {
     code: 'SUSPENSION',
@@ -96,7 +96,7 @@ const TEMPLATES: TemplateSeed[] = [
   },
   {
     code: 'SALARY_INCREMENT',
-    name: 'Salary Increment Notification (Urdu)',
+    name: 'Salary Increment Notification',
     file: 'letters/SALARY_INCREMENT.hbs',
     requiredVars: ['previousSalary', 'newSalary', 'effectiveDate'],
   },

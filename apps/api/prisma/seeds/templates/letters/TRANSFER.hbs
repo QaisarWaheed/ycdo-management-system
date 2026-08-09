@@ -1,65 +1,111 @@
+<!--
+  YCDO — TRANSFER / POSTING NOTIFICATION
+  Fixed English notification format (Letter No.2128/YCDO/2026 pattern).
+  Only the table row values and the letter no./date are variable — wording
+  around them does not change. Not part of the shared Urdu letter shell.
+-->
 <!DOCTYPE html>
-<html lang="ur" dir="rtl">
+<html>
 <head>
 <meta charset="utf-8">
-<style>{{{letterStyles}}}</style>
+<style>
+  @page { size: A4; margin: 20mm 18mm 18mm 18mm; }
+
+  body {
+    font-family: "Times New Roman", "Liberation Serif", Times, Georgia, serif;
+    font-size: 12.5pt;
+    line-height: 1.5;
+    color: #000;
+    margin: 0;
+  }
+
+  .letterhead { text-align: center; margin-bottom: 10pt; }
+  .letterhead img { max-height: 60px; }
+  .letterhead .org { font-size: 14pt; font-weight: bold; }
+  .letterhead .title { font-size: 13pt; font-weight: bold; margin-top: 6pt; text-decoration: underline; }
+
+  .metarow {
+    display: flex;
+    justify-content: space-between;
+    margin: 14pt 0 16pt;
+  }
+
+  p { margin: 0 0 12pt; text-align: justify; }
+
+  table.transfer-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12pt 0 18pt;
+  }
+  table.transfer-table th, table.transfer-table td {
+    border: 1px solid #000;
+    padding: 5pt 7pt;
+    font-size: 11.5pt;
+    text-align: left;
+  }
+  table.transfer-table th { background: #f2f2f2; font-weight: bold; }
+
+  .cc { margin-top: 20pt; font-size: 11.5pt; }
+  .cc .cc-title { font-weight: bold; margin-bottom: 4pt; }
+  .cc div { margin-bottom: 2pt; }
+
+  .signblock { margin-top: 34pt; text-align: right; }
+  .signblock .name { font-weight: bold; }
+</style>
 </head>
 <body>
-<div class="page">
-  {{> ycdoLetterHeader}}
 
-  <p class="salutation">السلام علیکم!</p>
-
-  <div class="body">
-    <p>
-      تحریر ہے کہ منظوریٔ اعلیٰ کے مطابق درج ذیل ٹرانسفر / پوسٹنگ / ٹائمنگ تبدیلی
-      مورخہ {{effectiveDate}} سے تا امرِ ثانی نافذ العمل ہو گی:
-    </p>
-
-    <table class="attendance-table">
-      <thead>
-        <tr>
-          <th>نمبر</th>
-          <th>نام</th>
-          <th>منجانب</th>
-          <th>بجانب</th>
-          <th>ٹائمنگ</th>
-          <th>عہدہ</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{#if transferRows}}
-          {{#each transferRows}}
-          <tr>
-            <td>{{sr}}</td>
-            <td>{{name}}</td>
-            <td>{{from}}</td>
-            <td>{{to}}</td>
-            <td>{{timing}}</td>
-            <td>{{designation}}</td>
-          </tr>
-          {{/each}}
-        {{else}}
-          <tr>
-            <td>۰۱</td>
-            <td>{{employeeName}}</td>
-            <td>{{fromBranch}}</td>
-            <td>{{toBranch}}</td>
-            <td>{{timing}}</td>
-            <td>{{designation}}</td>
-          </tr>
-        {{/if}}
-      </tbody>
-    </table>
-
-    {{#if additionalNotes}}
-    <p>{{additionalNotes}}</p>
-    {{/if}}
-  </div>
-
-  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
-
-  {{> ycdoLetterFooter}}
+<div class="letterhead">
+  {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
+  <div class="org">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
+  <div class="title">NOTIFICATION</div>
 </div>
+
+<div class="metarow">
+  <span>Dated: {{issueDate}}</span>
+  <span>Letter No. {{letterNo}}</span>
+</div>
+
+<p>
+  With the approval of Chief Executive following transfers/postings/timing
+  change are hereby ordered, w.e.f {{effectiveDate}} till further orders:
+</p>
+
+<table class="transfer-table">
+  <thead>
+    <tr>
+      <th>Sr#</th>
+      <th>Name</th>
+      <th>From</th>
+      <th>To</th>
+      <th>Timing</th>
+      <th>Designation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>01</td>
+      <td>{{employeeName}}</td>
+      <td>{{#if fromPosting}}{{fromPosting}}{{else}}{{branch}}{{/if}}</td>
+      <td>{{toPosting}}</td>
+      <td>{{timing}}</td>
+      <td>{{targetDesignation}}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="cc">
+  <div class="cc-title">CC;</div>
+  <div>Chairman Admin Department</div>
+  <div>Chairman Finance Department</div>
+  <div>Chairman YCDO Executive#2</div>
+  <div>ALL Concerned Admin Officers</div>
+</div>
+
+<div class="signblock">
+  <div class="name">Chief Executive Officer</div>
+  <div>YCDO Pakistan</div>
+</div>
+
 </body>
 </html>

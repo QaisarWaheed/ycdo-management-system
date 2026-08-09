@@ -828,43 +828,54 @@ def poll_attendance():
             end   = fmt_device_time(now_dev + datetime.timedelta(minutes=5))
 
             with device_lock:
-                position = 0
-                while position < 300:
-                    beat("main")
-                    payload = {
-                        "AcsEventCond": {
-                            "searchID":             f"ycdo-poll-{int(time.time())}",
-                            "searchResultPosition": position,
-                            "maxResults":           POLL_MAX_RESULTS,
-                            "major":                5,
-                            "minor":                POLL_MINOR,
-                            "startTime":            start,
-                            "endTime":              end,
+                any_success = False
+                for major, minor in acs_query_combos():
+                    position = 0
+                    while position < 300:
+                        beat("main")
+                        payload = {
+                            "AcsEventCond": {
+                                "searchID":             f"ycdo-poll-{int(time.time())}-{major}-{minor}",
+                                "searchResultPosition": position,
+                                "maxResults":           POLL_MAX_RESULTS,
+                                "major":                major,
+                                "minor":                minor,
+                                "startTime":            start,
+                                "endTime":              end,
+                            }
                         }
-                    }
-                    resp = acs_post(payload, timeout=10)
-                    if resp.status_code != 200:
-                        body = (resp.text or "")[:600]
-                        hint = ""
-                        if resp.status_code == 401:
-                            hint = " — auth rejected"
-                        elif resp.status_code == 403:
-                            hint = " — ISAPI/CGI integration disabled on device"
-                        elif resp.status_code == 404:
-                            hint = " — very old firmware may not support AcsEvent JSON; report this"
-                        log(f"POLL rejected: HTTP {resp.status_code}{hint}")
-                        log(f"  device said: {body}")
-                        rejected = True
-                        auth_fail = (resp.status_code == 401)
-                        break
+                        resp = acs_post(payload, timeout=10)
+                        if resp.status_code != 200:
+                            note_acs_combo((major, minor), False, resp.text)
+                            body = (resp.text or "")[:600]
+                            hint = ""
+                            if resp.status_code == 401:
+                                hint = " — auth rejected"
+                            elif resp.status_code == 403:
+                                hint = " — ISAPI/CGI integration disabled on device"
+                            elif resp.status_code == 404:
+                                hint = " — very old firmware may not support AcsEvent JSON; report this"
+                            log(f"POLL query failed (major={major} minor={minor}): HTTP {resp.status_code}{hint}")
+                            log(f"  device said: {body}")
+                            if resp.status_code == 401:
+                                auth_fail = True
+                            break
 
-                    info_list = (resp.json().get("AcsEvent") or {}).get("InfoList") or []
-                    if not info_list:
-                        break
-                    rows.extend(info_list)
-                    if len(info_list) < POLL_MAX_RESULTS:
-                        break
-                    position += len(info_list)
+                        note_acs_combo((major, minor), True)
+                        any_success = True
+                        info_list = (resp.json().get("AcsEvent") or {}).get("InfoList") or []
+                        if not info_list:
+                            break
+                        rows.extend(info_list)
+                        if len(info_list) < POLL_MAX_RESULTS:
+                            break
+                        position += len(info_list)
+
+                    if auth_fail:
+                        break   # device-wide auth problem — don't keep trying other combos
+
+                if not any_success:
+                    rejected = True
 
             if rejected:
                 if auth_fail:
@@ -1161,6 +1172,19 @@ def listen_attendance():
 
                 # ── Case A: status is present in this event ──────────────
                 if usable_status:
+                    # A reconnect can replay a backlog of old device events —
+                    # unlike Case B (below), a statused event was previously
+                    # pushed regardless of age, so stale backlog rows (old
+                    # employeeNo no longer even enrolled) got sent as if live.
+                    if last_event_time and not is_recent(last_event_time):
+                        stale_emp = emps[0] if emps else "?"
+                        log(
+                            f"Skipping old event (with status): employee={stale_emp} "
+                            f"status={usable_status} at {last_event_time}"
+                        )
+                        buf = ""
+                        continue
+
                     emp_no  = emps[0] if emps else None
                     pending = get_pending_scan()
 

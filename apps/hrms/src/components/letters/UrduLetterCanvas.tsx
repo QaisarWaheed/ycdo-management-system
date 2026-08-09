@@ -167,19 +167,14 @@ export function UrduLetterCanvas({
             />
           </div>
         )}
-        {byKey.adviceReason && (
-          <FieldInput
-            field={byKey.adviceReason}
-            value={get('adviceReason')}
-            onChange={set('adviceReason')}
-          />
-        )}
-        {byKey.adviceDetails && (
-          <FieldInput
-            field={byKey.adviceDetails}
-            value={get('adviceDetails')}
-            onChange={set('adviceDetails')}
-          />
+        {byKey.lateTime && (
+          <Row label="ڈیوٹی پر آنے کا وقت:">
+            <FieldInput
+              field={byKey.lateTime}
+              value={get('lateTime')}
+              onChange={set('lateTime')}
+            />
+          </Row>
         )}
         {byKey.disciplinaryReason && (
           <FieldInput
@@ -227,6 +222,24 @@ export function UrduLetterCanvas({
             onChange={set('fineReason')}
           />
         )}
+        {byKey.absentDate && (
+          <Row label="تاریخِ غیر حاضری:">
+            <FieldInput
+              field={byKey.absentDate}
+              value={get('absentDate')}
+              onChange={set('absentDate')}
+            />
+          </Row>
+        )}
+        {byKey.fineDate && (
+          <Row label="تاریخ:">
+            <FieldInput
+              field={byKey.fineDate}
+              value={get('fineDate')}
+              onChange={set('fineDate')}
+            />
+          </Row>
+        )}
         {byKey.fineAmount && (
           <Row label="جرمانہ:">
             <FieldInput
@@ -270,19 +283,14 @@ export function UrduLetterCanvas({
             />
           </Row>
         )}
-        {byKey.appreciationReason && (
-          <FieldInput
-            field={byKey.appreciationReason}
-            value={get('appreciationReason')}
-            onChange={set('appreciationReason')}
-          />
-        )}
-        {byKey.achievementDetails && (
-          <FieldInput
-            field={byKey.achievementDetails}
-            value={get('achievementDetails')}
-            onChange={set('achievementDetails')}
-          />
+        {byKey.reviewMonth && (
+          <Row label="ماہ:">
+            <FieldInput
+              field={byKey.reviewMonth}
+              value={get('reviewMonth')}
+              onChange={set('reviewMonth')}
+            />
+          </Row>
         )}
         {byKey.rewardAmount && (
           <Row label="انعام:">
