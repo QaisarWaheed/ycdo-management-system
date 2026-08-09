@@ -18,6 +18,11 @@ import {
   uploadPdfToCloudinary,
 } from '../../config/cloudinary.config';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  transliterateName,
+  translateBranch,
+  translateDesignation,
+} from '../../common/urdu-identity';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { normalizePakistanPhone } from '../whatsapp/phone.util';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -386,6 +391,12 @@ export class LettersService {
         ? LETTER_TYPE_EN_HEADER[letterType]
         : null;
 
+    // TRANSFER and SALARY_INCREMENT render as plain-English notification
+    // letters (not the Urdu shell) — identity fields must stay English there.
+    const isEnglishLetterType =
+      letterType === LetterType.TRANSFER ||
+      letterType === LetterType.SALARY_INCREMENT;
+
     const variables: Record<string, unknown> = {
       letterNo,
       letterRef: buildLetterRef(letterType, letterNo),
@@ -406,21 +417,28 @@ export class LettersService {
         ? this.formatDate(employee.joiningDate)
         : '',
       ...normalized,
-      // Prefer HR-typed Urdu overrides (set after spread so they win over empties)
+      // Prefer HR-typed overrides (set after spread so they win over empties).
+      // Urdu letter types get an auto-transliterated/translated fallback from
+      // the (English) employee record; TRANSFER/SALARY_INCREMENT stay English.
       employeeName:
-        String(normalized.employeeName ?? '').trim() || employee.fullName,
+        String(normalized.employeeName ?? '').trim() ||
+        (isEnglishLetterType
+          ? employee.fullName
+          : transliterateName(employee.fullName)),
       designation:
         String(normalized.designation ?? '').trim() ||
-        employee.currentDesignation ||
-        '',
+        (isEnglishLetterType
+          ? employee.currentDesignation ?? ''
+          : translateDesignation(employee.currentDesignation)),
       department:
         String(normalized.department ?? '').trim() ||
         employee.currentDepartment?.name ||
         '',
       branch:
         String(normalized.branch ?? '').trim() ||
-        employee.currentBranch?.name ||
-        '',
+        (isEnglishLetterType
+          ? employee.currentBranch?.name ?? ''
+          : translateBranch(employee.currentBranch?.name)),
       violations: parseViolationLines(
         normalized.violations ?? normalized.warningReason,
       ),

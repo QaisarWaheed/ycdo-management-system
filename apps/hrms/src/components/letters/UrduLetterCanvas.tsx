@@ -412,9 +412,9 @@ export function UrduLetterCanvas({
         )}
       </div>
 
-      <div className="mt-8 text-sm text-gray-700">
+      <div className="mt-8 text-left text-sm text-gray-700">
         <div>{get('senderTitle') || '…………………'}</div>
-        <div>YCDO ملتان پاکستان</div>
+        <div>YCDO ملتان، پاکستان</div>
       </div>
 
       <p className="mt-3 text-center text-xs text-teal-700">

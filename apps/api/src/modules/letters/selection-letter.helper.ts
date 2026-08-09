@@ -1,6 +1,7 @@
 import Handlebars from 'handlebars';
 import { Gender } from '@prisma/client';
 import { formatDuty12h } from '../../common/duty.util';
+import { YCDO_LOGO_DATA_URI } from './ycdo-logo-base64';
 
 export type SelectionLetterVariables = Record<string, string | boolean | undefined>;
 
@@ -76,7 +77,7 @@ export function renderHandlebarsTemplate(
 
 export function buildOrgVariables(): SelectionLetterVariables {
   return {
-    letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || '',
+    letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || YCDO_LOGO_DATA_URI,
     orgAddress: process.env.ORG_ADDRESS || '',
     orgPhone: process.env.ORG_PHONE || '',
     orgEmail: process.env.ORG_EMAIL || '',

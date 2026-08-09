@@ -77,6 +77,11 @@ import {
   letterReference,
   letterTypeBadgeClass,
 } from '@/lib/letterFieldConfig'
+import {
+  translateBranch,
+  translateDesignation,
+  transliterateName,
+} from '@/lib/urduIdentity'
 import { openLetterWhatsAppShare } from '@/lib/openLetterWhatsAppShare'
 import { UrduLetterCanvas } from '@/components/letters/UrduLetterCanvas'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -372,9 +377,10 @@ function GenerateLetterWizard({
     setFields((prev) => ({
       ...prev,
       senderTitle: prev.senderTitle || 'کوآرڈینیٹر پروجیکٹس',
-      employeeName: prev.employeeName || employee.fullName || '',
-      designation: prev.designation || employee.currentDesignation || '',
-      branch: prev.branch || employee.currentBranch?.name || '',
+      employeeName: prev.employeeName || transliterateName(employee.fullName) || '',
+      designation:
+        prev.designation || translateDesignation(employee.currentDesignation) || '',
+      branch: prev.branch || translateBranch(employee.currentBranch?.name) || '',
     }))
   }, [employee, urduMode, step, letterType])
 

@@ -2,6 +2,7 @@ import Handlebars from 'handlebars';
 import { LetterType } from '@prisma/client';
 import { URDU_LETTER_STYLES } from './urdu-letter-styles';
 import { renderHandlebarsTemplate } from './selection-letter.helper';
+import { YCDO_LOGO_DATA_URI } from './ycdo-logo-base64';
 
 export interface LetterRenderVariables {
   letterNo: string;
@@ -22,7 +23,7 @@ export interface LetterRenderVariables {
 /** Matches official warning PDF signatory. */
 export const DEFAULT_SENDER_TITLE = 'چیئرمین ایڈمن ڈیپارٹمنٹ';
 
-export const DEFAULT_ORG_LINE = 'وائی سی ڈی او ملتان، پاکستان';
+export const DEFAULT_ORG_LINE = 'YCDO ملتان، پاکستان';
 
 /** Urdu subjects shown on the letter (centered / عنوان). */
 export const LETTER_TYPE_SUBJECT: Record<LetterType, string> = {
@@ -377,7 +378,7 @@ export function renderLetterHtml(
     letterStyles: URDU_LETTER_STYLES,
     senderTitle: DEFAULT_SENDER_TITLE,
     orgLine: DEFAULT_ORG_LINE,
-    letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || '',
+    letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || YCDO_LOGO_DATA_URI,
     ...variables,
   });
 }

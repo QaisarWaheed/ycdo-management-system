@@ -29,6 +29,11 @@ import {
   isUrduLetterType,
   letterReference,
 } from '@/lib/letterFieldConfig'
+import {
+  translateBranch,
+  translateDesignation,
+  transliterateName,
+} from '@/lib/urduIdentity'
 import { LETTER_TYPES, type LetterType } from '@/types'
 
 interface GenerateLetterDialogProps {
@@ -71,9 +76,10 @@ export function GenerateLetterDialog({
     setFields((prev) => ({
       ...prev,
       senderTitle: prev.senderTitle || 'کوآرڈینیٹر پروجیکٹس',
-      employeeName: prev.employeeName || employee.fullName || '',
-      designation: prev.designation || employee.currentDesignation || '',
-      branch: prev.branch || employee.currentBranch?.name || '',
+      employeeName: prev.employeeName || transliterateName(employee.fullName) || '',
+      designation:
+        prev.designation || translateDesignation(employee.currentDesignation) || '',
+      branch: prev.branch || translateBranch(employee.currentBranch?.name) || '',
     }))
   }, [open, employee, urduMode, letterType])
 
@@ -251,7 +257,48 @@ export function GenerateLetterDialog({
               {(urduMode ? sideFields : extraFields).map((field) => (
                 <div key={field.key} className="space-y-2">
                   <Label>{field.label}</Label>
-                  {field.type === 'textarea' ? (
+                  {field.type === 'select' ? (
+                    <Select
+                      value={fields[field.key] ?? ''}
+                      onValueChange={(value) => {
+                        const normalized = value === '__custom__' ? '' : value
+                        setPreviewHtml(null)
+                        setFields((f) => {
+                          const next = { ...f, [field.key]: normalized }
+                          if (field.key === 'finePreset') {
+                            const monthYear = format(new Date(), 'MMMM yyyy')
+                            if (value === 'UNIFORM') {
+                              next.fineAmount = next.fineAmount || '200/-'
+                              next.deductionMonth = next.deductionMonth || monthYear
+                            } else if (value === 'ABSENT') {
+                              next.fineAmount = next.fineAmount || 'دو یوم کی تنخواہ'
+                              next.deductionMonth = next.deductionMonth || monthYear
+                            } else if (value === 'LATE_DEDUCTION') {
+                              next.fineAmount = next.fineAmount || 'ایک یوم کی تنخواہ'
+                              next.deductionMonth = next.deductionMonth || monthYear
+                            } else if (value === 'ELECTRICITY') {
+                              next.deductionMonth = next.deductionMonth || monthYear
+                            }
+                          }
+                          return next
+                        })
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={field.label} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(field.options ?? []).map((opt) => (
+                          <SelectItem
+                            key={opt.value || '__custom__'}
+                            value={opt.value || '__custom__'}
+                          >
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : field.type === 'textarea' ? (
                     <Textarea
                       dir={urduMode ? 'rtl' : undefined}
                       lang={urduMode ? 'ur' : undefined}

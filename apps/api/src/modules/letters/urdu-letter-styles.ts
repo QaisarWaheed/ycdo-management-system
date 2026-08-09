@@ -185,7 +185,7 @@ body {
 
 .signature {
   margin-top: 28pt;
-  text-align: right;
+  text-align: left;
   font-size: 12pt;
   line-height: 1.7;
 }
