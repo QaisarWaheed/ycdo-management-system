@@ -338,7 +338,7 @@ const YCDO_LETTER_HEADER = `
   <div class="row">{{orgLine}}</div>
   <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
   {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
-  <div class="row"><span class="label">عنوان:</span> {{subject}}</div>
+  <div class="row subject-row"><span class="label">عنوان:</span> {{subject}}</div>
 </div>
 `;
 

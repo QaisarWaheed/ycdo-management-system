@@ -116,13 +116,17 @@ body {
 
 .meta-block .row { margin: 0 0 3pt; }
 .meta-block .label { font-weight: 700; }
+.meta-block .row.subject-row { text-align: center; }
 
-.subject-center {
-  text-align: center;
+/* Designation + branch together as one bold, isolated LTR unit so the two
+   embedded English runs never get reordered relative to each other by the
+   bidi algorithm — different renderers can otherwise disagree on the
+   visual order of two adjacent LTR runs inside an RTL paragraph. */
+.identity-strong {
   font-weight: 700;
-  font-size: 13.5pt;
-  text-decoration: underline;
-  margin: 10pt 0 12pt;
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-block;
 }
 
 .salutation {
