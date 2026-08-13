@@ -129,10 +129,7 @@ const TEMPLATES: TemplateSeed[] = [
     requiredVars: ['violations', 'fineAmount', 'deductionMonth'],
     isCustom: true,
     subjectUr: 'تحریری وضاحت طلب و جرمانہ نوٹس',
-    enTitle: 'Notification',
-    enPrescribed: 'Prescribed "Explanation & Fine Letter"',
-    enSubtitle:
-      'It is notified that the following notified format is approved for Explanation & Fine Letter.',
+    enTitle: 'LETTER OF EXPLANATION & FINE',
     letterCode: 'EXF',
     fieldsSchema: [
       { key: 'employeeName', label: 'نام (بجانب)', required: true },

@@ -14,6 +14,7 @@
     margin: 0;
   }
 
+  .bismillah { text-align: center; font-size: 13pt; margin-bottom: 8pt; }
   .letterhead { text-align: center; margin-bottom: 10pt; }
   .letterhead img { max-height: 60px; }
   .letterhead .office { font-size: 10.5pt; }
@@ -53,6 +54,8 @@
 </head>
 <body>
 
+<div class="bismillah">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
+
 <div class="letterhead">
   {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
   <div class="office">OFFICE OF THE</div>
@@ -63,7 +66,7 @@
 
 <div class="metarow">
   <span>Dated: {{issueDate}}</span>
-  <span>Notification No. {{letterNo}}</span>
+  <span>Notification No: {{letterRef}}</span>
 </div>
 
 <p>

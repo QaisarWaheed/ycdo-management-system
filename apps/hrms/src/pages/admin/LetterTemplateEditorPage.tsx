@@ -246,7 +246,7 @@ export function LetterTemplateEditorPage() {
             <Label>English Subject / Title</Label>
             <Input
               value={form.enTitle}
-              placeholder="Notification"
+              placeholder="LETTER OF WARNING"
               onChange={(e) => setForm((f) => ({ ...f, enTitle: e.target.value }))}
             />
           </div>

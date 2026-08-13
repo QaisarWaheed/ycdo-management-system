@@ -51,103 +51,28 @@ export const LETTER_TYPE_EN_HEADER: Record<
   Exclude<LetterType, 'APPOINTMENT'>,
   { title: string; prescribed: string; subtitle: string }
 > = {
-  WARNING: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Letter of Warning"',
-    subtitle:
-      'It is notified that the following notified format is approved for Letter of Warning.',
-  },
-  ADVICE: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Letter of Advice"',
-    subtitle:
-      'It is notified that the following notified format is approved for Letter of Advice.',
-  },
-  DISCIPLINARY: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Letter of Displeasure"',
-    subtitle:
-      'It is notified that the following notified format is approved for Letter of Displeasure.',
-  },
-  EXPLANATION: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Explanation Request"',
-    subtitle:
-      'It is notified that the following notified format is approved for Explanation Request.',
-  },
-  SHOW_CAUSE: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Show Cause Notice"',
-    subtitle:
-      'It is notified that the following notified format is approved for Show Cause Notice.',
-  },
-  FINE: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Fine / Penalty Letter"',
-    subtitle:
-      'It is notified that the following notified format is approved for Fine / Penalty Letter.',
-  },
-  INQUIRY: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Inquiry Notice"',
-    subtitle:
-      'It is notified that the following notified format is approved for Inquiry Notice.',
-  },
-  APPRECIATION: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Letter of Appreciation"',
-    subtitle:
-      'It is notified that the following notified format is approved for Letter of Appreciation.',
-  },
-  TRANSFER: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Transfer / Posting"',
-    subtitle:
-      'It is notified that the following notified format is approved for Transfer / Posting.',
-  },
-  SUSPENSION: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Suspension Notice"',
-    subtitle:
-      'It is notified that the following notified format is approved for Suspension Notice.',
-  },
-  TERMINATION: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Termination Letter"',
-    subtitle:
-      'It is notified that the following notified format is approved for Termination Letter.',
-  },
-  REINSTATEMENT: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Reinstatement Letter"',
-    subtitle:
-      'It is notified that the following notified format is approved for Reinstatement Letter.',
-  },
-  REJOINING: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Rejoining Letter"',
-    subtitle:
-      'It is notified that the following notified format is approved for Rejoining Letter.',
-  },
+  WARNING: { title: 'LETTER OF WARNING', prescribed: '', subtitle: '' },
+  ADVICE: { title: 'LETTER OF ADVICE', prescribed: '', subtitle: '' },
+  DISCIPLINARY: { title: 'LETTER OF DISPLEASURE', prescribed: '', subtitle: '' },
+  EXPLANATION: { title: 'LETTER OF EXPLANATION', prescribed: '', subtitle: '' },
+  SHOW_CAUSE: { title: 'SHOW CAUSE NOTICE', prescribed: '', subtitle: '' },
+  FINE: { title: 'LETTER OF FINE / PENALTY', prescribed: '', subtitle: '' },
+  INQUIRY: { title: 'INQUIRY NOTICE', prescribed: '', subtitle: '' },
+  APPRECIATION: { title: 'LETTER OF APPRECIATION', prescribed: '', subtitle: '' },
+  TRANSFER: { title: 'NOTIFICATION OF TRANSFER', prescribed: '', subtitle: '' },
+  SUSPENSION: { title: 'SUSPENSION NOTICE', prescribed: '', subtitle: '' },
+  TERMINATION: { title: 'TERMINATION LETTER', prescribed: '', subtitle: '' },
+  REINSTATEMENT: { title: 'REINSTATEMENT LETTER', prescribed: '', subtitle: '' },
+  REJOINING: { title: 'REJOINING LETTER', prescribed: '', subtitle: '' },
   SALARY_INCREMENT: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Salary Increment"',
-    subtitle:
-      'It is notified that the following notified format is approved for Salary Increment.',
-  },
-  EXPERIENCE: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Experience Certificate"',
-    subtitle:
-      'It is notified that the following notified format is approved for Experience Certificate.',
-  },
-  // Custom (IT-authored) templates always carry their own enTitle/enPrescribed/
-  // enSubtitle on the LetterTemplate row; this entry is just a safe fallback.
-  CUSTOM: {
-    title: 'Notification',
+    title: 'SALARY INCREMENT NOTIFICATION',
     prescribed: '',
     subtitle: '',
   },
+  EXPERIENCE: { title: 'EXPERIENCE CERTIFICATE', prescribed: '', subtitle: '' },
+  // Custom (IT-authored) templates always carry their own enTitle on the
+  // LetterTemplate row; this entry is just a safe fallback.
+  CUSTOM: { title: 'NOTIFICATION', prescribed: '', subtitle: '' },
 };
 
 export const LETTER_TEMPLATE_META: Record<
@@ -331,6 +256,7 @@ export function parseAttendanceRows(raw: unknown): AttendanceRow[] {
 
 const YCDO_LETTER_HEADER = `
 <div class="letter-shell-top">
+  <div class="bismillah">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
   <div class="letterhead-row">
     <div>
       {{#if letterheadLogoUrl}}
@@ -339,20 +265,23 @@ const YCDO_LETTER_HEADER = `
         <div class="letterhead-logo-fallback">YCDO<br/>SERVE HUMANITY</div>
       {{/if}}
     </div>
+    <div class="letterhead-org">
+      <div class="office">OFFICE OF THE</div>
+      <div class="org-name">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
+      <div class="loc">MULTAN, PAKISTAN</div>
+    </div>
     <div class="letter-nos">
-      <div class="letter-no-line">Letter No. {{letterNo}}</div>
-      <div class="ref-line"><span class="ltr">{{letterRef}}</span> :بحوالہ</div>
+      <div class="letter-no-line">Letter no: {{letterRef}}</div>
+      <div class="letter-no-line">Dated: {{issueDate}}</div>
     </div>
   </div>
   <div class="notification-block">
     <p class="en-title">{{enTitle}}</p>
-    <p class="en-prescribed">{{enPrescribed}}</p>
   </div>
   <hr class="hr-line" />
 </div>
 
 <div class="meta-block">
-  <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
   <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
   <div class="row">{{orgLine}}</div>
   <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>

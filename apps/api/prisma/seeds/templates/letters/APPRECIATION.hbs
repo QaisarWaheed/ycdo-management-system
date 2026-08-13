@@ -18,6 +18,8 @@
     margin: 0;
   }
 
+  .bismillah { text-align: center; font-size: 13pt; margin-bottom: 8pt; }
+
   .letterhead-row {
     display: flex;
     align-items: flex-start;
@@ -60,6 +62,8 @@
 </head>
 <body>
 
+<div class="bismillah">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
+
 <div class="letterhead-row">
   {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
   <div class="letterhead-org">
@@ -68,7 +72,7 @@
     <div class="loc">MULTAN, PAKISTAN</div>
   </div>
   <div class="letterhead-meta">
-    <div>Letter no: {{letterNo}}</div>
+    <div>Letter no: {{letterRef}}</div>
     <div>Dated: {{issueDate}}</div>
   </div>
 </div>

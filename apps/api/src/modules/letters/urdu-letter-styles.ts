@@ -32,6 +32,13 @@ body {
   margin-bottom: 10pt;
 }
 
+.bismillah {
+  direction: rtl;
+  text-align: center;
+  font-size: 13pt;
+  margin-bottom: 8pt;
+}
+
 .letterhead-row {
   display: flex;
   justify-content: space-between;
@@ -39,6 +46,16 @@ body {
   gap: 12pt;
   margin-bottom: 10pt;
 }
+
+.letterhead-org {
+  flex: 1;
+  text-align: center;
+  font-family: 'Times New Roman', Times, Georgia, serif;
+}
+
+.letterhead-org .office { font-size: 10.5pt; }
+.letterhead-org .org-name { font-size: 13pt; font-weight: 700; }
+.letterhead-org .loc { font-size: 10.5pt; }
 
 .letterhead-logo {
   width: 78pt;
@@ -67,13 +84,6 @@ body {
   font-weight: 700;
 }
 
-.letter-nos .ref-line {
-  direction: rtl;
-  text-align: right;
-  font-family: 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', 'Segoe UI', sans-serif;
-  font-size: 11pt;
-}
-
 .notification-block {
   text-align: center;
   direction: ltr;
@@ -84,20 +94,7 @@ body {
 .notification-block .en-title {
   font-size: 16pt;
   font-weight: 700;
-  margin: 0 0 4pt;
-}
-
-.notification-block .en-prescribed {
-  font-size: 13pt;
-  font-weight: 700;
-  margin: 0 0 6pt;
-}
-
-.notification-block .en-subtitle {
-  font-size: 10pt;
-  font-weight: 400;
   margin: 0;
-  color: #222;
 }
 
 .hr-line {
