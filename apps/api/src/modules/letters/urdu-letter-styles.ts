@@ -47,8 +47,11 @@ body {
   margin-bottom: 10pt;
 }
 
+.letterhead-right {
+  text-align: right;
+}
+
 .letterhead-org {
-  flex: 1;
   text-align: center;
   font-family: 'Times New Roman', Times, Georgia, serif;
 }
@@ -73,6 +76,7 @@ body {
 }
 
 .letter-nos {
+  margin-top: 6pt;
   text-align: right;
   font-family: 'Segoe UI', Arial, sans-serif;
   font-size: 10.5pt;

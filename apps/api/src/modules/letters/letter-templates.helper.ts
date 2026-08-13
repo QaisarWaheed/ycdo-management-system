@@ -265,14 +265,16 @@ const YCDO_LETTER_HEADER = `
         <div class="letterhead-logo-fallback">YCDO<br/>SERVE HUMANITY</div>
       {{/if}}
     </div>
-    <div class="letterhead-org">
-      <div class="office">OFFICE OF THE</div>
-      <div class="org-name">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
-      <div class="loc">MULTAN, PAKISTAN</div>
-    </div>
-    <div class="letter-nos">
-      <div class="letter-no-line">Letter no: {{letterRef}}</div>
-      <div class="letter-no-line">Dated: {{issueDate}}</div>
+    <div class="letterhead-right">
+      <div class="letterhead-org">
+        <div class="office">OFFICE OF THE</div>
+        <div class="org-name">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
+        <div class="loc">MULTAN, PAKISTAN</div>
+      </div>
+      <div class="letter-nos">
+        <div class="letter-no-line">Letter no: {{letterRef}}</div>
+        <div class="letter-no-line">Dated: {{issueDate}}</div>
+      </div>
     </div>
   </div>
   <div class="notification-block">
