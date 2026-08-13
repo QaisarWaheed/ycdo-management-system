@@ -51,7 +51,6 @@ import { generatePdf } from './pdf.helper';
 import {
   buildOrgVariables,
   formatIssueDatePkt,
-  formatIssueDateUrdu,
   pktYear,
   renderHandlebarsTemplate,
   salutationFromGender,
@@ -241,7 +240,7 @@ export class LettersService {
     const sampleVariables: Record<string, unknown> = {
       letterNo: 'PREVIEW/YCDO/0000',
       letterRef: 'HRMS/GEN/000',
-      issueDate: formatIssueDateUrdu(),
+      issueDate: formatIssueDatePkt(),
       subject: 'نمونہ عنوان / Sample Subject',
       enTitle: 'LETTER OF SAMPLE',
       employeeName: 'محمد نمونہ ملازم',
@@ -575,7 +574,7 @@ export class LettersService {
       letterNo,
       letterRef: buildLetterRef(letterType, letterNo, template.letterCode),
       issueDate:
-        String(normalized.issueDate ?? '').trim() || formatIssueDateUrdu(),
+        String(normalized.issueDate ?? '').trim() || formatIssueDatePkt(),
       senderTitle:
         String(normalized.senderTitle ?? '').trim() || DEFAULT_SENDER_TITLE,
       subject:
@@ -1126,7 +1125,7 @@ export class LettersService {
         merged.attendanceRows = parseAttendanceRows(merged.attendanceRows);
 
         if (!merged.issueDate) {
-          merged.issueDate = formatIssueDateUrdu();
+          merged.issueDate = formatIssueDatePkt();
         }
         if (!merged.subject) {
           merged.subject = defaultSubjectFor(letter.letterType);
