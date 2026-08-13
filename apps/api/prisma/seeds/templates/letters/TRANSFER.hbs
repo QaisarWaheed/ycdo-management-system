@@ -16,8 +16,10 @@
 
   .letterhead { text-align: center; margin-bottom: 10pt; }
   .letterhead img { max-height: 60px; }
+  .letterhead .office { font-size: 10.5pt; }
   .letterhead .org { font-size: 14pt; font-weight: bold; }
-  .letterhead .title { font-size: 13pt; font-weight: bold; margin-top: 6pt; text-decoration: underline; }
+  .letterhead .loc { font-size: 10.5pt; }
+  .letterhead .title { font-size: 13pt; font-weight: bold; margin-top: 8pt; text-decoration: underline; }
 
   .metarow {
     display: flex;
@@ -53,8 +55,10 @@
 
 <div class="letterhead">
   {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
+  <div class="office">OFFICE OF THE</div>
   <div class="org">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
-  <div class="title">NOTIFICATION</div>
+  <div class="loc">MULTAN, PAKISTAN</div>
+  <div class="title">NOTIFICATION OF TRANSFER</div>
 </div>
 
 <div class="metarow">
