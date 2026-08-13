@@ -1,9 +1,4 @@
-<!--
-  YCDO — TRANSFER / POSTING NOTIFICATION
-  Fixed English notification format (Letter No.2128/YCDO/2026 pattern).
-  Only the table row values and the letter no./date are variable — wording
-  around them does not change. Not part of the shared Urdu letter shell.
--->
+<!-- YCDO — TRANSFER / POSTING NOTIFICATION. Signed twice by Chairman Admin Department. -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -45,12 +40,13 @@
   }
   table.transfer-table th { background: #f2f2f2; font-weight: bold; }
 
-  .cc { margin-top: 20pt; font-size: 11.5pt; }
+  .cc { margin-top: 16pt; font-size: 11.5pt; }
   .cc .cc-title { font-weight: bold; margin-bottom: 4pt; }
   .cc div { margin-bottom: 2pt; }
 
-  .signblock { margin-top: 34pt; text-align: right; }
+  .signblock { margin-top: 30pt; }
   .signblock .name { font-weight: bold; }
+  .notif-even { margin-top: 18pt; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -63,48 +59,74 @@
 
 <div class="metarow">
   <span>Dated: {{issueDate}}</span>
-  <span>Letter No. {{letterNo}}</span>
+  <span>Notification No. {{letterNo}}</span>
 </div>
 
 <p>
-  With the approval of Chief Executive following transfers/postings/timing
-  change are hereby ordered, w.e.f {{effectiveDate}} till further orders:
+  In exercise of the administrative powers vested in the Founder/Head of
+  YCDO, the following transfer/posting is hereby ordered with immediate
+  effect and until further orders:
 </p>
 
 <table class="transfer-table">
   <thead>
     <tr>
       <th>Sr#</th>
-      <th>Name</th>
-      <th>From</th>
-      <th>To</th>
-      <th>Timing</th>
+      <th>Employee Name</th>
       <th>Designation</th>
+      <th>From Branch/Department</th>
+      <th>To Branch/Department</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td>01</td>
       <td>{{employeeName}}</td>
+      <td>{{targetDesignation}}</td>
       <td>{{#if fromPosting}}{{fromPosting}}{{else}}{{branch}}{{/if}}</td>
       <td>{{toPosting}}</td>
-      <td>{{timing}}</td>
-      <td>{{targetDesignation}}</td>
     </tr>
   </tbody>
 </table>
 
+<p>
+  The above-mentioned employee(s) are directed to hand over all official
+  responsibilities, records, assets, and relevant documents to the concerned
+  authority before assuming charge at their new place of posting.
+</p>
+
+<p>
+  All concerned departments are directed to ensure compliance with this
+  notification and facilitate the smooth transfer of duties and
+  responsibilities.
+</p>
+
+<p>This notification shall take effect immediately.</p>
+
+<div class="signblock">
+  <div>By Order of the Chairman Admin Department, YCDO</div>
+  <br/>
+  <div class="name">Chairman Admin Department</div>
+  <div>YCDO Multan, Pakistan</div>
+</div>
+
+<div class="notif-even">Notification No. &amp; Date Even</div>
+
 <div class="cc">
-  <div class="cc-title">CC;</div>
-  <div>Chairman Admin Department</div>
-  <div>Chairman Finance Department</div>
-  <div>Chairman YCDO Executive#2</div>
-  <div>ALL Concerned Admin Officers</div>
+  <div class="cc-title">Copy to:</div>
+  <div>1. Chairman Admin Department, YCDO.</div>
+  <div>2. Chairman Finance Department, YCDO.</div>
+  <div>3. Chairman Branch Transfer from, YCDO.</div>
+  <div>4. Chairman Branch Transfer To, YCDO.</div>
+  <div>5. Concerned Branch Administrators.</div>
+  <div>6. Concerned Department Heads.</div>
+  <div>7. Personal File of Employee(s) Concerned.</div>
+  <div>8. Office Record.</div>
 </div>
 
 <div class="signblock">
-  <div class="name">Chief Executive Officer</div>
-  <div>YCDO Pakistan</div>
+  <div class="name">Chairman Admin Department</div>
+  <div>YCDO Multan, Pakistan</div>
 </div>
 
 </body>

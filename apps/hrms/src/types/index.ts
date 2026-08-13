@@ -463,6 +463,38 @@ export interface Letter {
   } | null
 }
 
+export interface LetterTemplate {
+  id: string
+  code: string
+  name: string
+  bodyHtml?: string
+  bodyHtmlEn?: string | null
+  subjectUr?: string | null
+  subjectEn?: string | null
+  enTitle?: string | null
+  enPrescribed?: string | null
+  enSubtitle?: string | null
+  letterCode?: string | null
+  fieldsSchema?: LetterTemplateFieldDef[] | null
+  primaryLanguage: 'ur' | 'en'
+  isCustom: boolean
+  requiredVars: string[]
+  version: number
+  active: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface LetterTemplateFieldDef {
+  key: string
+  label: string
+  type?: 'text' | 'textarea' | 'number' | 'date' | 'select'
+  hint?: string
+  onTemplate?: boolean
+  required?: boolean
+  options?: { value: string; label: string }[]
+}
+
 export interface LetterWhatsAppShare {
   letterId: string
   phoneE164: string | null
@@ -932,6 +964,7 @@ export type LetterType =
   | 'REJOINING'
   | 'SALARY_INCREMENT'
   | 'EXPERIENCE'
+  | 'CUSTOM'
 
 export type DocumentType =
   | 'CNIC'

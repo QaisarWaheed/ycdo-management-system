@@ -48,12 +48,28 @@ export function GenerateLetterDialog({
   employeeId,
 }: GenerateLetterDialogProps) {
   const queryClient = useQueryClient()
-  const [letterType, setLetterType] = useState<LetterType>('WARNING')
+  const [selectedValue, setSelectedValue] = useState<string>('WARNING')
   const [fields, setFields] = useState<Record<string, string>>({})
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
 
-  const extraFields = getLetterExtraFields(letterType)
-  const requiredFields = getLetterRequiredFields(letterType)
+  const { data: allTemplates = [] } = useQuery({
+    queryKey: ['letter-templates', 'active'],
+    queryFn: () => lettersApi.getTemplates(),
+    enabled: open,
+  })
+  const customTemplates = useMemo(
+    () => allTemplates.filter((t) => t.isCustom),
+    [allTemplates],
+  )
+
+  const isCustomSelection = selectedValue.startsWith('custom:')
+  const customCode = isCustomSelection ? selectedValue.slice('custom:'.length) : undefined
+  const letterType: LetterType = isCustomSelection ? 'CUSTOM' : (selectedValue as LetterType)
+  const selectedCustomTemplate = customTemplates.find((t) => t.code === customCode)
+  const customFieldDefs = selectedCustomTemplate?.fieldsSchema ?? undefined
+
+  const extraFields = getLetterExtraFields(letterType, customFieldDefs)
+  const requiredFields = getLetterRequiredFields(letterType, customFieldDefs)
   const urduMode = isUrduLetterType(letterType)
   const templateFields = useMemo(
     () => extraFields.filter((f) => f.onTemplate),
@@ -70,17 +86,35 @@ export function GenerateLetterDialog({
     enabled: open && !!employeeId,
   })
 
-  // Prefill identity from profile when opening / switching type (Urdu letters).
+  // Prefill identity from profile when opening / switching type.
   useEffect(() => {
-    if (!open || !employee || !urduMode) return
+    if (!open || !employee) return
+    const hasIdentityFields = extraFields.some((f) =>
+      ['employeeName', 'designation', 'branch'].includes(f.key),
+    )
+    if (!hasIdentityFields) return
     setFields((prev) => ({
       ...prev,
-      senderTitle: prev.senderTitle || 'چیئرمین ایڈمن ڈیپارٹمنٹ',
-      employeeName: prev.employeeName || transliterateName(employee.fullName) || '',
+      senderTitle:
+        prev.senderTitle || (urduMode ? 'چیئرمین ایڈمن ڈیپارٹمنٹ' : ''),
+      employeeName:
+        prev.employeeName ||
+        (urduMode ? transliterateName(employee.fullName) : employee.fullName) ||
+        '',
       designation:
-        prev.designation || translateDesignation(employee.currentDesignation) || '',
-      branch: prev.branch || translateBranch(employee.currentBranch?.name) || '',
+        prev.designation ||
+        (urduMode
+          ? translateDesignation(employee.currentDesignation)
+          : employee.currentDesignation ?? '') ||
+        '',
+      branch:
+        prev.branch ||
+        (urduMode
+          ? translateBranch(employee.currentBranch?.name)
+          : employee.currentBranch?.name ?? '') ||
+        '',
     }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, employee, urduMode, letterType])
 
   const buildExtraFieldsPayload = () => {
@@ -103,6 +137,7 @@ export function GenerateLetterDialog({
       lettersApi.preview({
         employeeId,
         letterType,
+        templateCode: customCode,
         extraFields: buildExtraFieldsPayload(),
       }),
     onSuccess: (data) => setPreviewHtml(data.previewHtml),
@@ -135,6 +170,7 @@ export function GenerateLetterDialog({
       lettersApi.generate({
         employeeId,
         letterType,
+        templateCode: customCode,
         extraFields: buildExtraFieldsPayload(),
       }),
     onSuccess: async (data) => {
@@ -205,9 +241,9 @@ export function GenerateLetterDialog({
           <div className="space-y-2">
             <Label>Letter Type</Label>
             <Select
-              value={letterType}
+              value={selectedValue}
               onValueChange={(v) => {
-                setLetterType(v as LetterType)
+                setSelectedValue(v)
                 setFields({})
                 setPreviewHtml(null)
               }}
@@ -219,6 +255,11 @@ export function GenerateLetterDialog({
                 {LETTER_TYPES.map((t) => (
                   <SelectItem key={t.value} value={t.value}>
                     {t.label}
+                  </SelectItem>
+                ))}
+                {customTemplates.map((t) => (
+                  <SelectItem key={t.code} value={`custom:${t.code}`}>
+                    {t.name}
                   </SelectItem>
                 ))}
               </SelectContent>

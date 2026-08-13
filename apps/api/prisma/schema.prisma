@@ -560,15 +560,25 @@ enum InquiryOutcome {
 // ─── LETTERS ──────────────────────────────────────────────
 
 model LetterTemplate {
-  id           String   @id @default(uuid())
-  code         String   @unique
-  name         String
-  bodyHtml     String
-  requiredVars String[]
-  version      Int      @default(1)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(uuid())
+  code            String   @unique
+  name            String
+  bodyHtml        String
+  bodyHtmlEn      String?
+  subjectUr       String?
+  subjectEn       String?
+  enTitle         String?
+  enPrescribed    String?
+  enSubtitle      String?
+  letterCode      String?
+  fieldsSchema    Json?
+  primaryLanguage String   @default("ur")
+  isCustom        Boolean  @default(false)
+  requiredVars    String[]
+  version         Int      @default(1)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Letter {
@@ -582,6 +592,7 @@ model Letter {
   letterNo      String?    @unique
   variables     Json?
   templateVersion Int?
+  templateCode  String?
   replyDeadline DateTime?
   isReplied     Boolean    @default(false)
   autoEscalated           Boolean @default(false)
@@ -650,6 +661,7 @@ enum LetterType {
   REJOINING
   SALARY_INCREMENT
   EXPERIENCE
+  CUSTOM
 }
 
 // ─── LEAVE ────────────────────────────────────────────────

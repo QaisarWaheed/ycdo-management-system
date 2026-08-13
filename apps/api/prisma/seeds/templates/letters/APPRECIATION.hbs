@@ -1,28 +1,136 @@
+<!--
+  YCDO — LETTER OF APPRECIATION
+  Fixed English format matching the official paper letter. Not part of the
+  shared Urdu letter shell — this is a standalone English document.
+-->
 <!DOCTYPE html>
-<html lang="ur" dir="rtl">
+<html>
 <head>
 <meta charset="utf-8">
-<style>{{{letterStyles}}}</style>
+<style>
+  @page { size: A4; margin: 20mm 18mm 18mm 18mm; }
+
+  body {
+    font-family: "Times New Roman", "Liberation Serif", Times, Georgia, serif;
+    font-size: 12.5pt;
+    line-height: 1.5;
+    color: #000;
+    margin: 0;
+  }
+
+  .letterhead-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 6pt;
+  }
+  .letterhead-row img { max-height: 55px; }
+  .letterhead-org {
+    text-align: center;
+    flex: 1;
+  }
+  .letterhead-org .office { font-size: 10.5pt; }
+  .letterhead-org .name { font-size: 13pt; font-weight: bold; }
+  .letterhead-org .loc { font-size: 10.5pt; }
+  .letterhead-meta { text-align: right; font-size: 11pt; white-space: nowrap; }
+
+  .title {
+    text-align: center;
+    font-size: 15pt;
+    font-weight: bold;
+    font-style: italic;
+    margin: 14pt 0 10pt;
+    border-bottom: 1px solid #000;
+    padding-bottom: 8pt;
+  }
+
+  .meta-block { margin: 10pt 0 14pt; }
+  .meta-block .row { margin-bottom: 3pt; }
+  .meta-block .label { font-weight: bold; }
+
+  p { margin: 0 0 10pt; text-align: justify; }
+
+  ol.reference-list { margin: 0 0 12pt; padding-inline-start: 22pt; }
+  ol.reference-list li { margin-bottom: 6pt; text-align: justify; }
+
+  .closing { margin-top: 14pt; }
+  .signblock { margin-top: 28pt; }
+  .signblock .name { font-weight: bold; }
+</style>
 </head>
 <body>
-<div class="page">
-  {{> ycdoLetterHeader}}
 
-  <p class="salutation">السلام علیکم!</p>
-
-  <div class="body">
-    <p>
-      تحریر ہے کہ آپ کی ماہِ {{#if reviewMonth}}{{reviewMonth}}{{else}}رواں{{/if}} کی پراگریس کا مشاہدہ کیا گیا ہے،
-      جس میں آپ کی پراگریس بتدریج بہتر ہو رہی ہے، جو کہ صرف اور صرف آپ کی ادارہ سے لگن اور خدمتِ انسانیت کے جذبے کا نتیجہ ہے۔
-      لہٰذا اس بات پر ادارہ آپ کو شاباشی دیتا ہے اور بطور تہنیت آپ کو مبلغ
-      {{#if rewardAmount}}{{rewardAmount}}{{else}}مقررہ{{/if}}/- روپیہ انعام دیا جاتا ہے،
-      اور ادارہ آپ سے مزید بہتری کی امید کرتا ہے۔
-    </p>
+<div class="letterhead-row">
+  {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
+  <div class="letterhead-org">
+    <div class="office">OFFICE OF THE</div>
+    <div class="name">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
+    <div class="loc">MULTAN, PAKISTAN</div>
   </div>
-
-  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
-
-  {{> ycdoLetterFooter}}
+  <div class="letterhead-meta">
+    <div>Letter no: {{letterNo}}</div>
+    <div>Dated: {{issueDate}}</div>
+  </div>
 </div>
+
+<div class="title">LETTER OF APPRECIATION</div>
+
+<div class="meta-block">
+  <div class="row"><span class="label">From:</span> Chairman Admin Department</div>
+  <div class="row">YCDO Multan, Pakistan</div>
+  <div class="row" style="margin-top:8pt;"><span class="label">To:</span> {{employeeName}}</div>
+  <div class="row"><span class="label">Designation:</span> {{designation}}</div>
+  <div class="row"><span class="label">Branch/Department:</span> {{branch}}</div>
+  <div class="row" style="margin-top:8pt;"><span class="label">Subject:</span> Appreciation and Bonus Award</div>
+</div>
+
+<p>Dear Sir/Madam,</p>
+
+<p>
+  It gives us immense pleasure to place on record our sincere appreciation for
+  your outstanding performance, dedication, and commitment towards your
+  responsibilities at YCDO.
+</p>
+
+<p><strong>Reference:</strong></p>
+<ol class="reference-list">
+  <li>Performance Review Report No. {{reviewReportNo}} Dated: {{reviewReportDate}}</li>
+  <li>Branch/Department Recommendation No. {{recommendationNo}} Dated: {{recommendationDate}}</li>
+  <li>
+    During the course of your duties, you have consistently demonstrated
+    professionalism, devotion, and a strong sense of responsibility. Your
+    valuable contributions have played a significant role in achieving
+    organizational objectives and maintaining the standards of service
+    expected by YCDO.
+  </li>
+  <li>
+    In recognition of your exceptional performance, loyalty, and commitment
+    towards the organization, the management is pleased to award you a
+    <strong>Performance Bonus of Rs. {{bonusAmount}}</strong>. This bonus is
+    being granted as a token of appreciation for your hard work, sincerity,
+    and valuable contribution to the success of the organization.
+  </li>
+  <li>
+    Your dedication and efforts are highly appreciated and serve as a
+    positive example for your colleagues. The management acknowledges your
+    contribution and looks forward to your continued commitment and
+    excellence.
+  </li>
+  <li>
+    We hope that you will continue to perform your duties with the same
+    zeal, professionalism, and dedication in the future and remain an asset
+    to YCDO.
+  </li>
+</ol>
+
+<p>We extend our best wishes for your continued success and professional growth.</p>
+
+<p class="closing">Sincerely,</p>
+
+<div class="signblock">
+  <div class="name">Chairman Admin Department</div>
+  <div>YCDO Multan, Pakistan</div>
+</div>
+
 </body>
 </html>

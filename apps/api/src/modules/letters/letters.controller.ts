@@ -19,6 +19,11 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { GenerateLetterDto, LetterQueryDto, PreviewLetterDto } from './letters.dto';
+import {
+  CreateLetterTemplateDto,
+  PreviewLetterTemplateDto,
+  UpdateLetterTemplateDto,
+} from './letter-templates.dto';
 import { LettersService } from './letters.service';
 
 @Controller('letters')
@@ -36,9 +41,50 @@ export class LettersController {
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
   )
-  listTemplates() {
-    return this.lettersService.listTemplates();
+  listTemplates(@Query('includeInactive') includeInactive?: string) {
+    return this.lettersService.listTemplates(includeInactive === 'true');
+  }
+
+  @Get('templates/:code')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
+  getTemplate(@Param('code') code: string) {
+    return this.lettersService.getTemplate(code);
+  }
+
+  @Post('templates')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
+  createTemplate(
+    @Body() dto: CreateLetterTemplateDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.lettersService.createTemplate(dto, user.id);
+  }
+
+  @Post('templates/preview')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
+  previewTemplateDraft(@Body() dto: PreviewLetterTemplateDto) {
+    return this.lettersService.previewTemplateDraft(dto);
+  }
+
+  @Patch('templates/:code')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
+  updateTemplate(
+    @Param('code') code: string,
+    @Body() dto: UpdateLetterTemplateDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.lettersService.updateTemplate(code, dto, user.id);
+  }
+
+  @Delete('templates/:code')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
+  deleteTemplate(
+    @Param('code') code: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.lettersService.deleteTemplate(code, user.id);
   }
 
   @Post('preview')

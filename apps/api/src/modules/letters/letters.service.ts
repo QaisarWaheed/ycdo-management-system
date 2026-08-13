@@ -32,6 +32,11 @@ import {
   PreviewLetterDto,
 } from './letters.dto';
 import {
+  CreateLetterTemplateDto,
+  PreviewLetterTemplateDto,
+  UpdateLetterTemplateDto,
+} from './letter-templates.dto';
+import {
   DEFAULT_SENDER_TITLE,
   LETTER_TYPE_EN_HEADER,
   buildLetterRef,
@@ -86,18 +91,170 @@ export class LettersService {
     return `${next}/YCDO/${pktYear()}`;
   }
 
-  async listTemplates() {
+  async listTemplates(includeInactive = false) {
     return this.prisma.letterTemplate.findMany({
-      where: { active: true },
+      where: includeInactive ? undefined : { active: true },
       orderBy: { name: 'asc' },
       select: {
         id: true,
         code: true,
         name: true,
         requiredVars: true,
+        fieldsSchema: true,
+        primaryLanguage: true,
+        isCustom: true,
         version: true,
+        active: true,
+        updatedAt: true,
       },
     });
+  }
+
+  async getTemplate(code: string) {
+    const template = await this.prisma.letterTemplate.findUnique({
+      where: { code },
+    });
+    if (!template) {
+      throw new NotFoundException(`Letter template ${code} not found`);
+    }
+    return template;
+  }
+
+  async createTemplate(dto: CreateLetterTemplateDto, actingUserId: string) {
+    const existing = await this.prisma.letterTemplate.findUnique({
+      where: { code: dto.code },
+    });
+    if (existing) {
+      throw new BadRequestException(`Template code ${dto.code} already exists`);
+    }
+
+    const template = await this.prisma.letterTemplate.create({
+      data: {
+        code: dto.code,
+        name: dto.name,
+        bodyHtml: dto.bodyHtml,
+        bodyHtmlEn: dto.bodyHtmlEn,
+        subjectUr: dto.subjectUr,
+        subjectEn: dto.subjectEn,
+        enTitle: dto.enTitle,
+        enPrescribed: dto.enPrescribed,
+        enSubtitle: dto.enSubtitle,
+        letterCode: dto.letterCode,
+        primaryLanguage: dto.primaryLanguage ?? 'ur',
+        fieldsSchema: (dto.fieldsSchema ?? []) as unknown as Prisma.InputJsonValue,
+        requiredVars: dto.requiredVars ?? [],
+        isCustom: true,
+        version: 1,
+        active: true,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actingUserId,
+        action: 'LETTER_TEMPLATE_CREATED',
+        entity: 'LetterTemplate',
+        entityId: template.id,
+        changes: { code: template.code, name: template.name },
+      },
+    });
+
+    return template;
+  }
+
+  async updateTemplate(
+    code: string,
+    dto: UpdateLetterTemplateDto,
+    actingUserId: string,
+  ) {
+    const existing = await this.getTemplate(code);
+
+    if (dto.active === false && !existing.isCustom) {
+      throw new BadRequestException(
+        'Built-in letter types cannot be deactivated',
+      );
+    }
+
+    const template = await this.prisma.letterTemplate.update({
+      where: { code },
+      data: {
+        name: dto.name,
+        bodyHtml: dto.bodyHtml,
+        bodyHtmlEn: dto.bodyHtmlEn,
+        subjectUr: dto.subjectUr,
+        subjectEn: dto.subjectEn,
+        enTitle: dto.enTitle,
+        enPrescribed: dto.enPrescribed,
+        enSubtitle: dto.enSubtitle,
+        letterCode: dto.letterCode,
+        primaryLanguage: dto.primaryLanguage,
+        fieldsSchema:
+          dto.fieldsSchema !== undefined
+            ? (dto.fieldsSchema as unknown as Prisma.InputJsonValue)
+            : undefined,
+        requiredVars: dto.requiredVars,
+        active: dto.active,
+        version: { increment: 1 },
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actingUserId,
+        action: 'LETTER_TEMPLATE_UPDATED',
+        entity: 'LetterTemplate',
+        entityId: template.id,
+        changes: { code: template.code, version: template.version },
+      },
+    });
+
+    return template;
+  }
+
+  async deleteTemplate(code: string, actingUserId: string) {
+    const existing = await this.getTemplate(code);
+    if (!existing.isCustom) {
+      throw new BadRequestException(
+        'Built-in letter types cannot be deleted',
+      );
+    }
+
+    const template = await this.prisma.letterTemplate.update({
+      where: { code },
+      data: { active: false },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actingUserId,
+        action: 'LETTER_TEMPLATE_DELETED',
+        entity: 'LetterTemplate',
+        entityId: template.id,
+        changes: { code: template.code },
+      },
+    });
+
+    return template;
+  }
+
+  previewTemplateDraft(dto: PreviewLetterTemplateDto) {
+    const sampleVariables: Record<string, unknown> = {
+      letterNo: 'PREVIEW/YCDO/0000',
+      letterRef: 'HRMS/GEN/000',
+      issueDate: formatIssueDateUrdu(),
+      subject: 'نمونہ عنوان / Sample Subject',
+      enTitle: 'Notification',
+      enPrescribed: 'Prescribed "Sample Letter"',
+      enSubtitle: 'This is a sample preview of the letter format.',
+      employeeName: 'محمد نمونہ ملازم',
+      designation: 'نمونہ عہدہ',
+      branch: 'نمونہ برانچ',
+      employeeCode: 'SAMPLE-001',
+      ...dto.variables,
+    };
+    return {
+      previewHtml: renderLetterHtml(dto.bodyHtml, sampleVariables),
+    };
   }
 
   async preview(
@@ -126,6 +283,7 @@ export class LettersService {
       dto.letterType,
       dto.extraFields ?? {},
       'PREVIEW/YCDO/0000',
+      dto.templateCode,
     );
     return { previewHtml: built.htmlContent, variables: built.variables };
   }
@@ -194,6 +352,7 @@ export class LettersService {
         data: {
           employeeId: dto.employeeId,
           letterType: LetterType.APPOINTMENT,
+          templateCode: SELECTION_TEMPLATE_CODE,
           content: (dto.extraFields ?? {}) as Prisma.InputJsonValue,
           fileUrl,
           letterNo,
@@ -252,6 +411,7 @@ export class LettersService {
       dto.letterType,
       dto.extraFields ?? {},
       'PENDING',
+      dto.templateCode,
     );
 
     const letterNo = await this.nextLetterNo();
@@ -260,6 +420,7 @@ export class LettersService {
       dto.letterType,
       dto.extraFields ?? {},
       letterNo,
+      dto.templateCode,
     );
 
     const pdfBuffer = await generatePdf(built.htmlContent);
@@ -275,6 +436,7 @@ export class LettersService {
         data: {
           employeeId: dto.employeeId,
           letterType: dto.letterType,
+          templateCode: built.templateCode,
           content: (dto.extraFields ?? {}) as Prisma.InputJsonValue,
           fileUrl,
           letterNo,
@@ -302,11 +464,16 @@ export class LettersService {
         });
       }
 
+      const letterLabel =
+        dto.letterType === LetterType.CUSTOM
+          ? built.templateName
+          : dto.letterType.replace(/_/g, ' ');
+
       await tx.notification.create({
         data: {
           employeeId: dto.employeeId,
           type: 'LETTER_ISSUED',
-          message: `A ${dto.letterType.replace(/_/g, ' ')} letter (${letterNo}) has been issued to you.`,
+          message: `A ${letterLabel} letter (${letterNo}) has been issued to you.`,
         },
       });
 
@@ -332,6 +499,7 @@ export class LettersService {
     letterType: LetterType,
     extraFields: Record<string, unknown>,
     letterNo: string,
+    templateCodeOverride?: string,
   ) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
@@ -347,7 +515,16 @@ export class LettersService {
       );
     }
 
-    const code = templateCodeForLetterType(letterType);
+    if (letterType === LetterType.CUSTOM && !templateCodeOverride) {
+      throw new BadRequestException(
+        'templateCode is required for CUSTOM letters',
+      );
+    }
+
+    const code =
+      letterType === LetterType.CUSTOM
+        ? templateCodeOverride!
+        : templateCodeForLetterType(letterType);
     const template = await this.prisma.letterTemplate.findFirst({
       where: { code, active: true },
     });
@@ -386,31 +563,32 @@ export class LettersService {
         ? String(newSalary - previousSalary)
         : (normalized.enhancement ?? ''));
 
-    const enHeader =
-      letterType !== LetterType.APPOINTMENT
+    const enHeaderFallback =
+      letterType !== LetterType.APPOINTMENT && letterType !== LetterType.CUSTOM
         ? LETTER_TYPE_EN_HEADER[letterType]
         : null;
 
-    // TRANSFER and SALARY_INCREMENT render as plain-English notification
-    // letters (not the Urdu shell) — identity fields must stay English there.
-    const isEnglishLetterType =
-      letterType === LetterType.TRANSFER ||
-      letterType === LetterType.SALARY_INCREMENT;
+    // Templates authored/edited via the Letter Templates admin UI carry their
+    // own header/subject/short-code/language on the row; built-in types that
+    // haven't been touched there fall back to the original hardcoded maps.
+    const isEnglishLetterType = template.primaryLanguage === 'en';
 
     const variables: Record<string, unknown> = {
       letterNo,
-      letterRef: buildLetterRef(letterType, letterNo),
+      letterRef: buildLetterRef(letterType, letterNo, template.letterCode),
       issueDate:
         String(normalized.issueDate ?? '').trim() || formatIssueDateUrdu(),
       senderTitle:
         String(normalized.senderTitle ?? '').trim() || DEFAULT_SENDER_TITLE,
       subject:
         String(normalized.subject ?? '').trim() ||
-        defaultSubjectFor(letterType),
+        template.subjectUr ||
+        defaultSubjectFor(letterType) ||
+        template.name,
       subjectLine: String(normalized.subjectLine ?? '').trim(),
-      enTitle: enHeader?.title ?? 'Notification',
-      enPrescribed: enHeader?.prescribed ?? '',
-      enSubtitle: enHeader?.subtitle ?? '',
+      enTitle: template.enTitle ?? enHeaderFallback?.title ?? 'Notification',
+      enPrescribed: template.enPrescribed ?? enHeaderFallback?.prescribed ?? '',
+      enSubtitle: template.enSubtitle ?? enHeaderFallback?.subtitle ?? '',
       employeeCode: employee.employeeCode,
       cnic: employee.cnic ?? '',
       joiningDate: employee.joiningDate
@@ -447,12 +625,18 @@ export class LettersService {
       timing: String(normalized.timing ?? '').trim() || 'ڈیوٹی روسترکے مطابق',
     };
 
-    const htmlContent = renderLetterHtml(template.bodyHtml, variables);
+    const renderBody =
+      template.primaryLanguage === 'en' && template.bodyHtmlEn
+        ? template.bodyHtmlEn
+        : template.bodyHtml;
+    const htmlContent = renderLetterHtml(renderBody, variables);
 
     return {
       htmlContent,
       variables,
       templateVersion: template.version,
+      templateCode: template.code,
+      templateName: template.name,
       phone: employee.phone,
     };
   }
@@ -477,11 +661,6 @@ export class LettersService {
         ]
           .filter(Boolean)
           .join(' — ');
-      }
-    }
-    if (letterType === LetterType.EXPLANATION) {
-      if (!out.issueDescription && out.additionalNotes) {
-        out.issueDescription = out.additionalNotes;
       }
     }
     if (letterType === LetterType.SALARY_INCREMENT) {

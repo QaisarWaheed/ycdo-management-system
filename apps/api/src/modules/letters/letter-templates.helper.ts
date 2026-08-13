@@ -43,6 +43,7 @@ export const LETTER_TYPE_SUBJECT: Record<LetterType, string> = {
   REJOINING: 'واپسیِ ملازمت',
   SALARY_INCREMENT: 'تنخواہ / الاؤنس اضافہ',
   EXPERIENCE: 'تجربہ سرٹیفکیٹ',
+  CUSTOM: '',
 };
 
 /** English top heading + subheading only (per official PDF shell). */
@@ -140,6 +141,13 @@ export const LETTER_TYPE_EN_HEADER: Record<
     subtitle:
       'It is notified that the following notified format is approved for Experience Certificate.',
   },
+  // Custom (IT-authored) templates always carry their own enTitle/enPrescribed/
+  // enSubtitle on the LetterTemplate row; this entry is just a safe fallback.
+  CUSTOM: {
+    title: 'Notification',
+    prescribed: '',
+    subtitle: '',
+  },
 };
 
 export const LETTER_TEMPLATE_META: Record<
@@ -152,7 +160,7 @@ export const LETTER_TEMPLATE_META: Record<
   },
   ADVICE: {
     name: 'Advice Letter (Urdu)',
-    requiredVars: ['lateTime'],
+    requiredVars: ['violations'],
   },
   DISCIPLINARY: {
     name: 'Disciplinary / Displeasure Letter (Urdu)',
@@ -160,7 +168,7 @@ export const LETTER_TEMPLATE_META: Record<
   },
   EXPLANATION: {
     name: 'Explanation Request (Urdu)',
-    requiredVars: ['issueDescription'],
+    requiredVars: ['violations'],
   },
   SHOW_CAUSE: {
     name: 'Show Cause Notice (Urdu)',
@@ -175,12 +183,12 @@ export const LETTER_TEMPLATE_META: Record<
     requiredVars: ['inquiryReason'],
   },
   APPRECIATION: {
-    name: 'Appreciation Letter (Urdu)',
-    requiredVars: ['reviewMonth', 'rewardAmount'],
+    name: 'Letter of Appreciation',
+    requiredVars: ['bonusAmount'],
   },
   TRANSFER: {
     name: 'Transfer / Posting Notification',
-    requiredVars: ['toPosting', 'timing', 'targetDesignation', 'effectiveDate'],
+    requiredVars: ['toPosting', 'targetDesignation', 'effectiveDate'],
   },
   SUSPENSION: {
     name: 'Suspension Notice (Urdu)',
@@ -206,6 +214,12 @@ export const LETTER_TEMPLATE_META: Record<
     name: 'Experience Certificate (Urdu)',
     requiredVars: ['lastWorkingDate'],
   },
+  // Custom templates carry their own name/requiredVars on the LetterTemplate
+  // row; this entry is just a safe fallback and is not otherwise read.
+  CUSTOM: {
+    name: 'Custom Letter',
+    requiredVars: [],
+  },
 };
 
 const LETTER_TYPE_SHORT: Record<LetterType, string> = {
@@ -225,6 +239,7 @@ const LETTER_TYPE_SHORT: Record<LetterType, string> = {
   REJOINING: 'RJN',
   SALARY_INCREMENT: 'INC',
   EXPERIENCE: 'EXL',
+  CUSTOM: 'GEN',
 };
 
 export function getLetterTypeShort(letterType: LetterType): string {
@@ -243,8 +258,12 @@ export function defaultSubjectFor(letterType: LetterType): string {
   return LETTER_TYPE_SUBJECT[letterType];
 }
 
-export function buildLetterRef(letterType: LetterType, letterNo: string): string {
-  const short = getLetterTypeShort(letterType);
+export function buildLetterRef(
+  letterType: LetterType,
+  letterNo: string,
+  shortOverride?: string | null,
+): string {
+  const short = shortOverride || getLetterTypeShort(letterType);
   const first = letterNo.split('/')[0]?.replace(/\D/g, '') || '0';
   const padded = first.slice(-3).padStart(3, '0');
   return `HRMS/${short}/${padded}`;

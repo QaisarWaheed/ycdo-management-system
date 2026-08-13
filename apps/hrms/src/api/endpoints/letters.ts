@@ -1,5 +1,5 @@
 import api from '../axios'
-import type { Letter, LetterWhatsAppShare } from '@/types'
+import type { Letter, LetterTemplate, LetterWhatsAppShare } from '@/types'
 
 interface GenerateLetterResponse {
   letter: Letter
@@ -12,10 +12,7 @@ export const lettersApi = {
   getPending: () => api.get<unknown, Letter[]>('/letters/pending'),
   getOne: (id: string) => api.get<unknown, Letter>(`/letters/${id}`),
   getTemplates: () =>
-    api.get<
-      unknown,
-      { id: string; code: string; name: string; requiredVars: string[]; version: number }[]
-    >('/letters/templates'),
+    api.get<unknown, LetterTemplate[]>('/letters/templates'),
   preview: (data: Record<string, unknown>) =>
     api.post<unknown, { previewHtml: string; variables: Record<string, unknown> }>(
       '/letters/preview',

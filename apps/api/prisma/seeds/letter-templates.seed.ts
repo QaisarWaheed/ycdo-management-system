@@ -118,33 +118,26 @@ function readTemplate(relativePath: string): string {
 
 export async function seedLetterTemplates(prisma: PrismaClient) {
   for (const tpl of TEMPLATES) {
-    const bodyHtml = readTemplate(tpl.file);
     const existing = await prisma.letterTemplate.findUnique({
       where: { code: tpl.code },
     });
 
-    if (existing) {
-      await prisma.letterTemplate.update({
-        where: { code: tpl.code },
-        data: {
-          name: tpl.name,
-          bodyHtml,
-          requiredVars: tpl.requiredVars,
-          active: true,
-          version: existing.version + 1,
-        },
-      });
-    } else {
-      await prisma.letterTemplate.create({
-        data: {
-          code: tpl.code,
-          name: tpl.name,
-          bodyHtml,
-          requiredVars: tpl.requiredVars,
-          version: 1,
-          active: true,
-        },
-      });
-    }
+    // Once a template row exists, the database is the live source of truth —
+    // IT staff can edit its wording via the Letter Templates admin UI, and
+    // re-running the seed must never clobber those edits with the original
+    // .hbs file content.
+    if (existing) continue;
+
+    const bodyHtml = readTemplate(tpl.file);
+    await prisma.letterTemplate.create({
+      data: {
+        code: tpl.code,
+        name: tpl.name,
+        bodyHtml,
+        requiredVars: tpl.requiredVars,
+        version: 1,
+        active: true,
+      },
+    });
   }
 }

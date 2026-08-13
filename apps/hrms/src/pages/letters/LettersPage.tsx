@@ -332,6 +332,7 @@ const LETTER_ICONS: Record<LetterType, React.ElementType> = {
   REJOINING: UserPlus,
   SALARY_INCREMENT: TrendingUp,
   EXPERIENCE: Mail,
+  CUSTOM: FileText,
 }
 
 function GenerateLetterWizard({

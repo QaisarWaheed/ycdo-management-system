@@ -3,12 +3,14 @@ import type { LetterType } from '@/types'
 export interface LetterFieldDef {
   key: string
   label: string
-  type?: 'textarea' | 'number' | 'date' | 'select'
+  type?: 'text' | 'textarea' | 'number' | 'date' | 'select'
   hint?: string
   /** Place this field inside the on-template canvas (Urdu RTL). */
   onTemplate?: boolean
   /** Options for type: 'select'. */
   options?: { value: string; label: string }[]
+  /** Custom (IT-authored) templates mark required fields explicitly. */
+  required?: boolean
 }
 
 /** Shared identity fields typed in Urdu on the letter itself. */
@@ -61,10 +63,11 @@ export const LETTER_FIELD_CONFIG: Partial<
   ADVICE: [
     ...URDU_IDENTITY_FIELDS,
     {
-      key: 'lateTime',
-      label: 'ڈیوٹی پر آنے کا وقت (مثلاً 07:15)',
+      key: 'violations',
+      label: 'خلاف ورزیاں (ہر سطر ایک خلاف ورزی)',
+      type: 'textarea',
       onTemplate: true,
-      hint: 'جس وقت کے بعد ملازم ڈیوٹی پر آیا',
+      hint: 'اردو میں لکھیں — ہر لائن الگ خلاف ورزی بنے گی',
     },
   ],
   DISCIPLINARY: [
@@ -80,12 +83,24 @@ export const LETTER_FIELD_CONFIG: Partial<
   ],
   EXPLANATION: [
     ...URDU_IDENTITY_FIELDS,
+    { key: 'adviceLetterNo', label: 'سابقہ Letter of Advice نمبر (اختیاری)' },
     {
-      key: 'issueDescription',
-      label: 'مسئلہ / تفصیل',
+      key: 'adviceLetterDate',
+      label: 'Letter of Advice تاریخ (اختیاری)',
+      type: 'date',
+    },
+    { key: 'warningLetterNo', label: 'سابقہ Letter of Warning نمبر (اختیاری)' },
+    {
+      key: 'warningLetterDate',
+      label: 'Letter of Warning تاریخ (اختیاری)',
+      type: 'date',
+    },
+    {
+      key: 'violations',
+      label: 'امور جن پر وضاحت درکار ہے (ہر سطر ایک نکتہ)',
       type: 'textarea',
       onTemplate: true,
-      hint: 'اردو میں لکھیں',
+      hint: 'اردو میں لکھیں — ہر لائن الگ نکتہ بنے گا',
     },
     {
       key: 'responseDeadline',
@@ -176,19 +191,29 @@ export const LETTER_FIELD_CONFIG: Partial<
     },
   ],
   APPRECIATION: [
-    ...URDU_IDENTITY_FIELDS,
+    { key: 'employeeName', label: 'Employee Name' },
+    { key: 'designation', label: 'Designation' },
+    { key: 'branch', label: 'Branch/Department' },
+    { key: 'reviewReportNo', label: 'Performance Review Report No. (optional)' },
     {
-      key: 'reviewMonth',
-      label: 'ماہ (جس کی پراگریس کا جائزہ لیا گیا)',
-      onTemplate: true,
-      hint: 'مثلاً: مارچ',
+      key: 'reviewReportDate',
+      label: 'Performance Review Report Date (optional)',
+      type: 'date',
     },
-    { key: 'rewardAmount', label: 'انعام کی رقم', onTemplate: true },
+    {
+      key: 'recommendationNo',
+      label: 'Branch/Department Recommendation No. (optional)',
+    },
+    {
+      key: 'recommendationDate',
+      label: 'Recommendation Date (optional)',
+      type: 'date',
+    },
+    { key: 'bonusAmount', label: 'Performance Bonus (Rs.)' },
   ],
   TRANSFER: [
     { key: 'fromPosting', label: 'From (optional, defaults to current branch)' },
     { key: 'toPosting', label: 'To' },
-    { key: 'timing', label: 'Timing (e.g. 09AM to 09PM)' },
     { key: 'targetDesignation', label: 'Designation' },
     { key: 'effectiveDate', label: 'Effective Date', type: 'date' },
   ],
@@ -299,13 +324,22 @@ const ENGLISH_LETTER_TYPES = new Set<LetterType>([
   'APPOINTMENT',
   'TRANSFER',
   'SALARY_INCREMENT',
+  'APPRECIATION',
+  // Custom (IT-authored) templates always use the plain field-list + live
+  // preview flow below, regardless of which language they're written in —
+  // the Urdu on-canvas layout is specific to the 15 built-in shapes.
+  'CUSTOM',
 ])
 
 export function isUrduLetterType(letterType: LetterType): boolean {
   return !ENGLISH_LETTER_TYPES.has(letterType)
 }
 
-export function getLetterExtraFields(letterType: LetterType): LetterFieldDef[] {
+export function getLetterExtraFields(
+  letterType: LetterType,
+  customFields?: LetterFieldDef[],
+): LetterFieldDef[] {
+  if (customFields) return customFields
   return (
     LETTER_FIELD_CONFIG[letterType] ?? [
       { key: 'additionalNotes', label: 'Additional Notes', type: 'textarea' },
@@ -315,7 +349,10 @@ export function getLetterExtraFields(letterType: LetterType): LetterFieldDef[] {
 
 export function getLetterRequiredFields(
   letterType: LetterType,
+  customFields?: LetterFieldDef[],
 ): LetterFieldDef[] {
+  if (customFields) return customFields.filter((f) => f.required)
+
   const optionalKeys = new Set([
     'senderTitle',
     'finePreset',
@@ -340,6 +377,14 @@ export function getLetterRequiredFields(
     'designation',
     'branch',
     'department',
+    'adviceLetterNo',
+    'adviceLetterDate',
+    'warningLetterNo',
+    'warningLetterDate',
+    'reviewReportNo',
+    'reviewReportDate',
+    'recommendationNo',
+    'recommendationDate',
   ])
 
   if (letterType === 'WARNING') {

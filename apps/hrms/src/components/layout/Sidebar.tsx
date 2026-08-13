@@ -51,6 +51,7 @@ const itTeamNavItems = [
   { to: '/admin/master-data', label: 'Master Data', icon: Database },
   { to: '/admin/roles', label: 'Roles & Access', icon: ShieldCheck },
   { to: '/admin/login-access', label: 'Login Access', icon: Shield },
+  { to: '/admin/letter-templates', label: 'Letter Templates', icon: FileText },
 ]
 
 const activityTrailNavItem = {

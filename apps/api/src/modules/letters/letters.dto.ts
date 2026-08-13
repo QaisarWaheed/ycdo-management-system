@@ -1,5 +1,12 @@
 import { LetterType } from '@prisma/client';
-import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsUUID } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 
 export class GenerateLetterDto {
   @IsUUID()
@@ -9,6 +16,11 @@ export class GenerateLetterDto {
   @IsEnum(LetterType)
   @IsNotEmpty()
   letterType: LetterType;
+
+  /** Required when letterType is CUSTOM — identifies which LetterTemplate to use. */
+  @IsOptional()
+  @IsString()
+  templateCode?: string;
 
   @IsOptional()
   @IsObject()
@@ -23,6 +35,11 @@ export class PreviewLetterDto {
   @IsEnum(LetterType)
   @IsNotEmpty()
   letterType: LetterType;
+
+  /** Required when letterType is CUSTOM — identifies which LetterTemplate to use. */
+  @IsOptional()
+  @IsString()
+  templateCode?: string;
 
   @IsOptional()
   @IsObject()

@@ -22,6 +22,8 @@ import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
 import { ProfilePage } from '@/pages/settings/ProfilePage'
 import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
 import { MasterDataPage } from '@/pages/admin/MasterDataPage'
+import { LetterTemplatesPage } from '@/pages/admin/LetterTemplatesPage'
+import { LetterTemplateEditorPage } from '@/pages/admin/LetterTemplateEditorPage'
 import { RolesManagementPage } from '@/pages/admin/RolesManagementPage'
 import { UserPasswordsPage } from '@/pages/admin/UserPasswordsPage'
 import { SystemLoginsPage } from '@/pages/admin/SystemLoginsPage'
@@ -234,6 +236,30 @@ export default function App() {
         element={
           <ProtectedRoute>
             <MasterDataPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/letter-templates"
+        element={
+          <ProtectedRoute>
+            <LetterTemplatesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/letter-templates/new"
+        element={
+          <ProtectedRoute>
+            <LetterTemplateEditorPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/letter-templates/:code/edit"
+        element={
+          <ProtectedRoute>
+            <LetterTemplateEditorPage />
           </ProtectedRoute>
         }
       />
