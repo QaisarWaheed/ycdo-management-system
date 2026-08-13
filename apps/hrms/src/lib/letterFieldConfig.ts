@@ -35,7 +35,7 @@ const URDU_IDENTITY_FIELDS: LetterFieldDef[] = [
   },
   {
     key: 'senderTitle',
-    label: 'منجانب',
+    label: 'مخاطب',
     onTemplate: true,
     hint: 'مثلاً: چیئرمین ایڈمن ڈیپارٹمنٹ',
   },

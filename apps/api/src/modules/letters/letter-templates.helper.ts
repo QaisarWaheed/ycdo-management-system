@@ -23,7 +23,7 @@ export interface LetterRenderVariables {
 /** Matches official warning PDF signatory. */
 export const DEFAULT_SENDER_TITLE = 'چیئرمین ایڈمن ڈیپارٹمنٹ';
 
-export const DEFAULT_ORG_LINE = 'YCDO ملتان، پاکستان';
+export const DEFAULT_ORG_LINE = 'YCDO ملتان پاکستان';
 
 /** Urdu subjects shown on the letter (centered / عنوان). */
 export const LETTER_TYPE_SUBJECT: Record<LetterType, string> = {
@@ -284,7 +284,7 @@ const YCDO_LETTER_HEADER = `
 </div>
 
 <div class="meta-block">
-  <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
+  <div class="row"><span class="label">مخاطب:</span> {{senderTitle}}</div>
   <div class="row">{{orgLine}}</div>
   <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
   {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
