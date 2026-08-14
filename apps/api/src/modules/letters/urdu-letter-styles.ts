@@ -52,7 +52,7 @@ body {
 }
 
 .letterhead-org {
-  text-align: center;
+  text-align: right;
   font-family: 'Times New Roman', Times, Georgia, serif;
 }
 
