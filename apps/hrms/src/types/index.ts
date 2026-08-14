@@ -964,6 +964,7 @@ export type LetterType =
   | 'REJOINING'
   | 'SALARY_INCREMENT'
   | 'EXPERIENCE'
+  | 'EXPLANATION_FINE'
   | 'CUSTOM'
 
 export type DocumentType =
@@ -979,6 +980,7 @@ export const LETTER_TYPES: { value: LetterType; label: string }[] = [
   { value: 'ADVICE', label: 'Advice' },
   { value: 'DISCIPLINARY', label: 'Disciplinary' },
   { value: 'EXPLANATION', label: 'Explanation' },
+  { value: 'EXPLANATION_FINE', label: 'Explanation & Fine' },
   { value: 'SHOW_CAUSE', label: 'Show Cause' },
   { value: 'FINE', label: 'Fine' },
   { value: 'INQUIRY', label: 'Inquiry' },

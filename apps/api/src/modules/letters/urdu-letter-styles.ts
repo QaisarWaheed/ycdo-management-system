@@ -57,7 +57,7 @@ body {
 }
 
 .letterhead-org .office { font-size: 10.5pt; }
-.letterhead-org .org-name { font-size: 13pt; font-weight: 700; }
+.letterhead-org .org-name { font-size: 13pt; font-weight: 700; line-height: 1.25; }
 .letterhead-org .loc { font-size: 10.5pt; }
 
 .letterhead-logo {

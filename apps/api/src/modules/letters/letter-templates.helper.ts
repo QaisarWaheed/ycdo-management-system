@@ -43,6 +43,7 @@ export const LETTER_TYPE_SUBJECT: Record<LetterType, string> = {
   REJOINING: 'واپسیِ ملازمت',
   SALARY_INCREMENT: 'تنخواہ / الاؤنس اضافہ',
   EXPERIENCE: 'تجربہ سرٹیفکیٹ',
+  EXPLANATION_FINE: 'تحریری وضاحت طلب و جرمانہ نوٹس',
   CUSTOM: '',
 };
 
@@ -70,6 +71,11 @@ export const LETTER_TYPE_EN_HEADER: Record<
     subtitle: '',
   },
   EXPERIENCE: { title: 'EXPERIENCE CERTIFICATE', prescribed: '', subtitle: '' },
+  EXPLANATION_FINE: {
+    title: 'LETTER OF EXPLANATION & FINE',
+    prescribed: '',
+    subtitle: '',
+  },
   // Custom (IT-authored) templates always carry their own enTitle on the
   // LetterTemplate row; this entry is just a safe fallback.
   CUSTOM: { title: 'NOTIFICATION', prescribed: '', subtitle: '' },
@@ -139,6 +145,10 @@ export const LETTER_TEMPLATE_META: Record<
     name: 'Experience Certificate (Urdu)',
     requiredVars: ['lastWorkingDate'],
   },
+  EXPLANATION_FINE: {
+    name: 'Explanation & Fine Letter (Urdu)',
+    requiredVars: ['violations', 'fineAmount', 'deductionMonth'],
+  },
   // Custom templates carry their own name/requiredVars on the LetterTemplate
   // row; this entry is just a safe fallback and is not otherwise read.
   CUSTOM: {
@@ -164,6 +174,7 @@ const LETTER_TYPE_SHORT: Record<LetterType, string> = {
   REJOINING: 'RJN',
   SALARY_INCREMENT: 'INC',
   EXPERIENCE: 'EXL',
+  EXPLANATION_FINE: 'EXF',
   CUSTOM: 'GEN',
 };
 
@@ -268,7 +279,7 @@ const YCDO_LETTER_HEADER = `
     <div class="letterhead-right">
       <div class="letterhead-org">
         <div class="office">OFFICE OF THE</div>
-        <div class="org-name">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
+        <div class="org-name">YOUTH COMMUNITY<br/>DEVELOPMENT ORGANIZATION</div>
         <div class="loc">MULTAN, PAKISTAN</div>
       </div>
       <div class="letter-nos">

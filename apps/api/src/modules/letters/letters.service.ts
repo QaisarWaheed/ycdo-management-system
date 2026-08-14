@@ -68,6 +68,7 @@ const ACKNOWLEDGEMENT_TYPES: LetterType[] = [
   LetterType.FINE,
   LetterType.DISCIPLINARY,
   LetterType.EXPLANATION,
+  LetterType.EXPLANATION_FINE,
   LetterType.APPOINTMENT,
 ];
 

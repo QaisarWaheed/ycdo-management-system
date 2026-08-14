@@ -123,55 +123,18 @@ const TEMPLATES: TemplateSeed[] = [
     requiredVars: ['lastWorkingDate'],
   },
   {
+    // First-class letter type (LetterType.EXPLANATION_FINE) selectable from
+    // the Generate Letter wizard's type grid — not an IT-authored "Custom"
+    // template, so isCustom/fieldsSchema are intentionally omitted; its field
+    // list lives in apps/hrms/src/lib/letterFieldConfig.ts like every other
+    // built-in Urdu type.
     code: 'EXPLANATION_FINE',
     name: 'Explanation & Fine Letter (Urdu)',
     file: 'letters/EXPLANATION_FINE.hbs',
     requiredVars: ['violations', 'fineAmount', 'deductionMonth'],
-    isCustom: true,
     subjectUr: 'تحریری وضاحت طلب و جرمانہ نوٹس',
     enTitle: 'LETTER OF EXPLANATION & FINE',
     letterCode: 'EXF',
-    fieldsSchema: [
-      { key: 'employeeName', label: 'نام (بجانب)', required: true },
-      { key: 'designation', label: 'عہدہ' },
-      { key: 'branch', label: 'برانچ / مقام' },
-      { key: 'senderTitle', label: 'مخاطب' },
-      { key: 'adviceLetterNo', label: 'سابقہ Letter of Advice نمبر (اختیاری)' },
-      {
-        key: 'adviceLetterDate',
-        label: 'Letter of Advice تاریخ (اختیاری)',
-        type: 'date',
-      },
-      { key: 'warningLetterNo', label: 'سابقہ Letter of Warning نمبر (اختیاری)' },
-      {
-        key: 'warningLetterDate',
-        label: 'Letter of Warning تاریخ (اختیاری)',
-        type: 'date',
-      },
-      {
-        key: 'violations',
-        label: 'امور جن پر وضاحت درکار ہے (ہر سطر ایک نکتہ)',
-        type: 'textarea',
-        required: true,
-        hint: 'اردو میں لکھیں — ہر لائن الگ نکتہ بنے گا',
-      },
-      {
-        key: 'responseDeadline',
-        label: 'آخری تاریخِ جواب',
-        type: 'date',
-      },
-      {
-        key: 'fineAmount',
-        label: 'رقم / کٹوتی (مثلاً 500/- یا دو یوم تنخواہ)',
-        required: true,
-      },
-      {
-        key: 'deductionMonth',
-        label: 'ماہِ کٹوتی',
-        required: true,
-        hint: 'مثلاً: اگست 2026',
-      },
-    ],
   },
   {
     code: 'WARNING_FINE',

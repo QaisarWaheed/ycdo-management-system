@@ -19,12 +19,19 @@
  *    it's a custom-type row seeded with an explicit enTitle, which
  *    overrides the code-level fallback, so its enTitle needs a one-time fix
  *    here too.
+ *  - EXPLANATION_FINE was promoted from an IT-authored "Custom" template to
+ *    a first-class LetterType (selectable from the Generate Letter wizard's
+ *    type grid, like every other built-in type). Its row was originally
+ *    seeded with isCustom=true/fieldsSchema set, which the regular seed
+ *    will never touch on an existing row — flip it here so it no longer
+ *    shows up twice (once as a built-in type, once as a "Custom" template)
+ *    in the per-employee Generate Letter dialog.
  *
  * Usage (from apps/api):
  *   npx ts-node -r tsconfig-paths/register scripts/refresh-letter-templates.ts
  *   npx ts-node -r tsconfig-paths/register scripts/refresh-letter-templates.ts --apply
  */
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -101,6 +108,31 @@ async function main() {
       await prisma.letterTemplate.update({
         where: { code },
         data: { enTitle: newEnTitle },
+      });
+    }
+  }
+
+  const NOT_CUSTOM_FIXES = ['EXPLANATION_FINE'];
+
+  for (const code of NOT_CUSTOM_FIXES) {
+    const existing = await prisma.letterTemplate.findUnique({ where: { code } });
+
+    if (!existing) {
+      console.log(`SKIP ${code}: no existing row`);
+      continue;
+    }
+
+    if (!existing.isCustom) {
+      console.log(`OK   ${code}: isCustom already false`);
+      continue;
+    }
+
+    console.log(`UPDATE ${code}: isCustom true -> false, clearing fieldsSchema`);
+
+    if (apply) {
+      await prisma.letterTemplate.update({
+        where: { code },
+        data: { isCustom: false, fieldsSchema: Prisma.DbNull },
       });
     }
   }

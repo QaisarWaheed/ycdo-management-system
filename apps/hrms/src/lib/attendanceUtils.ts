@@ -32,6 +32,24 @@ export function combineCheckOutDateTime(
   return combineDateAndTime(nextDate, checkOut24)
 }
 
+/**
+ * Signed minutes between a punch and duty start, resolved to the nearest
+ * occurrence of that duty time (positive = after duty start, negative =
+ * before it). Without this wrap, a punch a few minutes before an overnight
+ * duty start (e.g. 19:20 against a 20:00 start) reads as ~23.5 hours *since*
+ * the previous day's start and produces absurd late totals (1000+ minutes)
+ * instead of being recognised as an early arrival.
+ */
+function signedMinutesFromDutyStart(
+  minutesOfDay: number,
+  dutyStartMin: number,
+): number {
+  let diff = minutesOfDay - dutyStartMin
+  if (diff > 720) diff -= 1440
+  if (diff <= -720) diff += 1440
+  return diff
+}
+
 export function calcLateMinutes(
   checkInTime: string,
   dutyStart: string,
@@ -40,18 +58,8 @@ export function calcLateMinutes(
   if (!checkInTime || !dutyStart) return 0
   const checkIn = parseTimeToMinutes(checkInTime)
   const dutyTotal = parseTimeToMinutes(dutyStart)
-  const overnightStart = 18 * 60
 
-  let minutesSince: number
-  if (dutyTotal >= overnightStart) {
-    if (checkIn >= dutyTotal) {
-      minutesSince = checkIn - dutyTotal
-    } else {
-      minutesSince = 1440 - dutyTotal + checkIn
-    }
-  } else {
-    minutesSince = checkIn - dutyTotal
-  }
+  const minutesSince = signedMinutesFromDutyStart(checkIn, dutyTotal)
 
   const lateMinutes = minutesSince - graceMinutes
   return lateMinutes > 0 ? lateMinutes : 0
@@ -155,8 +163,8 @@ export function getLogLateMinutes(log: {
     shift?: { startTime?: string } | null
   } | null
 }): number {
-  if ((log.lateMinutes ?? 0) > 0) {
-    return log.lateMinutes ?? 0
+  if (log.lateMinutes != null) {
+    return log.lateMinutes
   }
 
   if (!log.checkIn || !log.employee) {
@@ -181,26 +189,12 @@ export function statusFromLateMinutes(
 }
 
 const PK_OFFSET_MS = 5 * 60 * 60 * 1000
-const OVERNIGHT_SHIFT_START = 18 * 60
 
 export const ATTENDANCE_GRACE_MINUTES = 15
 
 function toPakistanMinutesOfDay(date: Date): number {
   const pkDate = new Date(date.getTime() + PK_OFFSET_MS)
   return pkDate.getUTCHours() * 60 + pkDate.getUTCMinutes()
-}
-
-function minutesSinceShiftStart(
-  currentMinutes: number,
-  shiftStartMinutes: number,
-): number {
-  if (shiftStartMinutes >= OVERNIGHT_SHIFT_START) {
-    if (currentMinutes >= shiftStartMinutes) {
-      return currentMinutes - shiftStartMinutes
-    }
-    return 1440 - shiftStartMinutes + currentMinutes
-  }
-  return currentMinutes - shiftStartMinutes
 }
 
 export function isWithinGrace(
@@ -210,7 +204,7 @@ export function isWithinGrace(
   if (!shiftStart) return false
   const shiftStartMins = parseTimeToMinutes(shiftStart)
   const nowMins = toPakistanMinutesOfDay(new Date())
-  const minutesSince = minutesSinceShiftStart(nowMins, shiftStartMins)
+  const minutesSince = signedMinutesFromDutyStart(nowMins, shiftStartMins)
   return minutesSince >= 0 && minutesSince <= graceMins
 }
 
@@ -221,7 +215,7 @@ export function graceMinutesRemaining(
   if (!shiftStart) return 0
   const shiftStartMins = parseTimeToMinutes(shiftStart)
   const nowMins = toPakistanMinutesOfDay(new Date())
-  const minutesSince = minutesSinceShiftStart(nowMins, shiftStartMins)
+  const minutesSince = signedMinutesFromDutyStart(nowMins, shiftStartMins)
   if (minutesSince < 0) return graceMins
   return Math.max(0, graceMins - minutesSince)
 }

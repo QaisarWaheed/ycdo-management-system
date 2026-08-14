@@ -321,6 +321,7 @@ const LETTER_ICONS: Record<LetterType, React.ElementType> = {
   ADVICE: HelpCircle,
   DISCIPLINARY: Gavel,
   EXPLANATION: FileText,
+  EXPLANATION_FINE: Scale,
   SHOW_CAUSE: Scale,
   FINE: Shield,
   INQUIRY: HelpCircle,
