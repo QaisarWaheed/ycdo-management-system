@@ -37,6 +37,39 @@ export class BiometricPushDto {
     | 'AUTO';
 }
 
+/**
+ * Raw device event contract for the thin agent (POST /attendance/raw-scan).
+ * The agent forwards exactly what the device reported — no status mapping,
+ * no dedup, no CHECKIN/CHECKOUT guessing. All of that happens server-side.
+ */
+export class RawScanDto {
+  @IsString()
+  @IsNotEmpty()
+  biometricId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  deviceId: string;
+
+  /** Raw device-reported status, e.g. "checkIn" / "checkOut" / a numeric code. */
+  @IsString()
+  @IsNotEmpty()
+  deviceStatus: string;
+
+  @IsOptional()
+  @IsString()
+  eventTime?: string;
+
+  /** Per-device monotonically increasing event id — the idempotency key together with deviceId. */
+  @IsString()
+  @IsNotEmpty()
+  serialNo: string;
+
+  @IsOptional()
+  @IsString()
+  verifyMode?: string;
+}
+
 export class OvertimePunchDto {
   @IsNotEmpty()
   @IsIn(['OVERTIME_CHECKIN', 'OVERTIME_CHECKOUT'])

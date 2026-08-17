@@ -21,6 +21,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { enforceBranchScope } from '../../common/branch-scope.util';
+import { dutyWindowsOverlap, getDutyWindow } from '../../common/duty.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import {
@@ -38,6 +39,10 @@ import {
   assertEmployeeInMedicineScope,
   isMedicineManagerRole,
 } from '../../common/medicine-scope.util';
+import {
+  reverseAbsenceDeductionForDate,
+  reverseLateDisciplineForDate,
+} from '../attendance/discipline.helper';
 
 const MAX_LEAVES_PER_YEAR = 24;
 
@@ -200,18 +205,19 @@ export class LeaveService {
             'Employee cannot be their own reliever',
           );
         }
-        const preferred = await tx.employee.findUnique({
-          where: { id: dto.relieverId },
-        });
-        if (!preferred) {
-          throw new NotFoundException('Selected reliever not found');
-        }
-        if (
-          preferred.status !== EmployeeStatus.ACTIVE &&
-          preferred.status !== EmployeeStatus.APPOINTED
-        ) {
-          throw new BadRequestException('Selected reliever is not active');
-        }
+        await this.assertRelieverEligible(
+          tx,
+          dto.relieverId,
+          startDate,
+          endDate,
+        );
+        await this.assertNoRelieverDoubleBooking(
+          tx,
+          dto.relieverId,
+          employee,
+          startDate,
+          endDate,
+        );
         await tx.relieverRequest.create({
           data: {
             leaveRecordId: record.id,
@@ -899,18 +905,19 @@ export class LeaveService {
             'Employee cannot be their own reliever',
           );
         }
-        const preferred = await tx.employee.findUnique({
-          where: { id: dto.relieverId },
-        });
-        if (!preferred) {
-          throw new NotFoundException('Selected reliever not found');
-        }
-        if (
-          preferred.status !== EmployeeStatus.ACTIVE &&
-          preferred.status !== EmployeeStatus.APPOINTED
-        ) {
-          throw new BadRequestException('Selected reliever is not active');
-        }
+        await this.assertRelieverEligible(
+          tx,
+          dto.relieverId,
+          startDate,
+          endDate,
+        );
+        await this.assertNoRelieverDoubleBooking(
+          tx,
+          dto.relieverId,
+          employee,
+          startDate,
+          endDate,
+        );
 
         await tx.relieverRequest.create({
           data: {
@@ -1161,23 +1168,19 @@ export class LeaveService {
       throw new BadRequestException('You cannot assign yourself as reliever');
     }
 
-    const reliever = await this.prisma.employee.findUnique({
-      where: { id: dto.relieverId },
-      include: { shift: true },
-    });
-
-    if (!reliever) {
-      throw new NotFoundException(
-        `Reliever employee with id ${dto.relieverId} not found`,
-      );
-    }
-
-    if (
-      reliever.status !== EmployeeStatus.ACTIVE &&
-      reliever.status !== EmployeeStatus.APPOINTED
-    ) {
-      throw new BadRequestException('Selected reliever is not active');
-    }
+    await this.assertRelieverEligible(
+      this.prisma,
+      dto.relieverId,
+      leaveRecord.startDate,
+      leaveRecord.endDate,
+    );
+    await this.assertNoRelieverDoubleBooking(
+      this.prisma,
+      dto.relieverId,
+      leaveRecord.employee,
+      leaveRecord.startDate,
+      leaveRecord.endDate,
+    );
 
     const requesterName = leaveRecord.employee.fullName;
 
@@ -1328,6 +1331,21 @@ export class LeaveService {
         `Reliever employee with id ${dto.relieverId} not found`,
       );
     }
+
+    await this.assertRelieverEligible(
+      this.prisma,
+      dto.relieverId,
+      leaveRecord.startDate,
+      leaveRecord.endDate,
+    );
+    await this.assertNoRelieverDoubleBooking(
+      this.prisma,
+      dto.relieverId,
+      leaveRecord.employee,
+      leaveRecord.startDate,
+      leaveRecord.endDate,
+      leaveId,
+    );
 
     const employeeName = leaveRecord.employee.fullName;
 
@@ -1488,6 +1506,109 @@ export class LeaveService {
     }));
   }
 
+  /**
+   * Shared reliever eligibility gate — active status + not on their own
+   * approved leave for the covered date range. Called from every reliever
+   * assignment entry point (apply, markVerifiedLeave, requestReliever,
+   * hrAssignReliever) so all four behave identically instead of each
+   * re-implementing its own partial check.
+   */
+  private async assertRelieverEligible(
+    db: Prisma.TransactionClient | PrismaService,
+    relieverId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<void> {
+    const reliever = await db.employee.findUnique({
+      where: { id: relieverId },
+    });
+    if (!reliever) {
+      throw new NotFoundException('Selected reliever not found');
+    }
+    if (
+      reliever.status !== EmployeeStatus.ACTIVE &&
+      reliever.status !== EmployeeStatus.APPOINTED
+    ) {
+      throw new BadRequestException('Selected reliever is not active');
+    }
+
+    const ownLeaveConflict = await db.leaveRecord.findFirst({
+      where: {
+        employeeId: relieverId,
+        status: LeaveStatus.APPROVED,
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
+      },
+    });
+    if (ownLeaveConflict) {
+      throw new ConflictException(
+        'Selected reliever has approved leave covering this date range',
+      );
+    }
+  }
+
+  /**
+   * Prevents assigning the same reliever to two covered employees whose own
+   * duty windows overlap in clock time on an overlapping date range — they
+   * cannot physically cover both at once. RelieverRequest itself carries no
+   * time window, so the covered employees' duty windows (existing, reliable
+   * data) are used as the best available proxy. A reliever with no duty
+   * window on either side of the comparison cannot be evaluated and is not
+   * blocked, so legitimate non-overlapping assignments are never rejected
+   * just because duty times aren't configured.
+   */
+  private async assertNoRelieverDoubleBooking(
+    db: Prisma.TransactionClient | PrismaService,
+    relieverId: string,
+    coveredEmployee: {
+      dutyStartTime: string | null;
+      dutyEndTime: string | null;
+    },
+    startDate: Date,
+    endDate: Date,
+    excludeLeaveRecordId?: string,
+  ): Promise<void> {
+    const newWin = getDutyWindow(coveredEmployee);
+    if (!newWin) return;
+
+    const existingAssignments = await db.relieverRequest.findMany({
+      where: {
+        relieverId,
+        status: {
+          in: [
+            RelieverRequestStatus.ACCEPTED,
+            RelieverRequestStatus.HR_ASSIGNED,
+          ],
+        },
+        ...(excludeLeaveRecordId
+          ? { leaveRecordId: { not: excludeLeaveRecordId } }
+          : {}),
+        leaveRecord: {
+          status: LeaveStatus.APPROVED,
+          startDate: { lte: endDate },
+          endDate: { gte: startDate },
+        },
+      },
+      include: {
+        leaveRecord: {
+          include: {
+            employee: { select: { dutyStartTime: true, dutyEndTime: true } },
+          },
+        },
+      },
+    });
+
+    for (const assignment of existingAssignments) {
+      const otherWin = getDutyWindow(assignment.leaveRecord.employee);
+      if (!otherWin) continue;
+      if (dutyWindowsOverlap(newWin, otherWin)) {
+        throw new ConflictException(
+          'Selected reliever is already covering another overlapping duty window on this date range',
+        );
+      }
+    }
+  }
+
   private async markLeaveAttendance(
     tx: Prisma.TransactionClient,
     leave: {
@@ -1499,6 +1620,34 @@ export class LeaveService {
     },
   ) {
     if (leave.leaveType === LeaveType.SHORT_LEAVE) {
+      const existing = await tx.attendanceLog.findUnique({
+        where: {
+          employeeId_date_type: {
+            employeeId: leave.employeeId,
+            date: leave.startDate,
+            type: AttendanceLogType.REGULAR,
+          },
+        },
+      });
+
+      // Reconcile only when the day being converted was actually a
+      // lateness-driven HALF_DAY/LATE — never touches an already-short-leave
+      // row (idempotent on reruns) or an unrelated status.
+      const wasLatenessDriven =
+        existing != null &&
+        (existing.status === AttendanceStatus.LATE ||
+          (existing.status === AttendanceStatus.HALF_DAY &&
+            existing.lateMinutes > 0 &&
+            !(existing.note ?? '').toLowerCase().includes('short leave')));
+
+      if (wasLatenessDriven) {
+        await reverseLateDisciplineForDate(
+          tx,
+          leave.employeeId,
+          leave.startDate,
+        );
+      }
+
       await tx.attendanceLog.upsert({
         where: {
           employeeId_date_type: {
@@ -1526,6 +1675,27 @@ export class LeaveService {
     }
 
     for (const day of this.getDateRange(leave.startDate, leave.endDate)) {
+      const existing = await tx.attendanceLog.findUnique({
+        where: {
+          employeeId_date_type: {
+            employeeId: leave.employeeId,
+            date: day,
+            type: AttendanceLogType.REGULAR,
+          },
+        },
+      });
+
+      // Reconcile only when the day being converted was actually an
+      // auto-marked absence — never touches an already-ON_LEAVE row
+      // (idempotent on reruns) or an unrelated status.
+      if (
+        existing &&
+        (existing.status === AttendanceStatus.UNINFORMED_ABSENT ||
+          existing.status === AttendanceStatus.ABSENT)
+      ) {
+        await reverseAbsenceDeductionForDate(tx, leave.employeeId, day);
+      }
+
       await tx.attendanceLog.upsert({
         where: {
           employeeId_date_type: {

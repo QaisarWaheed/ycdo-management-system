@@ -24,6 +24,28 @@ export function calculateLumpsumTotal(values: StipendPackageInput): number {
   );
 }
 
+/**
+ * Actual calendar days in a given (1-indexed) month/year — the single
+ * source of truth for daily-rate payroll calculations across every module.
+ * Never assume 30; February, and 31-day months, must use their real count.
+ */
+export function daysInPayrollMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+/**
+ * One day's worth of a stipend, using the actual number of calendar days in
+ * the month the given business-event date falls in (not the server's
+ * current month, not a fixed 30-day assumption). Used wherever a
+ * disciplinary or absence deduction is expressed as "N days' pay".
+ */
+export function dailyStipendRate(basicStipend: number, date: Date): number {
+  if (basicStipend <= 0) return 0;
+  const days = daysInPayrollMonth(date.getFullYear(), date.getMonth() + 1);
+  if (days <= 0) return 0;
+  return basicStipend / days;
+}
+
 export function stipendRecordToPackage(record: {
   basicStipend: unknown;
   allowances?: unknown;

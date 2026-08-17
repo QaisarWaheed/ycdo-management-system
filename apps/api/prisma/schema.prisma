@@ -388,6 +388,11 @@ model AttendanceLog {
   source          AttendanceSource @default(BIOMETRIC)
   note            String?
   createdAt       DateTime         @default(now())
+  /// Set once the backend stops treating this session as open (missing
+  /// checkout past grace, or a controlled backfill) — independent of
+  /// checkOut, which stays NULL because the employee never actually
+  /// checked out. NULL means still open/active.
+  sessionClosedAt DateTime?
 
   employee Employee @relation(fields: [employeeId], references: [id])
   branch   Branch   @relation(fields: [branchId], references: [id])
@@ -415,6 +420,27 @@ enum AttendanceStatus {
 enum AttendanceSource {
   BIOMETRIC
   MANUAL
+}
+
+/// Permanent, DB-backed idempotency record for one raw device event
+/// (POST /attendance/raw-scan). (deviceId, serialNo) uniquely identifies a
+/// single hardware event; a replayed/retried delivery of the same event is
+/// detected here and skipped, independent of any agent- or server-process
+/// memory. Deliberately has no foreign keys — this table only needs to
+/// answer "have I already handled this exact device event", not join to
+/// other data.
+model ProcessedDeviceEvent {
+  id          String   @id @default(uuid())
+  deviceId    String
+  serialNo    String
+  biometricId String?
+  employeeId  String?
+  punchType   String?
+  rawStatus   String?
+  processedAt DateTime @default(now())
+
+  @@unique([deviceId, serialNo])
+  @@index([deviceId])
 }
 
 // ─── STIPEND ──────────────────────────────────────────────

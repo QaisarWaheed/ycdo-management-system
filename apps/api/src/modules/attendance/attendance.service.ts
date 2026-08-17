@@ -29,6 +29,7 @@ import {
   ManualAttendanceDto,
   MarkAbsenteesDto,
   PortalCheckDto,
+  RawScanDto,
   RelieverCheckInDto,
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
@@ -40,8 +41,10 @@ import {
   computePreDutyOvertimeMinutes,
   determineBiometricCheckInStatus,
   is24HourShift,
+  isOvernightShift,
   toPakistanDateOnly,
 } from './attendance-biometric.util';
+import { mapDeviceStatusToPunchType } from './device-status.util';
 import { applyDisciplineRules } from './discipline.helper';
 import {
   parseAttendanceDateTime,
@@ -141,20 +144,179 @@ export class AttendanceService {
     const checkTime = new Date();
     const dateOnly = toPakistanDateOnly(checkTime);
     const twentyFourHour = is24HourShift(employee);
-    let punchType = dto.punchType;
 
-    // AUTO: device did not send status — open REGULAR session → checkout, else check-in.
+    return this.processResolvedPunch(
+      employee,
+      branchId,
+      dto.punchType,
+      checkTime,
+      dateOnly,
+      twentyFourHour,
+    );
+  }
+
+  /**
+   * POST /attendance/raw-scan — thin-agent contract. The agent forwards the
+   * device's raw event verbatim; no status mapping, dedup, or CHECKIN/
+   * CHECKOUT guessing happens on the agent side, all of it happens here.
+   *
+   * Runs in parallel with biometricPush()/POST /attendance/biometric-push,
+   * which is unchanged and keeps working for branches still on the old
+   * agent. Both endpoints ultimately call the same processResolvedPunch(),
+   * so attendance business rules cannot drift between them.
+   */
+  async rawScan(dto: RawScanDto) {
+    // Cheap idempotency pre-check before touching anything else. A replayed
+    // delivery of an already-handled event short-circuits here.
+    const existingEvent = await this.prisma.processedDeviceEvent.findUnique({
+      where: {
+        deviceId_serialNo: { deviceId: dto.deviceId, serialNo: dto.serialNo },
+      },
+    });
+    if (existingEvent) {
+      return { idempotent: true as const };
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { biometricId: dto.biometricId },
+      include: { shift: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with biometric ID ${dto.biometricId} not found`,
+      );
+    }
+
+    if (
+      employee.status !== EmployeeStatus.ACTIVE &&
+      employee.status !== EmployeeStatus.TRAINEE
+    ) {
+      throw new BadRequestException('Employee is not active');
+    }
+
+    const device = await this.prisma.biometricDevice.findUnique({
+      where: { deviceId: dto.deviceId },
+    });
+    const branchId = employee.currentBranchId ?? device?.branchId ?? null;
+    const checkTime = new Date();
+    const dateOnly = toPakistanDateOnly(checkTime);
+    const twentyFourHour = is24HourShift(employee);
+
+    // Devices are in T&A Manual mode and already report CHECKIN/CHECKOUT —
+    // use that. AUTO is only a fallback for a status we can't map.
+    const resolvedStatus = mapDeviceStatusToPunchType(dto.deviceStatus);
+    const punchType:
+      | 'CHECKIN'
+      | 'CHECKOUT'
+      | 'OVERTIME_CHECKIN'
+      | 'OVERTIME_CHECKOUT'
+      | 'AUTO' = resolvedStatus ?? 'AUTO';
+
+    return this.prisma.$transaction(async (tx) => {
+      // Claim the idempotency slot in the SAME transaction as the attendance
+      // write below. If the write throws, this rolls back too, so a genuine
+      // retry after a failure is reprocessed rather than silently dropped.
+      try {
+        await tx.processedDeviceEvent.create({
+          data: {
+            deviceId: dto.deviceId,
+            serialNo: dto.serialNo,
+            biometricId: dto.biometricId,
+            employeeId: employee.id,
+            punchType,
+            rawStatus: dto.deviceStatus,
+          },
+        });
+      } catch (err: unknown) {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          'code' in err &&
+          (err as { code: string }).code === 'P2002'
+        ) {
+          // Lost a race to a concurrent delivery of the identical event.
+          return { idempotent: true as const };
+        }
+        throw err;
+      }
+
+      const result = await this.processResolvedPunch(
+        employee,
+        branchId,
+        punchType,
+        checkTime,
+        dateOnly,
+        twentyFourHour,
+        tx,
+      );
+
+      return { idempotent: false as const, ...result };
+    });
+  }
+
+  /**
+   * Shared AUTO-resolution + duplicate guards + dispatch for both
+   * biometricPush() and rawScan(). Behavior is byte-for-byte what
+   * biometricPush() did inline before this method existed — extracted so
+   * both endpoints can never drift apart on attendance business rules.
+   */
+  private async processResolvedPunch(
+    employee: {
+      id: string;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      shift: { startTime: string; endTime: string } | null;
+    },
+    branchId: string | null,
+    initialPunchType:
+      | 'CHECKIN'
+      | 'CHECKOUT'
+      | 'OVERTIME_CHECKIN'
+      | 'OVERTIME_CHECKOUT'
+      | 'AUTO',
+    checkTime: Date,
+    dateOnly: Date,
+    twentyFourHour: boolean,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
+  ) {
+    let punchType = initialPunchType;
+
+    // AUTO: no usable status — open REGULAR session → checkout, else check-in.
+    // A still-open session from *yesterday* only counts here for a genuine
+    // overnight shift (e.g. 20:00-04:00). For a non-overnight shift, an
+    // unclosed prior-day session is stale/abandoned, not "the same shift
+    // continuing" — it must not make today's fresh punch resolve to a
+    // checkout against yesterday's row.
     if (punchType === 'AUTO') {
       const openRegular = twentyFourHour
         ? null
-        : await this.findOpenRegularLog(employee.id, dateOnly);
+        : await this.findOpenRegularLogForAuto(employee, dateOnly);
       punchType = openRegular ? 'CHECKOUT' : 'CHECKIN';
     }
 
     // Hard guards — never silently convert an explicit punch type.
+    // Duplicate-CHECKIN detection is scoped to TODAY only. It must never
+    // consult yesterday's record: an unclosed prior-day session (missed
+    // checkout, or a still-open overnight session) is not a duplicate of a
+    // fresh check-in today, and must not block it.
     if (punchType === 'CHECKIN') {
-      const openRegular = await this.findOpenRegularLog(employee.id, dateOnly);
-      if (openRegular?.checkIn) {
+      const openRegularToday = await this.findOpenRegularLogForDate(
+        employee.id,
+        dateOnly,
+      );
+      if (openRegularToday?.checkIn) {
+        if (openRegularToday.status === AttendanceStatus.UNMARKED) {
+          // checkIn is set but status was never finalized — fix it and
+          // report success instead of rejecting as a duplicate.
+          const log = await this.reconcileUnmarkedCheckIn(
+            db,
+            employee,
+            openRegularToday,
+            twentyFourHour,
+          );
+          return { type: 'CHECKIN' as const, log, reconciled: true };
+        }
         throw new ConflictException(
           'Employee already checked in. Duplicate CHECKIN rejected.',
         );
@@ -202,6 +364,7 @@ export class AttendanceService {
         checkTime,
         dateOnly,
         twentyFourHour,
+        db,
       );
     }
 
@@ -211,11 +374,13 @@ export class AttendanceService {
         branchId,
         checkTime,
         dateOnly,
+        AttendanceSource.BIOMETRIC,
+        db,
       );
     }
 
     if (punchType === 'OVERTIME_CHECKOUT') {
-      return this.biometricOvertimeCheckOut(employee, checkTime, dateOnly);
+      return this.biometricOvertimeCheckOut(employee, checkTime, dateOnly, db);
     }
 
     // CHECKIN
@@ -225,7 +390,59 @@ export class AttendanceService {
       checkTime,
       dateOnly,
       twentyFourHour,
+      db,
     );
+  }
+
+  /**
+   * Runs fn against `db`. If `db` is the top-level PrismaService, opens a
+   * fresh transaction around it (identical to the old inline
+   * `this.prisma.$transaction(...)` calls). If `db` is already an active
+   * transaction client (passed down from an outer caller, e.g. rawScan),
+   * runs fn directly against it instead of nesting a second transaction —
+   * Prisma does not support nested $transaction calls on a TransactionClient.
+   */
+  private runInTx<T>(
+    db: PrismaService | Prisma.TransactionClient,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    if ('$transaction' in db) {
+      return db.$transaction(fn);
+    }
+    return fn(db);
+  }
+
+  /**
+   * Self-heal a row that has checkIn set but was never finalized to a real
+   * status. Should not occur via any current write path (every path that
+   * sets checkIn also sets status in the same write) — this is a defensive
+   * safety net for legacy/corrupted rows. Recomputes status from the row's
+   * own already-stored checkIn time; does not re-run discipline rules
+   * (deductions/letters), since this repairs a data-hygiene issue, it does
+   * not represent a new attendance event.
+   */
+  private async reconcileUnmarkedCheckIn(
+    db: PrismaService | Prisma.TransactionClient,
+    employee: {
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      shift: { startTime: string; endTime: string } | null;
+    },
+    existing: { id: string; checkIn: Date | null },
+    twentyFourHour: boolean,
+  ) {
+    const checkIn = existing.checkIn;
+    const lateMinutes = twentyFourHour
+      ? 0
+      : computeBiometricLateMinutes(checkIn, employee);
+    const status = twentyFourHour
+      ? AttendanceStatus.PRESENT
+      : determineBiometricCheckInStatus(lateMinutes, employee, 0);
+
+    return db.attendanceLog.update({
+      where: { id: existing.id },
+      data: { status, lateMinutes },
+    });
   }
 
   private async biometricRegularCheckIn(
@@ -239,6 +456,7 @@ export class AttendanceService {
     checkTime: Date,
     dateOnly: Date,
     twentyFourHour: boolean,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
     const lateMinutes = twentyFourHour
       ? 0
@@ -261,12 +479,24 @@ export class AttendanceService {
 
     if (anyExisting) {
       if (anyExisting.checkIn) {
+        if (anyExisting.status === AttendanceStatus.UNMARKED) {
+          // checkIn is set but status was never finalized — fix it and
+          // report success instead of rejecting as a duplicate. This did
+          // not create a new check-in; it repaired an incomplete one.
+          const log = await this.reconcileUnmarkedCheckIn(
+            db,
+            employee,
+            anyExisting,
+            twentyFourHour,
+          );
+          return { type: 'CHECKIN' as const, log, reconciled: true };
+        }
         throw new ConflictException(
           'Employee already checked in. Duplicate CHECKIN rejected.',
         );
       }
 
-      const log = await this.prisma.$transaction(async (tx) => {
+      const log = await this.runInTx(db, async (tx) => {
         if (!twentyFourHour) {
           const effectiveStatus = await applyDisciplineRules(
             tx,
@@ -281,6 +511,20 @@ export class AttendanceService {
           }
         }
 
+        // If this row was already auto-escalated to UNINFORMED_ABSENT before
+        // this punch arrived, the employee did eventually show up — the
+        // check-in must still be recorded and the status must reflect the
+        // real arrival (handled below via applyDisciplineRules/status).
+        // What must NOT happen silently is losing the fact that this day
+        // was flagged uninformed-absent and already carries a stipend
+        // deduction for it (applyUninformedAbsentDeduction, discipline.helper.ts)
+        // — that deduction is a separate, already-committed PayrollDeduction
+        // row and is deliberately left untouched here (no automatic
+        // reconciliation in this phase); this note is the minimum-safe way
+        // to keep that history visible on the record itself.
+        const wasUninformedAbsent =
+          anyExisting.status === AttendanceStatus.UNINFORMED_ABSENT;
+
         return tx.attendanceLog.update({
           where: { id: anyExisting.id },
           data: {
@@ -292,7 +536,9 @@ export class AttendanceService {
             overtimePending: preDutyOvertimeMinutes > 0,
             note: twentyFourHour
               ? '24-hour shift check-in'
-              : anyExisting.note,
+              : wasUninformedAbsent
+                ? 'Checked in after being auto-marked Uninformed Absent (existing deduction not reversed)'
+                : anyExisting.note,
           },
         });
       });
@@ -300,7 +546,7 @@ export class AttendanceService {
       return { type: 'CHECKIN' as const, log };
     }
 
-    const log = await this.prisma.$transaction(async (tx) => {
+    const log = await this.runInTx(db, async (tx) => {
       if (!twentyFourHour) {
         const effectiveStatus = await applyDisciplineRules(
           tx,
@@ -346,6 +592,7 @@ export class AttendanceService {
     checkTime: Date,
     dateOnly: Date,
     twentyFourHour: boolean,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
     if (twentyFourHour) {
       return {
@@ -382,7 +629,7 @@ export class AttendanceService {
       status = AttendanceStatus.HALF_DAY;
     }
 
-    const log = await this.prisma.attendanceLog.update({
+    const log = await db.attendanceLog.update({
       where: { id: openRegular.id },
       data: {
         checkOut: checkTime,
@@ -401,6 +648,7 @@ export class AttendanceService {
     checkTime: Date,
     dateOnly: Date,
     source: AttendanceSource = AttendanceSource.BIOMETRIC,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
     await this.assertRegularShiftCompletedForOvertime(employee.id, dateOnly);
 
@@ -420,7 +668,7 @@ export class AttendanceService {
       );
     }
 
-    const log = await this.prisma.attendanceLog.create({
+    const log = await db.attendanceLog.create({
       data: {
         employeeId: employee.id,
         branchId,
@@ -433,7 +681,7 @@ export class AttendanceService {
     });
 
     // Clear unread OT prompts once they start overtime.
-    await this.prisma.notification.updateMany({
+    await db.notification.updateMany({
       where: {
         employeeId: employee.id,
         type: 'OVERTIME_CHECKIN_PROMPT',
@@ -449,6 +697,7 @@ export class AttendanceService {
     employee: { id: string },
     checkTime: Date,
     dateOnly: Date,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
     const open = await this.findOpenOvertimeLog(employee.id, dateOnly);
 
@@ -462,7 +711,7 @@ export class AttendanceService {
       (checkTime.getTime() - open.checkIn.getTime()) / 60000,
     );
 
-    const log = await this.prisma.attendanceLog.update({
+    const log = await db.attendanceLog.update({
       where: { id: open.id },
       data: {
         checkOut: checkTime,
@@ -618,9 +867,14 @@ export class AttendanceService {
         }
       } else {
         const dutyStart = resolveDutyStartTime(employee);
+        // No dutyStartTime configured: match the biometric path
+        // (computeBiometricLateMinutes), which treats this as lateMinutes=0
+        // rather than falling back to the shift-midpoint formula used only
+        // by the dormant Portal check-in — the same check-in time must not
+        // classify differently depending on which path recorded it.
         const computedLate = dutyStart
           ? calculateLateMinutesFromCheckIn(checkIn, dutyStart)
-          : this.determineCheckInStatus(checkIn, employee.shift).lateMinutes;
+          : 0;
 
         if (typeof dto.lateMinutes === 'number' && dto.lateMinutes > 0) {
           lateMinutes = dto.lateMinutes;
@@ -653,8 +907,15 @@ export class AttendanceService {
     const result = await this.prisma.$transaction(async (tx) => {
       let effectiveStatus = status;
 
+      // HALF_DAY included: markManual can compute HALF_DAY directly from
+      // lateMinutes (statusFromLateMinutes) without ever passing through
+      // LATE first — without this, a manually-entered arrival that
+      // classifies straight to HALF_DAY skipped late-occurrence discipline
+      // entirely, unlike the biometric path (which always starts at LATE
+      // and lets applyDisciplineRules itself escalate to HALF_DAY).
       if (
         status === AttendanceStatus.LATE ||
+        status === AttendanceStatus.HALF_DAY ||
         status === AttendanceStatus.ABSENT ||
         status === AttendanceStatus.UNINFORMED_ABSENT
       ) {
@@ -867,14 +1128,15 @@ export class AttendanceService {
         data.lateMinutes = 0;
       } else {
         const dutyStart = resolveDutyStartTime(log.employee);
-        if (dutyStart) {
-          const lateMinutes = calculateLateMinutesFromCheckIn(
-            effectiveCheckIn,
-            dutyStart,
-          );
-          data.status = statusFromLateMinutes(lateMinutes);
-          data.lateMinutes = lateMinutes;
-        }
+        // Previously: no dutyStartTime meant this branch set nothing at
+        // all, silently leaving status/lateMinutes at their old (possibly
+        // stale, e.g. still UNMARKED) values even though checkIn changed.
+        // Match the biometric/markManual treatment instead: lateMinutes=0.
+        const lateMinutes = dutyStart
+          ? calculateLateMinutesFromCheckIn(effectiveCheckIn, dutyStart)
+          : 0;
+        data.status = statusFromLateMinutes(lateMinutes);
+        data.lateMinutes = lateMinutes;
       }
     }
 
@@ -1576,10 +1838,7 @@ export class AttendanceService {
     });
   }
 
-  async relieverCheckOut(
-    dto: RelieverCheckOutDto,
-    actingUser: { id: string; role: UserRole },
-  ) {
+  async relieverCheckOut(dto: RelieverCheckOutDto) {
     const session = await this.prisma.relieverSession.findUnique({
       where: { id: dto.sessionId },
     });
@@ -1605,38 +1864,21 @@ export class AttendanceService {
       Math.round((checkOut.getTime() - session.checkIn.getTime()) / 60000),
     );
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.relieverSession.update({
-        where: { id: session.id },
-        data: { checkOut, totalMinutes },
-        include: {
-          employee: {
-            select: { id: true, fullName: true, employeeCode: true },
-          },
-          branch: { select: BRANCH_LABEL_SELECT },
+    // Payroll derives reliever extra pay directly from RelieverSession rows
+    // (see PayrollService.upsertRelieverAllowanceRow) — actual non-overlapping
+    // minutes, not a flat AdditionalWorkingDay full-day rate. Recorded here
+    // only as the session's own checkOut/totalMinutes; no separate payroll
+    // side-effect is created at checkout time, so there is exactly one place
+    // (payroll generation/refresh) that ever computes the paid amount.
+    const updated = await this.prisma.relieverSession.update({
+      where: { id: session.id },
+      data: { checkOut, totalMinutes },
+      include: {
+        employee: {
+          select: { id: true, fullName: true, employeeCode: true },
         },
-      });
-
-      // Extra Duty → Additional Working Day for payroll earnings
-      await tx.additionalWorkingDay.upsert({
-        where: {
-          employeeId_date: {
-            employeeId: session.employeeId,
-            date: session.date,
-          },
-        },
-        create: {
-          employeeId: session.employeeId,
-          date: session.date,
-          note: 'Extra Duty (Reliever)',
-          addedById: actingUser.id,
-        },
-        update: {
-          note: 'Extra Duty (Reliever)',
-        },
-      });
-
-      return result;
+        branch: { select: BRANCH_LABEL_SELECT },
+      },
     });
 
     return updated;
@@ -2128,29 +2370,101 @@ export class AttendanceService {
    * Open REGULAR session for checkout: today's log first, then yesterday
    * (night shift check-in before midnight, checkout after).
    */
-  private findOpenRegularLog(employeeId: string, dateOnly: Date) {
-    return this.prisma.attendanceLog
-      .findFirst({
-        where: {
-          employeeId,
-          date: dateOnly,
-          type: AttendanceLogType.REGULAR,
-          checkIn: { not: null },
-          checkOut: null,
-        },
-      })
-      .then((todayOpen) => {
-        if (todayOpen) return todayOpen;
-        return this.prisma.attendanceLog.findFirst({
-          where: {
-            employeeId,
-            date: this.pakistanYesterday(dateOnly),
-            type: AttendanceLogType.REGULAR,
-            checkIn: { not: null },
-            checkOut: null,
-          },
-        });
-      });
+  /**
+   * Open (checked-in, not checked-out) REGULAR log for exactly one date.
+   *
+   * `excludeClosed` additionally requires `sessionClosedAt` to be null —
+   * i.e. the session has not been internally closed by the missing-checkout
+   * process (Phase 4B). Callers resolving CHECKOUT or AUTO punches against a
+   * *prior* session must pass true, so a session already disciplined as a
+   * missing checkout is never mistaken for still-open backend state.
+   * Duplicate-CHECKIN detection for *today* deliberately keeps the default
+   * (false): a same-day row must still be found and rejected as a duplicate
+   * regardless of closure, since a second check-in would otherwise silently
+   * overwrite an already-disciplined row via the upsert.
+   */
+  private findOpenRegularLogForDate(
+    employeeId: string,
+    dateOnly: Date,
+    excludeClosed = false,
+  ) {
+    return this.prisma.attendanceLog.findFirst({
+      where: {
+        employeeId,
+        date: dateOnly,
+        type: AttendanceLogType.REGULAR,
+        checkIn: { not: null },
+        checkOut: null,
+        ...(excludeClosed ? { sessionClosedAt: null } : {}),
+      },
+    });
+  }
+
+  /**
+   * Open-session lookup for CHECKOUT: today, falling back to yesterday so an
+   * overnight shift's checkout after midnight can still find its check-in.
+   * Not for duplicate-CHECKIN detection — see findOpenRegularLogForDate and
+   * findOpenRegularLogForAuto for that.
+   *
+   * Excludes internally-closed sessions (Phase 4B) on both today's and
+   * yesterday's row: a checkout arriving after the missing-checkout process
+   * has already closed and disciplined a session must not silently reopen
+   * and complete it — see biometricRegularCheckout's caller, which then
+   * rejects with the existing "no open check-in found" error.
+   */
+  private async findOpenRegularLog(employeeId: string, dateOnly: Date) {
+    const todayOpen = await this.findOpenRegularLogForDate(
+      employeeId,
+      dateOnly,
+      true,
+    );
+    if (todayOpen) return todayOpen;
+    return this.findOpenRegularLogForDate(
+      employeeId,
+      this.pakistanYesterday(dateOnly),
+      true,
+    );
+  }
+
+  /**
+   * Open-session lookup for AUTO punch resolution only. Today's open session
+   * always counts. Yesterday's open session counts only for a genuine
+   * overnight shift — otherwise it is a stale, abandoned prior-day session
+   * and must not cause today's AUTO punch to resolve to a checkout against
+   * it (that would leave today unmarked and silently close yesterday's row
+   * with a bogus multi-hour duration).
+   *
+   * Excludes internally-closed sessions (Phase 4B) on both today's and
+   * yesterday's row, so a stale missing-checkout session — already
+   * disciplined and closed — never causes an AUTO punch to resolve to
+   * CHECKOUT; it always resolves to a fresh CHECKIN instead.
+   */
+  private async findOpenRegularLogForAuto(
+    employee: {
+      id: string;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+    },
+    dateOnly: Date,
+  ) {
+    const todayOpen = await this.findOpenRegularLogForDate(
+      employee.id,
+      dateOnly,
+      true,
+    );
+    if (todayOpen) return todayOpen;
+
+    const overnight = isOvernightShift(
+      employee.dutyStartTime ?? null,
+      employee.dutyEndTime ?? null,
+    );
+    if (!overnight) return null;
+
+    return this.findOpenRegularLogForDate(
+      employee.id,
+      this.pakistanYesterday(dateOnly),
+      true,
+    );
   }
 
   private findOvertimeLogForDate(employeeId: string, dateOnly: Date) {

@@ -1,5 +1,6 @@
 import {
   calculateLumpsumTotal,
+  daysInPayrollMonth,
   stipendRecordToPackage,
 } from '../../common/stipend.util';
 import { getDutyWindow } from '../../common/duty.util';
@@ -38,6 +39,8 @@ import {
 import {
   buildHourlyPayrollBreakdown,
   computeHourlyRate,
+  computeRelieverPayableMinutes,
+  DEFAULT_MONTHLY_ALLOWED_LEAVES,
   leaveCreditMinutes,
   payableMinutesWithinDutyWindow,
   resolveDailyDutyHours,
@@ -188,6 +191,14 @@ export class PayrollService {
         employee.monthlyAllowedLeaves,
         contractualBasic,
       );
+      await this.upsertRelieverAllowanceRow(
+        existing.id,
+        dto.employeeId,
+        dto.month,
+        dto.year,
+        employee,
+        contractualBasic,
+      );
       const refreshed = await this.prisma.payrollEntry.findUnique({
         where: { id: existing.id },
         include: { deductions: true, allowances: true },
@@ -255,6 +266,14 @@ export class PayrollService {
       employee.monthlyAllowedLeaves,
       contractualBasic,
     );
+    await this.upsertRelieverAllowanceRow(
+      created.id,
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      employee,
+      contractualBasic,
+    );
 
     const refreshed = await this.prisma.payrollEntry.findUnique({
       where: { id: created.id },
@@ -317,7 +336,7 @@ export class PayrollService {
     },
     contractualBasic: number,
   ) {
-    const daysInMonth = new Date(year, month, 0).getDate();
+    const daysInMonth = daysInPayrollMonth(year, month);
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
     const dayRows = await this.prisma.additionalWorkingDay.findMany({
@@ -394,7 +413,7 @@ export class PayrollService {
     monthlyAllowedLeaves: number | null | undefined,
     contractualBasic: number,
   ) {
-    const daysInMonth = new Date(year, month, 0).getDate();
+    const daysInMonth = daysInPayrollMonth(year, month);
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
 
@@ -433,7 +452,7 @@ export class PayrollService {
       return;
     }
 
-    const description = `${UNPAID_LEAVE_DESC_PREFIX} (${split.unpaidLeaveDays} day(s) beyond allowance of ${monthlyAllowedLeaves ?? 0})`;
+    const description = `${UNPAID_LEAVE_DESC_PREFIX} (${split.unpaidLeaveDays} day(s) beyond allowance of ${monthlyAllowedLeaves ?? DEFAULT_MONTHLY_ALLOWED_LEAVES})`;
 
     if (existing) {
       await this.prisma.payrollDeduction.update({
@@ -447,6 +466,100 @@ export class PayrollService {
       data: {
         payrollEntryId,
         reason: DeductionType.UNPAID_LEAVE,
+        amount,
+        description,
+      },
+    });
+  }
+
+  /**
+   * Upserts/removes the single RELIEVER allowance row for this payroll
+   * entry (one row per entry, mirroring upsertUnpaidLeaveDeductionRow /
+   * upsertAdditionalWorkingDaysAllowanceRow above), computed as a full
+   * recompute from every completed RelieverSession this month every time
+   * payroll is generated/refreshed. Because it's always a fresh recompute
+   * rather than a per-session write, this is naturally idempotent (reruns,
+   * payroll regeneration, and any future correction to a RelieverSession's
+   * checkOut/totalMinutes all converge to the same correct total) without
+   * needing a stored source-session reference.
+   */
+  private async upsertRelieverAllowanceRow(
+    payrollEntryId: string,
+    employeeId: string,
+    month: number,
+    year: number,
+    employee: {
+      relieverOnly?: boolean;
+      dutyTotalHours?: number | null;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      shift?: { startTime: string; endTime: string } | null;
+    },
+    contractualBasic: number,
+  ) {
+    const daysInMonth = daysInPayrollMonth(year, month);
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+    const sessions = await this.prisma.relieverSession.findMany({
+      where: {
+        employeeId,
+        date: { gte: monthStart, lte: monthEnd },
+        checkOut: { not: null },
+      },
+    });
+
+    const totalPayableMinutes = sessions.reduce((sum, s) => {
+      if (!s.checkOut) return sum;
+      return (
+        sum +
+        computeRelieverPayableMinutes(employee, {
+          checkIn: s.checkIn,
+          checkOut: s.checkOut,
+          totalMinutes: s.totalMinutes,
+        })
+      );
+    }, 0);
+
+    const dailyHours = resolveDailyDutyHours(employee);
+    const hourlyRate = computeHourlyRate(
+      contractualBasic,
+      dailyHours,
+      daysInMonth,
+    );
+    const hours = roundMoney(totalPayableMinutes / 60);
+    const amount = roundMoney(hours * hourlyRate);
+
+    const existing = await this.prisma.allowance.findFirst({
+      where: { payrollEntryId, type: AllowanceType.RELIEVER },
+    });
+
+    if (totalPayableMinutes <= 0 || amount <= 0) {
+      if (existing) {
+        await this.prisma.allowance.delete({ where: { id: existing.id } });
+      }
+      return;
+    }
+
+    const monthLabel = new Date(year, month - 1, 1).toLocaleString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+    const description = `Reliever extra duty: ${sessions.length} session(s), ${hours}h payable @ PKR ${hourlyRate}/hr (${monthLabel})`;
+
+    if (existing) {
+      await this.prisma.allowance.update({
+        where: { id: existing.id },
+        data: { hours, amount, description },
+      });
+      return;
+    }
+
+    await this.prisma.allowance.create({
+      data: {
+        payrollEntryId,
+        type: AllowanceType.RELIEVER,
+        hours,
         amount,
         description,
       },
@@ -619,7 +732,7 @@ export class PayrollService {
 
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
-    const daysInMonth = monthEnd.getDate();
+    const daysInMonth = daysInPayrollMonth(year, month);
 
     const [otAgg, pendingAgg] = await Promise.all([
       this.prisma.attendanceLog.aggregate({
@@ -1429,7 +1542,7 @@ export class PayrollService {
     },
   ): Promise<HourlyPayrollBreakdown> {
     const pkg = stipendRecordToPackage(context.stipendRecord);
-    const daysInMonth = new Date(year, month, 0).getDate();
+    const daysInMonth = daysInPayrollMonth(year, month);
     const dailyDutyHours = resolveDailyDutyHours(context.employee);
     const dailyDutyMinutes = Math.round(dailyDutyHours * 60);
     const win = getDutyWindow({
@@ -1458,23 +1571,18 @@ export class PayrollService {
       orderBy: { date: 'asc' },
     });
 
-    const onLeaveDates = logs
-      .filter((l) => l.status === AttendanceStatus.ON_LEAVE)
-      .map((l) => l.date);
-    const leaveSplit = splitPaidUnpaidLeaveDays({
-      onLeaveDates,
-      monthlyAllowedLeaves: context.employee.monthlyAllowedLeaves,
-    });
-
     let workedMins = 0;
     let paidLeaveMins = 0;
+    let policyCreditMins = 0;
 
     for (const log of logs) {
       if (log.status === AttendanceStatus.ON_LEAVE) {
-        const key = `${log.date.getFullYear()}-${String(log.date.getMonth() + 1).padStart(2, '0')}-${String(log.date.getDate()).padStart(2, '0')}`;
-        if (leaveSplit.paidLeaveDateKeys.has(key)) {
-          paidLeaveMins += dailyDutyMinutes;
-        }
+        // Paid AND unpaid REGULAR leave days both earn full duty credit
+        // here — an unpaid day loses its pay entirely through the explicit
+        // UNPAID_LEAVE deduction (upsertUnpaidLeaveDeductionRow) instead.
+        // Zeroing credit here too would double the loss: no credit here
+        // AND a full day's deduction there for the same single day.
+        policyCreditMins += dailyDutyMinutes;
         continue;
       }
 
@@ -1486,6 +1594,45 @@ export class PayrollService {
       if (leaveMins > 0) {
         // SHORT leave — does not consume monthly allowance
         paidLeaveMins += leaveMins;
+        continue;
+      }
+
+      if (
+        log.status === AttendanceStatus.ABSENT ||
+        log.status === AttendanceStatus.UNINFORMED_ABSENT
+      ) {
+        // The explicit 2-day PayrollDeduction (applyAbsentDeduction /
+        // applyUninformedAbsentDeduction) is the sole intended penalty for
+        // these statuses. Also zeroing this day's credit would silently
+        // add a 3rd day of loss on top of the approved 2-day policy.
+        policyCreditMins += dailyDutyMinutes;
+        continue;
+      }
+
+      if (
+        log.status === AttendanceStatus.LATE ||
+        log.status === AttendanceStatus.HALF_DAY
+      ) {
+        // Lateness (any occurrence) and lateness-driven HALF_DAY earn full
+        // scheduled-day credit. Phase 1C's late-occurrence cycle (Advice/
+        // Warning/Fine only at the 3rd/6th occurrence, Suspension at the
+        // 9th) is the sole monetary consequence for lateness — prorating
+        // basic pay by the actual late-arrival gap on every occurrence
+        // contradicted the explicit "no deduction on 1st/2nd/4th/5th/7th/
+        // 8th" policy.
+        policyCreditMins += dailyDutyMinutes;
+        continue;
+      }
+
+      if (log.checkIn && !log.checkOut) {
+        // Missing checkout (Phase 1D) or a 24-hour employee's structurally
+        // checkout-less row (biometric checkout is intentionally never
+        // recorded for 24h staff). Phase 1D's fine cycle (occurrence
+        // 3/6/9 only) is the sole monetary consequence for a genuine
+        // missing checkout; zeroing this day's credit purely because
+        // checkOut is absent would both defeat that policy and
+        // permanently zero-pay 24-hour staff.
+        policyCreditMins += dailyDutyMinutes;
         continue;
       }
 
@@ -1524,6 +1671,7 @@ export class PayrollService {
       daysInMonth,
       workedMinutes: workedMins,
       paidLeaveMinutes: paidLeaveMins,
+      policyCreditMinutes: policyCreditMins,
       fixedAllowances,
       fixedPackageDeductions,
       disciplineDeductions,
@@ -1725,7 +1873,7 @@ export class PayrollService {
     fromDate?: string,
     toDate?: string,
   ) {
-    const daysInMonth = new Date(year, month, 0).getDate();
+    const daysInMonth = daysInPayrollMonth(year, month);
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
 

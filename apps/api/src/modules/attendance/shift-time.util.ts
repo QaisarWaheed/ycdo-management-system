@@ -93,4 +93,27 @@ export function attendanceGraceMinutesRemaining(
   return Math.max(0, graceMinutes - minutesSince);
 }
 
+/**
+ * Absolute shift-end timestamp for one specific attendance day. The row's
+ * `date` is already attributed to the shift's start day (getShiftAttendanceDate,
+ * assigned at check-in time), so the exact end instant can be computed
+ * directly (date + end clock time, +1 day if the shift crosses midnight)
+ * instead of a wraparound "minutes since" comparison — there is no ambiguity
+ * about which calendar occurrence of the end time is meant once the specific
+ * date is already known.
+ */
+export function computeShiftEndDateTime(
+  attendanceDate: Date,
+  dutyEndTime: string,
+  crossesMidnight: boolean,
+): Date {
+  const dateStr = attendanceDate.toISOString().slice(0, 10);
+  const endMinutes = parseTimeToMinutes(dutyEndTime);
+  const end = new Date(`${dateStr}T00:00:00+05:00`);
+  end.setUTCMinutes(
+    end.getUTCMinutes() + endMinutes + (crossesMidnight ? 1440 : 0),
+  );
+  return end;
+}
+
 export { toPakistanDateOnly, toPakistanMinutesOfDay, parseTimeToMinutes };

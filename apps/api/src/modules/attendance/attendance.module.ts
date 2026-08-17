@@ -5,6 +5,7 @@ import { AttendanceController } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
 import { ShiftAbsentScheduler } from './shift-absent.scheduler';
 import { ShiftCheckoutScheduler } from './shift-checkout.scheduler';
+import { ShiftMissingCheckoutScheduler } from './shift-missing-checkout.scheduler';
 
 @Module({
   imports: [AuthModule, PermissionsModule],
@@ -13,6 +14,7 @@ import { ShiftCheckoutScheduler } from './shift-checkout.scheduler';
     AttendanceService,
     ShiftAbsentScheduler,
     ShiftCheckoutScheduler,
+    ShiftMissingCheckoutScheduler,
   ],
   exports: [AttendanceService],
 })

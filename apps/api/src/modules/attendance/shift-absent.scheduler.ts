@@ -27,7 +27,15 @@ export class ShiftAbsentScheduler {
 
   constructor(private prisma: PrismaService) {}
 
-  @Cron('*/15 * * * *')
+  // Every 5 min (not 15) so an UNMARKED placeholder exists close to the
+  // actual shift start rather than up to ~15 min after it. The lazy
+  // backfill (ensureUnmarkedForActiveShiftsOnDate, attendance.service.ts)
+  // already covers the gap instantly whenever someone views attendance;
+  // this is only the proactive backstop for when nobody does. The +15
+  // marking window below is left wider than the new 5-min cadence on
+  // purpose — three consecutive ticks get a chance to catch each shift
+  // start instead of exactly one, which is more forgiving of a delayed tick.
+  @Cron('*/5 * * * *')
   async markShiftStartAbsent() {
     await this.normalizeLegacyAutoMarkedAbsent();
 
@@ -122,7 +130,7 @@ export class ShiftAbsentScheduler {
         shiftStartMinutes,
       );
 
-      if (minutesSince < 180) continue;
+      if (minutesSince < 120) continue;
 
       await this.prisma.$transaction(async (tx) => {
         await tx.attendanceLog.update({
@@ -152,7 +160,7 @@ export class ShiftAbsentScheduler {
 
     if (upgraded > 0) {
       this.logger.log(
-        `Upgraded ${upgraded} employee(s) to uninformed absent after 3 hours`,
+        `Upgraded ${upgraded} employee(s) to uninformed absent after 2 hours`,
       );
     }
   }

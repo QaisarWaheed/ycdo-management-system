@@ -74,6 +74,31 @@ export function isOnDutyAt(
   return minutesOfDay >= startWithGrace || minutesOfDay <= endWithGrace;
 }
 
+/**
+ * Do two duty windows overlap in clock time? Either window being 24h always
+ * overlaps. Non-24h windows are compared against each other shifted by a
+ * full day in both directions, so an overnight window (e.g. 20:00-04:00)
+ * correctly overlaps a window that starts the next calendar day.
+ */
+export function dutyWindowsOverlap(a: DutyWindow, b: DutyWindow): boolean {
+  if (a.is24h || b.is24h) return true;
+
+  const aEnd = a.crossesMidnight
+    ? a.endMin + 1440
+    : Math.max(a.endMin, a.startMin);
+  const bStart = b.startMin;
+  const bEndBase = b.crossesMidnight
+    ? b.endMin + 1440
+    : Math.max(b.endMin, b.startMin);
+
+  for (const shift of [-1440, 0, 1440]) {
+    const s = bStart + shift;
+    const e = bEndBase + shift;
+    if (a.startMin < e && s < aEnd) return true;
+  }
+  return false;
+}
+
 /** Minutes after duty start that are still counted as on time. */
 export const LATE_GRACE_MINUTES = 15;
 

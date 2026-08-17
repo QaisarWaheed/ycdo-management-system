@@ -27,6 +27,7 @@ import {
   MarkAbsenteesDto,
   OvertimePunchDto,
   PortalCheckDto,
+  RawScanDto,
   RelieverCheckInDto,
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
@@ -56,6 +57,26 @@ export class AttendanceController {
     }
 
     return this.attendanceService.biometricPush(dto);
+  }
+
+  /**
+   * Thin-agent contract: the agent forwards the device's raw event verbatim
+   * (no status mapping, no dedup, no CHECKIN/CHECKOUT guessing on the agent
+   * side). Runs in parallel with POST /attendance/biometric-push, which is
+   * unchanged — branches can move to this endpoint independently of one
+   * another, and the old endpoint keeps working for branches that don't.
+   */
+  @Post('raw-scan')
+  rawScan(
+    @Headers('x-device-key') deviceKey: string,
+    @Body() dto: RawScanDto,
+  ) {
+    const expectedKey = this.configService.get<string>('BIOMETRIC_DEVICE_KEY');
+    if (!deviceKey || deviceKey !== expectedKey) {
+      throw new UnauthorizedException('Invalid device key');
+    }
+
+    return this.attendanceService.rawScan(dto);
   }
 
   @Post('manual')
@@ -164,11 +185,8 @@ export class AttendanceController {
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  relieverCheckOut(
-    @Body() dto: RelieverCheckOutDto,
-    @CurrentUser() user: { id: string; role: UserRole },
-  ) {
-    return this.attendanceService.relieverCheckOut(dto, user);
+  relieverCheckOut(@Body() dto: RelieverCheckOutDto) {
+    return this.attendanceService.relieverCheckOut(dto);
   }
 
   @Get('reliever/:employeeId')

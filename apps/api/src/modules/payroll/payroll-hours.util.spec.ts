@@ -100,6 +100,7 @@ describe('payroll-hours.util', () => {
       daysInMonth: 30,
       workedMinutes: 480 * 20, // 20 full days
       paidLeaveMinutes: 480 * 2, // 2 leave days
+      policyCreditMinutes: 0,
       fixedAllowances: 5000,
       fixedPackageDeductions: 1000,
       disciplineDeductions: 1000, // one 3-late penalty
@@ -110,6 +111,29 @@ describe('payroll-hours.util', () => {
     expect(breakdown.payableHours).toBe(176);
     expect(breakdown.hourlyBasicEarned).toBe(22000);
     expect(breakdown.netStipend).toBe(22000 + 5000 + 500 - 1000 - 1000);
+  });
+
+  it('counts policyCreditMinutes toward payable hours alongside worked/leave minutes', () => {
+    // e.g. a 1st-occurrence LATE day: no worked-minute proration, full
+    // scheduled-day credit instead, with only the discipline cycle (not
+    // this calculation) deciding whether any money is deducted.
+    const breakdown = buildHourlyPayrollBreakdown({
+      contractualBasicStipend: 30000,
+      dailyDutyHours: 8,
+      daysInMonth: 30,
+      workedMinutes: 480 * 19,
+      paidLeaveMinutes: 0,
+      policyCreditMinutes: 480, // 1 late day, credited in full
+      fixedAllowances: 0,
+      fixedPackageDeductions: 0,
+      disciplineDeductions: 0,
+      extraAllowances: 0,
+    });
+
+    expect(breakdown.payableHours).toBe(160); // 20 full days total
+    expect(breakdown.workedHours).toBe(152); // still reflects actual clocked time
+    expect(breakdown.policyCreditHours).toBe(8);
+    expect(breakdown.hourlyBasicEarned).toBe(20000);
   });
 
   it('splits paid vs unpaid leave for 3 allowed / 5 taken', () => {
@@ -129,14 +153,14 @@ describe('payroll-hours.util', () => {
     expect(unpaidLeaveDeductionAmount(2, 30000, 30)).toBe(2000);
   });
 
-  it('treats null monthlyAllowedLeaves as unlimited paid leave', () => {
+  it('treats null monthlyAllowedLeaves as the default 2-paid-days-per-month policy', () => {
     const dates = [1, 2, 3, 4, 5].map((d) => new Date(2026, 5, d));
     const split = splitPaidUnpaidLeaveDays({
       onLeaveDates: dates,
       monthlyAllowedLeaves: null,
     });
-    expect(split.paidLeaveDays).toBe(5);
-    expect(split.unpaidLeaveDays).toBe(0);
-    expect(unpaidLeaveDeductionAmount(0, 30000, 30)).toBe(0);
+    expect(split.paidLeaveDays).toBe(2);
+    expect(split.unpaidLeaveDays).toBe(3);
+    expect(unpaidLeaveDeductionAmount(3, 30000, 30)).toBe(3000);
   });
 });
