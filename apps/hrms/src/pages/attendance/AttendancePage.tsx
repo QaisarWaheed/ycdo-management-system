@@ -14,6 +14,8 @@ import {
 } from '@/components/common/EmployeeSearchSelect'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
 import { AttendanceStatusBadge } from '@/components/attendance/AttendanceStatusBadge'
+import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
+import { combineCheckOutDateTime, combineDateAndTime } from '@/lib/attendanceUtils'
 import {
   CheckInManualTab,
   CheckOutManualTab,
@@ -54,7 +56,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { usePagination } from '@/hooks/usePagination'
 import { getLogLateMinutes } from '@/lib/attendanceUtils'
 import { formatShiftOptionLabel } from '@/lib/shiftFilterUtils'
-import { formatDateTimeTime, todayPakistan } from '@/lib/timeFormat'
+import { formatDateTimeTime, toPakistanTime24, todayPakistan } from '@/lib/timeFormat'
 import { cn } from '@/lib/utils'
 import { MutualSwapTab } from '@/pages/attendance/MutualSwapTab'
 import {
@@ -75,8 +77,15 @@ const ALL = 'ALL'
 
 function formatLogShift(log: AttendanceLog): string {
   const emp = log.employee
-  const start = emp?.dutyStartTime ?? emp?.shift?.startTime
-  const end = emp?.dutyEndTime ?? emp?.shift?.endTime
+  // Prefer this row's own duty snapshot (locked in at creation) so a later
+  // duty change never retroactively alters how a past record displays.
+  // emp?.shift?.startTime/endTime is already snapshot-resolved by the
+  // backend; emp?.dutyStartTime/dutyEndTime (current duty) is the last
+  // resort, for legacy rows with no snapshot and no shift.
+  const start =
+    log.dutyStartTimeSnapshot ?? emp?.shift?.startTime ?? emp?.dutyStartTime
+  const end =
+    log.dutyEndTimeSnapshot ?? emp?.shift?.endTime ?? emp?.dutyEndTime
   const name = emp?.shift?.name
   if (!start || !end) return name ?? '—'
   return formatShiftOptionLabel({
@@ -606,6 +615,136 @@ function DailyLogTab({
   )
 }
 
+/**
+ * HR correction to an existing RelieverSession's checkIn/checkOut — the
+ * Reliever equivalent of UpdateAttendanceDialog for normal AttendanceLog
+ * rows. Mirrors its layout (current values shown as context, editable time
+ * fields below) but only exposes the two fields that make sense for a
+ * RelieverSession — no status field, since Reliever attendance has no
+ * status concept.
+ */
+function UpdateRelieverSessionDialog({
+  session,
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  session: RelieverSession | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSuccess: () => void
+}) {
+  const [checkIn, setCheckIn] = useState('')
+  const [checkOut, setCheckOut] = useState('')
+
+  useEffect(() => {
+    if (open && session) {
+      setCheckIn(session.checkIn ? toPakistanTime24(session.checkIn) : '')
+      setCheckOut(session.checkOut ? toPakistanTime24(session.checkOut) : '')
+    }
+  }, [open, session])
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!session?.id) throw new Error('No reliever session selected')
+      const dateOnly = session.date.slice(0, 10)
+      const payload: { checkIn?: string; checkOut?: string } = {}
+      if (checkIn) {
+        payload.checkIn = combineDateAndTime(dateOnly, checkIn)
+      }
+      if (checkOut) {
+        payload.checkOut = combineCheckOutDateTime(
+          dateOnly,
+          payload.checkIn ?? session.checkIn,
+          checkOut,
+        )
+      }
+      return attendanceApi.updateRelieverSession(session.id, payload)
+    },
+    onSuccess: () => {
+      toast({ title: 'Reliever attendance updated' })
+      onSuccess()
+      onOpenChange(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to update Reliever attendance',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  if (!session) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Update Reliever Attendance</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div className="rounded-lg border border-border bg-surface p-3 space-y-1">
+            <p>
+              <span className="text-text-secondary">Reliever: </span>
+              {session.employee?.fullName ?? '—'}
+            </p>
+            <p>
+              <span className="text-text-secondary">Covering: </span>
+              {session.coveringEmployee?.fullName ?? '—'}
+            </p>
+            <p>
+              <span className="text-text-secondary">Session date: </span>
+              {format(new Date(session.date), 'dd/MM/yyyy')}
+            </p>
+            <p>
+              <span className="text-text-secondary">Current Check In: </span>
+              {formatDateTimeTime(session.checkIn)}
+            </p>
+            <p>
+              <span className="text-text-secondary">Current Check Out: </span>
+              {formatDateTimeTime(session.checkOut)}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Corrected Check In</Label>
+              <TimeInput12Hour value={checkIn} onChange={setCheckIn} />
+            </div>
+            <div className="space-y-2">
+              <Label>Corrected Check Out</Label>
+              <TimeInput12Hour
+                value={checkOut}
+                onChange={setCheckOut}
+                disabled={!checkIn}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-text-secondary">
+            Correcting these times recalculates payable Reliever minutes the
+            next time payroll is generated or refreshed for this month.
+            Already PROCESSED or PAID payroll is not affected.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            disabled={mutation.isPending || (!checkIn && !checkOut)}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function RelieverSessionsTab() {
   const queryClient = useQueryClient()
   const { user } = useAuth()
@@ -615,6 +754,9 @@ function RelieverSessionsTab() {
     createEmployeeFilters(user),
   )
   const [actionId, setActionId] = useState<string | null>(null)
+  const [updateSession, setUpdateSession] = useState<RelieverSession | null>(
+    null,
+  )
 
   const { data: shifts = [] } = useQuery({
     queryKey: ['shifts'],
@@ -829,32 +971,43 @@ function RelieverSessionsTab() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {status === 'NOT_STARTED' ? (
-                        <Button
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => {
-                            setActionId(rowKey)
-                            checkInMutation.mutate(session.employeeId)
-                          }}
-                        >
-                          Check In
-                        </Button>
-                      ) : status === 'ACTIVE' && session.id ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => {
-                            setActionId(rowKey)
-                            checkOutMutation.mutate(session.id!)
-                          }}
-                        >
-                          Check Out
-                        </Button>
-                      ) : (
-                        <span className="text-sm text-text-secondary">—</span>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {status === 'NOT_STARTED' ? (
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => {
+                              setActionId(rowKey)
+                              checkInMutation.mutate(session.employeeId)
+                            }}
+                          >
+                            Check In
+                          </Button>
+                        ) : status === 'ACTIVE' && session.id ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              setActionId(rowKey)
+                              checkOutMutation.mutate(session.id!)
+                            }}
+                          >
+                            Check Out
+                          </Button>
+                        ) : !session.id ? (
+                          <span className="text-sm text-text-secondary">—</span>
+                        ) : null}
+                        {session.id && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setUpdateSession(session)}
+                          >
+                            Update Attendance
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -870,6 +1023,15 @@ function RelieverSessionsTab() {
           onPageChange={setPage}
         />
       </div>
+
+      <UpdateRelieverSessionDialog
+        session={updateSession}
+        open={!!updateSession}
+        onOpenChange={(open) => !open && setUpdateSession(null)}
+        onSuccess={() =>
+          queryClient.invalidateQueries({ queryKey: ['reliever-sessions'] })
+        }
+      />
     </div>
   )
 }

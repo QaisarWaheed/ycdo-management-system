@@ -523,11 +523,13 @@ export type LeaveStatus =
   | 'APPROVED'
   | 'REJECTED'
   | 'CANCELLED'
+  | 'PENDING_APPROVAL'
 
 export type LeaveApprovalStage =
   | 'BRANCH_MANAGER'
   | 'DEPARTMENT_INCHARGE'
   | 'HR_OPERATIONS'
+  | 'QUOTA_EXCEPTION'
 
 export type LeaveApprovalAction = 'APPROVED' | 'REJECTED'
 
@@ -623,6 +625,8 @@ export interface AttendanceLog {
   type?: 'REGULAR' | 'OVERTIME'
   source?: string
   note?: string | null
+  dutyStartTimeSnapshot?: string | null
+  dutyEndTimeSnapshot?: string | null
   employee?: {
     fullName: string
     employeeCode: string
@@ -652,6 +656,7 @@ export type AttendanceStatus =
   | 'ON_LEAVE'
   | 'UNINFORMED_ABSENT'
   | 'SWAP_COVERED'
+  | 'SHORT_LEAVE'
 
 export type PayrollStatus = 'PENDING' | 'PROCESSED' | 'PAID'
 
@@ -808,6 +813,7 @@ export const ATTENDANCE_STATUSES: AttendanceStatus[] = [
   'ON_LEAVE',
   'UNINFORMED_ABSENT',
   'SWAP_COVERED',
+  'SHORT_LEAVE',
 ]
 
 export const DEDUCTION_TYPES: { value: DeductionType; label: string }[] = [

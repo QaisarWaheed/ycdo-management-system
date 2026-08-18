@@ -170,6 +170,8 @@ export class MutualSwapService {
           overtimePending: true,
           source: 'MANUAL',
           note: `Mutual swap - covering ${coveredEmployee.fullName}`,
+          dutyStartTimeSnapshot: coveringEmployee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: coveringEmployee.dutyEndTime ?? null,
         },
         update: {
           checkIn: overtimeStart,
@@ -196,6 +198,8 @@ export class MutualSwapService {
           status: 'SWAP_COVERED',
           source: 'MANUAL',
           note: `Mutual swap - covered by ${coveringEmployee.fullName}`,
+          dutyStartTimeSnapshot: coveredEmployee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: coveredEmployee.dutyEndTime ?? null,
         },
         update: {
           status: 'SWAP_COVERED',

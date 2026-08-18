@@ -13,7 +13,7 @@ import { computeShiftEndDateTime, toPakistanDateOnly } from './shift-time.util';
  * spirit of markUninformedAbsent's grace on the check-in side, kept shorter
  * here since this only drives letters/deductions, never attendance status.
  */
-export const MISSING_CHECKOUT_GRACE_MINUTES = 60;
+export const MISSING_CHECKOUT_GRACE_MINUTES = 30;
 
 export type MissingCheckoutEmployee = {
   dutyStartTime: string | null;
@@ -91,7 +91,7 @@ export class ShiftMissingCheckoutScheduler {
 
   constructor(private prisma: PrismaService) {}
 
-  @Cron('*/15 * * * *')
+  @Cron('*/5 * * * *')
   async flagMissingCheckouts() {
     const now = new Date();
     const pkToday = toPakistanDateOnly(now);

@@ -1,0 +1,8 @@
+-- AlterEnum
+ALTER TYPE "LeaveStatus" ADD VALUE 'PENDING_APPROVAL';
+
+-- AlterEnum
+ALTER TYPE "LeaveApprovalStage" ADD VALUE 'QUOTA_EXCEPTION';
+
+-- AlterEnum
+ALTER TYPE "DeductionType" ADD VALUE 'EXTRA_LEAVE_REJECTED';

@@ -101,12 +101,6 @@ body {
   margin: 0;
 }
 
-.hr-line {
-  border: 0;
-  border-top: 1.5pt solid #222;
-  margin: 10pt 0 14pt;
-}
-
 /* ── Urdu meta (RTL) ── */
 .meta-block {
   text-align: right;
@@ -185,7 +179,7 @@ body {
 
 .closing {
   margin-top: 8pt;
-  text-align: right;
+  text-align: left;
 }
 
 .signature {
@@ -193,13 +187,6 @@ body {
   text-align: left;
   font-size: 12pt;
   line-height: 1.7;
-}
-
-.signature .sig-line {
-  display: inline-block;
-  width: 120pt;
-  border-top: 1px solid #000;
-  margin-bottom: 6pt;
 }
 
 .fill-line {

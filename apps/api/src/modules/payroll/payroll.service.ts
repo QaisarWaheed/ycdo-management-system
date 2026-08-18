@@ -1039,6 +1039,7 @@ export class PayrollService {
             AttendanceStatus.PRESENT,
             AttendanceStatus.LATE,
             AttendanceStatus.HALF_DAY,
+            AttendanceStatus.SHORT_LEAVE,
           ],
         },
       },
@@ -1351,6 +1352,7 @@ export class PayrollService {
               AttendanceStatus.PRESENT,
               AttendanceStatus.LATE,
               AttendanceStatus.HALF_DAY,
+              AttendanceStatus.SHORT_LEAVE,
             ],
           },
         },
@@ -1620,6 +1622,18 @@ export class PayrollService {
         // basic pay by the actual late-arrival gap on every occurrence
         // contradicted the explicit "no deduction on 1st/2nd/4th/5th/7th/
         // 8th" policy.
+        policyCreditMins += dailyDutyMinutes;
+        continue;
+      }
+
+      if (log.status === AttendanceStatus.SHORT_LEAVE) {
+        // HR-approved retroactive Short Leave (distinct from the
+        // LeaveType.SHORT_LEAVE request workflow handled by
+        // leaveCreditMinutes above) earns full scheduled-day credit, same
+        // as every other policy-approved deviation status here — the
+        // employee actually worked the rest of the shift; the covered gap
+        // is not a pay deduction, it only consumes the monthly Short Leave
+        // quota (enforced at write time in attendance.service.ts).
         policyCreditMins += dailyDutyMinutes;
         continue;
       }

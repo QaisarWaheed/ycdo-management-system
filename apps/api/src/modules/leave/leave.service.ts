@@ -22,6 +22,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { enforceBranchScope } from '../../common/branch-scope.util';
 import { dutyWindowsOverlap, getDutyWindow } from '../../common/duty.util';
+import { is24HourShift } from '../attendance/attendance-biometric.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import {
@@ -40,9 +41,16 @@ import {
   isMedicineManagerRole,
 } from '../../common/medicine-scope.util';
 import {
+  applyExtraLeaveRejectedDeduction,
   reverseAbsenceDeductionForDate,
-  reverseLateDisciplineForDate,
 } from '../attendance/discipline.helper';
+import {
+  countApprovedFullLeaveOccurrencesThisMonth,
+  countShortLeaveOccurrencesThisMonth,
+  MONTHLY_FULL_LEAVE_LIMIT,
+  MONTHLY_SHORT_LEAVE_LIMIT,
+  reconcileShortLeaveAttendance,
+} from '../attendance/short-leave.util';
 
 const MAX_LEAVES_PER_YEAR = 24;
 
@@ -122,38 +130,21 @@ export class LeaveService {
         throw new BadRequestException('Short leave must be for a single day');
       }
 
-      if (leaveType === LeaveType.SHORT_LEAVE) {
-        const monthStart = new Date(
-          startDate.getFullYear(),
-          startDate.getMonth(),
-          1,
+      // 24-hour staff are completely out of scope for Short Leave — reject
+      // here rather than letting the request run the full approval chain
+      // only to silently fail to apply at final reconciliation.
+      if (leaveType === LeaveType.SHORT_LEAVE && is24HourShift(employee)) {
+        throw new BadRequestException(
+          '24-hour staff are not eligible for Short Leave',
         );
-        const monthEnd = new Date(
-          startDate.getFullYear(),
-          startDate.getMonth() + 1,
-          0,
-          23,
-          59,
-          59,
-          999,
-        );
-
-        const shortLeaveCount = await this.prisma.leaveRecord.count({
-          where: {
-            employeeId: dto.employeeId,
-            leaveType: LeaveType.SHORT_LEAVE,
-            status: { in: ACTIVE_LEAVE_STATUSES },
-            startDate: { gte: monthStart, lte: monthEnd },
-          },
-        });
-
-        if (shortLeaveCount >= 2) {
-          throw new BadRequestException(
-            'Maximum 2 short leaves allowed per month',
-          );
-        }
       }
 
+      // Monthly Short Leave quota (shared with the HR-emergency flow) is no
+      // longer gated at request time — a request is always allowed to enter
+      // the approval chain; the quota is checked once, uniformly, at final
+      // HR approval (see hrOperationsApprove), which is also where a
+      // quota-exceeding request is diverted to PENDING_APPROVAL instead of
+      // being hard-rejected here.
       totalDays = leaveType === LeaveType.SHORT_LEAVE ? 0 : 1;
     } else {
       totalDays = this.calculateTotalDays(startDate, endDate);
@@ -525,6 +516,50 @@ export class LeaveService {
       });
 
       if (dto.action === LeaveApprovalAction.APPROVED) {
+        // Monthly entitlement gate — a leave the chain has approved may
+        // still exceed the employee's normal monthly Full Leave (2) or
+        // Short Leave (3, shared with the HR-emergency flow) allowance.
+        // When it does, it is diverted to PENDING_APPROVAL for a distinct
+        // HR quota-exception decision instead of becoming APPROVED here.
+        // An already-approved extra leave does not free up a new normal
+        // slot — the count below only ever counts OTHER occurrences.
+        const withinQuota =
+          leave.leaveType === LeaveType.SHORT_LEAVE
+            ? (await countShortLeaveOccurrencesThisMonth(
+                tx,
+                leave.employeeId,
+                leave.startDate,
+                leaveId,
+              )) < MONTHLY_SHORT_LEAVE_LIMIT
+            : (await countApprovedFullLeaveOccurrencesThisMonth(
+                tx,
+                leave.employeeId,
+                leave.startDate,
+                leaveId,
+              )) < MONTHLY_FULL_LEAVE_LIMIT;
+
+        if (!withinQuota) {
+          const pending = await tx.leaveRecord.update({
+            where: { id: leaveId },
+            data: {
+              status: LeaveStatus.PENDING_APPROVAL,
+              currentStage: LeaveApprovalStage.HR_OPERATIONS,
+            },
+            include: this.leaveInclude(),
+          });
+
+          await tx.notification.create({
+            data: {
+              employeeId: leave.employeeId,
+              type: 'LEAVE_PENDING_QUOTA_APPROVAL',
+              message:
+                'Your leave has cleared the normal approval chain but exceeds your monthly entitlement. It now requires a separate HR decision.',
+            },
+          });
+
+          return pending;
+        }
+
         const updated = await tx.leaveRecord.update({
           where: { id: leaveId },
           data: {
@@ -578,6 +613,134 @@ export class LeaveService {
     });
   }
 
+  /**
+   * The distinct HR decision on a PENDING_APPROVAL (quota-exceeded) leave —
+   * separate from hrOperationsApprove's normal chain-approval action so the
+   * two meanings ("the chain approved this" vs "HR is granting/denying an
+   * over-quota exception") stay unambiguous. Logged via the same
+   * LeaveApproval audit trail, under LeaveApprovalStage.QUOTA_EXCEPTION.
+   */
+  async decideQuotaException(
+    leaveId: string,
+    dto: ApproveLeaveDto,
+    actingUser: ActingUser,
+  ) {
+    if (
+      actingUser.role !== UserRole.HR_OPERATIONS_MANAGER &&
+      actingUser.role !== UserRole.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Only HR Operations Manager can decide a quota exception',
+      );
+    }
+
+    const leave = await this.getLeaveWithEmployee(leaveId);
+
+    if (leave.status !== LeaveStatus.PENDING_APPROVAL) {
+      throw new BadRequestException(
+        'Leave is not pending a quota-exception decision',
+      );
+    }
+
+    if (dto.action === LeaveApprovalAction.REJECTED && !dto.notes?.trim()) {
+      throw new BadRequestException(
+        'A rejection reason is required to reject a quota exception',
+      );
+    }
+
+    const actingUserRecord = await this.prisma.user.findUnique({
+      where: { id: actingUser.id },
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.leaveApproval.create({
+        data: {
+          leaveId,
+          stage: LeaveApprovalStage.QUOTA_EXCEPTION,
+          action: dto.action,
+          actionBy: actingUser.id,
+          notes: dto.notes,
+        },
+      });
+
+      if (dto.action === LeaveApprovalAction.APPROVED) {
+        const updated = await tx.leaveRecord.update({
+          where: { id: leaveId },
+          data: {
+            status: LeaveStatus.APPROVED,
+            approvedBy: actingUser.id,
+          },
+          include: {
+            employee: true,
+            relieverRequest: true,
+          },
+        });
+
+        // Treated exactly like a normal approval — for Short Leave this
+        // still re-validates duration inside reconcileShortLeaveAttendance,
+        // so a quota exception never bypasses the 2h/3h duration rule.
+        await this.markLeaveAttendance(tx, updated);
+
+        await tx.auditLog.create({
+          data: {
+            userId: actingUser.id,
+            action: 'LEAVE_QUOTA_EXCEPTION_APPROVED',
+            entity: 'LeaveRecord',
+            entityId: leaveId,
+          },
+        });
+
+        await tx.notification.create({
+          data: {
+            employeeId: leave.employeeId,
+            type: 'LEAVE_APPROVED',
+            message: `Your extra leave (beyond monthly entitlement) has been approved by HR Operations. Approved by: ${actingUserRecord?.email ?? 'HR Operations'}`,
+          },
+        });
+
+        return updated;
+      }
+
+      const updated = await tx.leaveRecord.update({
+        where: { id: leaveId },
+        data: { status: LeaveStatus.REJECTED },
+        include: this.leaveInclude(),
+      });
+
+      // No leave protection. Full Leave (REGULAR/EMERGENCY) gets the 1-day
+      // deduction; Short Leave gets none — markLeaveAttendance/
+      // reconcileShortLeaveAttendance was never called, so whatever
+      // discipline already existed on the underlying date (from the
+      // original biometric/manual classification) simply stands untouched.
+      if (leave.leaveType !== LeaveType.SHORT_LEAVE) {
+        await applyExtraLeaveRejectedDeduction(
+          tx,
+          leave.employeeId,
+          leave.startDate,
+        );
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'LEAVE_QUOTA_EXCEPTION_REJECTED',
+          entity: 'LeaveRecord',
+          entityId: leaveId,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          employeeId: leave.employeeId,
+          type: 'LEAVE_REJECTED',
+          message: `Your extra leave (beyond monthly entitlement) was rejected by HR Operations. Reason: ${dto.notes}`,
+        },
+      });
+
+      return updated;
+    });
+  }
+
   async getLeaveWithApprovals(leaveId: string) {
     const leave = await this.prisma.leaveRecord.findUnique({
       where: { id: leaveId },
@@ -617,6 +780,40 @@ export class LeaveService {
     }
 
     return leave;
+  }
+
+  /**
+   * Monthly quota context for a PENDING_APPROVAL decision — how many OTHER
+   * occurrences this employee already has this calendar month, and the
+   * applicable limit. Read-only; reuses the exact same counters the quota
+   * gate itself uses (hrOperationsApprove / markEmergencyLeave), so what HR
+   * sees here always matches what actually gated this leave.
+   */
+  async getQuotaContext(leaveId: string) {
+    const leave = await this.getLeaveWithEmployee(leaveId);
+
+    const isShortLeave = leave.leaveType === LeaveType.SHORT_LEAVE;
+    const monthlyOccurrenceCount = isShortLeave
+      ? await countShortLeaveOccurrencesThisMonth(
+          this.prisma,
+          leave.employeeId,
+          leave.startDate,
+          leaveId,
+        )
+      : await countApprovedFullLeaveOccurrencesThisMonth(
+          this.prisma,
+          leave.employeeId,
+          leave.startDate,
+          leaveId,
+        );
+
+    return {
+      leaveType: leave.leaveType,
+      monthlyOccurrenceCount,
+      monthlyLimit: isShortLeave
+        ? MONTHLY_SHORT_LEAVE_LIMIT
+        : MONTHLY_FULL_LEAVE_LIMIT,
+    };
   }
 
   async findAll(
@@ -751,6 +948,18 @@ export class LeaveService {
     const totalDays = this.calculateTotalDays(startDate, endDate);
 
     const leave = await this.prisma.$transaction(async (tx) => {
+      // Emergency Full Leave shares the SAME monthly quota as Portal Full
+      // Leave (both count via countApprovedFullLeaveOccurrencesThisMonth,
+      // which already treats REGULAR + EMERGENCY as one combined bucket).
+      // Bypassing the chain does not bypass the entitlement — exceeding it
+      // still requires a distinct HR quota-exception decision.
+      const withinQuota =
+        (await countApprovedFullLeaveOccurrencesThisMonth(
+          tx,
+          dto.employeeId,
+          startDate,
+        )) < MONTHLY_FULL_LEAVE_LIMIT;
+
       const record = await tx.leaveRecord.create({
         data: {
           employeeId: dto.employeeId,
@@ -759,26 +968,37 @@ export class LeaveService {
           endDate,
           totalDays,
           reason: dto.emergencyReason,
-          status: LeaveStatus.APPROVED,
+          status: withinQuota
+            ? LeaveStatus.APPROVED
+            : LeaveStatus.PENDING_APPROVAL,
           currentStage: null,
+          approvedBy: withinQuota ? actingUser.id : null,
         },
         include: { employee: true },
       });
 
-      await this.markLeaveAttendance(tx, record);
+      if (withinQuota) {
+        await this.markLeaveAttendance(tx, record);
+      }
 
       await tx.notification.create({
         data: {
           employeeId: dto.employeeId,
-          type: 'EMERGENCY_LEAVE',
-          message: `Emergency leave has been marked by HR for ${this.formatDate(startDate)} to ${this.formatDate(endDate)}. Reason: ${dto.emergencyReason}`,
+          type: withinQuota
+            ? 'EMERGENCY_LEAVE'
+            : 'LEAVE_PENDING_QUOTA_APPROVAL',
+          message: withinQuota
+            ? `Emergency leave has been marked by HR for ${this.formatDate(startDate)} to ${this.formatDate(endDate)}. Reason: ${dto.emergencyReason}`
+            : `Emergency leave for ${this.formatDate(startDate)} to ${this.formatDate(endDate)} exceeds your monthly Full Leave entitlement and now requires a separate HR decision.`,
         },
       });
 
       await tx.auditLog.create({
         data: {
           userId: actingUser.id,
-          action: 'EMERGENCY_LEAVE',
+          action: withinQuota
+            ? 'EMERGENCY_LEAVE'
+            : 'EMERGENCY_LEAVE_PENDING_QUOTA',
           entity: 'LeaveRecord',
           entityId: record.id,
         },
@@ -1616,61 +1836,31 @@ export class LeaveService {
       startDate: Date;
       endDate: Date;
       leaveType: LeaveType;
-      employee: { currentBranchId: string };
+      employee: {
+        currentBranchId: string;
+        dutyStartTime: string | null;
+        dutyEndTime: string | null;
+        dutyTotalHours?: number | null;
+        shift?: { name?: string | null; startTime: string; endTime: string } | null;
+      };
     },
   ) {
     if (leave.leaveType === LeaveType.SHORT_LEAVE) {
-      const existing = await tx.attendanceLog.findUnique({
-        where: {
-          employeeId_date_type: {
-            employeeId: leave.employeeId,
-            date: leave.startDate,
-            type: AttendanceLogType.REGULAR,
-          },
-        },
-      });
-
-      // Reconcile only when the day being converted was actually a
-      // lateness-driven HALF_DAY/LATE — never touches an already-short-leave
-      // row (idempotent on reruns) or an unrelated status.
-      const wasLatenessDriven =
-        existing != null &&
-        (existing.status === AttendanceStatus.LATE ||
-          (existing.status === AttendanceStatus.HALF_DAY &&
-            existing.lateMinutes > 0 &&
-            !(existing.note ?? '').toLowerCase().includes('short leave')));
-
-      if (wasLatenessDriven) {
-        await reverseLateDisciplineForDate(
-          tx,
-          leave.employeeId,
-          leave.startDate,
-        );
-      }
-
-      await tx.attendanceLog.upsert({
-        where: {
-          employeeId_date_type: {
-            employeeId: leave.employeeId,
-            date: leave.startDate,
-            type: AttendanceLogType.REGULAR,
-          },
-        },
-        create: {
-          employeeId: leave.employeeId,
-          branchId: leave.employee.currentBranchId,
-          date: leave.startDate,
-          type: AttendanceLogType.REGULAR,
-          status: AttendanceStatus.HALF_DAY,
-          source: AttendanceSource.MANUAL,
-          note: 'Approved short leave',
-        },
-        update: {
-          status: AttendanceStatus.HALF_DAY,
-          source: AttendanceSource.MANUAL,
-          note: 'Approved short leave',
-        },
-      });
+      // Canonical reconciliation shared with the HR-emergency flow (see
+      // attendance.service.ts) — validates duration against real
+      // checkIn/checkOut when it already exists, writes AttendanceStatus
+      // .SHORT_LEAVE (not HALF_DAY — the two flows now converge on the same
+      // treatment), and reverses lateness discipline only when valid.
+      // Silently no-ops on an invalid/unsupported case (e.g. a chain-
+      // approved leave whose actual attendance turns out to exceed the
+      // duration limit) — the leave itself still ends up APPROVED, but
+      // without the Short Leave attendance/payroll benefit for that day.
+      await reconcileShortLeaveAttendance(
+        tx,
+        leave.employeeId,
+        leave.startDate,
+        leave.employee,
+      );
       return;
     }
 
@@ -1712,6 +1902,8 @@ export class LeaveService {
           status: AttendanceStatus.ON_LEAVE,
           source: AttendanceSource.MANUAL,
           note: 'Approved leave',
+          dutyStartTimeSnapshot: leave.employee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: leave.employee.dutyEndTime ?? null,
         },
         update: {
           status: AttendanceStatus.ON_LEAVE,

@@ -15,6 +15,7 @@ import {
   canAssignReliever,
   type ApprovalRole,
 } from '@/components/leave/ApproveRejectDialog'
+import { QuotaExceptionDialog } from '@/components/leave/QuotaExceptionDialog'
 import { StageBadge } from '@/components/leave/StageBadge'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
@@ -85,12 +86,23 @@ function LeaveStatusBadge({ status }: { status: string }) {
     APPROVED: 'bg-green-100 text-green-800 border-green-200',
     REJECTED: 'bg-red-100 text-red-800 border-red-200',
     CANCELLED: 'bg-gray-100 text-gray-700 border-gray-200',
+    PENDING_APPROVAL: 'bg-orange-100 text-orange-800 border-orange-200',
   }
   return (
     <Badge variant="outline" className={styles[status] ?? ''}>
       {status.replace(/_/g, ' ')}
     </Badge>
   )
+}
+
+function leaveKindLabel(leaveType: string | undefined): string {
+  if (leaveType === 'SHORT_LEAVE') return 'Short Leave'
+  if (leaveType === 'EMERGENCY') return 'Full Leave (Emergency)'
+  return 'Full Leave'
+}
+
+function canDecideQuotaException(role: string | undefined): boolean {
+  return role === 'HR_OPERATIONS_MANAGER' || role === 'SUPER_ADMIN'
 }
 
 function AssignmentTypeBadge({ status }: { status: string | null }) {
@@ -320,6 +332,8 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
   const [approveLeave, setApproveLeave] = useState<LeaveRecord | null>(null)
   const [expandedLeaveId, setExpandedLeaveId] = useState<string | null>(null)
   const [assignLeave, setAssignLeave] = useState<LeaveRecord | null>(null)
+  const [quotaExceptionLeave, setQuotaExceptionLeave] =
+    useState<LeaveRecord | null>(null)
 
   const filters = useMemo(
     () => ({
@@ -376,6 +390,9 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
                 <SelectItem value="RELIEVER_PENDING">Reliever Pending</SelectItem>
                 <SelectItem value="RELIEVER_CONFIRMED">Reliever Confirmed</SelectItem>
                 <SelectItem value="HR_PENDING">HR Pending</SelectItem>
+                <SelectItem value="PENDING_APPROVAL">
+                  Pending Quota Approval
+                </SelectItem>
                 <SelectItem value="APPROVED">Approved</SelectItem>
                 <SelectItem value="REJECTED">Rejected</SelectItem>
               </SelectContent>
@@ -398,6 +415,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Applied On</TableHead>
               <TableHead>From</TableHead>
               <TableHead>To</TableHead>
@@ -413,7 +431,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(10)].map((__, j) => (
+                  {[...Array(11)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -422,7 +440,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={11} className="h-32 text-center text-text-secondary">
                   No leave requests found
                 </TableCell>
               </TableRow>
@@ -437,6 +455,11 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
                           {leave.employee?.employeeCode ?? '—'}
                         </p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {leaveKindLabel(leave.leaveType)}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       {leave.createdAt
@@ -500,12 +523,22 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
                             Review
                           </Button>
                         )}
+                        {leave.status === 'PENDING_APPROVAL' &&
+                          canDecideQuotaException(user?.role) && (
+                            <Button
+                              size="sm"
+                              className="bg-amber-600 hover:bg-amber-700"
+                              onClick={() => setQuotaExceptionLeave(leave)}
+                            >
+                              Decide Quota Exception
+                            </Button>
+                          )}
                       </div>
                     </TableCell>
                   </TableRow>
                   {expandedLeaveId === leave.id && (
                     <TableRow>
-                      <TableCell colSpan={10}>
+                      <TableCell colSpan={11}>
                         <ApprovalTrail leave={leave} />
                       </TableCell>
                     </TableRow>
@@ -536,6 +569,13 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
         leave={assignLeave}
         open={!!assignLeave}
         onOpenChange={(v) => !v && setAssignLeave(null)}
+      />
+
+      <QuotaExceptionDialog
+        leave={quotaExceptionLeave}
+        open={!!quotaExceptionLeave}
+        onOpenChange={(open) => !open && setQuotaExceptionLeave(null)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['leave'] })}
       />
     </div>
   )

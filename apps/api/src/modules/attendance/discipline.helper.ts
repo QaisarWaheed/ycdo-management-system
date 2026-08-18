@@ -5,6 +5,7 @@ import {
   EmployeeStatus,
   LeaveStatus,
   LetterType,
+  PayrollStatus,
   Prisma,
 } from '@prisma/client';
 import {
@@ -43,10 +44,11 @@ export async function applyDisciplineRules(
   // (statusFromLateMinutes) without ever passing through LATE first — route
   // it through the exact same monthly late-occurrence counting as the
   // biometric path, so the same lateness is disciplined identically
-  // regardless of which of the three live entry paths recorded it. A
-  // HALF_DAY caused by Short Leave never reaches this function at all (the
-  // leave module writes that status directly, bypassing discipline), so no
-  // extra guard is needed here to keep the two cases apart.
+  // regardless of which of the three live entry paths recorded it. Short
+  // Leave now writes its own distinct AttendanceStatus.SHORT_LEAVE (see
+  // short-leave.util.ts) rather than HALF_DAY, so it structurally never
+  // reaches this function at all — no extra guard needed to keep the two
+  // cases apart.
   if (status === AttendanceStatus.HALF_DAY && lateMinutes > 0) {
     await applyLateDiscipline(tx, employeeId, date, lateMinutes);
     return status;
@@ -1076,4 +1078,86 @@ export async function reverseAbsenceDeductionForDate(
       netStipend: { increment: deduction.amount },
     },
   });
+}
+
+// ─── QUOTA-EXCEEDED LEAVE REJECTION (leave.service.ts decideQuotaException) ─
+
+/**
+ * One-day salary deduction for a quota-exceeded Full Leave HR rejected.
+ * Rate is the same calendar-day daily rate used by every deduction in this
+ * file (dailyStipendRate — monthly basic / actual days in that payroll
+ * month, never a hardcoded /30). Idempotent via an exact incident-linked
+ * description, mirroring applyAbsentDeduction. Uses a dedicated
+ * DeductionType (EXTRA_LEAVE_REJECTED) rather than UNPAID_LEAVE, which is
+ * matched by reason alone elsewhere and recomputed as a monthly aggregate —
+ * sharing it here would risk that logic silently overwriting or deleting
+ * this exact deduction.
+ *
+ * Skips entirely (no deduction applied) if the target payroll entry is
+ * already PROCESSED or PAID — preserving the existing freeze on finalized
+ * payroll rather than mutating it after the fact. A quota-exception
+ * decision made this late needs a manual payroll adjustment instead.
+ */
+export async function applyExtraLeaveRejectedDeduction(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+): Promise<{ applied: boolean; reason?: string }> {
+  const basicStipend = await getBasicStipend(tx, employeeId);
+  if (basicStipend <= 0) {
+    return { applied: false, reason: 'no active stipend record' };
+  }
+
+  const deductionAmount = dailyStipendRate(basicStipend, date);
+  const dateLabel = date.toISOString().slice(0, 10);
+  const description = `Extra Full Leave rejected — 1-day deduction — ${dateLabel}`;
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+  const payrollEntry = await getOrCreatePayrollEntry(
+    tx,
+    employeeId,
+    month,
+    year,
+  );
+
+  if (payrollEntry.status !== PayrollStatus.PENDING) {
+    return { applied: false, reason: 'payroll entry is PROCESSED/PAID' };
+  }
+
+  const alreadyDeducted = await tx.payrollDeduction.findFirst({
+    where: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.EXTRA_LEAVE_REJECTED,
+      description,
+    },
+  });
+  if (alreadyDeducted) return { applied: true };
+
+  await tx.payrollDeduction.create({
+    data: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.EXTRA_LEAVE_REJECTED,
+      amount: deductionAmount,
+      description,
+    },
+  });
+
+  await tx.payrollEntry.update({
+    where: { id: payrollEntry.id },
+    data: {
+      totalDeductions: { increment: deductionAmount },
+      netStipend: { decrement: deductionAmount },
+    },
+  });
+
+  await tx.notification.create({
+    data: {
+      employeeId,
+      message:
+        'Your extra leave request (beyond monthly entitlement) was rejected — a one-day stipend deduction has been applied.',
+      type: 'EXTRA_LEAVE_REJECTED_DEDUCTION',
+    },
+  });
+
+  return { applied: true };
 }

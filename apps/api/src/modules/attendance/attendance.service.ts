@@ -12,6 +12,7 @@ import {
   EmployeeStatus,
   Gender,
   LeaveStatus,
+  LeaveType,
   Permission,
   Prisma,
   ProjectType,
@@ -34,6 +35,7 @@ import {
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
   UpdateAttendanceDto,
+  UpdateRelieverSessionDto,
 } from './attendance.dto';
 import {
   computeBiometricLateMinutes,
@@ -46,6 +48,12 @@ import {
 } from './attendance-biometric.util';
 import { mapDeviceStatusToPunchType } from './device-status.util';
 import { applyDisciplineRules } from './discipline.helper';
+import {
+  countShortLeaveOccurrencesThisMonth,
+  evaluateShortLeaveDeviation,
+  MONTHLY_SHORT_LEAVE_LIMIT,
+  reconcileShortLeaveAttendance,
+} from './short-leave.util';
 import {
   parseAttendanceDateTime,
   resolveDutyStartTime,
@@ -574,6 +582,8 @@ export class AttendanceService {
           overtimePending: preDutyOvertimeMinutes > 0,
           source: AttendanceSource.BIOMETRIC,
           note: twentyFourHour ? '24-hour shift check-in' : undefined,
+          dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
         },
       });
     });
@@ -643,7 +653,11 @@ export class AttendanceService {
   }
 
   private async biometricOvertimeCheckIn(
-    employee: { id: string },
+    employee: {
+      id: string;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+    },
     branchId: string | null,
     checkTime: Date,
     dateOnly: Date,
@@ -677,6 +691,8 @@ export class AttendanceService {
         checkIn: checkTime,
         status: AttendanceStatus.PRESENT,
         source,
+        dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+        dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
       },
     });
 
@@ -731,7 +747,13 @@ export class AttendanceService {
   ) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
-      select: { id: true, currentBranchId: true, status: true },
+      select: {
+        id: true,
+        currentBranchId: true,
+        status: true,
+        dutyStartTime: true,
+        dutyEndTime: true,
+      },
     });
 
     if (!employee) {
@@ -953,6 +975,8 @@ export class AttendanceService {
           overtimePending,
           source: AttendanceSource.MANUAL,
           note: dto.note,
+          dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
         },
         update: {
           checkIn,
@@ -1028,6 +1052,7 @@ export class AttendanceService {
             id: true,
             fullName: true,
             employeeCode: true,
+            currentBranchId: true,
             dutyStartTime: true,
             dutyEndTime: true,
             dutyTotalHours: true,
@@ -1095,7 +1120,14 @@ export class AttendanceService {
 
     const data: Prisma.AttendanceLogUpdateInput = {};
 
-    if (dto.status !== undefined) {
+    // SHORT_LEAVE is never written directly here — it goes through the
+    // LeaveRecord-backed quota/duration/reconciliation path below (shared
+    // with the Portal Short Leave flow), which decides for itself whether
+    // and how to write the status.
+    if (
+      dto.status !== undefined &&
+      dto.status !== AttendanceStatus.SHORT_LEAVE
+    ) {
       data.status = dto.status;
     }
     if (dto.checkIn !== undefined) {
@@ -1121,6 +1153,33 @@ export class AttendanceService {
           ? parseAttendanceDateTime(dto.checkIn)
           : null
         : log.checkIn;
+    const effectiveCheckOut =
+      dto.checkOut !== undefined
+        ? dto.checkOut
+          ? parseAttendanceDateTime(dto.checkOut)
+          : null
+        : log.checkOut;
+
+    // HR "emergency" flow: retroactively reclassifying this row's real
+    // checkIn/checkOut as Short Leave. Validated up front (fast fail, never
+    // against HR-supplied lateMinutes — that must not be usable to suppress
+    // a real violation) so an obviously-invalid attempt never creates a
+    // LeaveRecord at all. The actual quota check, LeaveRecord creation, and
+    // attendance reconciliation happen inside the transaction below,
+    // through the same reconcileShortLeaveAttendance() path the Portal
+    // Short Leave flow uses — the two flows converge on identical treatment
+    // and share one monthly quota (see short-leave.util.ts).
+    if (dto.status === AttendanceStatus.SHORT_LEAVE) {
+      const evaluation = evaluateShortLeaveDeviation(
+        log.employee,
+        log.date,
+        effectiveCheckIn,
+        effectiveCheckOut,
+      );
+      if (evaluation.valid === false) {
+        throw new BadRequestException(evaluation.reason);
+      }
+    }
 
     if (dto.status === undefined && effectiveCheckIn) {
       if (is24HourShift(log.employee)) {
@@ -1159,7 +1218,8 @@ export class AttendanceService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      let updateData = { ...data };
+      const updateData = { ...data };
+      let shortLeaveDecision: 'APPROVED' | 'PENDING_APPROVAL' | undefined;
 
       if (
         effectiveCheckIn &&
@@ -1174,6 +1234,56 @@ export class AttendanceService {
           log.date,
           { lateMinutes: (updateData.lateMinutes as number | undefined) ?? 0 },
         );
+      } else if (dto.status === AttendanceStatus.SHORT_LEAVE) {
+        // Unified monthly quota shared with the Portal Short Leave flow —
+        // counted from LeaveRecord (every Short Leave, either flow, is now
+        // represented as one), read live under this transaction to avoid a
+        // race between two concurrent Short Leave saves for the same
+        // employee/month.
+        const occurrencesThisMonth = await countShortLeaveOccurrencesThisMonth(
+          tx,
+          log.employeeId,
+          log.date,
+        );
+        const withinQuota =
+          occurrencesThisMonth + 1 <= MONTHLY_SHORT_LEAVE_LIMIT;
+
+        await tx.leaveRecord.create({
+          data: {
+            employeeId: log.employeeId,
+            leaveType: LeaveType.SHORT_LEAVE,
+            startDate: log.date,
+            endDate: log.date,
+            totalDays: 0,
+            reason: dto.note || 'HR emergency short leave',
+            status: withinQuota
+              ? LeaveStatus.APPROVED
+              : LeaveStatus.PENDING_APPROVAL,
+            currentStage: null,
+            approvedBy: withinQuota ? actingUser.id : null,
+          },
+        });
+
+        if (withinQuota) {
+          // Duration/side already validated above; this performs the
+          // actual attendance write (status=SHORT_LEAVE, full-day payroll
+          // credit at read time) and reverses late discipline when
+          // applicable — the exact same reconciliation the Portal flow
+          // uses, so both converge on identical treatment.
+          await reconcileShortLeaveAttendance(
+            tx,
+            log.employeeId,
+            log.date,
+            log.employee,
+          );
+          shortLeaveDecision = 'APPROVED';
+        } else {
+          // Quota exceeded: this attendance row is left completely
+          // untouched (no status change, no discipline reversal) until HR
+          // separately decides the quota exception via
+          // LeaveService.decideQuotaException.
+          shortLeaveDecision = 'PENDING_APPROVAL';
+        }
       }
 
       const result = await tx.attendanceLog.update({
@@ -1203,11 +1313,12 @@ export class AttendanceService {
               overtimeMinutes: result.overtimeMinutes,
               note: result.note,
             },
+            shortLeaveDecision,
           },
         },
       });
 
-      return result;
+      return shortLeaveDecision ? { ...result, shortLeaveDecision } : result;
     });
 
     return updated;
@@ -1374,6 +1485,8 @@ export class AttendanceService {
       select: {
         id: true,
         currentBranchId: true,
+        dutyStartTime: true,
+        dutyEndTime: true,
       },
     });
 
@@ -1411,6 +1524,8 @@ export class AttendanceService {
             status: AttendanceStatus.UNMARKED,
             source: AttendanceSource.MANUAL,
             note: AUTO_UNMARKED_NOTE,
+            dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+            dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
           },
         });
       }
@@ -1581,14 +1696,22 @@ export class AttendanceService {
         employee: log.employee
           ? {
               ...log.employee,
-              // Display times always from employee duty fields (shift name only).
+              // Display times prefer this row's own duty snapshot (locked in
+              // at creation) over the employee's current duty fields, so a
+              // later duty change never retroactively alters past rows.
+              // Legacy rows created before the snapshot existed fall back to
+              // the employee's current duty fields.
               shift: log.employee.shift
                 ? {
                     name: log.employee.shift.name,
                     startTime:
-                      log.employee.dutyStartTime ?? log.employee.shift.startTime,
+                      log.dutyStartTimeSnapshot ??
+                      log.employee.dutyStartTime ??
+                      log.employee.shift.startTime,
                     endTime:
-                      log.employee.dutyEndTime ?? log.employee.shift.endTime,
+                      log.dutyEndTimeSnapshot ??
+                      log.employee.dutyEndTime ??
+                      log.employee.shift.endTime,
                   }
                 : log.employee.shift,
               user: log.employee.user
@@ -1884,6 +2007,164 @@ export class AttendanceService {
     return updated;
   }
 
+  /**
+   * HR correction to an existing RelieverSession's recorded checkIn/checkOut
+   * — the Reliever-session equivalent of updateAttendance() for normal
+   * AttendanceLog rows. Never touches AttendanceLog; RelieverSession stays
+   * the sole source of truth for reliever work, exactly as before.
+   *
+   * totalMinutes is recomputed and persisted here because
+   * computeRelieverPayableMinutes (payroll-hours.util.ts) uses it as the
+   * base for the "actual minutes minus own-duty overlap" formula — payroll
+   * itself recomputes payable minutes dynamically from RelieverSession rows
+   * on every generate/refresh (PayrollService.upsertRelieverAllowanceRow),
+   * so no payroll call is needed here; the next PENDING-entry
+   * generate/refresh picks up the correction automatically. PROCESSED/PAID
+   * entries are already frozen by that same call site's existing early
+   * return — unaffected by this change.
+   */
+  async updateRelieverSession(
+    sessionId: string,
+    dto: UpdateRelieverSessionDto,
+    actingUser: { id: string; role: UserRole },
+  ) {
+    if (dto.checkIn === undefined && dto.checkOut === undefined) {
+      throw new BadRequestException(
+        'At least one of checkIn or checkOut must be provided',
+      );
+    }
+
+    const session = await this.prisma.relieverSession.findUnique({
+      where: { id: sessionId },
+    });
+    if (!session) {
+      throw new NotFoundException(`Reliever session ${sessionId} not found`);
+    }
+
+    const effectiveCheckIn = dto.checkIn
+      ? parseAttendanceDateTime(dto.checkIn)
+      : session.checkIn;
+    const effectiveCheckOut = dto.checkOut
+      ? parseAttendanceDateTime(dto.checkOut)
+      : session.checkOut;
+
+    if (
+      effectiveCheckOut &&
+      effectiveCheckOut.getTime() < effectiveCheckIn.getTime()
+    ) {
+      throw new BadRequestException('Check-out must be after check-in');
+    }
+
+    // Session-level double-booking check — the existing
+    // assertNoRelieverDoubleBooking (leave.service.ts) only guards the
+    // assignment layer (date-range + duty-window at request time); this is
+    // the equivalent check against actual recorded RelieverSession
+    // timestamps for the same reliever. Runs unconditionally (not just when
+    // effectiveCheckOut is set) because a correction that leaves this
+    // session open still needs checking against other sessions, including
+    // other still-open ones — see the open/open branch below.
+    //
+    // An OPEN other session (checkOut still null) has no known true end, so
+    // it cannot be compared with the normal in/out overlap test; the only
+    // safe assumption is that it might still be running for any time at or
+    // after its own checkIn. That makes three cases:
+    //  - other completed (checkOut set): normal interval overlap test,
+    //    only decidable when this correction also has a definite end.
+    //  - other open, this correction has a definite end: reject unless the
+    //    corrected session ends at or before the other session's start —
+    //    anything later is ambiguous, since the open session could still be
+    //    running through that time.
+    //  - other open, this correction also stays open: two open-ended
+    //    intervals for the same reliever can never be verified as
+    //    non-overlapping — always reject.
+    const otherSessions = await this.prisma.relieverSession.findMany({
+      where: {
+        employeeId: session.employeeId,
+        id: { not: session.id },
+      },
+      select: { checkIn: true, checkOut: true },
+    });
+
+    const overlaps = otherSessions.some((other) => {
+      if (other.checkOut != null) {
+        // Other session is completed.
+        if (effectiveCheckOut) {
+          return (
+            effectiveCheckIn.getTime() < other.checkOut.getTime() &&
+            other.checkIn.getTime() < effectiveCheckOut.getTime()
+          );
+        }
+        // This correction stays open — ambiguous unless it starts at or
+        // after the other (completed) session's end.
+        return effectiveCheckIn.getTime() < other.checkOut.getTime();
+      }
+
+      // Other session is still open (no known true end).
+      if (effectiveCheckOut) {
+        return effectiveCheckOut.getTime() > other.checkIn.getTime();
+      }
+      // Both this correction and the other session are open-ended.
+      return true;
+    });
+
+    if (overlaps) {
+      throw new ConflictException(
+        'Corrected times overlap another recorded Reliever session for this employee',
+      );
+    }
+
+    const totalMinutes = effectiveCheckOut
+      ? Math.max(
+          0,
+          Math.round(
+            (effectiveCheckOut.getTime() - effectiveCheckIn.getTime()) / 60000,
+          ),
+        )
+      : 0;
+
+    const previous = {
+      checkIn: session.checkIn,
+      checkOut: session.checkOut,
+      totalMinutes: session.totalMinutes,
+    };
+
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.relieverSession.update({
+        where: { id: sessionId },
+        data: {
+          checkIn: effectiveCheckIn,
+          checkOut: effectiveCheckOut,
+          totalMinutes,
+        },
+        include: {
+          employee: {
+            select: { id: true, fullName: true, employeeCode: true },
+          },
+          branch: { select: BRANCH_LABEL_SELECT },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'RELIEVER_SESSION_UPDATED',
+          entity: 'RelieverSession',
+          entityId: sessionId,
+          changes: {
+            previous,
+            updated: {
+              checkIn: result.checkIn,
+              checkOut: result.checkOut,
+              totalMinutes: result.totalMinutes,
+            },
+          },
+        },
+      });
+
+      return result;
+    });
+  }
+
   private async findRelieverAssignment(employeeId: string, dateOnly: Date) {
     return this.prisma.relieverRequest.findFirst({
       where: {
@@ -2172,6 +2453,8 @@ export class AttendanceService {
           lateMinutes,
           source: AttendanceSource.MANUAL,
           note: 'Portal check-in',
+          dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
         },
         update: {
           checkIn: checkTime,
@@ -2569,7 +2852,7 @@ export class AttendanceService {
 
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
-      select: { currentBranchId: true },
+      select: { currentBranchId: true, dutyStartTime: true, dutyEndTime: true },
     });
 
     if (!employee) {
@@ -2595,6 +2878,8 @@ export class AttendanceService {
         status: dto.status,
         source: AttendanceSource.MANUAL,
         note: dto.note,
+        dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+        dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
       },
     });
   }

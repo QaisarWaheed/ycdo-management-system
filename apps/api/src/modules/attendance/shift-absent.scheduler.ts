@@ -225,6 +225,8 @@ export class ShiftAbsentScheduler {
             status,
             source: AttendanceSource.MANUAL,
             note,
+            dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+            dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
           },
         });
         marked++;

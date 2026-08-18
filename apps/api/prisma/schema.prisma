@@ -393,6 +393,15 @@ model AttendanceLog {
   /// checkOut, which stays NULL because the employee never actually
   /// checked out. NULL means still open/active.
   sessionClosedAt DateTime?
+  /// The employee's dutyStartTime/dutyEndTime AT THE MOMENT this record was
+  /// created — a fixed historical snapshot, never touched again after
+  /// creation (including on later edits to this same row). Exists so a
+  /// later change to Employee.dutyStartTime/dutyEndTime cannot retroactively
+  /// alter what a past attendance record appears to show. NULL only for
+  /// rows created before this field existed, or if the employee had no
+  /// duty time configured at creation (e.g. reliever-only).
+  dutyStartTimeSnapshot String?
+  dutyEndTimeSnapshot   String?
 
   employee Employee @relation(fields: [employeeId], references: [id])
   branch   Branch   @relation(fields: [branchId], references: [id])
@@ -415,6 +424,12 @@ enum AttendanceStatus {
   HOLIDAY
   UNINFORMED_ABSENT
   SWAP_COVERED
+  /// HR-only, retroactive: an already-recorded attendance row (real
+  /// checkIn/checkOut) reclassified as covering a single continuous late
+  /// arrival OR early departure within the employee's duty-duration limit.
+  /// Distinct from LeaveType.SHORT_LEAVE (a prospective, request-based leave
+  /// that writes HALF_DAY) — see short-leave.util.ts.
+  SHORT_LEAVE
 }
 
 enum AttendanceSource {
@@ -524,6 +539,12 @@ enum DeductionType {
   DISCIPLINARY_FINE
   UNPAID_LEAVE
   OTHER
+  /// One-day deduction for a quota-exceeded Full Leave HR rejected. Distinct
+  /// from UNPAID_LEAVE (which is matched by reason alone and recomputed/
+  /// upserted as a monthly aggregate elsewhere — reusing it here would risk
+  /// that aggregate logic silently overwriting or deleting this exact,
+  /// incident-linked deduction).
+  EXTRA_LEAVE_REJECTED
 }
 
 enum PayrollStatus {
@@ -731,6 +752,9 @@ enum LeaveApprovalStage {
   BRANCH_MANAGER
   DEPARTMENT_INCHARGE
   HR_OPERATIONS
+  /// The distinct HR decision on a PENDING_APPROVAL (quota-exceeded) leave —
+  /// logged via the same LeaveApproval audit trail as every other stage.
+  QUOTA_EXCEPTION
 }
 
 enum LeaveApprovalAction {
@@ -755,6 +779,13 @@ enum LeaveStatus {
   APPROVED
   REJECTED
   CANCELLED
+  /// Chain-approved (or HR-emergency-created) but exceeds the employee's
+  /// normal monthly Full Leave (2) or Short Leave (3, shared across the
+  /// portal and HR-emergency flows) entitlement — awaiting a distinct HR
+  /// quota-exception decision (see LeaveApprovalStage.QUOTA_EXCEPTION).
+  /// Approving moves to APPROVED and reconciles attendance exactly like a
+  /// normal approval; rejecting moves to REJECTED with no leave protection.
+  PENDING_APPROVAL
 }
 
 enum StipendStatus {

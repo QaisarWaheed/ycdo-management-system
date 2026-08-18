@@ -291,7 +291,6 @@ const YCDO_LETTER_HEADER = `
   <div class="notification-block">
     <p class="en-title">{{enTitle}}</p>
   </div>
-  <hr class="hr-line" />
 </div>
 
 <div class="meta-block">
@@ -308,7 +307,6 @@ const YCDO_LETTER_FOOTER = `
   <p>والسلام</p>
 </div>
 <div class="signature">
-  <div class="sig-line"></div>
   <div>{{senderTitle}}</div>
   <div>{{orgLine}}</div>
 </div>

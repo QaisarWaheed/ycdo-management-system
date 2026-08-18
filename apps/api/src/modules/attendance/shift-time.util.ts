@@ -116,4 +116,20 @@ export function computeShiftEndDateTime(
   return end;
 }
 
+/**
+ * Absolute shift-start timestamp for one specific attendance day. The row's
+ * `date` is always the shift's own start day (see computeShiftEndDateTime's
+ * comment), so unlike the end time this never needs a +1 day adjustment.
+ */
+export function computeShiftStartDateTime(
+  attendanceDate: Date,
+  dutyStartTime: string,
+): Date {
+  const dateStr = attendanceDate.toISOString().slice(0, 10);
+  const startMinutes = parseTimeToMinutes(dutyStartTime);
+  const start = new Date(`${dateStr}T00:00:00+05:00`);
+  start.setUTCMinutes(start.getUTCMinutes() + startMinutes);
+  return start;
+}
+
 export { toPakistanDateOnly, toPakistanMinutesOfDay, parseTimeToMinutes };

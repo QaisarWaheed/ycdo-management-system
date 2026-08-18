@@ -371,3 +371,14 @@ export class RelieverCheckOutDto {
   @IsDateString()
   checkOut?: string;
 }
+
+/** HR correction to an existing RelieverSession's recorded timestamps. */
+export class UpdateRelieverSessionDto {
+  @IsOptional()
+  @IsDateString()
+  checkIn?: string;
+
+  @IsOptional()
+  @IsDateString()
+  checkOut?: string;
+}
