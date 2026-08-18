@@ -44,6 +44,7 @@ import {
   computeHourlyRate,
   computeRelieverPayableMinutes,
   DEFAULT_MONTHLY_ALLOWED_LEAVES,
+  dateKey,
   hoursFromDutyWindow,
   leaveCreditMinutes,
   payableMinutesWithinDutyWindow,
@@ -90,11 +91,6 @@ export class PayrollService {
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: {
-        stipendRecords: {
-          where: { effectiveTo: null },
-          orderBy: { effectiveFrom: 'desc' },
-          take: 1,
-        },
         shift: { select: { startTime: true, endTime: true } },
       },
     });
@@ -127,14 +123,31 @@ export class PayrollService {
       }
     }
 
-    const activeStipendRecord = employee.stipendRecords[0];
-    if (!activeStipendRecord) {
+    // Discover EVERY StipendRecord overlapping this month, not only the
+    // currently-active one — see findOverlappingStipendRecords. The
+    // "active" record (effectiveTo: null, or the most recent if somehow
+    // none is null) remains the one this call creates/refreshes AND
+    // returns, preserving this method's existing single-entry return
+    // contract exactly (callers like applyOvertime rely on getting back
+    // one entry). Every OTHER overlapping segment is also refreshed as a
+    // side effect so historical PENDING rows never go stale/orphaned
+    // again — see recomputeEmployeeMonth for the explicit,
+    // return-everything version of this same loop.
+    const overlappingStipendRecords = await this.findOverlappingStipendRecords(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+    );
+    if (overlappingStipendRecords.length === 0) {
       throw new NotFoundException(
-        `No active stipend record found for employee ${dto.employeeId}`,
+        `No stipend record found covering ${dto.month}/${dto.year} for employee ${dto.employeeId}`,
       );
     }
+    const activeStipendRecord =
+      overlappingStipendRecords.find((r) => r.effectiveTo === null) ??
+      overlappingStipendRecords[overlappingStipendRecords.length - 1];
 
-    const existing = await this.prisma.payrollEntry.findUnique({
+    const existingActiveEntry = await this.prisma.payrollEntry.findUnique({
       where: {
         stipendRecordId_month_year: {
           stipendRecordId: activeStipendRecord.id,
@@ -142,21 +155,15 @@ export class PayrollService {
           year: dto.year,
         },
       },
-      include: { deductions: true, allowances: true },
     });
 
     if (
-      existing &&
-      (existing.status === PayrollStatus.PROCESSED ||
-        existing.status === PayrollStatus.PAID)
+      existingActiveEntry &&
+      (existingActiveEntry.status === PayrollStatus.PROCESSED ||
+        existingActiveEntry.status === PayrollStatus.PAID)
     ) {
-      return existing;
+      return existingActiveEntry;
     }
-
-    const markForced =
-      forceNonActive && !defaultEligible
-        ? true
-        : existing?.forcedNonActive === true;
 
     if (forceNonActive && !defaultEligible && actingUser?.id) {
       await this.prisma.auditLog.create({
@@ -164,7 +171,7 @@ export class PayrollService {
           userId: actingUser.id,
           action: 'PAYROLL_ENTRY_FORCED',
           entity: 'PayrollEntry',
-          entityId: existing?.id ?? dto.employeeId,
+          entityId: existingActiveEntry?.id ?? dto.employeeId,
           changes: {
             employeeId: dto.employeeId,
             employeeStatus: employee.status,
@@ -176,134 +183,155 @@ export class PayrollService {
       });
     }
 
-    const contractualBasic = Number(activeStipendRecord.basicStipend);
-
-    if (existing) {
-      await this.upsertAdditionalWorkingDaysAllowanceRow(
-        existing.id,
-        dto.employeeId,
-        dto.month,
-        dto.year,
-        employee,
-        contractualBasic,
-      );
-      await this.upsertUnpaidLeaveDeductionRow(
-        existing.id,
-        dto.employeeId,
-        dto.month,
-        dto.year,
-        employee.monthlyAllowedLeaves,
-        contractualBasic,
-      );
-      await this.upsertRelieverAllowanceRow(
-        existing.id,
-        dto.employeeId,
-        dto.month,
-        dto.year,
-        employee,
-        contractualBasic,
-      );
-      const refreshed = await this.prisma.payrollEntry.findUnique({
-        where: { id: existing.id },
-        include: { deductions: true, allowances: true },
-      });
-      const breakdown = await this.computeHourlyBreakdown(
-        dto.employeeId,
-        dto.month,
-        dto.year,
-        {
-          stipendRecord: activeStipendRecord,
-          employee,
-          existingDeductions: refreshed?.deductions ?? [],
-          existingAllowances: refreshed?.allowances ?? [],
-        },
-      );
-      const totals = this.clampPayrollTotals(breakdown);
-      return this.prisma.payrollEntry.update({
-        where: { id: existing.id },
-        data: {
-          ...totals,
-          forcedNonActive: markForced,
-        },
-        include: { deductions: true, allowances: true },
-      });
-    }
-
-    const breakdown = await this.computeHourlyBreakdown(
-      dto.employeeId,
-      dto.month,
-      dto.year,
-      {
-        stipendRecord: activeStipendRecord,
-        employee,
-        existingDeductions: [],
-        existingAllowances: [],
-      },
-    );
-
-    const createdTotals = this.clampPayrollTotals(breakdown);
-    const created = await this.prisma.payrollEntry.create({
-      data: {
-        stipendRecordId: activeStipendRecord.id,
-        month: dto.month,
-        year: dto.year,
-        ...createdTotals,
-        forcedNonActive: markForced,
-        status: PayrollStatus.PENDING,
-      },
-      include: { deductions: true, allowances: true },
-    });
-
-    await this.upsertAdditionalWorkingDaysAllowanceRow(
-      created.id,
-      dto.employeeId,
-      dto.month,
-      dto.year,
-      employee,
-      contractualBasic,
-    );
-    await this.upsertUnpaidLeaveDeductionRow(
-      created.id,
+    const unpaidLeaveDatesForMonth = await this.computeMonthlyUnpaidLeaveDates(
       dto.employeeId,
       dto.month,
       dto.year,
       employee.monthlyAllowedLeaves,
-      contractualBasic,
     );
-    await this.upsertRelieverAllowanceRow(
-      created.id,
-      dto.employeeId,
-      dto.month,
-      dto.year,
+
+    const primaryResult = await this.upsertPayrollEntryForStipendSegment(
+      activeStipendRecord,
+      dto,
       employee,
-      contractualBasic,
+      forceNonActive && !defaultEligible ? true : undefined,
+      unpaidLeaveDatesForMonth,
     );
 
-    const refreshed = await this.prisma.payrollEntry.findUnique({
-      where: { id: created.id },
-      include: { deductions: true, allowances: true },
+    const otherSegments = overlappingStipendRecords.filter(
+      (r) => r.id !== activeStipendRecord.id,
+    );
+    for (const segment of otherSegments) {
+      // Never force-flag historical segments from THIS call — force-generate
+      // is a decision about the active segment this specific request is
+      // for; other segments keep whatever forcedNonActive value they
+      // already have (see upsertPayrollEntryForStipendSegment doc comment).
+      await this.upsertPayrollEntryForStipendSegment(
+        segment,
+        dto,
+        employee,
+        undefined,
+        unpaidLeaveDatesForMonth,
+      );
+    }
+
+    return primaryResult;
+  }
+
+  /**
+   * Explicit, "return everything" multi-segment recompute for one
+   * employee/month. Unlike createOrGetEntry, this NEVER creates a new
+   * PayrollEntry — it only refreshes segments that already have one
+   * (skipping PROCESSED/PAID, which stay frozen), and reports which
+   * overlapping segments have no entry yet at all (those still need an
+   * explicit createOrGetEntry call, which also carries the
+   * non-active-employee eligibility checks this method deliberately does
+   * not duplicate). Shares upsertPayrollEntryForStipendSegment with
+   * createOrGetEntry, so the two can never compute a segment differently.
+   */
+  async recomputeEmployeeMonth(
+    dto: { employeeId: string; month: number; year: number },
+    actingUser?: { id: string; role: UserRole },
+  ): Promise<
+    Array<{
+      stipendRecordId: string;
+      status: 'RECOMPUTED' | 'FROZEN' | 'NO_EXISTING_ENTRY';
+      entry: Prisma.PayrollEntryGetPayload<{
+        include: { deductions: true; allowances: true };
+      }> | null;
+    }>
+  > {
+    if (actingUser?.id) {
+      await this.accessScopeService.assertEmployeeAccess(
+        actingUser.id,
+        actingUser.role,
+        Permission.PAYROLL_MANAGE,
+        dto.employeeId,
+      );
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+      include: { shift: { select: { startTime: true, endTime: true } } },
     });
-    const withAwd = await this.computeHourlyBreakdown(
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with id ${dto.employeeId} not found`,
+      );
+    }
+
+    const overlappingStipendRecords = await this.findOverlappingStipendRecords(
       dto.employeeId,
       dto.month,
       dto.year,
-      {
-        stipendRecord: activeStipendRecord,
-        employee,
-        existingDeductions: refreshed?.deductions ?? [],
-        existingAllowances: refreshed?.allowances ?? [],
-      },
+    );
+    if (overlappingStipendRecords.length === 0) {
+      return [];
+    }
+
+    const unpaidLeaveDatesForMonth = await this.computeMonthlyUnpaidLeaveDates(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      employee.monthlyAllowedLeaves,
     );
 
-    const finalTotals = this.clampPayrollTotals(withAwd);
-    return this.prisma.payrollEntry.update({
-      where: { id: created.id },
-      data: {
-        ...finalTotals,
-        forcedNonActive: markForced,
-      },
-      include: { deductions: true, allowances: true },
-    });
+    const results: Array<{
+      stipendRecordId: string;
+      status: 'RECOMPUTED' | 'FROZEN' | 'NO_EXISTING_ENTRY';
+      entry: Prisma.PayrollEntryGetPayload<{
+        include: { deductions: true; allowances: true };
+      }> | null;
+    }> = [];
+
+    for (const stipendRecord of overlappingStipendRecords) {
+      const existing = await this.prisma.payrollEntry.findUnique({
+        where: {
+          stipendRecordId_month_year: {
+            stipendRecordId: stipendRecord.id,
+            month: dto.month,
+            year: dto.year,
+          },
+        },
+        include: { deductions: true, allowances: true },
+      });
+
+      if (!existing) {
+        results.push({
+          stipendRecordId: stipendRecord.id,
+          status: 'NO_EXISTING_ENTRY',
+          entry: null,
+        });
+        continue;
+      }
+
+      if (
+        existing.status === PayrollStatus.PROCESSED ||
+        existing.status === PayrollStatus.PAID
+      ) {
+        results.push({
+          stipendRecordId: stipendRecord.id,
+          status: 'FROZEN',
+          entry: existing,
+        });
+        continue;
+      }
+
+      const refreshedEntry = await this.upsertPayrollEntryForStipendSegment(
+        stipendRecord,
+        dto,
+        employee,
+        undefined,
+        unpaidLeaveDatesForMonth,
+      );
+      results.push({
+        stipendRecordId: stipendRecord.id,
+        status: 'RECOMPUTED',
+        entry: refreshedEntry,
+      });
+    }
+
+    return results;
   }
 
   /** Persist non-negative deduction/allowance totals; recompute net from parts. */
@@ -326,7 +354,277 @@ export class PayrollService {
     };
   }
 
-  /** Upserts or removes ADDITIONAL_WORKING_DAYS allowance row only (totals recalculated by caller). */
+  /**
+   * Finds every StipendRecord that overlaps the target payroll month at
+   * all — not just the currently-active one (effectiveTo: null). Overlap
+   * test, using the established half-open [effectiveFrom, effectiveTo)
+   * semantics (see computeHourlyBreakdown's segment-bounds comment):
+   *   effectiveFrom <= monthEnd AND (effectiveTo is null OR effectiveTo > monthStart)
+   * Ordered oldest-first so callers can reliably pick "the active one" as
+   * either the null-effectiveTo record or, failing that, the most recent.
+   */
+  private async findOverlappingStipendRecords(
+    employeeId: string,
+    month: number,
+    year: number,
+  ) {
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+    return this.prisma.stipendRecord.findMany({
+      where: {
+        employeeId,
+        effectiveFrom: { lte: monthEnd },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: monthStart } }],
+      },
+      orderBy: { effectiveFrom: 'asc' },
+    });
+  }
+
+  /** Shared by computeHourlyBreakdown and every segment-bounded child-row
+   * helper — the single source of truth for "which dates, clamped to this
+   * calendar month, does this StipendRecord's [effectiveFrom, effectiveTo)
+   * window cover." */
+  private resolveSegmentDateBounds(
+    stipendRecord: { effectiveFrom: Date; effectiveTo?: Date | null },
+    month: number,
+    year: number,
+  ): { segmentStart: Date; segmentEndExclusive: Date | null; monthEnd: Date } {
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+    const segmentStart =
+      stipendRecord.effectiveFrom > monthStart
+        ? stipendRecord.effectiveFrom
+        : monthStart;
+    return {
+      segmentStart,
+      segmentEndExclusive: stipendRecord.effectiveTo ?? null,
+      monthEnd,
+    };
+  }
+
+  /** JS-side equivalent of the Prisma gte/lte/lt segment window above, for
+   * items (like unpaid-leave dates) that must be pre-computed month-globally
+   * and then split across segments in memory rather than re-queried per
+   * segment. */
+  private dateWithinSegment(
+    date: Date,
+    segmentStart: Date,
+    segmentEndExclusive: Date | null,
+    monthEnd: Date,
+  ): boolean {
+    if (date.getTime() < segmentStart.getTime()) return false;
+    if (date.getTime() > monthEnd.getTime()) return false;
+    if (segmentEndExclusive && date.getTime() >= segmentEndExclusive.getTime()) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Month-global unpaid-leave-date computation — see the doc comment on
+   * upsertUnpaidLeaveDeductionRow for why the paid/unpaid QUOTA split must
+   * be computed once across the whole month (never per-segment) while the
+   * resulting individual dates are still attributed to exactly one
+   * stipend segment each. Called once per employee/month by
+   * createOrGetEntry / recomputeEmployeeMonth and the same result reused
+   * for every segment, so the quota can never be granted twice.
+   */
+  private async computeMonthlyUnpaidLeaveDates(
+    employeeId: string,
+    month: number,
+    year: number,
+    monthlyAllowedLeaves: number | null | undefined,
+  ): Promise<Date[]> {
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+    const onLeaveLogs = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId,
+        type: AttendanceLogType.REGULAR,
+        status: AttendanceStatus.ON_LEAVE,
+        date: { gte: monthStart, lte: monthEnd },
+      },
+      select: { date: true },
+      orderBy: { date: 'asc' },
+    });
+
+    const dates = onLeaveLogs.map((l) => l.date);
+    const split = splitPaidUnpaidLeaveDays({
+      onLeaveDates: dates,
+      monthlyAllowedLeaves,
+    });
+    const uniqueSorted = [
+      ...new Map(dates.map((d) => [dateKey(d), d] as const)).values(),
+    ].sort((a, b) => a.getTime() - b.getTime());
+
+    return uniqueSorted.filter((d) => !split.paidLeaveDateKeys.has(dateKey(d)));
+  }
+
+  /**
+   * Creates or refreshes exactly one PayrollEntry for one StipendRecord
+   * segment. This is the single place that owns the create-vs-refresh
+   * flow, the PROCESSED/PAID freeze, and wiring the three child-row
+   * helpers with this segment's own date bounds — shared by
+   * createOrGetEntry (the existing single-"active"-segment entry point)
+   * and recomputeEmployeeMonth (the explicit multi-segment entry point),
+   * so the two can never drift apart on what "correct" means for a single
+   * segment.
+   *
+   * `forceNonActiveOverride`: true forces forcedNonActive on this entry
+   * (mirrors createOrGetEntry's own force-generate flow); undefined
+   * preserves whatever the entry's own forcedNonActive value already is
+   * (used for every OTHER segment besides the one a given createOrGetEntry
+   * call is explicitly about — force-generating payroll for a non-active
+   * employee is a decision about THAT call, not something that should
+   * retroactively re-flag unrelated historical segments).
+   */
+  private async upsertPayrollEntryForStipendSegment(
+    stipendRecord: {
+      id: string;
+      basicStipend: unknown;
+      allowances?: unknown;
+      reward?: unknown;
+      progressReward?: unknown;
+      fuelAllowance?: unknown;
+      loanDeduction?: unknown;
+      advanceDeduction?: unknown;
+      fineDeduction?: unknown;
+      healthDeduction?: unknown;
+      lumpsumTotal?: unknown;
+      effectiveFrom: Date;
+      effectiveTo: Date | null;
+    },
+    dto: { employeeId: string; month: number; year: number },
+    employee: {
+      relieverOnly?: boolean;
+      dutyTotalHours?: number | null;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      monthlyAllowedLeaves?: number | null;
+      shift?: { startTime: string; endTime: string } | null;
+    },
+    forceNonActiveOverride: boolean | undefined,
+    unpaidLeaveDatesForMonth: Date[],
+  ) {
+    let entry = await this.prisma.payrollEntry.findUnique({
+      where: {
+        stipendRecordId_month_year: {
+          stipendRecordId: stipendRecord.id,
+          month: dto.month,
+          year: dto.year,
+        },
+      },
+      include: { deductions: true, allowances: true },
+    });
+
+    if (
+      entry &&
+      (entry.status === PayrollStatus.PROCESSED ||
+        entry.status === PayrollStatus.PAID)
+    ) {
+      return entry; // frozen — never overwritten or recomputed
+    }
+
+    const markForced =
+      forceNonActiveOverride === true ? true : entry?.forcedNonActive === true;
+    const contractualBasic = Number(stipendRecord.basicStipend);
+
+    if (!entry) {
+      const initialBreakdown = await this.computeHourlyBreakdown(
+        dto.employeeId,
+        dto.month,
+        dto.year,
+        {
+          stipendRecord,
+          employee,
+          existingDeductions: [],
+          existingAllowances: [],
+        },
+      );
+      const createdTotals = this.clampPayrollTotals(initialBreakdown);
+      entry = await this.prisma.payrollEntry.create({
+        data: {
+          stipendRecordId: stipendRecord.id,
+          month: dto.month,
+          year: dto.year,
+          ...createdTotals,
+          forcedNonActive: markForced,
+          status: PayrollStatus.PENDING,
+        },
+        include: { deductions: true, allowances: true },
+      });
+    }
+
+    const { segmentStart, segmentEndExclusive, monthEnd } =
+      this.resolveSegmentDateBounds(stipendRecord, dto.month, dto.year);
+    const unpaidLeaveDaysInSegment = unpaidLeaveDatesForMonth.filter((d) =>
+      this.dateWithinSegment(d, segmentStart, segmentEndExclusive, monthEnd),
+    ).length;
+
+    await this.upsertAdditionalWorkingDaysAllowanceRow(
+      entry.id,
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      employee,
+      contractualBasic,
+      segmentStart,
+      segmentEndExclusive,
+    );
+    await this.upsertUnpaidLeaveDeductionRow(
+      entry.id,
+      dto.month,
+      dto.year,
+      unpaidLeaveDaysInSegment,
+      employee.monthlyAllowedLeaves,
+      contractualBasic,
+    );
+    await this.upsertRelieverAllowanceRow(
+      entry.id,
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      employee,
+      contractualBasic,
+      segmentStart,
+      segmentEndExclusive,
+    );
+
+    const refreshed = await this.prisma.payrollEntry.findUnique({
+      where: { id: entry.id },
+      include: { deductions: true, allowances: true },
+    });
+    const breakdown = await this.computeHourlyBreakdown(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      {
+        stipendRecord,
+        employee,
+        existingDeductions: refreshed?.deductions ?? [],
+        existingAllowances: refreshed?.allowances ?? [],
+      },
+    );
+    const totals = this.clampPayrollTotals(breakdown);
+    return this.prisma.payrollEntry.update({
+      where: { id: entry.id },
+      data: {
+        ...totals,
+        forcedNonActive: markForced,
+      },
+      include: { deductions: true, allowances: true },
+    });
+  }
+
+  /**
+   * Upserts or removes ADDITIONAL_WORKING_DAYS allowance row only (totals
+   * recalculated by caller). Date-based (each AdditionalWorkingDay row has
+   * its own date) — segment-bounded via segmentStart/segmentEndExclusive
+   * (same [effectiveFrom, effectiveTo) semantics as computeHourlyBreakdown)
+   * so a mid-month stipend change never has this allowance counted twice
+   * across two PayrollEntry rows for the same physical day.
+   */
   private async upsertAdditionalWorkingDaysAllowanceRow(
     payrollEntryId: string,
     employeeId: string,
@@ -339,14 +637,19 @@ export class PayrollService {
       shift?: { startTime: string; endTime: string } | null;
     },
     contractualBasic: number,
+    segmentStart: Date,
+    segmentEndExclusive: Date | null,
   ) {
     const daysInMonth = daysInPayrollMonth(year, month);
-    const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
     const dayRows = await this.prisma.additionalWorkingDay.findMany({
       where: {
         employeeId,
-        date: { gte: monthStart, lte: monthEnd },
+        date: {
+          gte: segmentStart,
+          lte: monthEnd,
+          ...(segmentEndExclusive ? { lt: segmentEndExclusive } : {}),
+        },
       },
       select: { note: true },
     });
@@ -409,35 +712,35 @@ export class PayrollService {
     });
   }
 
+  /**
+   * The "first N leave days of the month are paid" QUOTA is a genuinely
+   * month-global policy — it can only be computed correctly by looking at
+   * every ON_LEAVE date in the whole month together, in chronological
+   * order (splitPaidUnpaidLeaveDays). Computed exactly ONCE per
+   * employee/month by the caller (see computeMonthlyUnpaidLeaveDates) and
+   * shared across every stipend segment — never recomputed per segment,
+   * which would incorrectly reset the quota for each segment in isolation
+   * (e.g. 2 unpaid-eligible days in segment A + 1 in segment B, allowance
+   * 2, would wrongly grant a fresh "first 2 free" in EACH segment instead
+   * of one combined quota for the month).
+   *
+   * The RESULTING unpaid dates are then attributed to exactly one
+   * PayrollEntry each — whichever stipend segment's
+   * [effectiveFrom, effectiveTo) window contains that date — via the
+   * `unpaidLeaveDaysInSegment` count the caller passes in, already
+   * filtered to this segment.
+   */
   private async upsertUnpaidLeaveDeductionRow(
     payrollEntryId: string,
-    employeeId: string,
     month: number,
     year: number,
+    unpaidLeaveDaysInSegment: number,
     monthlyAllowedLeaves: number | null | undefined,
     contractualBasic: number,
   ) {
     const daysInMonth = daysInPayrollMonth(year, month);
-    const monthStart = new Date(year, month - 1, 1);
-    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
-
-    const onLeaveLogs = await this.prisma.attendanceLog.findMany({
-      where: {
-        employeeId,
-        type: AttendanceLogType.REGULAR,
-        status: AttendanceStatus.ON_LEAVE,
-        date: { gte: monthStart, lte: monthEnd },
-      },
-      select: { date: true },
-      orderBy: { date: 'asc' },
-    });
-
-    const split = splitPaidUnpaidLeaveDays({
-      onLeaveDates: onLeaveLogs.map((l) => l.date),
-      monthlyAllowedLeaves,
-    });
     const amount = unpaidLeaveDeductionAmount(
-      split.unpaidLeaveDays,
+      unpaidLeaveDaysInSegment,
       contractualBasic,
       daysInMonth,
     );
@@ -449,14 +752,14 @@ export class PayrollService {
       },
     });
 
-    if (split.unpaidLeaveDays <= 0 || amount <= 0) {
+    if (unpaidLeaveDaysInSegment <= 0 || amount <= 0) {
       if (existing) {
         await this.prisma.payrollDeduction.delete({ where: { id: existing.id } });
       }
       return;
     }
 
-    const description = `${UNPAID_LEAVE_DESC_PREFIX} (${split.unpaidLeaveDays} day(s) beyond allowance of ${monthlyAllowedLeaves ?? DEFAULT_MONTHLY_ALLOWED_LEAVES})`;
+    const description = `${UNPAID_LEAVE_DESC_PREFIX} (${unpaidLeaveDaysInSegment} day(s) beyond allowance of ${monthlyAllowedLeaves ?? DEFAULT_MONTHLY_ALLOWED_LEAVES})`;
 
     if (existing) {
       await this.prisma.payrollDeduction.update({
@@ -500,15 +803,23 @@ export class PayrollService {
       shift?: { startTime: string; endTime: string } | null;
     },
     contractualBasic: number,
+    segmentStart: Date,
+    segmentEndExclusive: Date | null,
   ) {
     const daysInMonth = daysInPayrollMonth(year, month);
-    const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
 
+    // Date-based (each RelieverSession has its own date, no month-global
+    // policy entanglement unlike unpaid leave) — segment-bounded the same
+    // way as computeHourlyBreakdown / upsertAdditionalWorkingDaysAllowanceRow.
     const sessions = await this.prisma.relieverSession.findMany({
       where: {
         employeeId,
-        date: { gte: monthStart, lte: monthEnd },
+        date: {
+          gte: segmentStart,
+          lte: monthEnd,
+          ...(segmentEndExclusive ? { lt: segmentEndExclusive } : {}),
+        },
         checkOut: { not: null },
       },
     });
@@ -746,15 +1057,25 @@ export class PayrollService {
    * Hourly rate = basicStipend / (daily duty hours × days in month).
    * Overtime pay = recorded OT hours × hourly rate.
    */
+  /**
+   * Overtime is recorded per AttendanceLog row (one date each), so — like
+   * every other child-row calculation since Step 3 — it is date-based and
+   * must be attributed to whichever StipendRecord segment is effective on
+   * each attendance date, never to "the currently active" segment or to an
+   * arbitrary PayrollEntry picked via findFirst. This walks every
+   * overlapping segment (see findOverlappingStipendRecords) and buckets
+   * each OT-bearing attendance date into exactly one segment via
+   * resolveSegmentDateBounds/dateWithinSegment, so no OT minute can ever
+   * land in two segments' totals. The top-level fields mirror the
+   * pre-segmentation response shape exactly (and are byte-identical to it
+   * whenever the employee has only one overlapping segment, the common
+   * case) so existing callers keep working; `segments` is purely additive
+   * detail for callers that want per-segment breakdown.
+   */
   async getOvertimePreview(employeeId: string, month: number, year: number) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
       include: {
-        stipendRecords: {
-          where: { effectiveTo: null },
-          orderBy: { effectiveFrom: 'desc' },
-          take: 1,
-        },
         shift: { select: { startTime: true, endTime: true } },
       },
     });
@@ -763,84 +1084,148 @@ export class PayrollService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    const stipend = employee.stipendRecords[0];
-    if (!stipend) {
+    const overlappingStipendRecords = await this.findOverlappingStipendRecords(
+      employeeId,
+      month,
+      year,
+    );
+    if (overlappingStipendRecords.length === 0) {
       throw new BadRequestException(
         'No active stipend record found for this employee',
       );
     }
+    const activeStipendRecord =
+      overlappingStipendRecords.find((r) => r.effectiveTo === null) ??
+      overlappingStipendRecords[overlappingStipendRecords.length - 1];
 
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
     const daysInMonth = daysInPayrollMonth(year, month);
-
-    const [otAgg, pendingAgg] = await Promise.all([
-      this.prisma.attendanceLog.aggregate({
-        where: {
-          employeeId,
-          date: { gte: monthStart, lte: monthEnd },
-          overtimeMinutes: { gt: 0 },
-        },
-        _sum: { overtimeMinutes: true },
-      }),
-      this.prisma.attendanceLog.aggregate({
-        where: {
-          employeeId,
-          date: { gte: monthStart, lte: monthEnd },
-          overtimeMinutes: { gt: 0 },
-          overtimePending: true,
-        },
-        _sum: { overtimeMinutes: true },
-      }),
-    ]);
+    const dailyHours = resolveDailyDutyHours(employee);
+    const monthlyWorkingHours = dailyHours * daysInMonth;
 
     // Include all recorded OT for this month (pending + approved).
     // Clicking Apply Overtime is the HR approval step for payroll.
-    const overtimeMinutes = otAgg._sum.overtimeMinutes ?? 0;
-    const pendingOvertimeMinutes = pendingAgg._sum.overtimeMinutes ?? 0;
-    const overtimeHours = Math.round((overtimeMinutes / 60) * 100) / 100;
+    const otLogs = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId,
+        date: { gte: monthStart, lte: monthEnd },
+        overtimeMinutes: { gt: 0 },
+      },
+      select: { date: true, overtimeMinutes: true, overtimePending: true },
+    });
 
-    const dailyHours = resolveDailyDutyHours(employee);
-    const monthlyWorkingHours = dailyHours * daysInMonth;
-    const basicStipend = Number(stipend.basicStipend);
-    const hourlyRate = computeHourlyRate(basicStipend, dailyHours, daysInMonth);
-    const amount = roundMoney(overtimeHours * hourlyRate);
-
-    const existingEntry = await this.prisma.payrollEntry.findFirst({
+    const existingEntries = await this.prisma.payrollEntry.findMany({
       where: {
         month,
         year,
-        stipendRecord: { employeeId },
+        stipendRecordId: { in: overlappingStipendRecords.map((r) => r.id) },
       },
       include: {
-        allowances: {
-          where: { type: AllowanceType.OVERTIME },
-        },
+        allowances: { where: { type: AllowanceType.OVERTIME } },
       },
     });
 
-    const existingOvertime = existingEntry?.allowances[0] ?? null;
+    const segments = overlappingStipendRecords.map((stipendRecord) => {
+      const { segmentStart, segmentEndExclusive, monthEnd: segMonthEnd } =
+        this.resolveSegmentDateBounds(stipendRecord, month, year);
+      const segLogs = otLogs.filter((l) =>
+        this.dateWithinSegment(
+          l.date,
+          segmentStart,
+          segmentEndExclusive,
+          segMonthEnd,
+        ),
+      );
+      const segOvertimeMinutes = segLogs.reduce(
+        (sum, l) => sum + l.overtimeMinutes,
+        0,
+      );
+      const segPendingOvertimeMinutes = segLogs
+        .filter((l) => l.overtimePending)
+        .reduce((sum, l) => sum + l.overtimeMinutes, 0);
+      const segOvertimeHours =
+        Math.round((segOvertimeMinutes / 60) * 100) / 100;
+      const segBasicStipend = Number(stipendRecord.basicStipend);
+      const segHourlyRate = computeHourlyRate(
+        segBasicStipend,
+        dailyHours,
+        daysInMonth,
+      );
+      const segAmount = roundMoney(segOvertimeHours * segHourlyRate);
+
+      const existingEntry = existingEntries.find(
+        (e) => e.stipendRecordId === stipendRecord.id,
+      );
+      const existingOvertime = existingEntry?.allowances[0] ?? null;
+
+      return {
+        stipendRecordId: stipendRecord.id,
+        isActiveSegment: stipendRecord.id === activeStipendRecord.id,
+        effectiveFrom: stipendRecord.effectiveFrom,
+        effectiveTo: stipendRecord.effectiveTo,
+        basicStipend: segBasicStipend,
+        overtimeMinutes: segOvertimeMinutes,
+        pendingOvertimeMinutes: segPendingOvertimeMinutes,
+        overtimeHours: segOvertimeHours,
+        hourlyRate: segHourlyRate,
+        amount: segAmount,
+        alreadyApplied: Boolean(existingOvertime),
+        existingAmount: existingOvertime
+          ? Number(existingOvertime.amount)
+          : null,
+        payrollEntryId: existingEntry?.id ?? null,
+        payrollStatus: existingEntry?.status ?? null,
+      };
+    });
+
+    const activeSegment = segments.find((s) => s.isActiveSegment)!;
+    const overtimeMinutes = segments.reduce(
+      (sum, s) => sum + s.overtimeMinutes,
+      0,
+    );
+    const pendingOvertimeMinutes = segments.reduce(
+      (sum, s) => sum + s.pendingOvertimeMinutes,
+      0,
+    );
+    const overtimeHours = Math.round((overtimeMinutes / 60) * 100) / 100;
+    const amount = roundMoney(
+      segments.reduce((sum, s) => sum + s.amount, 0),
+    );
 
     return {
       employeeId,
       month,
       year,
-      basicStipend,
+      basicStipend: activeSegment.basicStipend,
       dailyHours,
       daysInMonth,
       monthlyWorkingHours,
       overtimeMinutes,
       pendingOvertimeMinutes,
       overtimeHours,
-      hourlyRate,
+      hourlyRate: activeSegment.hourlyRate,
       amount,
-      alreadyApplied: Boolean(existingOvertime),
-      existingAmount: existingOvertime ? Number(existingOvertime.amount) : null,
-      payrollEntryId: existingEntry?.id ?? null,
-      payrollStatus: existingEntry?.status ?? null,
+      alreadyApplied: activeSegment.alreadyApplied,
+      existingAmount: activeSegment.existingAmount,
+      payrollEntryId: activeSegment.payrollEntryId,
+      payrollStatus: activeSegment.payrollStatus,
+      segments,
     };
   }
 
+  /**
+   * Mirrors createOrGetEntry/recomputeEmployeeMonth's segment discipline:
+   * each stipend segment's own share of this month's overtime (see
+   * getOvertimePreview) is applied to that segment's own PayrollEntry
+   * only. No segment is picked arbitrarily and no overtime minute can
+   * contribute to more than one segment's row, since getOvertimePreview
+   * already partitioned every OT-bearing attendance date into exactly one
+   * segment. PROCESSED/PAID segments are skipped (frozen) rather than
+   * throwing for the whole request, EXCEPT the active segment — throwing
+   * there preserves this method's pre-segmentation behavior exactly for
+   * the common single-segment case.
+   */
   async applyOvertime(
     dto: ApplyOvertimeDto,
     actingUser: { id: string; role: UserRole },
@@ -879,7 +1264,11 @@ export class PayrollService {
       );
     }
 
-    const entry = await this.createOrGetEntry(
+    // Ensures a PayrollEntry exists for every overlapping stipend segment
+    // (createOrGetEntry creates/refreshes the active one AND upserts every
+    // other overlapping segment as a side effect — see its doc comment),
+    // not just the segment this call happens to be "about".
+    const activeEntry = await this.createOrGetEntry(
       {
         employeeId: dto.employeeId,
         month: dto.month,
@@ -893,86 +1282,143 @@ export class PayrollService {
       { month: 'long', year: 'numeric' },
     );
 
-    return this.prisma.$transaction(async (tx) => {
-      const current = await tx.payrollEntry.findUnique({
-        where: { id: entry.id },
-        include: { allowances: true },
-      });
-      if (!current) {
-        throw new NotFoundException('Payroll entry not found');
+    const segmentEntries = await this.prisma.payrollEntry.findMany({
+      where: {
+        month: dto.month,
+        year: dto.year,
+        stipendRecordId: { in: preview.segments.map((s) => s.stipendRecordId) },
+      },
+      include: { allowances: true },
+    });
+
+    const updatedEntries: Array<
+      Prisma.PayrollEntryGetPayload<{
+        include: { deductions: true; allowances: true };
+      }>
+    > = [];
+
+    for (const seg of preview.segments) {
+      const segEntry = segmentEntries.find(
+        (e) => e.stipendRecordId === seg.stipendRecordId,
+      );
+      if (!segEntry) continue; // no entry for this segment — nothing to apply to
+
+      if (
+        segEntry.status === PayrollStatus.PROCESSED ||
+        segEntry.status === PayrollStatus.PAID
+      ) {
+        continue; // frozen — never overwritten, mirrors recomputeEmployeeMonth
       }
 
-      const existingOt = current.allowances.find(
+      const existingOtAllowance = segEntry.allowances.find(
         (a) => a.type === AllowanceType.OVERTIME,
       );
 
-      let totalAllowances = Number(current.totalAllowances);
-      let netStipend = Number(current.netStipend);
+      // Nothing to apply and nothing to clear for this segment.
+      if (seg.overtimeMinutes <= 0 && !existingOtAllowance) continue;
 
-      if (existingOt) {
-        totalAllowances -= Number(existingOt.amount);
-        netStipend -= Number(existingOt.amount);
-        await tx.allowance.delete({ where: { id: existingOt.id } });
-      }
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const current = await tx.payrollEntry.findUnique({
+          where: { id: segEntry.id },
+          include: { allowances: true },
+        });
+        if (!current) {
+          throw new NotFoundException('Payroll entry not found');
+        }
 
-      await tx.allowance.create({
-        data: {
-          payrollEntryId: entry.id,
-          type: AllowanceType.OVERTIME,
-          hours: preview.overtimeHours,
-          amount: preview.amount,
-          description: `Overtime ${preview.overtimeHours}h @ PKR ${preview.hourlyRate}/hr (${monthLabel})`,
-        },
-      });
+        const existingOt = current.allowances.find(
+          (a) => a.type === AllowanceType.OVERTIME,
+        );
 
-      // Applying OT for payroll also clears pending flags for the month.
-      const monthStart = new Date(dto.year, dto.month - 1, 1);
-      const monthEnd = new Date(dto.year, dto.month, 0, 23, 59, 59, 999);
-      await tx.attendanceLog.updateMany({
-        where: {
-          employeeId: dto.employeeId,
-          date: { gte: monthStart, lte: monthEnd },
-          overtimeMinutes: { gt: 0 },
-          overtimePending: true,
-        },
-        data: { overtimePending: false },
-      });
+        let totalAllowances = Number(current.totalAllowances);
+        let netStipend = Number(current.netStipend);
 
-      totalAllowances += preview.amount;
-      netStipend += preview.amount;
+        if (existingOt) {
+          totalAllowances -= Number(existingOt.amount);
+          netStipend -= Number(existingOt.amount);
+          await tx.allowance.delete({ where: { id: existingOt.id } });
+        }
 
-      const updated = await tx.payrollEntry.update({
-        where: { id: entry.id },
-        data: {
-          totalAllowances,
-          netStipend,
-        },
-        include: { deductions: true, allowances: true },
-      });
+        if (seg.overtimeMinutes > 0) {
+          await tx.allowance.create({
+            data: {
+              payrollEntryId: segEntry.id,
+              type: AllowanceType.OVERTIME,
+              hours: seg.overtimeHours,
+              amount: seg.amount,
+              description: `Overtime ${seg.overtimeHours}h @ PKR ${seg.hourlyRate}/hr (${monthLabel})`,
+            },
+          });
+          totalAllowances += seg.amount;
+          netStipend += seg.amount;
+        }
 
-      await tx.auditLog.create({
-        data: {
-          userId: actingUser.id,
-          action: 'PAYROLL_OVERTIME_APPLIED',
-          entity: 'PayrollEntry',
-          entityId: entry.id,
-          changes: {
+        // Applying OT for payroll also clears pending flags for this
+        // segment's own date window only, never a sibling segment's dates.
+        const { segmentStart, segmentEndExclusive, monthEnd } =
+          this.resolveSegmentDateBounds(
+            { effectiveFrom: seg.effectiveFrom, effectiveTo: seg.effectiveTo },
+            dto.month,
+            dto.year,
+          );
+        await tx.attendanceLog.updateMany({
+          where: {
             employeeId: dto.employeeId,
-            month: dto.month,
-            year: dto.year,
-            overtimeHours: preview.overtimeHours,
-            hourlyRate: preview.hourlyRate,
-            amount: preview.amount,
-            replaced: Boolean(existingOt),
+            date: {
+              gte: segmentStart,
+              lte: monthEnd,
+              ...(segmentEndExclusive ? { lt: segmentEndExclusive } : {}),
+            },
+            overtimeMinutes: { gt: 0 },
+            overtimePending: true,
           },
-        },
+          data: { overtimePending: false },
+        });
+
+        const updatedEntry = await tx.payrollEntry.update({
+          where: { id: segEntry.id },
+          data: {
+            totalAllowances,
+            netStipend,
+          },
+          include: { deductions: true, allowances: true },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            userId: actingUser.id,
+            action: 'PAYROLL_OVERTIME_APPLIED',
+            entity: 'PayrollEntry',
+            entityId: segEntry.id,
+            changes: {
+              employeeId: dto.employeeId,
+              stipendRecordId: seg.stipendRecordId,
+              month: dto.month,
+              year: dto.year,
+              overtimeHours: seg.overtimeHours,
+              hourlyRate: seg.hourlyRate,
+              amount: seg.amount,
+              replaced: Boolean(existingOt),
+            },
+          },
+        });
+
+        return updatedEntry;
       });
 
-      return {
-        ...updated,
-        overtime: preview,
-      };
-    });
+      updatedEntries.push(updated);
+    }
+
+    const primary =
+      updatedEntries.find((e) => e.id === activeEntry.id) ??
+      updatedEntries[0] ??
+      activeEntry;
+
+    return {
+      ...primary,
+      overtime: preview,
+      segments: updatedEntries,
+    };
   }
 
   async getEntryWithAllowances(
@@ -1571,6 +2017,14 @@ export class PayrollService {
         fineDeduction?: unknown;
         healthDeduction?: unknown;
         lumpsumTotal?: unknown;
+        /** When this stipend segment started applying. Combined with
+         * effectiveTo below to bound which AttendanceLog dates this
+         * specific StipendRecord may earn basic pay for — see the
+         * segment-bounds comment further down. */
+        effectiveFrom: Date;
+        /** When this stipend segment stopped applying (exclusive), or
+         * null if it is still the currently-active record. */
+        effectiveTo?: Date | null;
       };
       employee: {
         dutyTotalHours?: number | null;
@@ -1591,16 +2045,41 @@ export class PayrollService {
     // today), not a per-day historical fact. Crediting/worked-minutes
     // inside the loop below use each day's OWN resolved duty window
     // instead — see dayWin/dayDutyMinutes.
+    //
+    // NOTE: daysInMonth is deliberately the FULL calendar-day count of the
+    // target month, never the segment's own day count — the daily-rate
+    // denominator is a monthly-package concept (existing business policy),
+    // unrelated to how many of those days this particular StipendRecord
+    // happens to cover. Only the NUMERATOR (which AttendanceLog dates are
+    // read at all) is segment-bounded, below.
     const dailyDutyHours = resolveDailyDutyHours(context.employee);
 
-    const monthStart = new Date(year, month - 1, 1);
-    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+    // ── Stipend-segment date bounds ─────────────────────────────────────
+    // A StipendRecord only ever earns basic pay for the dates on which it
+    // was actually effective. Boundary semantics are established (not
+    // guessed) from salaryIncrement(): the OLD record's effectiveTo and
+    // the NEW record's effectiveFrom are set to the exact same Date value
+    // — so this is a half-open interval [effectiveFrom, effectiveTo):
+    // effectiveFrom is INCLUSIVE (the boundary date belongs to the record
+    // that STARTS there — mirrors how a brand-new employee's very first
+    // StipendRecord uses effectiveFrom: joiningDate, and that joining day
+    // itself is a paid day), effectiveTo is EXCLUSIVE (the boundary date
+    // does NOT belong to the record that ENDS there). This guarantees the
+    // transition date is counted by exactly one segment — never both,
+    // never neither. See resolveSegmentDateBounds — the same single
+    // source of truth used by every segment-bounded child-row helper.
+    const { segmentStart, segmentEndExclusive, monthEnd } =
+      this.resolveSegmentDateBounds(context.stipendRecord, month, year);
 
     const logs = await this.prisma.attendanceLog.findMany({
       where: {
         employeeId,
         type: AttendanceLogType.REGULAR,
-        date: { gte: monthStart, lte: monthEnd },
+        date: {
+          gte: segmentStart,
+          lte: monthEnd,
+          ...(segmentEndExclusive ? { lt: segmentEndExclusive } : {}),
+        },
       },
       select: {
         date: true,
@@ -1693,6 +2172,27 @@ export class PayrollService {
         continue;
       }
 
+      if (
+        log.status === AttendanceStatus.PRESENT ||
+        log.status === AttendanceStatus.SWAP_COVERED
+      ) {
+        // A day the employee actually attended (or covered via swap) earns
+        // full scheduled-day basic credit, same floor as every other
+        // status handled above — basic earning must never depend on the
+        // literal checkIn/checkOut gap, which can be short, window-trimmed,
+        // or (via workedMinutes' anomalous-session guard) silently zero for
+        // reasons unrelated to whether the employee actually worked the
+        // day. `continue` here deliberately skips the raw-overlap
+        // workedMins block below so PRESENT/SWAP_COVERED never receive
+        // BOTH this floor AND clock-derived minutes for the same
+        // scheduled period — one scheduled day of basic pay, not more.
+        // Any genuine overtime/extra-hours credit is a separate, additive
+        // concept (see computeRelieverPayableMinutes / extraAllowances)
+        // and is untouched by this floor.
+        policyCreditMins += dayDutyMinutes;
+        continue;
+      }
+
       if (log.checkIn && !log.checkOut) {
         // Missing checkout (Phase 1D) or a 24-hour employee's structurally
         // checkout-less row (biometric checkout is intentionally never
@@ -1705,6 +2205,9 @@ export class PayrollService {
         continue;
       }
 
+      // Reached only by statuses with no policy-credit branch above (e.g.
+      // HOLIDAY, UNMARKED) that nonetheless have a checkIn/checkOut pair —
+      // PRESENT and SWAP_COVERED never reach here, see above.
       if (log.checkIn && log.checkOut) {
         const { minutes, anomalous } = payableMinutesWithinDutyWindow(
           log.checkIn,
@@ -2075,10 +2578,22 @@ export class PayrollService {
       };
     });
 
+    // A stipend change mid-month can legitimately produce more than one
+    // PayrollEntry row for the same employee/month (one per segment — see
+    // computeHourlyBreakdown's segment-bounds comment). entries.length
+    // would double-count that employee's headcount even though their
+    // dollar totals above (summed per-row) are correct once each row is
+    // segment-bounded. Row-level detail is preserved unchanged in
+    // `employees` below for auditability — only this one aggregate is
+    // employee-deduplicated.
+    const distinctEmployeeCount = new Set(
+      entries.map((e) => e.stipendRecord.employeeId),
+    ).size;
+
     return {
       month,
       year,
-      totalEmployees: entries.length,
+      totalEmployees: distinctEmployeeCount,
       totalBasicSalary,
       totalDeductions,
       totalAllowances,

@@ -152,21 +152,44 @@ export async function applyDisciplineRules(
   return status;
 }
 
+/**
+ * Resolves the StipendRecord that was actually EFFECTIVE ON a given
+ * incident date — never "the currently active record" merely because it
+ * happens to be active right now. Uses the same half-open
+ * [effectiveFrom, effectiveTo) interval established in payroll.service.ts
+ * (Step 2/3): effectiveFrom inclusive, effectiveTo exclusive. A dated
+ * incident (LATE, ABSENT, UNINFORMED_ABSENT, missing-checkout, extra-leave
+ * rejection) must always be priced and attributed against whichever
+ * segment was in force on that exact date, so a later salary revision can
+ * never retroactively change the rate or the target PayrollEntry of an
+ * already-dated incident.
+ */
+async function getStipendRecordEffectiveOn(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+) {
+  return tx.stipendRecord.findFirst({
+    where: {
+      employeeId,
+      effectiveFrom: { lte: date },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: date } }],
+    },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+}
+
+/** basicStipend as of the StipendRecord effective ON `date` — see
+ * getStipendRecordEffectiveOn. Every deduction-rate calculation in this
+ * file (dailyStipendRate(basicStipend, date)) must use the rate that
+ * actually applied on the incident date, not today's rate. */
 async function getBasicStipend(
   tx: Prisma.TransactionClient,
   employeeId: string,
+  date: Date,
 ): Promise<number> {
-  const employee = await tx.employee.findUnique({
-    where: { id: employeeId },
-    include: {
-      stipendRecords: {
-        where: { effectiveTo: null },
-        take: 1,
-      },
-    },
-  });
-
-  return Number(employee?.stipendRecords[0]?.basicStipend ?? 0);
+  const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
+  return Number(stipendRecord?.basicStipend ?? 0);
 }
 
 export type AbsentApplicationResult = {
@@ -212,17 +235,10 @@ async function applyAbsentDeduction(
 
   if (approvedLeave) return noOp;
 
-  const basicStipend = await getBasicStipend(tx, employeeId);
+  const basicStipend = await getBasicStipend(tx, employeeId, date);
   if (basicStipend <= 0) return noOp;
 
-  const month = date.getMonth() + 1;
-  const year = date.getFullYear();
-  const payrollEntry = await getOrCreatePayrollEntry(
-    tx,
-    employeeId,
-    month,
-    year,
-  );
+  const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
 
   if (payrollEntry.status !== PayrollStatus.PENDING) {
     return {
@@ -333,11 +349,15 @@ async function applyLateDiscipline(
 ): Promise<void> {
   const employee = await tx.employee.findUnique({
     where: { id: employeeId },
-    include: {
-      stipendRecords: { where: { effectiveTo: null }, take: 1 },
-    },
   });
-  const basicStipend = Number(employee?.stipendRecords[0]?.basicStipend ?? 0);
+  // Fine amount must use the rate that was EFFECTIVE ON `date`, not
+  // today's rate — see getStipendRecordEffectiveOn.
+  const stipendRecordForDate = await getStipendRecordEffectiveOn(
+    tx,
+    employeeId,
+    date,
+  );
+  const basicStipend = Number(stipendRecordForDate?.basicStipend ?? 0);
   // The date's own duty snapshot wins for the letter's wording when the
   // caller has one (a historical row being re-evaluated) — current employee
   // duty is only a fallback for callers with no snapshot (brand-new rows,
@@ -481,40 +501,45 @@ async function applyLateDiscipline(
   const deductionDescription = `Late arrival deduction — monthly occurrence ${lateCount}`;
 
   if (basicStipend > 0) {
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    const payrollEntry = await getOrCreatePayrollEntry(
-      tx,
-      employeeId,
-      month,
-      year,
-    );
+    const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
 
-    const alreadyDeducted = await tx.payrollDeduction.findFirst({
-      where: {
-        payrollEntryId: payrollEntry.id,
-        reason: DeductionType.LATE_ARRIVAL,
-        description: deductionDescription,
-      },
-    });
-
-    if (!alreadyDeducted) {
-      await tx.payrollDeduction.create({
-        data: {
+    // Financial freeze — mirrors the same PayrollEntry.status guard every
+    // other financial mutation path in this file already has
+    // (applyAbsentDeduction, applyUninformedAbsentDeduction,
+    // reverseLateDisciplineForDate). getOrCreatePayrollEntry already
+    // resolved the segment EFFECTIVE ON the incident date, so this checks
+    // that historical segment's own status, never the currently-active
+    // one — and never creates a replacement entry or moves the fine
+    // elsewhere; it simply skips the financial mutation. The FINE letter
+    // below is still issued regardless (discipline tracking is not
+    // coupled to financial mutation anywhere else in this file either).
+    if (payrollEntry.status === PayrollStatus.PENDING) {
+      const alreadyDeducted = await tx.payrollDeduction.findFirst({
+        where: {
           payrollEntryId: payrollEntry.id,
           reason: DeductionType.LATE_ARRIVAL,
-          amount: deductionAmount,
           description: deductionDescription,
         },
       });
 
-      await tx.payrollEntry.update({
-        where: { id: payrollEntry.id },
-        data: {
-          totalDeductions: { increment: deductionAmount },
-          netStipend: { decrement: deductionAmount },
-        },
-      });
+      if (!alreadyDeducted) {
+        await tx.payrollDeduction.create({
+          data: {
+            payrollEntryId: payrollEntry.id,
+            reason: DeductionType.LATE_ARRIVAL,
+            amount: deductionAmount,
+            description: deductionDescription,
+          },
+        });
+
+        await tx.payrollEntry.update({
+          where: { id: payrollEntry.id },
+          data: {
+            totalDeductions: { increment: deductionAmount },
+            netStipend: { decrement: deductionAmount },
+          },
+        });
+      }
     }
   }
 
@@ -697,7 +722,7 @@ async function applyUninformedAbsentDeduction(
   dayStart.setUTCHours(0, 0, 0, 0);
   const dayKey = dayStart.toISOString().slice(0, 10);
 
-  const basicStipend = await getBasicStipend(tx, employeeId);
+  const basicStipend = await getBasicStipend(tx, employeeId, date);
   if (basicStipend <= 0) {
     return {
       ...tracking,
@@ -708,14 +733,7 @@ async function applyUninformedAbsentDeduction(
     };
   }
 
-  const month = date.getMonth() + 1;
-  const year = date.getFullYear();
-  const payrollEntry = await getOrCreatePayrollEntry(
-    tx,
-    employeeId,
-    month,
-    year,
-  );
+  const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
 
   if (payrollEntry.status !== PayrollStatus.PENDING) {
     return {
@@ -758,19 +776,29 @@ async function applyUninformedAbsentDeduction(
   };
 }
 
+/**
+ * Resolves (or creates a bare placeholder) PayrollEntry for the
+ * StipendRecord segment that was actually EFFECTIVE ON `date` — NOT
+ * whichever record happens to be active right now. See
+ * getStipendRecordEffectiveOn. This is what guarantees a dated
+ * discipline incident always lands on its own historically-correct
+ * PayrollEntry (and, transitively, whichever PROCESSED/PAID freeze that
+ * entry already has) instead of silently migrating to the currently-
+ * active segment after a later salary revision.
+ */
 async function getOrCreatePayrollEntry(
   tx: Prisma.TransactionClient,
   employeeId: string,
-  month: number,
-  year: number,
+  date: Date,
 ) {
-  const stipendRecord = await tx.stipendRecord.findFirst({
-    where: { employeeId, effectiveTo: null },
-    orderBy: { effectiveFrom: 'desc' },
-  });
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+  const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
 
   if (!stipendRecord) {
-    throw new Error(`No active stipend record for employee ${employeeId}`);
+    throw new Error(
+      `No stipend record effective on ${date.toISOString().slice(0, 10)} for employee ${employeeId}`,
+    );
   }
 
   const existing = await tx.payrollEntry.findUnique({
@@ -960,7 +988,7 @@ export async function applyMissingCheckoutDiscipline(
   date: Date,
   options: MissingCheckoutOptions,
 ): Promise<void> {
-  const basicStipend = await getBasicStipend(tx, employeeId);
+  const basicStipend = await getBasicStipend(tx, employeeId, date);
 
   const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
   const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
@@ -1055,40 +1083,46 @@ export async function applyMissingCheckoutDiscipline(
   const deductionDescription = `Missing checkout deduction — monthly occurrence ${missingCount}`;
 
   if (basicStipend > 0) {
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    const payrollEntry = await getOrCreatePayrollEntry(
-      tx,
-      employeeId,
-      month,
-      year,
-    );
+    const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
 
-    const alreadyDeducted = await tx.payrollDeduction.findFirst({
-      where: {
-        payrollEntryId: payrollEntry.id,
-        reason: DeductionType.DISCIPLINARY_FINE,
-        description: deductionDescription,
-      },
-    });
-
-    if (!alreadyDeducted) {
-      await tx.payrollDeduction.create({
-        data: {
+    // Financial freeze — mirrors the same PayrollEntry.status guard every
+    // other financial mutation path in this file already has
+    // (applyAbsentDeduction, applyUninformedAbsentDeduction,
+    // applyLateDiscipline's fine branch, reverseMissingCheckoutDisciplineForDate
+    // itself). getOrCreatePayrollEntry already resolved the segment
+    // EFFECTIVE ON the incident date, so this checks that historical
+    // segment's own status, never the currently-active one — and never
+    // creates a replacement entry or moves the fine elsewhere; it simply
+    // skips the financial mutation. The FINE letter below is still issued
+    // regardless (discipline tracking is not coupled to financial
+    // mutation anywhere else in this file either).
+    if (payrollEntry.status === PayrollStatus.PENDING) {
+      const alreadyDeducted = await tx.payrollDeduction.findFirst({
+        where: {
           payrollEntryId: payrollEntry.id,
           reason: DeductionType.DISCIPLINARY_FINE,
-          amount: deductionAmount,
           description: deductionDescription,
         },
       });
 
-      await tx.payrollEntry.update({
-        where: { id: payrollEntry.id },
-        data: {
-          totalDeductions: { increment: deductionAmount },
-          netStipend: { decrement: deductionAmount },
-        },
-      });
+      if (!alreadyDeducted) {
+        await tx.payrollDeduction.create({
+          data: {
+            payrollEntryId: payrollEntry.id,
+            reason: DeductionType.DISCIPLINARY_FINE,
+            amount: deductionAmount,
+            description: deductionDescription,
+          },
+        });
+
+        await tx.payrollEntry.update({
+          where: { id: payrollEntry.id },
+          data: {
+            totalDeductions: { increment: deductionAmount },
+            netStipend: { decrement: deductionAmount },
+          },
+        });
+      }
     }
   }
 
@@ -1351,10 +1385,11 @@ export async function reverseLateDisciplineForDate(
   if (letter.letterType === LetterType.FINE && occurrence != null) {
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
-    const stipendRecord = await tx.stipendRecord.findFirst({
-      where: { employeeId, effectiveTo: null },
-      orderBy: { effectiveFrom: 'desc' },
-    });
+    // Reverse against the segment that was EFFECTIVE ON the incident date —
+    // the same segment the original fine was (now correctly) applied to —
+    // never the currently-active one, or a later salary revision would
+    // make this reversal silently find nothing.
+    const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
 
     if (stipendRecord) {
       const payrollEntry = await tx.payrollEntry.findUnique({
@@ -1563,10 +1598,9 @@ export async function reverseAbsenceDeductionForDate(
   let blockedByPayrollStatus = false;
   let payrollStatus: string | null = null;
 
-  const stipendRecord = await tx.stipendRecord.findFirst({
-    where: { employeeId, effectiveTo: null },
-    orderBy: { effectiveFrom: 'desc' },
-  });
+  // Reverse against the segment EFFECTIVE ON the incident date — the same
+  // segment the original deduction was applied to.
+  const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
 
   if (stipendRecord) {
     const payrollEntry = await tx.payrollEntry.findUnique({
@@ -1742,10 +1776,9 @@ export async function reverseMissingCheckoutDisciplineForDate(
   if (letter.letterType === LetterType.FINE && occurrence != null) {
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
-    const stipendRecord = await tx.stipendRecord.findFirst({
-      where: { employeeId, effectiveTo: null },
-      orderBy: { effectiveFrom: 'desc' },
-    });
+    // Reverse against the segment EFFECTIVE ON the incident date — the
+    // same segment the original fine was applied to.
+    const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
 
     if (stipendRecord) {
       const payrollEntry = await tx.payrollEntry.findUnique({
@@ -2069,7 +2102,7 @@ export async function applyExtraLeaveRejectedDeduction(
   employeeId: string,
   date: Date,
 ): Promise<{ applied: boolean; reason?: string }> {
-  const basicStipend = await getBasicStipend(tx, employeeId);
+  const basicStipend = await getBasicStipend(tx, employeeId, date);
   if (basicStipend <= 0) {
     return { applied: false, reason: 'no active stipend record' };
   }
@@ -2077,14 +2110,7 @@ export async function applyExtraLeaveRejectedDeduction(
   const deductionAmount = dailyStipendRate(basicStipend, date);
   const dateLabel = date.toISOString().slice(0, 10);
   const description = `Extra Full Leave rejected — 1-day deduction — ${dateLabel}`;
-  const month = date.getMonth() + 1;
-  const year = date.getFullYear();
-  const payrollEntry = await getOrCreatePayrollEntry(
-    tx,
-    employeeId,
-    month,
-    year,
-  );
+  const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
 
   if (payrollEntry.status !== PayrollStatus.PENDING) {
     return { applied: false, reason: 'payroll entry is PROCESSED/PAID' };

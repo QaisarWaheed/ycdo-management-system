@@ -120,7 +120,7 @@ function makeReconcileFakeTx(seed: {
     stipendRecord: {
       findFirst: jest.fn((args: { where: { employeeId: string } }) =>
         args.where.employeeId === ownerEmployeeId
-          ? { id: 'stipend-1' }
+          ? { id: 'stipend-1', basicStipend, effectiveFrom: new Date('2000-01-01T00:00:00.000Z'), effectiveTo: null }
           : null,
       ),
     },

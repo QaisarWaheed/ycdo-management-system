@@ -139,7 +139,11 @@ export function leaveCreditMinutes(
   return 0;
 }
 
-function dateKey(d: Date): string {
+/** Exported so callers attributing individual unpaid-leave dates to a
+ * specific stipend segment (see PayrollService.computeMonthlyUnpaidLeaveDates)
+ * use the exact same date-key format as splitPaidUnpaidLeaveDays below —
+ * a single source of truth, no format-drift risk between the two. */
+export function dateKey(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');

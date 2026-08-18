@@ -66,6 +66,22 @@ export class PayrollController {
     return this.payrollService.createOrGetEntry(dto, user);
   }
 
+  /**
+   * Explicit multi-segment recompute for one employee/month — refreshes
+   * every overlapping PENDING StipendRecord segment's PayrollEntry
+   * (skipping PROCESSED/PAID), reporting which segments have no entry yet
+   * at all. Does not create new entries — use POST /payroll/entries for
+   * that. See PayrollService.recomputeEmployeeMonth.
+   */
+  @Post('recompute-month')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  recomputeEmployeeMonth(
+    @Body() dto: ApplyOvertimeDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.recomputeEmployeeMonth(dto, user);
+  }
+
   @Post('deductions')
   @Roles(...PAYROLL_WRITE_ROLES)
   addDeduction(@Body() dto: AddDeductionDto) {
