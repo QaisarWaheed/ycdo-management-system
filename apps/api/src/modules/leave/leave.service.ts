@@ -42,7 +42,7 @@ import {
 } from '../../common/medicine-scope.util';
 import {
   applyExtraLeaveRejectedDeduction,
-  reverseAbsenceDeductionForDate,
+  reconcileAttendanceFinancialConsequences,
 } from '../attendance/discipline.helper';
 import {
   countApprovedFullLeaveOccurrencesThisMonth,
@@ -1875,18 +1875,7 @@ export class LeaveService {
         },
       });
 
-      // Reconcile only when the day being converted was actually an
-      // auto-marked absence — never touches an already-ON_LEAVE row
-      // (idempotent on reruns) or an unrelated status.
-      if (
-        existing &&
-        (existing.status === AttendanceStatus.UNINFORMED_ABSENT ||
-          existing.status === AttendanceStatus.ABSENT)
-      ) {
-        await reverseAbsenceDeductionForDate(tx, leave.employeeId, day);
-      }
-
-      await tx.attendanceLog.upsert({
+      const updated = await tx.attendanceLog.upsert({
         where: {
           employeeId_date_type: {
             employeeId: leave.employeeId,
@@ -1910,6 +1899,21 @@ export class LeaveService {
           source: AttendanceSource.MANUAL,
           note: 'Approved leave',
         },
+      });
+
+      // Reconciles both directions this leave approval can move a day out
+      // of: ABSENT/UNINFORMED_ABSENT (previously handled here directly) AND
+      // LATE/lateness-HALF_DAY (previously NOT handled — a leave retroactively
+      // approved over an already-late day never reversed the late fine).
+      // Never touches an already-ON_LEAVE row or an unrelated status
+      // (idempotent on reruns) — before is read fresh from the database, so
+      // a second run of this same approval sees the already-updated state
+      // and no-ops.
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: leave.employeeId,
+        date: day,
+        before: existing,
+        after: updated,
       });
     }
   }

@@ -169,11 +169,38 @@ async function getBasicStipend(
   return Number(employee?.stipendRecords[0]?.basicStipend ?? 0);
 }
 
+export type AbsentApplicationResult = {
+  deductionApplied: boolean;
+  /** True when a deduction would otherwise have been created but the
+   * target PayrollEntry is PROCESSED/PAID — financial mutation was skipped
+   * entirely. ABSENT has no non-financial discipline tracking to preserve
+   * (no DisciplineEvent category), so this is the only side effect of this
+   * function, unlike applyUninformedAbsentDeduction. */
+  blockedByPayrollStatus: boolean;
+  deductionAmount: number | null;
+  payrollStatus: string | null;
+};
+
+/**
+ * Financial deduction for a plain ABSENT day, gated on PayrollEntry.status
+ * the same way every reversal function in this file already is — mirrors
+ * the existing pattern in applyExtraLeaveRejectedDeduction, which this
+ * function previously did not follow. On PROCESSED/PAID: no
+ * PayrollDeduction is created, totalDeductions/netStipend are never
+ * touched, blockedByPayrollStatus is reported.
+ */
 async function applyAbsentDeduction(
   tx: Prisma.TransactionClient,
   employeeId: string,
   date: Date,
-): Promise<void> {
+): Promise<AbsentApplicationResult> {
+  const noOp: AbsentApplicationResult = {
+    deductionApplied: false,
+    blockedByPayrollStatus: false,
+    deductionAmount: null,
+    payrollStatus: null,
+  };
+
   const approvedLeave = await tx.leaveRecord.findFirst({
     where: {
       employeeId,
@@ -183,12 +210,11 @@ async function applyAbsentDeduction(
     },
   });
 
-  if (approvedLeave) return;
+  if (approvedLeave) return noOp;
 
   const basicStipend = await getBasicStipend(tx, employeeId);
-  if (basicStipend <= 0) return;
+  if (basicStipend <= 0) return noOp;
 
-  const deductionAmount = dailyStipendRate(basicStipend, date) * 2;
   const month = date.getMonth() + 1;
   const year = date.getFullYear();
   const payrollEntry = await getOrCreatePayrollEntry(
@@ -198,15 +224,42 @@ async function applyAbsentDeduction(
     year,
   );
 
+  if (payrollEntry.status !== PayrollStatus.PENDING) {
+    return {
+      ...noOp,
+      blockedByPayrollStatus: true,
+      payrollStatus: payrollEntry.status,
+    };
+  }
+
+  const deductionAmount = dailyStipendRate(basicStipend, date) * 2;
+
+  // Date suffix lets a later leave approval / centralized reconciliation
+  // find and reverse this exact deduction (see reverseAbsenceDeductionForDate)
+  // without risking matching a different day's identically-worded row. Also
+  // doubles as the idempotency guard below — ABSENT has no DisciplineEvent
+  // category (unlike UNINFORMED_ABSENT's claimDisciplineEvent gate), so this
+  // exact-match check is this function's only protection against a
+  // redundant re-mark of the same day creating a second deduction.
+  const description = `Absent without approved leave (2 days stipend) — ${date.toISOString().slice(0, 10)}`;
+
+  const alreadyDeducted = await tx.payrollDeduction.findFirst({
+    where: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.UNINFORMED_ABSENCE,
+      description,
+    },
+  });
+  if (alreadyDeducted) {
+    return { ...noOp, payrollStatus: payrollEntry.status };
+  }
+
   await tx.payrollDeduction.create({
     data: {
       payrollEntryId: payrollEntry.id,
       reason: DeductionType.UNINFORMED_ABSENCE,
       amount: deductionAmount,
-      // Date suffix lets a later leave approval over this exact day find
-      // and reverse this exact deduction (see reverseAbsenceDeductionForDate)
-      // without risking matching a different day's identically-worded row.
-      description: `Absent without approved leave (2 days stipend) — ${date.toISOString().slice(0, 10)}`,
+      description,
     },
   });
 
@@ -226,6 +279,13 @@ async function applyAbsentDeduction(
       type: 'ABSENT_DEDUCTION',
     },
   });
+
+  return {
+    deductionApplied: true,
+    blockedByPayrollStatus: false,
+    deductionAmount,
+    payrollStatus: payrollEntry.status,
+  };
 }
 
 /** "HH:mm", wrapping across midnight. */
@@ -476,11 +536,40 @@ async function applyLateDiscipline(
   );
 }
 
-async function applyUninformedAbsentDeduction(
+export type UninformedAbsenceDisciplineTrackingResult = {
+  /** False only when this exact date's UNINFORMED_ABSENT incident was
+   * already claimed by an earlier call — a true idempotent no-op, nothing
+   * below it (count/suspension) was (re)evaluated. */
+  disciplineEventCreated: boolean;
+  uninformedCount: number;
+  /** True only when THIS call is what flipped the employee into SUSPENDED —
+   * false on a replay that finds them already suspended. */
+  suspensionTriggered: boolean;
+};
+
+/**
+ * Non-financial half of UNINFORMED_ABSENT handling: claims the
+ * DisciplineEvent(UNINFORMED_ABSENT) idempotency slot for this exact date,
+ * derives the fresh monthly count (always re-read from current AttendanceLog
+ * state, never stored), and evaluates/applies the >2-day auto-suspension
+ * threshold using the existing, unchanged business rule. Never creates,
+ * touches, or even looks up a PayrollDeduction/PayrollEntry — safe to call
+ * regardless of payroll status, and safe to call on its own (ABSENT ->
+ * UNINFORMED_ABSENT subtype promotion, where a same-amount deduction already
+ * exists under a different description template and must not be duplicated)
+ * as well as from applyUninformedAbsentDeduction (full family entry, which
+ * also needs the deduction).
+ *
+ * Idempotent: claimDisciplineEvent's unique constraint makes a second call
+ * for the same date a true no-op (disciplineEventCreated: false), and the
+ * suspension check re-reads Employee.status fresh every call, so it never
+ * re-suspends an employee HR has since manually reinstated.
+ */
+async function applyUninformedAbsenceDisciplineTracking(
   tx: Prisma.TransactionClient,
   employeeId: string,
   date: Date,
-): Promise<void> {
+): Promise<UninformedAbsenceDisciplineTrackingResult> {
   const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
   const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
   const dayStart = new Date(date);
@@ -512,42 +601,16 @@ async function applyUninformedAbsentDeduction(
     dayStart,
     uninformedCount,
   );
-  if (!claimed) return; // already processed — true no-op
-
-  const basicStipend = await getBasicStipend(tx, employeeId);
-  if (basicStipend > 0) {
-    const deductionAmount = dailyStipendRate(basicStipend, date) * 2;
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    const payrollEntry = await getOrCreatePayrollEntry(
-      tx,
-      employeeId,
-      month,
-      year,
-    );
-
-    await tx.payrollDeduction.create({
-      data: {
-        payrollEntryId: payrollEntry.id,
-        reason: DeductionType.UNINFORMED_ABSENCE,
-        amount: deductionAmount,
-        // Date suffix lets a later leave approval over this exact day find
-        // and reverse this exact deduction (see reverseAbsenceDeductionForDate)
-        // without risking matching a different day's identically-worded row.
-        description: `Uninformed absence deduction (2 days) — ${dayKey}`,
-      },
-    });
-
-    await tx.payrollEntry.update({
-      where: { id: payrollEntry.id },
-      data: {
-        totalDeductions: { increment: deductionAmount },
-        netStipend: { decrement: deductionAmount },
-      },
-    });
+  if (!claimed) {
+    return {
+      disciplineEventCreated: false,
+      uninformedCount,
+      suspensionTriggered: false,
+    };
   }
 
   // More than 2 uninformed-absent days in a month → automatic suspension.
+  let suspensionTriggered = false;
   if (uninformedCount > 2) {
     const employee = await tx.employee.findUnique({
       where: { id: employeeId },
@@ -579,8 +642,120 @@ async function applyUninformedAbsentDeduction(
         notificationMessage: `You have been suspended due to ${uninformedCount} uninformed absence day(s) this month (more than 2 days). Please contact HR.`,
         notificationType: 'SUSPENSION_ISSUED',
       });
+      suspensionTriggered = true;
     }
   }
+
+  return { disciplineEventCreated: true, uninformedCount, suspensionTriggered };
+}
+
+export type UninformedAbsentApplicationResult =
+  UninformedAbsenceDisciplineTrackingResult & {
+    deductionApplied: boolean;
+    /** True when the incident was newly claimed (disciplineEventCreated)
+     * and would otherwise have carried a deduction, but the target
+     * PayrollEntry is PROCESSED/PAID — financial mutation was skipped, the
+     * discipline tracking above still ran in full. */
+    blockedByPayrollStatus: boolean;
+    deductionAmount: number | null;
+    payrollStatus: string | null;
+  };
+
+/**
+ * Full UNINFORMED_ABSENT application: discipline tracking (see
+ * applyUninformedAbsenceDisciplineTracking) plus the 2-day financial
+ * deduction, now gated on PayrollEntry.status the same way every reversal
+ * function in this file already is — mirrors the existing pattern in
+ * applyExtraLeaveRejectedDeduction, which this function previously did not.
+ * On PROCESSED/PAID: no PayrollDeduction is created, totalDeductions/
+ * netStipend are never touched, blockedByPayrollStatus is reported — the
+ * discipline tracking (DisciplineEvent claim, monthly count, suspension
+ * threshold) still runs unconditionally, since none of that is financial.
+ */
+async function applyUninformedAbsentDeduction(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+): Promise<UninformedAbsentApplicationResult> {
+  const tracking = await applyUninformedAbsenceDisciplineTracking(
+    tx,
+    employeeId,
+    date,
+  );
+  if (!tracking.disciplineEventCreated) {
+    // Already processed — true no-op, matches the pre-existing early return.
+    return {
+      ...tracking,
+      deductionApplied: false,
+      blockedByPayrollStatus: false,
+      deductionAmount: null,
+      payrollStatus: null,
+    };
+  }
+
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayKey = dayStart.toISOString().slice(0, 10);
+
+  const basicStipend = await getBasicStipend(tx, employeeId);
+  if (basicStipend <= 0) {
+    return {
+      ...tracking,
+      deductionApplied: false,
+      blockedByPayrollStatus: false,
+      deductionAmount: null,
+      payrollStatus: null,
+    };
+  }
+
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+  const payrollEntry = await getOrCreatePayrollEntry(
+    tx,
+    employeeId,
+    month,
+    year,
+  );
+
+  if (payrollEntry.status !== PayrollStatus.PENDING) {
+    return {
+      ...tracking,
+      deductionApplied: false,
+      blockedByPayrollStatus: true,
+      deductionAmount: null,
+      payrollStatus: payrollEntry.status,
+    };
+  }
+
+  const deductionAmount = dailyStipendRate(basicStipend, date) * 2;
+
+  await tx.payrollDeduction.create({
+    data: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.UNINFORMED_ABSENCE,
+      amount: deductionAmount,
+      // Date suffix lets a later leave approval over this exact day find
+      // and reverse this exact deduction (see reverseAbsenceDeductionForDate)
+      // without risking matching a different day's identically-worded row.
+      description: `Uninformed absence deduction (2 days) — ${dayKey}`,
+    },
+  });
+
+  await tx.payrollEntry.update({
+    where: { id: payrollEntry.id },
+    data: {
+      totalDeductions: { increment: deductionAmount },
+      netStipend: { decrement: deductionAmount },
+    },
+  });
+
+  return {
+    ...tracking,
+    deductionApplied: true,
+    blockedByPayrollStatus: false,
+    deductionAmount,
+    payrollStatus: payrollEntry.status,
+  };
 }
 
 async function getOrCreatePayrollEntry(
@@ -927,6 +1102,11 @@ export async function applyMissingCheckoutDiscipline(
       fineReason: `اس ماہ چیک آؤٹ نہ کرنے کی ${missingCount} ویں خلاف ورزی کی بنا پر یک روزہ تنخواہ کی کٹوتی۔ ${baseDetail}`,
       fineAmount: `Rs. ${deductionAmount.toFixed(2)}`,
       deductionMonth: monthLabel,
+      // Structured date link, matching applyLateDiscipline's FINE letter —
+      // lets reverseMissingCheckoutDisciplineForDate find and reverse this
+      // exact letter/deduction later. Previously omitted here (ADVICE/WARNING
+      // already carried it); no reversal existed to need it until now.
+      incidentDate: dayKey,
     },
   );
 }
@@ -1146,8 +1326,14 @@ export async function reverseLateDisciplineForDate(
     const vars = l.variables as {
       incidentDate?: string;
       reversedDueToShortLeave?: boolean;
+      monthlyLateOccurrence?: number;
     } | null;
-    return vars?.incidentDate === dateLabel && !vars?.reversedDueToShortLeave;
+    // monthlyLateOccurrence presence is required, not just incidentDate —
+    // applyMissingCheckoutDiscipline's ADVICE/WARNING/FINE letters also
+    // carry an incidentDate for the same employee/date (a different
+    // discipline category entirely) and must never be picked up here.
+    if (vars?.monthlyLateOccurrence == null) return false;
+    return vars.incidentDate === dateLabel && !vars.reversedDueToShortLeave;
   });
 
   if (!letter) return noOpResult; // no structured link to this exact date — nothing safely reversible, or already reversed
@@ -1272,6 +1458,41 @@ export function isUninformedAbsentEligibleForDiscipline(row: {
   status: AttendanceStatus;
 }): boolean {
   return row.status === AttendanceStatus.UNINFORMED_ABSENT;
+}
+
+/**
+ * Broader "absence family" predicate — true for either ABSENT or
+ * UNINFORMED_ABSENT. applyAbsentDeduction and applyUninformedAbsentDeduction
+ * apply the same-shaped 2-day deduction (reverseAbsenceDeductionForDate
+ * already matches either description template), so for the purposes of
+ * "does this row currently carry an absence-family financial consequence"
+ * the two are one financial category. This does NOT erase their distinct
+ * application semantics — applyDisciplineRules still dispatches each status
+ * to its own function, and only UNINFORMED_ABSENT ever claims a
+ * DisciplineEvent / counts toward the >2-day auto-suspension threshold.
+ */
+export function isAbsentFamilyEligibleForDiscipline(row: {
+  status: AttendanceStatus;
+}): boolean {
+  return (
+    row.status === AttendanceStatus.ABSENT ||
+    row.status === AttendanceStatus.UNINFORMED_ABSENT
+  );
+}
+
+/**
+ * "Does this row currently have an open, checked-in-but-never-checked-out
+ * session" — the exact same shape ShiftMissingCheckoutScheduler's own query
+ * uses (checkIn set, checkOut null). Orthogonal to status: a row can be
+ * simultaneously late-eligible (or absence-family-eligible, in principle)
+ * AND missing-checkout-eligible, since lateness/absence is a status field
+ * while this is purely about checkIn/checkOut presence.
+ */
+export function isMissingCheckoutEligibleForDiscipline(row: {
+  checkIn?: Date | null;
+  checkOut?: Date | null;
+}): boolean {
+  return row.checkIn != null && row.checkOut == null;
 }
 
 export type AbsenceDeductionReversalResult = {
@@ -1416,6 +1637,413 @@ export async function reverseAbsenceDeductionForDate(
     payrollStatus,
     disciplineEventRemoved: deletedEvents.count > 0,
   };
+}
+
+export type MissingCheckoutReversalResult = {
+  /** True if an active (not-already-reversed) letter for this date was
+   * found and processed this call. False on every idempotent replay, or
+   * when nothing was ever issued for this date. */
+  reversed: boolean;
+  letterId: string | null;
+  letterType: LetterType | null;
+  deductionReversed: boolean;
+  deductionAmount: number | null;
+  /** True when a matching deduction existed but its PayrollEntry is no
+   * longer PENDING — the deduction/totals were deliberately left untouched
+   * (financial freeze preserved) even though the letter/DisciplineEvent
+   * were still reversed. */
+  blockedByPayrollStatus: boolean;
+  payrollStatus: string | null;
+  disciplineEventRemoved: boolean;
+};
+
+/**
+ * Reverses the MISSING_CHECKOUT-discipline consequences of one exact
+ * incident date — byte-for-byte the same structure as
+ * reverseLateDisciplineForDate, adapted to the missing-checkout letter/
+ * deduction shape (monthlyMissingCheckoutOccurrence instead of
+ * monthlyLateOccurrence, DISCIPLINARY_FINE instead of LATE_ARRIVAL). Called
+ * whenever an existing AttendanceLog row transitions from missing-checkout
+ * (checkIn set, checkOut null) to having a real checkOut, for any reason.
+ *
+ * Finds the exact ADVICE/WARNING/FINE letter issued for THIS date (matched
+ * via Letter.variables.incidentDate AND the presence of
+ * monthlyMissingCheckoutOccurrence — the latter is required so this can
+ * never pick up an unrelated LATE letter that happens to share the same
+ * employee/date/month, mirroring the equivalent guard added to
+ * reverseLateDisciplineForDate). FINE: deletes the exact matching 1-day
+ * DISCIPLINARY_FINE deduction and restores PayrollEntry.totalDeductions/
+ * netStipend, but ONLY when that entry is still PENDING. Any type: the
+ * letter is kept but annotated reversed and requiresAcknowledgement is
+ * cleared. The date's DisciplineEvent(MISSING_CHECKOUT) claim is released
+ * unconditionally so a later genuine re-open of the same date can be
+ * processed again.
+ *
+ * Fully idempotent: a second call for the same date finds no active letter
+ * (already annotated reversed) and returns a no-op result.
+ *
+ * Does not change the missing-checkout policy cadence itself — new
+ * consequences are still only ever created by
+ * ShiftMissingCheckoutScheduler's own grace-period tick.
+ */
+export async function reverseMissingCheckoutDisciplineForDate(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+): Promise<MissingCheckoutReversalResult> {
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dateLabel = dayStart.toISOString().slice(0, 10);
+  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+
+  const noOpResult: MissingCheckoutReversalResult = {
+    reversed: false,
+    letterId: null,
+    letterType: null,
+    deductionReversed: false,
+    deductionAmount: null,
+    blockedByPayrollStatus: false,
+    payrollStatus: null,
+    disciplineEventRemoved: false,
+  };
+
+  const candidates = await tx.letter.findMany({
+    where: {
+      employeeId,
+      letterType: {
+        in: [LetterType.ADVICE, LetterType.WARNING, LetterType.FINE],
+      },
+      generatedAt: { gte: startOfMonth },
+    },
+  });
+
+  const letter = candidates.find((l) => {
+    const vars = l.variables as {
+      monthlyMissingCheckoutOccurrence?: number;
+      incidentDate?: string;
+      reversed?: boolean;
+    } | null;
+    if (vars?.monthlyMissingCheckoutOccurrence == null) return false;
+    return vars.incidentDate === dateLabel && !vars.reversed;
+  });
+
+  if (!letter) return noOpResult; // no structured link to this exact date — nothing safely reversible, or already reversed
+
+  const vars = letter.variables as {
+    monthlyMissingCheckoutOccurrence?: number;
+  } | null;
+  const occurrence = vars?.monthlyMissingCheckoutOccurrence;
+
+  let deductionReversed = false;
+  let deductionAmount: number | null = null;
+  let blockedByPayrollStatus = false;
+  let payrollStatus: string | null = null;
+
+  if (letter.letterType === LetterType.FINE && occurrence != null) {
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    const stipendRecord = await tx.stipendRecord.findFirst({
+      where: { employeeId, effectiveTo: null },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+
+    if (stipendRecord) {
+      const payrollEntry = await tx.payrollEntry.findUnique({
+        where: {
+          stipendRecordId_month_year: {
+            stipendRecordId: stipendRecord.id,
+            month,
+            year,
+          },
+        },
+      });
+
+      if (payrollEntry) {
+        payrollStatus = payrollEntry.status;
+        const deductionDescription = `Missing checkout deduction — monthly occurrence ${occurrence}`;
+        const deduction = await tx.payrollDeduction.findFirst({
+          where: {
+            payrollEntryId: payrollEntry.id,
+            reason: DeductionType.DISCIPLINARY_FINE,
+            description: deductionDescription,
+          },
+        });
+
+        if (deduction) {
+          if (payrollEntry.status !== PayrollStatus.PENDING) {
+            // Financial freeze — never mutate a PROCESSED/PAID entry.
+            blockedByPayrollStatus = true;
+          } else {
+            await tx.payrollDeduction.delete({ where: { id: deduction.id } });
+            await tx.payrollEntry.update({
+              where: { id: payrollEntry.id },
+              data: {
+                totalDeductions: { decrement: deduction.amount },
+                netStipend: { increment: deduction.amount },
+              },
+            });
+            deductionReversed = true;
+            deductionAmount = Number(deduction.amount);
+          }
+        }
+      }
+    }
+  }
+
+  await tx.letter.update({
+    where: { id: letter.id },
+    data: {
+      variables: {
+        ...((letter.variables as object) ?? {}),
+        reversed: true,
+        reversedAt: new Date().toISOString(),
+        reversalTrigger: 'CHECKOUT_PROVIDED',
+        ...(blockedByPayrollStatus
+          ? { reversalBlockedByPayrollStatus: true }
+          : {}),
+      },
+      requiresAcknowledgement: false,
+    },
+  });
+
+  const deletedEvents = await tx.disciplineEvent.deleteMany({
+    where: {
+      employeeId,
+      category: DisciplineCategory.MISSING_CHECKOUT,
+      incidentDate: dayStart,
+    },
+  });
+
+  return {
+    reversed: true,
+    letterId: letter.id,
+    letterType: letter.letterType,
+    deductionReversed,
+    deductionAmount,
+    blockedByPayrollStatus,
+    payrollStatus,
+    disciplineEventRemoved: deletedEvents.count > 0,
+  };
+}
+
+// ─── CENTRALIZED RECONCILIATION ─────────────────────────────────────────
+
+export type AttendanceConsequenceSnapshot = {
+  status: AttendanceStatus;
+  lateMinutes: number;
+  note?: string | null;
+  checkIn?: Date | null;
+  checkOut?: Date | null;
+};
+
+export type ReconcileAttendanceFinancialConsequencesResult = {
+  lateReversal: LateDisciplineReversalResult | null;
+  absenceReversal: AbsenceDeductionReversalResult | null;
+  missingCheckoutReversal: MissingCheckoutReversalResult | null;
+  /** True when a NEW absence-family deduction was actually created this
+   * call (family entry: before was not ABSENT_FAMILY, after newly is). */
+  deductionApplied: boolean;
+  /** True when a deduction attempt (family entry) was skipped because the
+   * target PayrollEntry is PROCESSED/PAID. Independent of
+   * absenceReversal?.blockedByPayrollStatus, which covers the family-exit
+   * (reversal) direction instead. */
+  blockedByPayrollStatus: boolean;
+  payrollStatus: string | null;
+  /** True when a DisciplineEvent(UNINFORMED_ABSENT) was newly claimed this
+   * call — either full family entry as UNINFORMED_ABSENT, or an ABSENT ->
+   * UNINFORMED_ABSENT subtype promotion (deduction untouched in the
+   * latter case — see the subtype-transition branch below). */
+  disciplineEventCreated: boolean;
+  /** True when a DisciplineEvent(UNINFORMED_ABSENT) was released this call
+   * without touching the deduction — either mirrored from
+   * absenceReversal?.disciplineEventRemoved (family exit) or a standalone
+   * UNINFORMED_ABSENT -> ABSENT subtype demotion. */
+  disciplineEventRemoved: boolean;
+  /** True only when THIS call is what flipped the employee into SUSPENDED. */
+  suspensionTriggered: boolean;
+};
+
+/**
+ * Single entry point every financially-relevant attendance-mutating call
+ * site should use to keep AttendanceLog's corrected state financially
+ * authoritative, instead of each call site hand-rolling its own before/after
+ * eligibility comparison (which is how the ABSENT-family and missing-
+ * checkout gaps were missed for so long — see the read-only audit this
+ * change implements).
+ *
+ * Classifies `before`/`after` along two independent axes and reverses or
+ * applies exactly the consequence(s) whose eligibility actually changed:
+ *
+ *  - STATUS axis (LATE vs ABSENT_FAMILY vs neither) — mutually exclusive,
+ *    both derived from the single AttendanceStatus enum value:
+ *      LATE eligible -> not eligible:            reverseLateDisciplineForDate
+ *      ABSENT_FAMILY eligible -> not eligible:    reverseAbsenceDeductionForDate
+ *      not eligible -> ABSENT_FAMILY eligible:    applyAbsentDeduction /
+ *                                                  applyUninformedAbsentDeduction
+ *                                                  (family entry — deduction +,
+ *                                                  for UNINFORMED_ABSENT, full
+ *                                                  discipline tracking)
+ *      ABSENT_FAMILY -> ABSENT_FAMILY, subtype UNCHANGED (ABSENT -> ABSENT,
+ *      UNINFORMED_ABSENT -> UNINFORMED_ABSENT): true no-op — nothing to do.
+ *      ABSENT_FAMILY -> ABSENT_FAMILY, subtype CHANGED (ABSENT <->
+ *      UNINFORMED_ABSENT): the FINANCIAL deduction is deliberately left
+ *        untouched (same 2-day amount either way — reversing and
+ *        reapplying would be pure churn and risks the exact double-
+ *        deduction this function exists to prevent), but the two subtypes
+ *        are NOT discipline-equivalent, so this is a discipline-only
+ *        promotion/demotion, not a full no-op:
+ *          ABSENT -> UNINFORMED_ABSENT: applyUninformedAbsenceDisciplineTracking
+ *            (claims the DisciplineEvent, evaluates the suspension
+ *            threshold) WITHOUT calling the deduction path again.
+ *          UNINFORMED_ABSENT -> ABSENT: releases the DisciplineEvent(
+ *            UNINFORMED_ABSENT) claim for this date. Never touches the
+ *            deduction, Employee.status, or User.isActive — there is no
+ *            code-defined "un-suspend when reclassified below threshold"
+ *            policy (see reverseAbsenceDeductionForDate's doc comment), so
+ *            this deliberately does not invent one.
+ *      (LATE application is intentionally NOT owned here — it must run
+ *      BEFORE the attendance row is written, since it can upgrade the
+ *      status being saved (LATE -> HALF_DAY at >60 minutes); callers keep
+ *      calling applyDisciplineRules directly for that, pre-write, exactly
+ *      as before this change.)
+ *
+ *  - CHECKOUT axis (missing-checkout vs not) — orthogonal to status, since a
+ *    row can be simultaneously late AND missing its checkout:
+ *      missing-checkout -> resolved:  reverseMissingCheckoutDisciplineForDate
+ *      New missing-checkout consequences are NEVER applied here — that stays
+ *      exclusively owned by ShiftMissingCheckoutScheduler's own grace-period
+ *      cadence, unchanged.
+ *
+ * `before: null` means a genuinely new row (nothing existed to compare
+ * against) — every reversal branch is skipped, and the ABSENT_FAMILY-apply
+ * branch behaves exactly like markManual's pre-existing create-path
+ * dispatch (a brand-new row marked ABSENT/UNINFORMED_ABSENT still gets its
+ * deduction applied).
+ *
+ * Idempotent the same way every reversal/apply function in this file already
+ * is: `before` is always the value actually read from the database before
+ * this correction, so a genuinely separate, later correction re-reads the
+ * already-updated state and the transition check correctly no-ops. All
+ * underlying calls are themselves safe to retry (claimDisciplineEvent /
+ * exact-description-match guards / exact-date Letter matching).
+ *
+ * Employee/date scoped throughout — every underlying call is keyed by the
+ * same (employeeId, date) pair, never touching any other day or employee.
+ */
+export async function reconcileAttendanceFinancialConsequences(
+  tx: Prisma.TransactionClient,
+  params: {
+    employeeId: string;
+    date: Date;
+    before: AttendanceConsequenceSnapshot | null;
+    after: AttendanceConsequenceSnapshot;
+    /** Passed through to applyDisciplineRules for LATE-category letter
+     * wording only — ABSENT_FAMILY application ignores it. Harmless to omit
+     * for call sites that never reach the ABSENT_FAMILY-apply branch. */
+    dutyStartTimeSnapshot?: string | null;
+  },
+): Promise<ReconcileAttendanceFinancialConsequencesResult> {
+  const { employeeId, date, before, after } = params;
+
+  const result: ReconcileAttendanceFinancialConsequencesResult = {
+    lateReversal: null,
+    absenceReversal: null,
+    missingCheckoutReversal: null,
+    deductionApplied: false,
+    blockedByPayrollStatus: false,
+    payrollStatus: null,
+    disciplineEventCreated: false,
+    disciplineEventRemoved: false,
+    suspensionTriggered: false,
+  };
+
+  const beforeWasLate = before ? isLateEligibleForDiscipline(before) : false;
+  const afterIsLate = isLateEligibleForDiscipline(after);
+  const beforeWasAbsentFamily = before
+    ? isAbsentFamilyEligibleForDiscipline(before)
+    : false;
+  const afterIsAbsentFamily = isAbsentFamilyEligibleForDiscipline(after);
+
+  if (beforeWasLate && !afterIsLate) {
+    result.lateReversal = await reverseLateDisciplineForDate(
+      tx,
+      employeeId,
+      date,
+    );
+  }
+
+  if (beforeWasAbsentFamily && !afterIsAbsentFamily) {
+    // Family EXIT — full reversal (deduction + DisciplineEvent, PENDING-gated).
+    result.absenceReversal = await reverseAbsenceDeductionForDate(
+      tx,
+      employeeId,
+      date,
+    );
+    result.disciplineEventRemoved = result.absenceReversal.disciplineEventRemoved;
+  } else if (!beforeWasAbsentFamily && afterIsAbsentFamily) {
+    // Family ENTRY — full application (deduction, PENDING-gated; for
+    // UNINFORMED_ABSENT also the discipline tracking).
+    if (after.status === AttendanceStatus.UNINFORMED_ABSENT) {
+      const applied = await applyUninformedAbsentDeduction(
+        tx,
+        employeeId,
+        date,
+      );
+      result.deductionApplied = applied.deductionApplied;
+      result.blockedByPayrollStatus = applied.blockedByPayrollStatus;
+      result.payrollStatus = applied.payrollStatus;
+      result.disciplineEventCreated = applied.disciplineEventCreated;
+      result.suspensionTriggered = applied.suspensionTriggered;
+    } else {
+      const applied = await applyAbsentDeduction(tx, employeeId, date);
+      result.deductionApplied = applied.deductionApplied;
+      result.blockedByPayrollStatus = applied.blockedByPayrollStatus;
+      result.payrollStatus = applied.payrollStatus;
+    }
+  } else if (
+    beforeWasAbsentFamily &&
+    afterIsAbsentFamily &&
+    before!.status !== after.status
+  ) {
+    // Same financial family, DIFFERENT subtype (ABSENT <-> UNINFORMED_ABSENT)
+    // — discipline-only promotion/demotion. The deduction is intentionally
+    // never touched here (same 2-day amount either way), see doc comment.
+    if (after.status === AttendanceStatus.UNINFORMED_ABSENT) {
+      const tracking = await applyUninformedAbsenceDisciplineTracking(
+        tx,
+        employeeId,
+        date,
+      );
+      result.disciplineEventCreated = tracking.disciplineEventCreated;
+      result.suspensionTriggered = tracking.suspensionTriggered;
+    } else {
+      const dayStart = new Date(date);
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const deletedEvents = await tx.disciplineEvent.deleteMany({
+        where: {
+          employeeId,
+          category: DisciplineCategory.UNINFORMED_ABSENT,
+          incidentDate: dayStart,
+        },
+      });
+      result.disciplineEventRemoved = deletedEvents.count > 0;
+    }
+  }
+  // beforeWasAbsentFamily && afterIsAbsentFamily && before.status ===
+  // after.status: true no-op — the row didn't actually change category or
+  // subtype (e.g. an unrelated field-only re-save).
+
+  const beforeWasMissingCheckout = before
+    ? isMissingCheckoutEligibleForDiscipline(before)
+    : false;
+  const afterIsMissingCheckout = isMissingCheckoutEligibleForDiscipline(after);
+
+  if (beforeWasMissingCheckout && !afterIsMissingCheckout) {
+    result.missingCheckoutReversal =
+      await reverseMissingCheckoutDisciplineForDate(tx, employeeId, date);
+  }
+
+  return result;
 }
 
 // ─── QUOTA-EXCEEDED LEAVE REJECTION (leave.service.ts decideQuotaException) ─

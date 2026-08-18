@@ -49,10 +49,7 @@ import {
 import { mapDeviceStatusToPunchType } from './device-status.util';
 import {
   applyDisciplineRules,
-  isLateEligibleForDiscipline,
-  isUninformedAbsentEligibleForDiscipline,
-  reverseAbsenceDeductionForDate,
-  reverseLateDisciplineForDate,
+  reconcileAttendanceFinancialConsequences,
 } from './discipline.helper';
 import {
   countShortLeaveOccurrencesThisMonth,
@@ -529,18 +526,15 @@ export class AttendanceService {
         // If this row was already auto-escalated to UNINFORMED_ABSENT before
         // this punch arrived, the employee did eventually show up — the
         // check-in must still be recorded and the status must reflect the
-        // real arrival (handled below via applyDisciplineRules/status).
-        // What must NOT happen silently is losing the fact that this day
-        // was flagged uninformed-absent and already carries a stipend
-        // deduction for it (applyUninformedAbsentDeduction, discipline.helper.ts)
-        // — that deduction is a separate, already-committed PayrollDeduction
-        // row and is deliberately left untouched here (no automatic
-        // reconciliation in this phase); this note is the minimum-safe way
-        // to keep that history visible on the record itself.
+        // real arrival (handled below via applyDisciplineRules/status). The
+        // existing UNINFORMED_ABSENT deduction/DisciplineEvent is reversed
+        // below via reconcileAttendanceFinancialConsequences (PENDING payroll
+        // only — PROCESSED/PAID stays frozen), so the note no longer needs
+        // to carry a "not reversed" caveat.
         const wasUninformedAbsent =
           anyExisting.status === AttendanceStatus.UNINFORMED_ABSENT;
 
-        return tx.attendanceLog.update({
+        const updated = await tx.attendanceLog.update({
           where: { id: anyExisting.id },
           data: {
             checkIn: checkTime,
@@ -552,10 +546,21 @@ export class AttendanceService {
             note: twentyFourHour
               ? '24-hour shift check-in'
               : wasUninformedAbsent
-                ? 'Checked in after being auto-marked Uninformed Absent (existing deduction not reversed)'
+                ? 'Checked in after being auto-marked Uninformed Absent'
                 : anyExisting.note,
           },
         });
+
+        if (!twentyFourHour) {
+          await reconcileAttendanceFinancialConsequences(tx, {
+            employeeId: employee.id,
+            date: dateOnly,
+            before: anyExisting,
+            after: updated,
+          });
+        }
+
+        return updated;
       });
 
       return { type: 'CHECKIN' as const, log };
@@ -954,11 +959,19 @@ export class AttendanceService {
       // classifies straight to HALF_DAY skipped late-occurrence discipline
       // entirely, unlike the biometric path (which always starts at LATE
       // and lets applyDisciplineRules itself escalate to HALF_DAY).
+      // ABSENT/UNINFORMED_ABSENT are deliberately NOT dispatched here
+      // (pre-write) — unlike LATE/HALF_DAY, applyDisciplineRules never
+      // upgrades their status (no HALF_DAY-style escalation), so applying
+      // their consequence has no ordering dependency on the write below.
+      // Owning it in reconcileAttendanceFinancialConsequences instead
+      // (post-write, below) makes it symmetric with reversal and — unlike
+      // this pre-write dispatch, which fired unconditionally on every
+      // re-mark regardless of `existing` — only applies when the row is
+      // genuinely newly entering the absence family, closing a duplicate-
+      // deduction risk on a redundant re-mark of an already-ABSENT day.
       if (
         status === AttendanceStatus.LATE ||
-        status === AttendanceStatus.HALF_DAY ||
-        status === AttendanceStatus.ABSENT ||
-        status === AttendanceStatus.UNINFORMED_ABSENT
+        status === AttendanceStatus.HALF_DAY
       ) {
         effectiveStatus = await applyDisciplineRules(
           tx,
@@ -1026,29 +1039,20 @@ export class AttendanceService {
         },
       });
 
-      // Same fix as updateAttendance: markManual's upsert can overwrite an
-      // EXISTING row (full-edit roles re-marking an already-marked day),
-      // moving it OUT of late-eligibility. Only applies when `existing` is
-      // a real prior row — a brand-new row (existing === null/UNMARKED
-      // create path) has nothing to reverse. Idempotent, same-transaction.
-      if (
-        existing &&
-        isLateEligibleForDiscipline(existing) &&
-        !isLateEligibleForDiscipline(attendanceLog)
-      ) {
-        await reverseLateDisciplineForDate(tx, dto.employeeId, dateOnly);
-      }
-
-      // Same fix for UNINFORMED_ABSENT — only applies when re-marking a
-      // real existing row (brand-new rows via the create path can never
-      // have been UNINFORMED_ABSENT already).
-      if (
-        existing &&
-        isUninformedAbsentEligibleForDiscipline(existing) &&
-        !isUninformedAbsentEligibleForDiscipline(attendanceLog)
-      ) {
-        await reverseAbsenceDeductionForDate(tx, dto.employeeId, dateOnly);
-      }
+      // Centralized reconciliation covers both directions: reversing a
+      // LATE/ABSENT_FAMILY consequence the row is moving OUT of, and
+      // applying a NEW ABSENT_FAMILY consequence when a row is moving INTO
+      // it (including the create path, where `existing` is null — see
+      // reconcileAttendanceFinancialConsequences' doc comment). Idempotent,
+      // same-transaction, employee/date scoped.
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: dto.employeeId,
+        date: dateOnly,
+        before: existing,
+        after: attendanceLog,
+        dutyStartTimeSnapshot: resolveAttendanceDutyTimes(existing, employee)
+          .dutyStartTime,
+      });
 
       return attendanceLog;
     });
@@ -1406,39 +1410,27 @@ export class AttendanceService {
         },
       });
 
-      // This is the fix for the confirmed production bug: a plain status/
-      // checkIn correction (not just the Short Leave flow, which already
-      // calls this via reconcileShortLeaveAttendance above) can also move a
-      // row OUT of late-eligibility — e.g. HR correcting HALF_DAY(late) or
-      // LATE back to PRESENT/ON_LEAVE/ABSENT. Comparing before vs after
-      // ELIGIBILITY (not status-name equality) means LATE->LATE, unrelated
-      // checkOut/note/overtime-only edits, and lateness-HALF_DAY->
-      // lateness-HALF_DAY never fire this — only a genuine eligible->
-      // ineligible transition does. Runs in the SAME transaction as the
-      // attendance write itself, and reverseLateDisciplineForDate is fully
-      // idempotent, so this harmlessly no-ops if reconcileShortLeaveAttendance
-      // already reversed this exact date earlier in this same call.
-      if (
-        isLateEligibleForDiscipline(previous) &&
-        !isLateEligibleForDiscipline(result)
-      ) {
-        await reverseLateDisciplineForDate(tx, log.employeeId, log.date);
-      }
-
-      // Same fix, same reasoning, for the confirmed UNINFORMED_ABSENT gap:
-      // reverseAbsenceDeductionForDate previously only ran from the leave-
-      // approval flow — a plain correction away from UNINFORMED_ABSENT
-      // (PRESENT/LATE/HALF_DAY/ON_LEAVE/SWAP_COVERED/etc, for ANY reason)
-      // never reversed the 2-day deduction or its DisciplineEvent. Mutually
-      // exclusive with the LATE check above by construction (a row's status
-      // is never simultaneously late-eligible and UNINFORMED_ABSENT), fully
-      // idempotent, same transaction.
-      if (
-        isUninformedAbsentEligibleForDiscipline(previous) &&
-        !isUninformedAbsentEligibleForDiscipline(result)
-      ) {
-        await reverseAbsenceDeductionForDate(tx, log.employeeId, log.date);
-      }
+      // Centralized reconciliation: reverses LATE/ABSENT_FAMILY consequences
+      // a plain status/checkIn/checkOut correction moves this row OUT of
+      // (e.g. HR correcting HALF_DAY(late) or LATE back to PRESENT/ON_LEAVE,
+      // or ABSENT/UNINFORMED_ABSENT back to PRESENT — previously the latter
+      // was never reversed here at all), APPLIES a new ABSENT_FAMILY
+      // consequence when HR sets status directly to ABSENT/UNINFORMED_ABSENT
+      // through this edit endpoint (previously silently skipped — only
+      // markManual applied it), and reverses a missing-checkout consequence
+      // once a checkout is supplied for a previously-open session. Runs in
+      // the SAME transaction as the attendance write, and every underlying
+      // call is independently idempotent, so this harmlessly no-ops
+      // wherever reconcileShortLeaveAttendance already handled the LATE side
+      // earlier in this same call.
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: log.employeeId,
+        date: log.date,
+        before: previous,
+        after: result,
+        dutyStartTimeSnapshot: resolveAttendanceDutyTimes(log, log.employee)
+          .dutyStartTime,
+      });
 
       return shortLeaveDecision ? { ...result, shortLeaveDecision } : result;
     });
@@ -2557,7 +2549,7 @@ export class AttendanceService {
         status = AttendanceStatus.HALF_DAY;
       }
 
-      await tx.attendanceLog.upsert({
+      const updated = await tx.attendanceLog.upsert({
         where: {
           employeeId_date_type: {
             employeeId,
@@ -2585,6 +2577,18 @@ export class AttendanceService {
           source: AttendanceSource.MANUAL,
           note: 'Portal check-in',
         },
+      });
+
+      // Route still live server-side though the frontend self-check-in UI
+      // was removed — kept behaviorally consistent with biometricRegularCheckIn
+      // rather than left to silently diverge (e.g. an UNINFORMED_ABSENT
+      // employee checking in here would otherwise keep the same stale-
+      // deduction gap that path used to have).
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId,
+        date: dateOnly,
+        before: existing,
+        after: updated,
       });
     });
 
@@ -2665,9 +2669,18 @@ export class AttendanceService {
         },
       });
 
-      await tx.attendanceLog.update({
+      const updated = await tx.attendanceLog.update({
         where: { id: existing.id },
         data: { checkOut: checkTime, overtimeMinutes },
+      });
+
+      // Reverses a missing-checkout consequence if the scheduler already
+      // flagged this session before this (late) checkout arrived.
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId,
+        date: dateOnly,
+        before: existing,
+        after: updated,
       });
     });
 
