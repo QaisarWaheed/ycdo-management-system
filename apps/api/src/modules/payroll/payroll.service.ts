@@ -3,7 +3,10 @@ import {
   daysInPayrollMonth,
   stipendRecordToPackage,
 } from '../../common/stipend.util';
-import { getDutyWindow } from '../../common/duty.util';
+import {
+  getDutyWindow,
+  resolveAttendanceDutyTimes,
+} from '../../common/duty.util';
 import {
   BadRequestException,
   ForbiddenException,
@@ -41,6 +44,7 @@ import {
   computeHourlyRate,
   computeRelieverPayableMinutes,
   DEFAULT_MONTHLY_ALLOWED_LEAVES,
+  hoursFromDutyWindow,
   leaveCreditMinutes,
   payableMinutesWithinDutyWindow,
   resolveDailyDutyHours,
@@ -509,15 +513,51 @@ export class PayrollService {
       },
     });
 
+    // Own-duty overlap must reflect what this employee's OWN duty actually
+    // was on each session's date, not their current duty — RelieverSession
+    // itself carries no snapshot, so the employee's own REGULAR
+    // AttendanceLog for that same date is the next best historical source.
+    // A date with no such row at all (e.g. the reliever's own attendance
+    // was never marked that day) falls back to current duty — the same
+    // last-resort fallback resolveAttendanceDutyTimes uses everywhere else.
+    const ownAttendanceLogs = sessions.length
+      ? await this.prisma.attendanceLog.findMany({
+          where: {
+            employeeId,
+            type: AttendanceLogType.REGULAR,
+            date: { in: sessions.map((s) => s.date) },
+          },
+          select: {
+            date: true,
+            dutyStartTimeSnapshot: true,
+            dutyEndTimeSnapshot: true,
+          },
+        })
+      : [];
+    const ownDutyByDate = new Map(
+      ownAttendanceLogs.map((l) => [l.date.toISOString().slice(0, 10), l]),
+    );
+
     const totalPayableMinutes = sessions.reduce((sum, s) => {
       if (!s.checkOut) return sum;
+      const ownLogForDate = ownDutyByDate.get(
+        s.date.toISOString().slice(0, 10),
+      );
+      const dayDuty = resolveAttendanceDutyTimes(ownLogForDate, employee);
       return (
         sum +
-        computeRelieverPayableMinutes(employee, {
-          checkIn: s.checkIn,
-          checkOut: s.checkOut,
-          totalMinutes: s.totalMinutes,
-        })
+        computeRelieverPayableMinutes(
+          {
+            relieverOnly: employee.relieverOnly,
+            dutyStartTime: dayDuty.dutyStartTime,
+            dutyEndTime: dayDuty.dutyEndTime,
+          },
+          {
+            checkIn: s.checkIn,
+            checkOut: s.checkOut,
+            totalMinutes: s.totalMinutes,
+          },
+        )
       );
     }, 0);
 
@@ -1545,14 +1585,13 @@ export class PayrollService {
   ): Promise<HourlyPayrollBreakdown> {
     const pkg = stipendRecordToPackage(context.stipendRecord);
     const daysInMonth = daysInPayrollMonth(year, month);
+    // Used only for the monthly hourly-rate calc (computeHourlyRate below)
+    // and the breakdown's headline "scheduled hours" figure — both are
+    // current-state, forward-looking concepts (what does an hour cost
+    // today), not a per-day historical fact. Crediting/worked-minutes
+    // inside the loop below use each day's OWN resolved duty window
+    // instead — see dayWin/dayDutyMinutes.
     const dailyDutyHours = resolveDailyDutyHours(context.employee);
-    const dailyDutyMinutes = Math.round(dailyDutyHours * 60);
-    const win = getDutyWindow({
-      dutyStartTime:
-        context.employee.dutyStartTime ?? context.employee.shift?.startTime,
-      dutyEndTime:
-        context.employee.dutyEndTime ?? context.employee.shift?.endTime,
-    });
 
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
@@ -1569,6 +1608,8 @@ export class PayrollService {
         checkOut: true,
         status: true,
         note: true,
+        dutyStartTimeSnapshot: true,
+        dutyEndTimeSnapshot: true,
       },
       orderBy: { date: 'asc' },
     });
@@ -1578,20 +1619,34 @@ export class PayrollService {
     let policyCreditMins = 0;
 
     for (const log of logs) {
+      // The duty that actually applied on THIS day — the row's own
+      // snapshot when present, current employee duty only as a fallback
+      // for legacy pre-snapshot rows (see the audit: there is no reliable
+      // historical duty source for those). Resolved per day, never once
+      // for the whole month, so a mid-month duty change cannot leak into
+      // days on the other side of it.
+      const dayDuty = resolveAttendanceDutyTimes(log, context.employee);
+      const dayWin = getDutyWindow({
+        dutyStartTime:
+          dayDuty.dutyStartTime ?? context.employee.shift?.startTime,
+        dutyEndTime: dayDuty.dutyEndTime ?? context.employee.shift?.endTime,
+      });
+      const dayDutyMinutes = Math.round(hoursFromDutyWindow(dayWin) * 60);
+
       if (log.status === AttendanceStatus.ON_LEAVE) {
         // Paid AND unpaid REGULAR leave days both earn full duty credit
         // here — an unpaid day loses its pay entirely through the explicit
         // UNPAID_LEAVE deduction (upsertUnpaidLeaveDeductionRow) instead.
         // Zeroing credit here too would double the loss: no credit here
         // AND a full day's deduction there for the same single day.
-        policyCreditMins += dailyDutyMinutes;
+        policyCreditMins += dayDutyMinutes;
         continue;
       }
 
       const leaveMins = leaveCreditMinutes(
         log.status,
         log.note,
-        dailyDutyMinutes,
+        dayDutyMinutes,
       );
       if (leaveMins > 0) {
         // SHORT leave — does not consume monthly allowance
@@ -1607,7 +1662,7 @@ export class PayrollService {
         // applyUninformedAbsentDeduction) is the sole intended penalty for
         // these statuses. Also zeroing this day's credit would silently
         // add a 3rd day of loss on top of the approved 2-day policy.
-        policyCreditMins += dailyDutyMinutes;
+        policyCreditMins += dayDutyMinutes;
         continue;
       }
 
@@ -1622,7 +1677,7 @@ export class PayrollService {
         // basic pay by the actual late-arrival gap on every occurrence
         // contradicted the explicit "no deduction on 1st/2nd/4th/5th/7th/
         // 8th" policy.
-        policyCreditMins += dailyDutyMinutes;
+        policyCreditMins += dayDutyMinutes;
         continue;
       }
 
@@ -1634,7 +1689,7 @@ export class PayrollService {
         // employee actually worked the rest of the shift; the covered gap
         // is not a pay deduction, it only consumes the monthly Short Leave
         // quota (enforced at write time in attendance.service.ts).
-        policyCreditMins += dailyDutyMinutes;
+        policyCreditMins += dayDutyMinutes;
         continue;
       }
 
@@ -1646,7 +1701,7 @@ export class PayrollService {
         // missing checkout; zeroing this day's credit purely because
         // checkOut is absent would both defeat that policy and
         // permanently zero-pay 24-hour staff.
-        policyCreditMins += dailyDutyMinutes;
+        policyCreditMins += dayDutyMinutes;
         continue;
       }
 
@@ -1654,7 +1709,7 @@ export class PayrollService {
         const { minutes, anomalous } = payableMinutesWithinDutyWindow(
           log.checkIn,
           log.checkOut,
-          win,
+          dayWin,
         );
         if (!anomalous) workedMins += minutes;
       }

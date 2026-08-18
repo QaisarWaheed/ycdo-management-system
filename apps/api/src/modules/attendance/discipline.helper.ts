@@ -20,6 +20,18 @@ import {
 
 export type DisciplineOptions = {
   lateMinutes?: number;
+  /**
+   * The attendance record's own dutyStartTimeSnapshot, when the caller has
+   * one — used only to label a generated letter's wording with the duty
+   * time that actually applied on that date, instead of the employee's
+   * current duty. Purely cosmetic (letter text), never affects the
+   * late-occurrence count, fine amount, or discipline cycle itself.
+   * Callers dealing with a brand-new row (biometric/portal check-in) have
+   * no meaningful distinction to make here — current duty IS that row's
+   * duty — so this is only worth passing from callers re-evaluating an
+   * EXISTING historical row (markManual, updateAttendance).
+   */
+  dutyStartTimeSnapshot?: string | null;
 };
 
 export async function applyDisciplineRules(
@@ -30,13 +42,20 @@ export async function applyDisciplineRules(
   options: DisciplineOptions = {},
 ): Promise<AttendanceStatus> {
   const lateMinutes = options.lateMinutes ?? 0;
+  const dutyStartTimeSnapshot = options.dutyStartTimeSnapshot ?? null;
 
   // Late > 1 hour is recorded as HALF_DAY for attendance display only.
   // Pay is reduced naturally by unpaid hours; cash penalties apply only at
   // the monthly-cycle 3rd/6th occurrence (Fine) or 9th (Suspension) via
   // applyLateDiscipline.
   if (status === AttendanceStatus.LATE && lateMinutes > 60) {
-    await applyLateDiscipline(tx, employeeId, date, lateMinutes);
+    await applyLateDiscipline(
+      tx,
+      employeeId,
+      date,
+      lateMinutes,
+      dutyStartTimeSnapshot,
+    );
     return AttendanceStatus.HALF_DAY;
   }
 
@@ -50,7 +69,13 @@ export async function applyDisciplineRules(
   // reaches this function at all — no extra guard needed to keep the two
   // cases apart.
   if (status === AttendanceStatus.HALF_DAY && lateMinutes > 0) {
-    await applyLateDiscipline(tx, employeeId, date, lateMinutes);
+    await applyLateDiscipline(
+      tx,
+      employeeId,
+      date,
+      lateMinutes,
+      dutyStartTimeSnapshot,
+    );
     return status;
   }
 
@@ -60,7 +85,13 @@ export async function applyDisciplineRules(
   }
 
   if (status === AttendanceStatus.LATE) {
-    await applyLateDiscipline(tx, employeeId, date, lateMinutes);
+    await applyLateDiscipline(
+      tx,
+      employeeId,
+      date,
+      lateMinutes,
+      dutyStartTimeSnapshot,
+    );
     return status;
   }
 
@@ -189,6 +220,7 @@ async function applyLateDiscipline(
   employeeId: string,
   date: Date,
   todayLateMinutes: number,
+  dutyStartTimeSnapshot: string | null = null,
 ): Promise<void> {
   const employee = await tx.employee.findUnique({
     where: { id: employeeId },
@@ -197,7 +229,13 @@ async function applyLateDiscipline(
     },
   });
   const basicStipend = Number(employee?.stipendRecords[0]?.basicStipend ?? 0);
-  const dutyStartTime = employee?.dutyStartTime ?? null;
+  // The date's own duty snapshot wins for the letter's wording when the
+  // caller has one (a historical row being re-evaluated) — current employee
+  // duty is only a fallback for callers with no snapshot (brand-new rows,
+  // where current duty IS correct, or legacy rows with none stored). This
+  // only affects letter text, never the occurrence count or fine amount.
+  const dutyStartTime =
+    dutyStartTimeSnapshot ?? employee?.dutyStartTime ?? null;
 
   const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
   const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);

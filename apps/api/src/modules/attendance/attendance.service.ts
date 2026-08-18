@@ -81,6 +81,7 @@ import {
   DUTY_FILTER_GRACE_MINUTES,
   getDutyWindow,
   isOnDutyAt,
+  resolveAttendanceDutyTimes,
 } from '../../common/duty.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
@@ -845,17 +846,22 @@ export class AttendanceService {
       new Date(`${dto.date}T00:00:00+05:00`),
     );
 
-    if (this.isAttendanceMarkOnlyRole(actingUser.role)) {
-      const existing = await this.prisma.attendanceLog.findUnique({
-        where: {
-          employeeId_date_type: {
-            employeeId: dto.employeeId,
-            date: dateOnly,
-            type: AttendanceLogType.REGULAR,
-          },
+    // Fetched unconditionally (not just for mark-only roles) — this is also
+    // the source for that date's own duty snapshot below, so re-marking an
+    // EXISTING row (HR correcting an old check-in) resolves lateness
+    // against the duty that actually applied on that date, not today's
+    // employee duty.
+    const existing = await this.prisma.attendanceLog.findUnique({
+      where: {
+        employeeId_date_type: {
+          employeeId: dto.employeeId,
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
         },
-      });
+      },
+    });
 
+    if (this.isAttendanceMarkOnlyRole(actingUser.role)) {
       if (existing?.checkIn) {
         throw new ForbiddenException(ATTENDANCE_ALREADY_MARKED_MESSAGE);
       }
@@ -888,7 +894,14 @@ export class AttendanceService {
           status = AttendanceStatus.PRESENT;
         }
       } else {
-        const dutyStart = resolveDutyStartTime(employee);
+        // existing's own snapshot (this exact date's duty) wins when this
+        // is a re-mark of an already-existing row; current employee duty
+        // is only used for a genuinely new row or a legacy row with no
+        // snapshot to fall back on.
+        const dutyStart = resolveAttendanceDutyTimes(
+          existing,
+          employee,
+        ).dutyStartTime;
         // No dutyStartTime configured: match the biometric path
         // (computeBiometricLateMinutes), which treats this as lateMinutes=0
         // rather than falling back to the shift-midpoint formula used only
@@ -946,7 +959,15 @@ export class AttendanceService {
           dto.employeeId,
           status,
           dateOnly,
-          { lateMinutes },
+          {
+            lateMinutes,
+            // Letter wording uses this date's own duty when re-marking an
+            // existing row — see resolveAttendanceDutyTimes above.
+            dutyStartTimeSnapshot: resolveAttendanceDutyTimes(
+              existing,
+              employee,
+            ).dutyStartTime,
+          },
         );
       }
 
@@ -1170,8 +1191,18 @@ export class AttendanceService {
     // Short Leave flow uses — the two flows converge on identical treatment
     // and share one monthly quota (see short-leave.util.ts).
     if (dto.status === AttendanceStatus.SHORT_LEAVE) {
+      // Same date's own duty this row's reconcileShortLeaveAttendance call
+      // (inside the transaction below) will use — validating up front
+      // against log.employee's CURRENT duty while the actual reconciliation
+      // uses the snapshot would let this fast-fail check disagree with the
+      // real decision for a historical date whose duty has since changed.
+      const dayDuty = resolveAttendanceDutyTimes(log, log.employee);
       const evaluation = evaluateShortLeaveDeviation(
-        log.employee,
+        {
+          ...log.employee,
+          dutyStartTime: dayDuty.dutyStartTime,
+          dutyEndTime: dayDuty.dutyEndTime,
+        },
         log.date,
         effectiveCheckIn,
         effectiveCheckOut,
@@ -1181,12 +1212,33 @@ export class AttendanceService {
       }
     }
 
-    if (dto.status === undefined && effectiveCheckIn) {
+    // Auto-recompute status/lateMinutes ONLY when checkIn is genuinely,
+    // explicitly being changed in THIS request (dto.checkIn !== undefined).
+    // Previously this ran whenever the row already had a checkIn at all
+    // (effectiveCheckIn falls back to log.checkIn) — meaning an unrelated
+    // edit (note, overtime, anything not touching status/checkIn) would
+    // silently recompute and overwrite an already-settled historical
+    // status using the employee's CURRENT duty. That is exactly the
+    // production bug this fix closes: a duty change must never retroactively
+    // alter a previously-settled attendance record as a side effect of an
+    // unrelated edit.
+    if (
+      dto.status === undefined &&
+      dto.checkIn !== undefined &&
+      effectiveCheckIn
+    ) {
       if (is24HourShift(log.employee)) {
         data.status = AttendanceStatus.PRESENT;
         data.lateMinutes = 0;
       } else {
-        const dutyStart = resolveDutyStartTime(log.employee);
+        // The duty that applied when this record actually happened —
+        // AttendanceLog's own snapshot when present, current employee duty
+        // only as a last resort for legacy rows with no snapshot (there is
+        // no reliable historical source for those — see the audit).
+        const dutyStart = resolveAttendanceDutyTimes(
+          log,
+          log.employee,
+        ).dutyStartTime;
         // Previously: no dutyStartTime meant this branch set nothing at
         // all, silently leaving status/lateMinutes at their old (possibly
         // stale, e.g. still UNMARKED) values even though checkIn changed.
@@ -1232,7 +1284,13 @@ export class AttendanceService {
           log.employeeId,
           updateData.status as AttendanceStatus,
           log.date,
-          { lateMinutes: (updateData.lateMinutes as number | undefined) ?? 0 },
+          {
+            lateMinutes: (updateData.lateMinutes as number | undefined) ?? 0,
+            // Letter wording uses this row's own historical duty — see
+            // resolveAttendanceDutyTimes above.
+            dutyStartTimeSnapshot: resolveAttendanceDutyTimes(log, log.employee)
+              .dutyStartTime,
+          },
         );
       } else if (dto.status === AttendanceStatus.SHORT_LEAVE) {
         // Unified monthly quota shared with the Portal Short Leave flow —

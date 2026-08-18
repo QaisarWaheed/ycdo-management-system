@@ -37,6 +37,21 @@ export interface HourlyPayrollBreakdown {
   netStipend: number;
 }
 
+/**
+ * Duty length in hours purely from a start/end window (no dutyTotalHours
+ * shortcut) — used wherever the window itself was already resolved against
+ * a specific date (e.g. an AttendanceLog's own snapshot), since there is no
+ * historical dutyTotalHours to match it against, only the time pair.
+ */
+export function hoursFromDutyWindow(win: DutyWindow | null): number {
+  if (!win) return 8;
+  if (win.is24h) return 24;
+
+  let minutes = win.endMin - win.startMin;
+  if (minutes <= 0) minutes += 24 * 60;
+  return Math.round((minutes / 60) * 100) / 100;
+}
+
 export function resolveDailyDutyHours(employee: {
   dutyTotalHours?: number | null;
   dutyStartTime?: string | null;
@@ -51,12 +66,7 @@ export function resolveDailyDutyHours(employee: {
     dutyStartTime: employee.dutyStartTime ?? employee.shift?.startTime,
     dutyEndTime: employee.dutyEndTime ?? employee.shift?.endTime,
   });
-  if (!win) return 8;
-  if (win.is24h) return 24;
-
-  let minutes = win.endMin - win.startMin;
-  if (minutes <= 0) minutes += 24 * 60;
-  return Math.round((minutes / 60) * 100) / 100;
+  return hoursFromDutyWindow(win);
 }
 
 export function computeHourlyRate(

@@ -6,7 +6,10 @@ import {
   LeaveType,
   Prisma,
 } from '@prisma/client';
-import { getDutyWindow } from '../../common/duty.util';
+import {
+  getDutyWindow,
+  resolveAttendanceDutyTimes,
+} from '../../common/duty.util';
 import { is24HourShift } from './attendance-biometric.util';
 import { reverseLateDisciplineForDate } from './discipline.helper';
 import {
@@ -307,8 +310,18 @@ export async function reconcileShortLeaveAttendance(
     };
   }
 
+  // The duty that applied on THIS date — the row's own snapshot when
+  // present, current employee duty only as a last resort. dutyTotalHours
+  // and shift have no historical snapshot equivalent, so they are kept
+  // from the current employee record regardless (matching the same
+  // documented limitation as payroll's per-day resolution).
+  const dayDuty = resolveAttendanceDutyTimes(existing, employee);
   const evaluation = evaluateShortLeaveDeviation(
-    employee,
+    {
+      ...employee,
+      dutyStartTime: dayDuty.dutyStartTime,
+      dutyEndTime: dayDuty.dutyEndTime,
+    },
     date,
     existing.checkIn,
     existing.checkOut,

@@ -2,6 +2,47 @@
 
 export const DUTY_FILTER_GRACE_MINUTES = 60;
 
+/**
+ * Single source of truth for "which duty window applies to this attendance
+ * record" across every module that evaluates historical attendance
+ * (status/lateMinutes, payroll, reliever pay, Short Leave). AttendanceLog's
+ * own dutyStartTimeSnapshot/dutyEndTimeSnapshot — the duty that genuinely
+ * applied on that record's date — always wins when present. Current
+ * Employee.dutyStartTime/dutyEndTime is only used as a fallback for rows
+ * that predate the snapshot feature (both fields NULL) — it is NEVER a
+ * substitute for a snapshot that already exists, and callers must not treat
+ * a 'current' result as historically authoritative for an old record; it is
+ * simply the best available approximation for data that cannot be
+ * reconstructed (see the audit — there is no historical duty-change log).
+ */
+export function resolveAttendanceDutyTimes(
+  log:
+    | {
+        dutyStartTimeSnapshot?: string | null;
+        dutyEndTimeSnapshot?: string | null;
+      }
+    | null
+    | undefined,
+  employee: { dutyStartTime?: string | null; dutyEndTime?: string | null },
+): {
+  dutyStartTime: string | null;
+  dutyEndTime: string | null;
+  source: 'snapshot' | 'current';
+} {
+  if (log?.dutyStartTimeSnapshot && log?.dutyEndTimeSnapshot) {
+    return {
+      dutyStartTime: log.dutyStartTimeSnapshot,
+      dutyEndTime: log.dutyEndTimeSnapshot,
+      source: 'snapshot',
+    };
+  }
+  return {
+    dutyStartTime: employee.dutyStartTime ?? null,
+    dutyEndTime: employee.dutyEndTime ?? null,
+    source: 'current',
+  };
+}
+
 export interface DutyWindow {
   startMin: number; // minutes since midnight, PKT
   endMin: number;
