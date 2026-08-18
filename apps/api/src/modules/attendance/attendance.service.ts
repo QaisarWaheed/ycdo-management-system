@@ -50,6 +50,8 @@ import { mapDeviceStatusToPunchType } from './device-status.util';
 import {
   applyDisciplineRules,
   isLateEligibleForDiscipline,
+  isUninformedAbsentEligibleForDiscipline,
+  reverseAbsenceDeductionForDate,
   reverseLateDisciplineForDate,
 } from './discipline.helper';
 import {
@@ -1037,6 +1039,17 @@ export class AttendanceService {
         await reverseLateDisciplineForDate(tx, dto.employeeId, dateOnly);
       }
 
+      // Same fix for UNINFORMED_ABSENT — only applies when re-marking a
+      // real existing row (brand-new rows via the create path can never
+      // have been UNINFORMED_ABSENT already).
+      if (
+        existing &&
+        isUninformedAbsentEligibleForDiscipline(existing) &&
+        !isUninformedAbsentEligibleForDiscipline(attendanceLog)
+      ) {
+        await reverseAbsenceDeductionForDate(tx, dto.employeeId, dateOnly);
+      }
+
       return attendanceLog;
     });
 
@@ -1410,6 +1423,21 @@ export class AttendanceService {
         !isLateEligibleForDiscipline(result)
       ) {
         await reverseLateDisciplineForDate(tx, log.employeeId, log.date);
+      }
+
+      // Same fix, same reasoning, for the confirmed UNINFORMED_ABSENT gap:
+      // reverseAbsenceDeductionForDate previously only ran from the leave-
+      // approval flow — a plain correction away from UNINFORMED_ABSENT
+      // (PRESENT/LATE/HALF_DAY/ON_LEAVE/SWAP_COVERED/etc, for ANY reason)
+      // never reversed the 2-day deduction or its DisciplineEvent. Mutually
+      // exclusive with the LATE check above by construction (a row's status
+      // is never simultaneously late-eligible and UNINFORMED_ABSENT), fully
+      // idempotent, same transaction.
+      if (
+        isUninformedAbsentEligibleForDiscipline(previous) &&
+        !isUninformedAbsentEligibleForDiscipline(result)
+      ) {
+        await reverseAbsenceDeductionForDate(tx, log.employeeId, log.date);
       }
 
       return shortLeaveDecision ? { ...result, shortLeaveDecision } : result;

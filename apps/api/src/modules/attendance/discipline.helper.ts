@@ -1261,77 +1261,161 @@ export async function reverseLateDisciplineForDate(
 }
 
 /**
- * When a day previously auto-marked ABSENT/UNINFORMED_ABSENT is corrected to
- * ON_LEAVE via a later leave approval, find and reverse the exact 2-day
- * absence deduction created for THIS date (matched via the date suffix now
- * embedded in the deduction's description — see applyAbsentDeduction /
- * applyUninformedAbsentDeduction above). Deductions created before this date
- * suffix existed have no exact link and are intentionally left untouched —
- * HR must reverse those manually.
+ * Predicate for "does this AttendanceLog row currently represent an
+ * uninformed-absence incident" — the single condition applyUninformedAbsent
+ * Deduction's own gating uses. Exported so callers outside this file
+ * (attendance.service.ts) can compare a row's eligibility BEFORE and AFTER
+ * an edit without duplicating or drifting from this exact rule — mirrors
+ * isLateEligibleForDiscipline's role for the LATE category.
+ */
+export function isUninformedAbsentEligibleForDiscipline(row: {
+  status: AttendanceStatus;
+}): boolean {
+  return row.status === AttendanceStatus.UNINFORMED_ABSENT;
+}
+
+export type AbsenceDeductionReversalResult = {
+  /** True if a deduction was found and/or a DisciplineEvent claim was
+   * released this call. False on every idempotent replay once both are
+   * already gone (or never existed for this date). */
+  reversed: boolean;
+  deductionId: string | null;
+  deductionReversed: boolean;
+  deductionAmount: number | null;
+  /** True when a matching deduction existed but its PayrollEntry is no
+   * longer PENDING — deliberately left untouched (financial freeze
+   * preserved), even though the DisciplineEvent claim is still released. */
+  blockedByPayrollStatus: boolean;
+  payrollStatus: string | null;
+  disciplineEventRemoved: boolean;
+};
+
+/**
+ * Reverses the exact-date consequences of a day previously auto-marked
+ * ABSENT/UNINFORMED_ABSENT once it is corrected away — called from the
+ * leave-approval flow (ON_LEAVE) and, as of this fix, from updateAttendance/
+ * markManual whenever an existing row transitions out of UNINFORMED_ABSENT
+ * eligibility for ANY reason (PRESENT, LATE, HALF_DAY, ON_LEAVE,
+ * SWAP_COVERED, etc — see isUninformedAbsentEligibleForDiscipline).
+ *
+ * Finds the exact 2-day absence deduction created for THIS date (matched
+ * via the date suffix embedded in its description — see applyAbsentDeduction
+ * / applyUninformedAbsentDeduction) and, ONLY when its PayrollEntry is still
+ * PENDING, deletes it and restores totalDeductions/netStipend — matching the
+ * same PROCESSED/PAID financial freeze reverseLateDisciplineForDate already
+ * respects. The DisciplineEvent(UNINFORMED_ABSENT) claim for this date is
+ * released unconditionally (non-financial, safe regardless of payroll
+ * status) so a legitimate later correction back to UNINFORMED_ABSENT for
+ * this same date can be processed again.
+ *
+ * Deductions created before the date-suffix format existed have no exact
+ * link and are intentionally left untouched — HR must reverse those
+ * manually (matches the existing, unchanged legacy-undated-deduction
+ * policy this file already documents elsewhere).
+ *
+ * Fully idempotent: a second call for the same date finds no matching
+ * deduction (already deleted) and no DisciplineEvent (already released) —
+ * true no-op, no error, no double credit.
+ *
+ * Scope is deliberately deduction + DisciplineEvent only — this function
+ * never touches Employee.status/User.isActive. No safe, existing,
+ * code-defined "unsuspend when the >2-day threshold is no longer met"
+ * mechanism exists anywhere in this codebase (the only reinstatement path
+ * is the fully manual HR Inquiry-outcome flow in disciplinary.service.ts),
+ * so correcting an incident below the threshold never automatically
+ * reactivates an employee.
  */
 export async function reverseAbsenceDeductionForDate(
   tx: Prisma.TransactionClient,
   employeeId: string,
   date: Date,
-): Promise<void> {
+): Promise<AbsenceDeductionReversalResult> {
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dateLabel = dayStart.toISOString().slice(0, 10);
   const month = date.getMonth() + 1;
   const year = date.getFullYear();
 
+  let deductionId: string | null = null;
+  let deductionReversed = false;
+  let deductionAmount: number | null = null;
+  let blockedByPayrollStatus = false;
+  let payrollStatus: string | null = null;
+
   const stipendRecord = await tx.stipendRecord.findFirst({
     where: { employeeId, effectiveTo: null },
     orderBy: { effectiveFrom: 'desc' },
   });
-  if (!stipendRecord) return;
 
-  const payrollEntry = await tx.payrollEntry.findUnique({
-    where: {
-      stipendRecordId_month_year: {
-        stipendRecordId: stipendRecord.id,
-        month,
-        year,
+  if (stipendRecord) {
+    const payrollEntry = await tx.payrollEntry.findUnique({
+      where: {
+        stipendRecordId_month_year: {
+          stipendRecordId: stipendRecord.id,
+          month,
+          year,
+        },
       },
-    },
-  });
-  if (!payrollEntry) return;
+    });
 
-  const expectedDescriptions = [
-    `Uninformed absence deduction (2 days) — ${dateLabel}`,
-    `Absent without approved leave (2 days stipend) — ${dateLabel}`,
-  ];
+    if (payrollEntry) {
+      payrollStatus = payrollEntry.status;
+      const expectedDescriptions = [
+        `Uninformed absence deduction (2 days) — ${dateLabel}`,
+        `Absent without approved leave (2 days stipend) — ${dateLabel}`,
+      ];
 
-  const deduction = await tx.payrollDeduction.findFirst({
-    where: {
-      payrollEntryId: payrollEntry.id,
-      reason: DeductionType.UNINFORMED_ABSENCE,
-      description: { in: expectedDescriptions },
-    },
-  });
+      const deduction = await tx.payrollDeduction.findFirst({
+        where: {
+          payrollEntryId: payrollEntry.id,
+          reason: DeductionType.UNINFORMED_ABSENCE,
+          description: { in: expectedDescriptions },
+        },
+      });
 
-  if (!deduction) return;
-
-  await tx.payrollDeduction.delete({ where: { id: deduction.id } });
-  await tx.payrollEntry.update({
-    where: { id: payrollEntry.id },
-    data: {
-      totalDeductions: { decrement: deduction.amount },
-      netStipend: { increment: deduction.amount },
-    },
-  });
+      if (deduction) {
+        deductionId = deduction.id;
+        if (payrollEntry.status !== PayrollStatus.PENDING) {
+          // Financial freeze — never mutate a PROCESSED/PAID entry.
+          blockedByPayrollStatus = true;
+        } else {
+          await tx.payrollDeduction.delete({ where: { id: deduction.id } });
+          await tx.payrollEntry.update({
+            where: { id: payrollEntry.id },
+            data: {
+              totalDeductions: { decrement: deduction.amount },
+              netStipend: { increment: deduction.amount },
+            },
+          });
+          deductionReversed = true;
+          deductionAmount = Number(deduction.amount);
+        }
+      }
+    }
+  }
 
   // Release the idempotency claim too, same reasoning as
   // reverseLateDisciplineForDate above. deleteMany is a safe no-op when the
   // original status was plain ABSENT (never gated — only UNINFORMED_ABSENT
-  // goes through claimDisciplineEvent), so no row exists to delete.
-  await tx.disciplineEvent.deleteMany({
+  // goes through claimDisciplineEvent), or when it was already released.
+  const deletedEvents = await tx.disciplineEvent.deleteMany({
     where: {
       employeeId,
       category: DisciplineCategory.UNINFORMED_ABSENT,
       incidentDate: dayStart,
     },
   });
+
+  return {
+    reversed:
+      deductionReversed || deletedEvents.count > 0 || blockedByPayrollStatus,
+    deductionId,
+    deductionReversed,
+    deductionAmount,
+    blockedByPayrollStatus,
+    payrollStatus,
+    disciplineEventRemoved: deletedEvents.count > 0,
+  };
 }
 
 // ─── QUOTA-EXCEEDED LEAVE REJECTION (leave.service.ts decideQuotaException) ─
