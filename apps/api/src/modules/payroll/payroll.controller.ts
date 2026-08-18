@@ -21,6 +21,7 @@ import {
   ApplyOvertimeDto,
   CreatePayrollEntryDto,
   PayrollQueryDto,
+  RecomputeMonthAllDto,
   SalaryIncrementDto,
   UpdatePayrollStatusDto,
 } from './payroll.dto';
@@ -80,6 +81,25 @@ export class PayrollController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.payrollService.recomputeEmployeeMonth(dto, user);
+  }
+
+  /**
+   * Bulk, generic-by-month/year recompute for EXISTING stale payroll data
+   * (built for the August 2026 cleanup after Steps 1-6). Never called
+   * automatically — no cron, no bootstrap hook, this route is the only
+   * entry point. See PayrollService.recomputeMonthAll for the full safety
+   * contract: employee-level (not row-level) processing, PROCESSED/PAID
+   * always frozen, no new PayrollEntry ever created, strictly sequential,
+   * one employee's failure never aborts the run, and mutation requires
+   * `confirm: "RECOMPUTE_PENDING_PAYROLL"` unless `dryRun: true`.
+   */
+  @Post('recompute-month-all')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  recomputeMonthAll(
+    @Body() dto: RecomputeMonthAllDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.recomputeMonthAll(dto, user);
   }
 
   @Post('deductions')

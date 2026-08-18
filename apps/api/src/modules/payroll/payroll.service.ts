@@ -334,6 +334,268 @@ export class PayrollService {
     return results;
   }
 
+  /**
+   * Safe, generic system-wide recompute for one calendar month's EXISTING
+   * payroll data — built for the August 2026 stale-payroll cleanup after
+   * Steps 1-6, but not August-specific (month/year are inputs). Discovers
+   * every unique EMPLOYEE (never PayrollEntry row — an employee can have
+   * multiple rows across stipend segments, and must only ever be entered
+   * into recomputeEmployeeMonth once, see step 7 of the spec this
+   * implements) who already has at least one PayrollEntry for the target
+   * month/year, then delegates every actual recompute to the existing,
+   * already-tested recomputeEmployeeMonth — this method adds ZERO new
+   * calculation logic, only discovery/orchestration/reporting on top of
+   * it. recomputeEmployeeMonth already never creates a new PayrollEntry
+   * and already skips PROCESSED/PAID segments untouched, so both of those
+   * guarantees are inherited for free rather than re-implemented here.
+   *
+   * dryRun: true performs the exact same discovery/classification pass
+   * with ZERO calls to recomputeEmployeeMonth (zero mutations) — it
+   * reports what WOULD happen, never a fabricated projected after-value.
+   * Non-dry-run requests are rejected unless `confirm` exactly equals
+   * 'RECOMPUTE_PENDING_PAYROLL' (checked by the DTO's own validator,
+   * defense-in-depth double-checked here too since this method can in
+   * principle be called directly).
+   *
+   * Processing is strictly sequential (one employee at a time, no
+   * Promise.all fan-out) and each employee's status is re-read fresh
+   * immediately before it is processed — never from the initial discovery
+   * snapshot — so a payroll that transitions to PROCESSED/PAID mid-run
+   * (or between a dry-run and the follow-up apply call) is still
+   * correctly frozen. One employee throwing is caught and recorded in
+   * `failures`; it never aborts the remaining employees.
+   */
+  async recomputeMonthAll(
+    dto: {
+      month: number;
+      year: number;
+      dryRun?: boolean;
+      confirm?: string;
+    },
+    actingUser: { id: string; role: UserRole },
+  ) {
+    const isDryRun = dto.dryRun === true;
+    if (!isDryRun && dto.confirm !== 'RECOMPUTE_PENDING_PAYROLL') {
+      throw new BadRequestException(
+        'Bulk recompute requires confirm: "RECOMPUTE_PENDING_PAYROLL" unless dryRun is true',
+      );
+    }
+
+    // Discovery snapshot — also this call's `beforeTotals` and the closed
+    // universe of PayrollEntry ids this run can ever touch (recompute
+    // never creates a new entry, so no id outside this set can appear
+    // later).
+    const discoveryEntries = await this.prisma.payrollEntry.findMany({
+      where: { month: dto.month, year: dto.year },
+      include: { stipendRecord: { select: { employeeId: true } } },
+    });
+
+    type MoneyTotals = {
+      basicStipend: number;
+      totalAllowances: number;
+      totalDeductions: number;
+      netStipend: number;
+    };
+    const sumTotals = (
+      rows: Array<{
+        basicStipend: unknown;
+        totalAllowances: unknown;
+        totalDeductions: unknown;
+        netStipend: unknown;
+      }>,
+    ): MoneyTotals =>
+      rows.reduce<MoneyTotals>(
+        (acc, r) => ({
+          basicStipend: acc.basicStipend + Number(r.basicStipend),
+          totalAllowances: acc.totalAllowances + Number(r.totalAllowances),
+          totalDeductions: acc.totalDeductions + Number(r.totalDeductions),
+          netStipend: acc.netStipend + Number(r.netStipend),
+        }),
+        { basicStipend: 0, totalAllowances: 0, totalDeductions: 0, netStipend: 0 },
+      );
+
+    const beforeTotals = sumTotals(discoveryEntries);
+    const entryIdUniverse = discoveryEntries.map((e) => e.id);
+
+    const employeeIds = [
+      ...new Set(discoveryEntries.map((e) => e.stipendRecord.employeeId)),
+    ];
+    const employeesFound = employeeIds.length;
+
+    let employeesProcessed = 0;
+    let employeesSkipped = 0;
+    let employeesFailed = 0;
+    let segmentsRecomputed = 0;
+    let segmentsFrozen = 0;
+
+    type SegmentResult = {
+      stipendRecordId: string;
+      payrollEntryId: string | null;
+      statusBefore: PayrollStatus;
+      outcome: 'RECOMPUTED' | 'FROZEN' | 'WOULD_RECOMPUTE';
+    };
+    const results: Array<{
+      employeeId: string;
+      employeeCode: string | null;
+      employeeName: string | null;
+      status:
+        | 'RECOMPUTED'
+        | 'PARTIAL_RECOMPUTE'
+        | 'WOULD_RECOMPUTE'
+        | 'SKIPPED_ALL_FROZEN';
+      segments: SegmentResult[];
+    }> = [];
+    const failures: Array<{ employeeId: string; error: string }> = [];
+
+    // Strictly sequential — no Promise.all fan-out across employees.
+    for (const employeeId of employeeIds) {
+      try {
+        // Re-read fresh, immediately before acting on this employee — never
+        // trust the initial discovery snapshot for the mutate/skip decision.
+        const currentEntries = await this.prisma.payrollEntry.findMany({
+          where: {
+            month: dto.month,
+            year: dto.year,
+            stipendRecord: { employeeId },
+          },
+        });
+        if (currentEntries.length === 0) continue; // entry set is closed; defensive only
+
+        const pendingCount = currentEntries.filter(
+          (e) => e.status === PayrollStatus.PENDING,
+        ).length;
+
+        const employee = await this.prisma.employee.findUnique({
+          where: { id: employeeId },
+          select: { employeeCode: true, fullName: true },
+        });
+
+        if (pendingCount === 0) {
+          // Only PROCESSED/PAID -> skip employee entirely, never mutated.
+          employeesSkipped++;
+          segmentsFrozen += currentEntries.length;
+          results.push({
+            employeeId,
+            employeeCode: employee?.employeeCode ?? null,
+            employeeName: employee?.fullName ?? null,
+            status: 'SKIPPED_ALL_FROZEN',
+            segments: currentEntries.map((e) => ({
+              stipendRecordId: e.stipendRecordId,
+              payrollEntryId: e.id,
+              statusBefore: e.status,
+              outcome: 'FROZEN',
+            })),
+          });
+          continue;
+        }
+
+        if (isDryRun) {
+          // Scope/precondition reporting only — no mutating helper is ever
+          // called in this branch, so there is nothing to fabricate.
+          employeesProcessed++;
+          const frozenHere = currentEntries.length - pendingCount;
+          segmentsRecomputed += pendingCount;
+          segmentsFrozen += frozenHere;
+          results.push({
+            employeeId,
+            employeeCode: employee?.employeeCode ?? null,
+            employeeName: employee?.fullName ?? null,
+            status: 'WOULD_RECOMPUTE',
+            segments: currentEntries.map((e) => ({
+              stipendRecordId: e.stipendRecordId,
+              payrollEntryId: e.id,
+              statusBefore: e.status,
+              outcome:
+                e.status === PayrollStatus.PENDING
+                  ? 'WOULD_RECOMPUTE'
+                  : 'FROZEN',
+            })),
+          });
+          continue;
+        }
+
+        // APPLY — delegate to the existing, already-tested
+        // recomputeEmployeeMonth. No calculation logic is duplicated here.
+        const segmentOutcomes = await this.recomputeEmployeeMonth(
+          { employeeId, month: dto.month, year: dto.year },
+          actingUser,
+        );
+
+        const recomputedHere = segmentOutcomes.filter(
+          (r) => r.status === 'RECOMPUTED',
+        ).length;
+        const frozenHere = segmentOutcomes.filter(
+          (r) => r.status === 'FROZEN',
+        ).length;
+        segmentsRecomputed += recomputedHere;
+        segmentsFrozen += frozenHere;
+        employeesProcessed++;
+
+        results.push({
+          employeeId,
+          employeeCode: employee?.employeeCode ?? null,
+          employeeName: employee?.fullName ?? null,
+          status: frozenHere > 0 ? 'PARTIAL_RECOMPUTE' : 'RECOMPUTED',
+          segments: segmentOutcomes
+            .filter((r) => r.status !== 'NO_EXISTING_ENTRY') // this run's universe only has employees with an existing entry already
+            .map((r) => ({
+              stipendRecordId: r.stipendRecordId,
+              payrollEntryId: r.entry?.id ?? null,
+              statusBefore:
+                currentEntries.find(
+                  (e) => e.stipendRecordId === r.stipendRecordId,
+                )?.status ?? r.entry!.status,
+              outcome: r.status as 'RECOMPUTED' | 'FROZEN',
+            })),
+        });
+      } catch (err) {
+        employeesFailed++;
+        failures.push({
+          employeeId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Re-read the closed entry-id universe fresh from the DB for the final
+    // totals — actual physical state, never accumulated in-memory values.
+    // For a dry run this is identical to beforeTotals, since nothing was
+    // written; for apply it reflects exactly what was persisted.
+    const finalEntries = await this.prisma.payrollEntry.findMany({
+      where: { id: { in: entryIdUniverse } },
+    });
+    const afterTotals = sumTotals(finalEntries);
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const roundTotals = (t: {
+      basicStipend: number;
+      totalAllowances: number;
+      totalDeductions: number;
+      netStipend: number;
+    }) => ({
+      basicStipend: round2(t.basicStipend),
+      totalAllowances: round2(t.totalAllowances),
+      totalDeductions: round2(t.totalDeductions),
+      netStipend: round2(t.netStipend),
+    });
+
+    return {
+      month: dto.month,
+      year: dto.year,
+      dryRun: isDryRun,
+      employeesFound,
+      employeesProcessed,
+      employeesSkipped,
+      employeesFailed,
+      segmentsRecomputed,
+      segmentsFrozen,
+      beforeTotals: roundTotals(beforeTotals),
+      afterTotals: roundTotals(afterTotals),
+      results,
+      failures,
+    };
+  }
+
   /** Persist non-negative deduction/allowance totals; recompute net from parts. */
   private clampPayrollTotals(breakdown: HourlyPayrollBreakdown) {
     const basicStipend = roundMoney(Math.max(0, breakdown.hourlyBasicEarned));

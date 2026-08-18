@@ -121,6 +121,32 @@ export class ApplyOvertimeDto {
   year: number;
 }
 
+export class RecomputeMonthAllDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsNotEmpty()
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  @IsNotEmpty()
+  year: number;
+
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+
+  /** Required, and must equal exactly 'RECOMPUTE_PENDING_PAYROLL', for any
+   * request where dryRun is not true — see PayrollService.recomputeMonthAll. */
+  @ValidateIf((o: RecomputeMonthAllDto) => o.dryRun !== true)
+  @IsString()
+  @IsNotEmpty()
+  confirm?: string;
+}
+
 export class UpdatePayrollStatusDto {
   @IsEnum(PayrollStatus)
   @IsNotEmpty()
