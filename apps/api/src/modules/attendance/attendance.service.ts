@@ -47,7 +47,11 @@ import {
   toPakistanDateOnly,
 } from './attendance-biometric.util';
 import { mapDeviceStatusToPunchType } from './device-status.util';
-import { applyDisciplineRules } from './discipline.helper';
+import {
+  applyDisciplineRules,
+  isLateEligibleForDiscipline,
+  reverseLateDisciplineForDate,
+} from './discipline.helper';
 import {
   countShortLeaveOccurrencesThisMonth,
   evaluateShortLeaveDeviation,
@@ -1020,6 +1024,19 @@ export class AttendanceService {
         },
       });
 
+      // Same fix as updateAttendance: markManual's upsert can overwrite an
+      // EXISTING row (full-edit roles re-marking an already-marked day),
+      // moving it OUT of late-eligibility. Only applies when `existing` is
+      // a real prior row — a brand-new row (existing === null/UNMARKED
+      // create path) has nothing to reverse. Idempotent, same-transaction.
+      if (
+        existing &&
+        isLateEligibleForDiscipline(existing) &&
+        !isLateEligibleForDiscipline(attendanceLog)
+      ) {
+        await reverseLateDisciplineForDate(tx, dto.employeeId, dateOnly);
+      }
+
       return attendanceLog;
     });
 
@@ -1375,6 +1392,25 @@ export class AttendanceService {
           },
         },
       });
+
+      // This is the fix for the confirmed production bug: a plain status/
+      // checkIn correction (not just the Short Leave flow, which already
+      // calls this via reconcileShortLeaveAttendance above) can also move a
+      // row OUT of late-eligibility — e.g. HR correcting HALF_DAY(late) or
+      // LATE back to PRESENT/ON_LEAVE/ABSENT. Comparing before vs after
+      // ELIGIBILITY (not status-name equality) means LATE->LATE, unrelated
+      // checkOut/note/overtime-only edits, and lateness-HALF_DAY->
+      // lateness-HALF_DAY never fire this — only a genuine eligible->
+      // ineligible transition does. Runs in the SAME transaction as the
+      // attendance write itself, and reverseLateDisciplineForDate is fully
+      // idempotent, so this harmlessly no-ops if reconcileShortLeaveAttendance
+      // already reversed this exact date earlier in this same call.
+      if (
+        isLateEligibleForDiscipline(previous) &&
+        !isLateEligibleForDiscipline(result)
+      ) {
+        await reverseLateDisciplineForDate(tx, log.employeeId, log.date);
+      }
 
       return shortLeaveDecision ? { ...result, shortLeaveDecision } : result;
     });

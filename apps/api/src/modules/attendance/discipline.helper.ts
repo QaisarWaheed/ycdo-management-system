@@ -1037,34 +1037,100 @@ async function issueMissingCheckoutLetterIfNotAlready(
 // unrelated date, employee, or letter.
 
 /**
- * When a lateness-driven LATE/HALF_DAY day is corrected to SHORT_LEAVE,
- * find the exact ADVICE/WARNING/FINE letter that was issued for THIS date
- * (matched via Letter.variables.incidentDate — a structured field already
- * populated for ADVICE/WARNING, and now for FINE too, see applyLateDiscipline
- * above) and reverse its consequences:
+ * Predicate for "does this AttendanceLog row count toward the monthly late
+ * cycle right now" — the EXACT same rule applyLateDiscipline's own
+ * priorLateDays query uses (status LATE, or lateness-driven HALF_DAY
+ * excluding short-leave-noted rows). Exported so callers outside this file
+ * (attendance.service.ts) can compare a row's late-eligibility BEFORE and
+ * AFTER an edit without duplicating or drifting from this exact rule.
+ */
+export function isLateEligibleForDiscipline(row: {
+  status: AttendanceStatus;
+  lateMinutes: number;
+  note?: string | null;
+}): boolean {
+  if (row.status === AttendanceStatus.LATE) return true;
+  if (
+    row.status === AttendanceStatus.HALF_DAY &&
+    row.lateMinutes > 0 &&
+    !(row.note ?? '').toLowerCase().includes('short leave')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export type LateDisciplineReversalResult = {
+  /** True if an active (not-already-reversed) letter for this date was
+   * found and processed this call. False on every idempotent replay, or
+   * when nothing was ever issued for this date. */
+  reversed: boolean;
+  letterId: string | null;
+  letterType: LetterType | null;
+  deductionReversed: boolean;
+  deductionAmount: number | null;
+  /** True when a matching deduction existed but its PayrollEntry is no
+   * longer PENDING — the deduction/totals were deliberately left untouched
+   * (financial freeze preserved) even though the letter/DisciplineEvent
+   * were still reversed. */
+  blockedByPayrollStatus: boolean;
+  payrollStatus: string | null;
+  disciplineEventRemoved: boolean;
+};
+
+/**
+ * Reverses the LATE-discipline consequences of one exact incident date —
+ * called whenever an existing AttendanceLog row transitions from a
+ * late-counting state (see isLateEligibleForDiscipline) to a non-late one,
+ * for ANY reason: Short Leave reconciliation, or a plain HR status
+ * correction (LATE/lateness-HALF_DAY -> PRESENT/ON_LEAVE/ABSENT/etc). Finds
+ * the exact ADVICE/WARNING/FINE letter issued for THIS date (matched via
+ * Letter.variables.incidentDate) and reverses its consequences:
  *  - FINE: delete the exact matching 1-day LATE_ARRIVAL deduction for that
  *    month (identified via the same monthlyLateOccurrence number the letter
- *    itself carries — the deduction and letter were created from the same
- *    lateCount value in the same applyLateDiscipline call, so they always
- *    agree).
+ *    itself carries), and restore PayrollEntry.totalDeductions/netStipend —
+ *    but ONLY when that entry is still PENDING; PROCESSED/PAID entries are
+ *    never mutated, matching the freeze every other reversal in this file
+ *    already respects.
  *  - Any type: the letter itself is kept (never deleted — it's a real
  *    historical record, may already be portal-visible/acknowledged) but is
- *    annotated as reversed in its `variables` JSON so it's no longer
- *    findable as "still active" by a future reversal attempt.
+ *    annotated as reversed in its `variables` JSON, and requiresAcknowledgement
+ *    is cleared so it stops appearing as an actionable pending item.
+ *  - The date's DisciplineEvent(LATE) claim is released, so a later
+ *    legitimate correction back to LATE for this same date can be
+ *    processed again instead of being silently swallowed as "already
+ *    handled".
+ *
+ * Fully idempotent: a second call for the same date finds no active letter
+ * (already annotated reversed) and returns a no-op result — no double
+ * payroll credit, no error, missing deduction/DisciplineEvent are no-ops.
  *
  * Does NOT attempt to renumber or reissue consequences for any OTHER date's
  * already-issued letters — see Phase 2 report for why that is out of scope
- * for a safe, deterministic, idempotent change.
+ * for a safe, deterministic, idempotent change. Does NOT reverse SUSPENSION
+ * (occurrence 9) — that carries employee-status/account side effects that
+ * remain intentionally HR-manual, unchanged from before this generalization.
  */
 export async function reverseLateDisciplineForDate(
   tx: Prisma.TransactionClient,
   employeeId: string,
   date: Date,
-): Promise<void> {
+): Promise<LateDisciplineReversalResult> {
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dateLabel = dayStart.toISOString().slice(0, 10);
   const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+
+  const noOpResult: LateDisciplineReversalResult = {
+    reversed: false,
+    letterId: null,
+    letterType: null,
+    deductionReversed: false,
+    deductionAmount: null,
+    blockedByPayrollStatus: false,
+    payrollStatus: null,
+    disciplineEventRemoved: false,
+  };
 
   const candidates = await tx.letter.findMany({
     where: {
@@ -1084,12 +1150,17 @@ export async function reverseLateDisciplineForDate(
     return vars?.incidentDate === dateLabel && !vars?.reversedDueToShortLeave;
   });
 
-  if (!letter) return; // no structured link to this exact date — nothing safely reversible
+  if (!letter) return noOpResult; // no structured link to this exact date — nothing safely reversible, or already reversed
 
   const vars = letter.variables as {
     monthlyLateOccurrence?: number;
   } | null;
   const occurrence = vars?.monthlyLateOccurrence;
+
+  let deductionReversed = false;
+  let deductionAmount: number | null = null;
+  let blockedByPayrollStatus = false;
+  let payrollStatus: string | null = null;
 
   if (letter.letterType === LetterType.FINE && occurrence != null) {
     const month = date.getMonth() + 1;
@@ -1111,6 +1182,7 @@ export async function reverseLateDisciplineForDate(
       });
 
       if (payrollEntry) {
+        payrollStatus = payrollEntry.status;
         const deductionDescription = `Late arrival deduction — monthly occurrence ${occurrence}`;
         const deduction = await tx.payrollDeduction.findFirst({
           where: {
@@ -1121,14 +1193,23 @@ export async function reverseLateDisciplineForDate(
         });
 
         if (deduction) {
-          await tx.payrollDeduction.delete({ where: { id: deduction.id } });
-          await tx.payrollEntry.update({
-            where: { id: payrollEntry.id },
-            data: {
-              totalDeductions: { decrement: deduction.amount },
-              netStipend: { increment: deduction.amount },
-            },
-          });
+          if (payrollEntry.status !== PayrollStatus.PENDING) {
+            // Financial freeze — never mutate a PROCESSED/PAID entry.
+            // The letter/DisciplineEvent below are still reversed; only the
+            // money is deliberately left exactly as it was.
+            blockedByPayrollStatus = true;
+          } else {
+            await tx.payrollDeduction.delete({ where: { id: deduction.id } });
+            await tx.payrollEntry.update({
+              where: { id: payrollEntry.id },
+              data: {
+                totalDeductions: { decrement: deduction.amount },
+                netStipend: { increment: deduction.amount },
+              },
+            });
+            deductionReversed = true;
+            deductionAmount = Number(deduction.amount);
+          }
         }
       }
     }
@@ -1141,22 +1222,42 @@ export async function reverseLateDisciplineForDate(
         ...((letter.variables as object) ?? {}),
         reversedDueToShortLeave: true,
         reversedAt: new Date().toISOString(),
+        // Distinct from reversedDueToShortLeave (kept as-is — it is the
+        // established dedup/soft-void marker every reader already checks)
+        // purely for future readability of WHY this letter was reversed.
+        reversalTrigger: 'STATUS_NO_LONGER_LATE',
+        ...(blockedByPayrollStatus
+          ? { reversalBlockedByPayrollStatus: true }
+          : {}),
       },
+      requiresAcknowledgement: false,
     },
   });
 
   // This date no longer represents a genuine late incident — release the
   // idempotency claim too (deleteMany: safe no-op if none exists), so a
   // LEGITIMATE later correction back to LATE for this same date (HR
-  // undoing the Short Leave) can be processed again instead of being
-  // silently swallowed as "already handled" by claimDisciplineEvent.
-  await tx.disciplineEvent.deleteMany({
+  // undoing the Short Leave, or re-correcting a status back to LATE) can be
+  // processed again instead of being silently swallowed as "already
+  // handled" by claimDisciplineEvent.
+  const deletedEvents = await tx.disciplineEvent.deleteMany({
     where: {
       employeeId,
       category: DisciplineCategory.LATE,
       incidentDate: dayStart,
     },
   });
+
+  return {
+    reversed: true,
+    letterId: letter.id,
+    letterType: letter.letterType,
+    deductionReversed,
+    deductionAmount,
+    blockedByPayrollStatus,
+    payrollStatus,
+    disciplineEventRemoved: deletedEvents.count > 0,
+  };
 }
 
 /**
