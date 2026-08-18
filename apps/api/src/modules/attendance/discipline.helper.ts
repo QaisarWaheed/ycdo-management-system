@@ -2,6 +2,7 @@ import {
   AttendanceLogType,
   AttendanceStatus,
   DeductionType,
+  DisciplineCategory,
   EmployeeStatus,
   LeaveStatus,
   LetterType,
@@ -33,6 +34,54 @@ export type DisciplineOptions = {
    */
   dutyStartTimeSnapshot?: string | null;
 };
+
+function isUniqueConstraintViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code: string }).code === 'P2002'
+  );
+}
+
+/**
+ * Atomic idempotency gate for discipline processing (LATE, UNINFORMED_ABSENT,
+ * MISSING_CHECKOUT). One genuine incident — employeeId + category +
+ * incidentDate — may be claimed at most once, enforced by DisciplineEvent's
+ * unique constraint rather than an application-level check-then-insert
+ * (which cannot be made race-safe: two concurrent transactions can both
+ * pass a SELECT-based check before either commits). occurrence is stored
+ * for audit/debugging only and is NOT part of the unique key — see the
+ * schema comment on DisciplineEvent for why.
+ *
+ * Mirrors the already-proven ProcessedDeviceEvent pattern used by
+ * rawScan() for biometric replay protection: the INSERT itself, not a
+ * prior read, is what Postgres actually serializes under concurrency.
+ *
+ * Returns true if this call just claimed the incident (caller should
+ * proceed with letter/deduction side-effects), false if it was already
+ * claimed — by this or a concurrent invocation — in which case the caller
+ * must treat it as a no-op and apply NO further side-effects.
+ */
+async function claimDisciplineEvent(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  category: DisciplineCategory,
+  incidentDate: Date,
+  occurrence: number,
+): Promise<boolean> {
+  try {
+    await tx.disciplineEvent.create({
+      data: { employeeId, category, incidentDate, occurrence },
+    });
+    return true;
+  } catch (err: unknown) {
+    if (isUniqueConstraintViolation(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
 
 export async function applyDisciplineRules(
   tx: Prisma.TransactionClient,
@@ -268,6 +317,19 @@ async function applyLateDiscipline(
   uniqueDays.add(dayStart.toISOString().slice(0, 10));
   const lateCount = uniqueDays.size; // resets naturally every month — derived fresh from AttendanceLog, no in-memory/stored counter.
 
+  // Atomic idempotency gate — must be claimed before ANY letter/deduction
+  // side-effect below. Retries, biometric replay, concurrent HR edits, and
+  // cron overlap all collapse to the same claim attempt for this exact
+  // employee+date instead of racing on separate SELECT-based checks.
+  const claimed = await claimDisciplineEvent(
+    tx,
+    employeeId,
+    DisciplineCategory.LATE,
+    dayStart,
+    lateCount,
+  );
+  if (!claimed) return; // already processed — true no-op, no duplicate letter/deduction
+
   const dateLabel = dayStart.toISOString().slice(0, 10);
   const checkInLabel = deriveCheckInLabel(dutyStartTime, todayLateMinutes);
   const dutyStartLabel = dutyStartTime ?? 'نامعلوم';
@@ -421,7 +483,9 @@ async function applyUninformedAbsentDeduction(
 ): Promise<void> {
   const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
   const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  const dayKey = date.toISOString().slice(0, 10);
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayKey = dayStart.toISOString().slice(0, 10);
 
   // Count unique uninformed-absent days this month, including the current day
   // (the attendance log may not be written yet when discipline runs).
@@ -439,6 +503,16 @@ async function applyUninformedAbsentDeduction(
   );
   uniqueDays.add(dayKey);
   const uninformedCount = uniqueDays.size;
+
+  // Atomic idempotency gate — see claimDisciplineEvent's doc comment.
+  const claimed = await claimDisciplineEvent(
+    tx,
+    employeeId,
+    DisciplineCategory.UNINFORMED_ABSENT,
+    dayStart,
+    uninformedCount,
+  );
+  if (!claimed) return; // already processed — true no-op
 
   const basicStipend = await getBasicStipend(tx, employeeId);
   if (basicStipend > 0) {
@@ -715,7 +789,9 @@ export async function applyMissingCheckoutDiscipline(
 
   const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
   const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  const dayKey = date.toISOString().slice(0, 10);
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayKey = dayStart.toISOString().slice(0, 10);
 
   // Missing-checkout days this month, derived fresh from AttendanceLog every
   // run (no in-memory/stored counter). A day whose checkout later gets
@@ -738,6 +814,20 @@ export async function applyMissingCheckoutDiscipline(
   );
   uniqueDays.add(dayKey);
   const missingCount = uniqueDays.size;
+
+  // Atomic idempotency gate — see claimDisciplineEvent's doc comment. Also
+  // replaces the informal "safe to call every tick" idempotency this
+  // function used to rely on solely via hasLetterForMonthlyMissingCheckout
+  // Occurrence's SELECT-based check, which had the same concurrent-tick
+  // race as the LATE path.
+  const claimed = await claimDisciplineEvent(
+    tx,
+    employeeId,
+    DisciplineCategory.MISSING_CHECKOUT,
+    dayStart,
+    missingCount,
+  );
+  if (!claimed) return; // already processed for this open day — true no-op
 
   const checkInLabel = formatMinutesAsHHmm(
     toPakistanMinutesOfDay(options.checkIn),
@@ -1054,6 +1144,19 @@ export async function reverseLateDisciplineForDate(
       },
     },
   });
+
+  // This date no longer represents a genuine late incident — release the
+  // idempotency claim too (deleteMany: safe no-op if none exists), so a
+  // LEGITIMATE later correction back to LATE for this same date (HR
+  // undoing the Short Leave) can be processed again instead of being
+  // silently swallowed as "already handled" by claimDisciplineEvent.
+  await tx.disciplineEvent.deleteMany({
+    where: {
+      employeeId,
+      category: DisciplineCategory.LATE,
+      incidentDate: dayStart,
+    },
+  });
 }
 
 /**
@@ -1114,6 +1217,18 @@ export async function reverseAbsenceDeductionForDate(
     data: {
       totalDeductions: { decrement: deduction.amount },
       netStipend: { increment: deduction.amount },
+    },
+  });
+
+  // Release the idempotency claim too, same reasoning as
+  // reverseLateDisciplineForDate above. deleteMany is a safe no-op when the
+  // original status was plain ABSENT (never gated — only UNINFORMED_ABSENT
+  // goes through claimDisciplineEvent), so no row exists to delete.
+  await tx.disciplineEvent.deleteMany({
+    where: {
+      employeeId,
+      category: DisciplineCategory.UNINFORMED_ABSENT,
+      incidentDate: dayStart,
     },
   });
 }
