@@ -2251,10 +2251,29 @@ export class AttendanceService {
     //  - other open, this correction also stays open: two open-ended
     //    intervals for the same reliever can never be verified as
     //    non-overlapping — always reject.
+    // Scoped to a window around THIS session's own date (±1 calendar day —
+    // generous enough to still catch a genuine cross-midnight overlap
+    // against an adjacent day's session, since the actual overlap test
+    // below compares real checkIn/checkOut timestamps, not date labels).
+    // Previously unscoped by date at all, so a correction was compared
+    // against this reliever's ENTIRE session history — including any
+    // stale/abandoned OPEN session from a completely unrelated date, which
+    // the open-session branch below always treats as ambiguous. A
+    // corrected checkout time is almost always later than any such
+    // session's checkIn, so that stale row alone was enough to reject
+    // every correction with a false "overlap" — see relieverCheckIn's own
+    // create-time checks above, which already scope by date the same way.
+    const windowStart = new Date(session.date);
+    windowStart.setDate(windowStart.getDate() - 1);
+    const windowEnd = new Date(session.date);
+    windowEnd.setDate(windowEnd.getDate() + 1);
+    windowEnd.setHours(23, 59, 59, 999);
+
     const otherSessions = await this.prisma.relieverSession.findMany({
       where: {
         employeeId: session.employeeId,
         id: { not: session.id },
+        date: { gte: windowStart, lte: windowEnd },
       },
       select: { checkIn: true, checkOut: true },
     });
