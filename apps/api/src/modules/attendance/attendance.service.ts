@@ -22,6 +22,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { PayrollService } from '../payroll/payroll.service';
 import {
   ApproveOvertimeDto,
   AttendanceQueryDto,
@@ -114,7 +115,32 @@ export class AttendanceService {
     private prisma: PrismaService,
     private permissionsService: PermissionsService,
     private accessScopeService: AccessScopeService,
+    private payrollService: PayrollService,
   ) {}
+
+  /**
+   * Fires the centralized PENDING-payroll recompute hook (see
+   * PayrollService.recomputePendingPayrollForAttendanceDate) for a
+   * resolved biometric punch — but only when it actually wrote a
+   * REGULAR-log status/checkIn/checkOut change ('CHECKIN'/'CHECKOUT').
+   * 'OVERTIME_CHECKIN'/'OVERTIME_CHECKOUT'/'CHECKOUT_IGNORED' never touch
+   * the payroll-relevant REGULAR log, so recomputing for those would be
+   * pure wasted work — see the audit distinguishing OT-path writes from
+   * REGULAR-log writes in computeHourlyBreakdown. Always called AFTER the
+   * punch's own transaction has already resolved, never from inside it.
+   */
+  private async maybeRecomputePayrollForPunchResult(
+    employeeId: string,
+    dateOnly: Date,
+    result: { type: string },
+  ): Promise<void> {
+    if (result.type === 'CHECKIN' || result.type === 'CHECKOUT') {
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        employeeId,
+        dateOnly,
+      );
+    }
+  }
 
   async biometricPush(dto: BiometricPushDto) {
     const employee = await this.prisma.employee.findUnique({
@@ -157,7 +183,7 @@ export class AttendanceService {
     const dateOnly = toPakistanDateOnly(checkTime);
     const twentyFourHour = is24HourShift(employee);
 
-    return this.processResolvedPunch(
+    const result = await this.processResolvedPunch(
       employee,
       branchId,
       dto.punchType,
@@ -165,6 +191,8 @@ export class AttendanceService {
       dateOnly,
       twentyFourHour,
     );
+    await this.maybeRecomputePayrollForPunchResult(employee.id, dateOnly, result);
+    return result;
   }
 
   /**
@@ -225,7 +253,7 @@ export class AttendanceService {
       | 'OVERTIME_CHECKOUT'
       | 'AUTO' = resolvedStatus ?? 'AUTO';
 
-    return this.prisma.$transaction(async (tx) => {
+    const txResult = await this.prisma.$transaction(async (tx) => {
       // Claim the idempotency slot in the SAME transaction as the attendance
       // write below. If the write throws, this rolls back too, so a genuine
       // retry after a failure is reprocessed rather than silently dropped.
@@ -265,6 +293,19 @@ export class AttendanceService {
 
       return { idempotent: false as const, ...result };
     });
+
+    // Fires only after the transaction above has fully committed — never
+    // from inside it — and only for a genuinely new (non-idempotent-replay)
+    // write. See maybeRecomputePayrollForPunchResult.
+    if (txResult.idempotent === false) {
+      await this.maybeRecomputePayrollForPunchResult(
+        employee.id,
+        dateOnly,
+        txResult,
+      );
+    }
+
+    return txResult;
   }
 
   /**
@@ -1057,6 +1098,15 @@ export class AttendanceService {
       return attendanceLog;
     });
 
+    // Fires only after the transaction above has committed — markManual
+    // always writes a payroll-relevant status (never a bare UNMARKED
+    // create), so this is unconditional. See
+    // PayrollService.recomputePendingPayrollForAttendanceDate.
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      dto.employeeId,
+      dateOnly,
+    );
+
     return result;
   }
 
@@ -1434,6 +1484,16 @@ export class AttendanceService {
 
       return shortLeaveDecision ? { ...result, shortLeaveDecision } : result;
     });
+
+    // Fires only after the transaction above has committed. Uses log.date
+    // — the row's own historical business date, never wall-clock "now" —
+    // so correcting an August record in September recomputes AUGUST's
+    // PENDING payroll, not the current month's. See
+    // PayrollService.recomputePendingPayrollForAttendanceDate.
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      log.employeeId,
+      log.date,
+    );
 
     return updated;
   }
@@ -2592,6 +2652,13 @@ export class AttendanceService {
       });
     });
 
+    // Fires only after the transaction above has committed. See
+    // PayrollService.recomputePendingPayrollForAttendanceDate.
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      employeeId,
+      dateOnly,
+    );
+
     return {
       success: true,
       distance: Math.round(distance),
@@ -2683,6 +2750,13 @@ export class AttendanceService {
         after: updated,
       });
     });
+
+    // Fires only after the transaction above has committed. See
+    // PayrollService.recomputePendingPayrollForAttendanceDate.
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      employeeId,
+      dateOnly,
+    );
 
     const hoursWorked =
       Math.round(
@@ -2968,8 +3042,9 @@ export class AttendanceService {
       where: { employeeId: dto.employeeId, date: dateOnly, type },
     });
 
+    let log;
     if (existing) {
-      return this.prisma.attendanceLog.update({
+      log = await this.prisma.attendanceLog.update({
         where: { id: existing.id },
         data: {
           checkIn: dto.checkIn
@@ -2983,39 +3058,54 @@ export class AttendanceService {
           source: AttendanceSource.MANUAL,
         },
       });
+    } else {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: dto.employeeId },
+        select: { currentBranchId: true, dutyStartTime: true, dutyEndTime: true },
+      });
+
+      if (!employee) {
+        throw new NotFoundException(
+          `Employee with id ${dto.employeeId} not found`,
+        );
+      }
+
+      if (!employee.currentBranchId) {
+        throw new BadRequestException(
+          'Employee has no branch assignment for attendance import',
+        );
+      }
+
+      log = await this.prisma.attendanceLog.create({
+        data: {
+          employeeId: dto.employeeId,
+          branchId: employee.currentBranchId,
+          date: dateOnly,
+          type,
+          checkIn: dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : null,
+          checkOut: dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : null,
+          status: dto.status,
+          source: AttendanceSource.MANUAL,
+          note: dto.note,
+          dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
+        },
+      });
     }
 
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: dto.employeeId },
-      select: { currentBranchId: true, dutyStartTime: true, dutyEndTime: true },
-    });
-
-    if (!employee) {
-      throw new NotFoundException(
-        `Employee with id ${dto.employeeId} not found`,
+    // Only REGULAR-type rows feed computeHourlyBreakdown's payableMinutes
+    // — an imported OVERTIME row is not payroll-relevant here (same
+    // distinction the biometric OT paths already make). No transaction
+    // wraps this method's writes, so this correctly fires after whichever
+    // branch above already committed its own write. See
+    // PayrollService.recomputePendingPayrollForAttendanceDate.
+    if (type === AttendanceLogType.REGULAR) {
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        dto.employeeId,
+        dateOnly,
       );
     }
 
-    if (!employee.currentBranchId) {
-      throw new BadRequestException(
-        'Employee has no branch assignment for attendance import',
-      );
-    }
-
-    return this.prisma.attendanceLog.create({
-      data: {
-        employeeId: dto.employeeId,
-        branchId: employee.currentBranchId,
-        date: dateOnly,
-        type,
-        checkIn: dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : null,
-        checkOut: dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : null,
-        status: dto.status,
-        source: AttendanceSource.MANUAL,
-        note: dto.note,
-        dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
-        dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
-      },
-    });
+    return log;
   }
 }

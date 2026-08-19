@@ -7,6 +7,7 @@ import {
   LeaveType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PayrollService } from '../payroll/payroll.service';
 import { reconcileShortLeaveAttendance } from './short-leave.util';
 import { toPakistanDateOnly } from './shift-time.util';
 
@@ -56,7 +57,10 @@ const RECONCILE_STATUSES_TO_SKIP: AttendanceStatus[] = [
 export class ProspectiveShortLeaveScheduler {
   private readonly logger = new Logger(ProspectiveShortLeaveScheduler.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private payrollService: PayrollService,
+  ) {}
 
   @Cron('*/15 * * * *')
   async reconcilePendingShortLeaves() {
@@ -130,6 +134,14 @@ export class ProspectiveShortLeaveScheduler {
           leave.employee,
         );
       });
+
+      // Fires only after the transaction above has committed. SHORT_LEAVE
+      // is a full-day-credit status in computeHourlyBreakdown, same as
+      // PRESENT/ON_LEAVE — see PayrollService.
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        leave.employeeId,
+        leave.startDate,
+      );
 
       reconciled++;
     }

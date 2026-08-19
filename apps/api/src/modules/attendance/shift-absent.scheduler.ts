@@ -8,6 +8,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PayrollService } from '../payroll/payroll.service';
 import { applyDisciplineRules } from './discipline.helper';
 import { is24HourShiftRecord } from './attendance-biometric.util';
 import {
@@ -25,7 +26,10 @@ const AUTO_ABSENT_24H_NOTE = 'Auto-marked absent for 24-hour shift';
 export class ShiftAbsentScheduler {
   private readonly logger = new Logger(ShiftAbsentScheduler.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private payrollService: PayrollService,
+  ) {}
 
   // Every 5 min (not 15) so an UNMARKED placeholder exists close to the
   // actual shift start rather than up to ~15 min after it. The lazy
@@ -155,6 +159,16 @@ export class ShiftAbsentScheduler {
         });
       });
 
+      // Fires only after the transaction above has committed. UNMARKED/
+      // ABSENT -> UNINFORMED_ABSENT changes this day's policy-credit
+      // minutes in computeHourlyBreakdown (same credit-ladder floor as
+      // PRESENT/ON_LEAVE/etc — see PayrollService), so a PENDING month's
+      // basicStipend can genuinely change here.
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        log.employee.id,
+        log.date,
+      );
+
       upgraded++;
     }
 
@@ -230,6 +244,18 @@ export class ShiftAbsentScheduler {
           },
         });
         marked++;
+
+        // Only the 24h-shift ABSENT branch is payroll-relevant here — a
+        // bare UNMARKED create (normal shifts) contributes zero credit
+        // either way, so recomputing for it would be pure wasted work.
+        // Covers both callers (markShiftStartAbsent cron and
+        // backfillAbsentForDate) since they both funnel through here.
+        if (status === AttendanceStatus.ABSENT) {
+          await this.payrollService.recomputePendingPayrollForAttendanceDate(
+            employee.id,
+            date,
+          );
+        }
       }
     }
 

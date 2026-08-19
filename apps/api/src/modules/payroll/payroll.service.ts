@@ -11,6 +11,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -70,6 +71,8 @@ const UNPAID_LEAVE_DESC_PREFIX = 'Unpaid leave';
 
 @Injectable()
 export class PayrollService {
+  private readonly logger = new Logger(PayrollService.name);
+
   constructor(
     private prisma: PrismaService,
     private accessScopeService: AccessScopeService,
@@ -332,6 +335,69 @@ export class PayrollService {
     }
 
     return results;
+  }
+
+  /**
+   * PERMANENT-behavior centralized hook: the single entry point every
+   * attendance-mutating path in the system (biometric, manual, portal,
+   * import, leave approval/reconciliation, mutual swap, short-leave and
+   * absence schedulers) calls after its own write has already committed,
+   * so a PENDING PayrollEntry never goes stale again the way the August
+   * 2026 data did before Steps 1-6's one-time cleanup.
+   *
+   * Derives month/year from `attendanceDate` (the attendance BUSINESS
+   * date — AttendanceLog.date / a LeaveRecord's own startDate/endDate /
+   * a MutualSwap's own date — never wall-clock "now", so correcting a
+   * historical August record in September still recomputes AUGUST, never
+   * the current month). Reuses recomputeEmployeeMonth (and transitively
+   * findOverlappingStipendRecords / upsertPayrollEntryForStipendSegment)
+   * verbatim — no calculation logic is duplicated here.
+   *
+   * Two safety properties, both load-bearing:
+   *   1. Never auto-creates payroll: if no PayrollEntry exists yet for
+   *      this employee/month (across ANY stipend segment), this is a
+   *      no-op — an attendance change is never itself sufficient reason
+   *      to bring a new payroll record into existence; that remains an
+   *      explicit createOrGetEntry/salary-cycle decision.
+   *   2. Never throws: the attendance/leave/swap mutation that triggered
+   *      this has already succeeded and committed by the time this runs
+   *      (every caller awaits this AFTER its own transaction resolves,
+   *      never inside it) — a recompute failure must never surface as
+   *      though the attendance write itself failed. Logged, not thrown.
+   *
+   * No recursion risk: recomputeEmployeeMonth's entire call graph
+   * (computeHourlyBreakdown, computeMonthlyUnpaidLeaveDates,
+   * upsertAdditionalWorkingDaysAllowanceRow, upsertUnpaidLeaveDeductionRow,
+   * upsertRelieverAllowanceRow) only ever READS AttendanceLog — none of
+   * it writes to AttendanceLog or calls back into any attendance/leave/
+   * swap service — so this can never trigger another attendance mutation
+   * or another recompute cycle.
+   *
+   * PROCESSED/PAID segments are frozen exactly as recomputeEmployeeMonth
+   * already guarantees — this hook adds no new mutation path, only a new
+   * automatic caller of the existing one.
+   */
+  async recomputePendingPayrollForAttendanceDate(
+    employeeId: string,
+    attendanceDate: Date,
+  ): Promise<void> {
+    const month = attendanceDate.getMonth() + 1;
+    const year = attendanceDate.getFullYear();
+
+    try {
+      const existingEntry = await this.prisma.payrollEntry.findFirst({
+        where: { month, year, stipendRecord: { employeeId } },
+        select: { id: true },
+      });
+      if (!existingEntry) return; // never auto-create payroll from an attendance side effect
+
+      await this.recomputeEmployeeMonth({ employeeId, month, year });
+    } catch (err) {
+      this.logger.error(
+        `recomputePendingPayrollForAttendanceDate failed for employee ${employeeId}, ${year}-${month}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 
   /**

@@ -20,6 +20,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PayrollService } from '../payroll/payroll.service';
 import { enforceBranchScope } from '../../common/branch-scope.util';
 import { dutyWindowsOverlap, getDutyWindow } from '../../common/duty.util';
 import { is24HourShift } from '../attendance/attendance-biometric.util';
@@ -76,7 +77,43 @@ export class LeaveService {
   constructor(
     private prisma: PrismaService,
     private accessScopeService: AccessScopeService,
+    private payrollService: PayrollService,
   ) {}
+
+  /**
+   * Fires the centralized PENDING-payroll recompute hook (see
+   * PayrollService.recomputePendingPayrollForAttendanceDate) for every
+   * distinct calendar month a leave's attendance write touched — a leave
+   * spanning a month boundary must recompute BOTH months, never just the
+   * one containing startDate. Short Leave only ever writes a single day
+   * (leave.startDate — see markLeaveAttendance/reconcileShortLeaveAttendance),
+   * so it recomputes only that one month. Always called AFTER the
+   * triggering transaction has already committed, and only when
+   * markLeaveAttendance actually ran (callers check leave.status ===
+   * APPROVED first — see each call site).
+   */
+  private async recomputePendingPayrollForLeave(leave: {
+    employeeId: string;
+    startDate: Date;
+    endDate: Date;
+    leaveType: LeaveType;
+  }): Promise<void> {
+    const dates =
+      leave.leaveType === LeaveType.SHORT_LEAVE
+        ? [leave.startDate]
+        : this.getDateRange(leave.startDate, leave.endDate);
+
+    const seenMonths = new Set<string>();
+    for (const date of dates) {
+      const key = `${date.getFullYear()}-${date.getMonth()}`;
+      if (seenMonths.has(key)) continue;
+      seenMonths.add(key);
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        leave.employeeId,
+        date,
+      );
+    }
+  }
 
   async apply(dto: ApplyLeaveDto) {
     const employee = await this.prisma.employee.findUnique({
@@ -504,7 +541,7 @@ export class LeaveService {
       where: { id: actingUser.id },
     });
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.leaveApproval.create({
         data: {
           leaveId,
@@ -611,6 +648,17 @@ export class LeaveService {
 
       return updated;
     });
+
+    // Fires only after the transaction above has committed, and only when
+    // markLeaveAttendance actually ran — the APPROVED-and-within-quota
+    // branch is the only one that reaches LeaveStatus.APPROVED here (the
+    // over-quota branch returns PENDING_APPROVAL, rejection returns
+    // REJECTED).
+    if (result.status === LeaveStatus.APPROVED) {
+      await this.recomputePendingPayrollForLeave(result);
+    }
+
+    return result;
   }
 
   /**
@@ -652,7 +700,7 @@ export class LeaveService {
       where: { id: actingUser.id },
     });
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.leaveApproval.create({
         data: {
           leaveId,
@@ -739,6 +787,17 @@ export class LeaveService {
 
       return updated;
     });
+
+    // Fires only after the transaction above has committed, and only when
+    // markLeaveAttendance actually ran — same reasoning as
+    // hrOperationsApprove above. applyExtraLeaveRejectedDeduction (the
+    // rejection branch) is a discipline-only fine, not a basicStipend/
+    // hours recompute, so it deliberately does not trigger this hook.
+    if (result.status === LeaveStatus.APPROVED) {
+      await this.recomputePendingPayrollForLeave(result);
+    }
+
+    return result;
   }
 
   async getLeaveWithApprovals(leaveId: string) {
@@ -1007,6 +1066,13 @@ export class LeaveService {
       return record;
     });
 
+    // Fires only after the transaction above has committed, and only when
+    // markLeaveAttendance actually ran (the within-quota branch — the
+    // over-quota branch leaves `leave.status` at PENDING_APPROVAL).
+    if (leave.status === LeaveStatus.APPROVED) {
+      await this.recomputePendingPayrollForLeave(leave);
+    }
+
     return leave;
   }
 
@@ -1185,6 +1251,11 @@ export class LeaveService {
 
       return record;
     });
+
+    // Fires only after the transaction above has committed. Unlike
+    // markEmergencyLeave, this method has no quota gate — markLeaveAttendance
+    // always runs, so the hook always fires unconditionally here.
+    await this.recomputePendingPayrollForLeave(leave);
 
     return leave;
   }

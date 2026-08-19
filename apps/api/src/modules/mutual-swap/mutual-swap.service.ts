@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PayrollService } from '../payroll/payroll.service';
 import {
   parseAttendanceDateTime,
   toPakistanDateOnly,
@@ -18,7 +19,10 @@ function normalizeTime(time?: string | null): string {
 
 @Injectable()
 export class MutualSwapService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private payrollService: PayrollService,
+  ) {}
 
   private parseDateOnly(dateStr: string): Date {
     return toPakistanDateOnly(parseAttendanceDateTime(`${dateStr}T12:00:00`));
@@ -210,6 +214,17 @@ export class MutualSwapService {
       return created;
     });
 
+    // Fires only after the transaction above has committed. Only the
+    // COVERED employee's write (status -> SWAP_COVERED) is payroll-relevant
+    // — a full-day-credit status in computeHourlyBreakdown, same as
+    // PRESENT. The covering employee's writes are OT-only (overtimeMinutes/
+    // an OVERTIME-type row), which does not feed payableMinutes, so
+    // recomputing for them would be pure wasted work.
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      dto.coveredEmployeeId,
+      dateOnly,
+    );
+
     return {
       swap,
       message: `Swap created. ${coveringEmployee.fullName} will cover ${coveredEmployee.fullName}'s shift. Overtime added automatically.`,
@@ -332,6 +347,15 @@ export class MutualSwapService {
         data: { status: 'UNMARKED', note: null },
       }),
     ]);
+
+    // Fires only after the transaction above has committed. Reverses
+    // createSwap's payroll-relevant write (SWAP_COVERED -> UNMARKED for the
+    // covered employee) — same asymmetry as createSwap: the covering
+    // employee's reversed writes are OT-only, not payableMinutes-relevant.
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      swap.coveredEmployeeId,
+      swap.date,
+    );
 
     return { message: 'Swap cancelled and attendance reversed' };
   }
