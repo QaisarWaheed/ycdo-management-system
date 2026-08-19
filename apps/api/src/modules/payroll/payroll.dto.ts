@@ -145,6 +145,25 @@ export class RecomputeMonthAllDto {
   @IsString()
   @IsNotEmpty()
   confirm?: string;
+
+  /** Unique-employee batch size (not PayrollEntry row count). Defaults to
+   * 25 when omitted; capped at 50 to keep each call comfortably clear of
+   * a 504 timeout. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+
+  /** Unique-employee offset into the deterministically-sorted employee
+   * list for this month/year — page through a large month via repeated
+   * calls using the previous response's nextOffset. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
 }
 
 export class UpdatePayrollStatusDto {

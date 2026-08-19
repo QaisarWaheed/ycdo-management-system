@@ -85,13 +85,18 @@ export class PayrollController {
 
   /**
    * Bulk, generic-by-month/year recompute for EXISTING stale payroll data
-   * (built for the August 2026 cleanup after Steps 1-6). Never called
-   * automatically — no cron, no bootstrap hook, this route is the only
-   * entry point. See PayrollService.recomputeMonthAll for the full safety
-   * contract: employee-level (not row-level) processing, PROCESSED/PAID
-   * always frozen, no new PayrollEntry ever created, strictly sequential,
-   * one employee's failure never aborts the run, and mutation requires
-   * `confirm: "RECOMPUTE_PENDING_PAYROLL"` unless `dryRun: true`.
+   * (built for the August 2026 cleanup after Steps 1-6). Batched at the
+   * unique-employee level via optional `limit` (default 25, max 50) /
+   * `offset` against a deterministic ordering, so a large month can be
+   * walked in several short requests instead of one that risks a 504 —
+   * page with the previous response's `nextOffset` until `hasMore` is
+   * false. Never called automatically — no cron, no bootstrap hook, this
+   * route is the only entry point. See PayrollService.recomputeMonthAll
+   * for the full safety contract: employee-level (not row-level)
+   * processing, PROCESSED/PAID always frozen, no new PayrollEntry ever
+   * created, strictly sequential, one employee's failure never aborts the
+   * batch, and mutation requires `confirm: "RECOMPUTE_PENDING_PAYROLL"`
+   * unless `dryRun: true`.
    */
   @Post('recompute-month-all')
   @Roles(...PAYROLL_WRITE_ROLES)

@@ -349,6 +349,17 @@ export class PayrollService {
    * and already skips PROCESSED/PAID segments untouched, so both of those
    * guarantees are inherited for free rather than re-implemented here.
    *
+   * BATCHING: offset/limit apply at the UNIQUE-EMPLOYEE level (never a
+   * PayrollEntry row count — a multi-segment employee must never be split
+   * across two batches or entered twice), against a deterministic
+   * (sorted-by-employeeId) ordering of the full month's employee scope, so
+   * that repeated calls with offset 0, limit, 2×limit, ... walk every
+   * employee exactly once regardless of how many calls it takes — this is
+   * what lets a large month be recomputed in several short HTTP requests
+   * instead of one that risks a 504. `limit` defaults to 25 and is capped
+   * at 50 by the DTO's own validation; this method re-clamps defensively
+   * for any caller that builds the dto object directly.
+   *
    * dryRun: true performs the exact same discovery/classification pass
    * with ZERO calls to recomputeEmployeeMonth (zero mutations) — it
    * reports what WOULD happen, never a fabricated projected after-value.
@@ -363,7 +374,7 @@ export class PayrollService {
    * snapshot — so a payroll that transitions to PROCESSED/PAID mid-run
    * (or between a dry-run and the follow-up apply call) is still
    * correctly frozen. One employee throwing is caught and recorded in
-   * `failures`; it never aborts the remaining employees.
+   * `failures`; it never aborts the remaining employees in this batch.
    */
   async recomputeMonthAll(
     dto: {
@@ -371,6 +382,8 @@ export class PayrollService {
       year: number;
       dryRun?: boolean;
       confirm?: string;
+      limit?: number;
+      offset?: number;
     },
     actingUser: { id: string; role: UserRole },
   ) {
@@ -381,10 +394,15 @@ export class PayrollService {
       );
     }
 
-    // Discovery snapshot — also this call's `beforeTotals` and the closed
-    // universe of PayrollEntry ids this run can ever touch (recompute
-    // never creates a new entry, so no id outside this set can appear
-    // later).
+    const DEFAULT_LIMIT = 25;
+    const MAX_LIMIT = 50;
+    const limit = Math.min(Math.max(1, dto.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
+    const offset = Math.max(0, dto.offset ?? 0);
+
+    // Discovery snapshot for the WHOLE month/year — used only to derive
+    // the deterministic employee ordering and totalEmployeesInScope, never
+    // to pick which entries get processed (currentEntries, re-read fresh
+    // per employee below, is the source of truth for that).
     const discoveryEntries = await this.prisma.payrollEntry.findMany({
       where: { month: dto.month, year: dto.year },
       include: { stipendRecord: { select: { employeeId: true } } },
@@ -414,13 +432,31 @@ export class PayrollService {
         { basicStipend: 0, totalAllowances: 0, totalDeductions: 0, netStipend: 0 },
       );
 
-    const beforeTotals = sumTotals(discoveryEntries);
-    const entryIdUniverse = discoveryEntries.map((e) => e.id);
-
-    const employeeIds = [
+    // Deterministic ordering — sorted by employeeId so consecutive calls
+    // (offset 0, limit; offset limit, limit; ...) can never skip or
+    // duplicate an employee, and a repeated call with the same
+    // offset/limit always returns the exact same slice.
+    const allEmployeeIds = [
       ...new Set(discoveryEntries.map((e) => e.stipendRecord.employeeId)),
-    ];
-    const employeesFound = employeeIds.length;
+    ].sort();
+    const totalEmployeesInScope = allEmployeeIds.length;
+    const batchEmployeeIds = allEmployeeIds.slice(offset, offset + limit);
+    const batchEmployeesFound = batchEmployeeIds.length;
+    const batchEmployeeIdSet = new Set(batchEmployeeIds);
+
+    // beforeTotals/afterTotals are scoped to THIS batch's employees only —
+    // the closed universe of PayrollEntry ids this call can ever touch
+    // (recompute never creates a new entry, so no id outside this set can
+    // appear later, and no id belonging to an employee outside this batch
+    // is ever touched by this call).
+    const batchEntryIdUniverse = discoveryEntries
+      .filter((e) => batchEmployeeIdSet.has(e.stipendRecord.employeeId))
+      .map((e) => e.id);
+    const beforeTotals = sumTotals(
+      discoveryEntries.filter((e) =>
+        batchEmployeeIdSet.has(e.stipendRecord.employeeId),
+      ),
+    );
 
     let employeesProcessed = 0;
     let employeesSkipped = 0;
@@ -448,7 +484,7 @@ export class PayrollService {
     const failures: Array<{ employeeId: string; error: string }> = [];
 
     // Strictly sequential — no Promise.all fan-out across employees.
-    for (const employeeId of employeeIds) {
+    for (const employeeId of batchEmployeeIds) {
       try {
         // Re-read fresh, immediately before acting on this employee — never
         // trust the initial discovery snapshot for the mutate/skip decision.
@@ -557,12 +593,13 @@ export class PayrollService {
       }
     }
 
-    // Re-read the closed entry-id universe fresh from the DB for the final
-    // totals — actual physical state, never accumulated in-memory values.
-    // For a dry run this is identical to beforeTotals, since nothing was
-    // written; for apply it reflects exactly what was persisted.
+    // Re-read the closed, batch-scoped entry-id universe fresh from the DB
+    // for the final totals — actual physical state, never accumulated
+    // in-memory values. For a dry run this is identical to beforeTotals,
+    // since nothing was written; for apply it reflects exactly what was
+    // persisted for this batch.
     const finalEntries = await this.prisma.payrollEntry.findMany({
-      where: { id: { in: entryIdUniverse } },
+      where: { id: { in: batchEntryIdUniverse } },
     });
     const afterTotals = sumTotals(finalEntries);
 
@@ -579,16 +616,24 @@ export class PayrollService {
       netStipend: round2(t.netStipend),
     });
 
+    const nextOffset = offset + batchEmployeesFound;
+    const hasMore = nextOffset < totalEmployeesInScope;
+
     return {
       month: dto.month,
       year: dto.year,
       dryRun: isDryRun,
-      employeesFound,
+      totalEmployeesInScope,
+      offset,
+      limit,
+      batchEmployeesFound,
       employeesProcessed,
       employeesSkipped,
       employeesFailed,
       segmentsRecomputed,
       segmentsFrozen,
+      nextOffset,
+      hasMore,
       beforeTotals: roundTotals(beforeTotals),
       afterTotals: roundTotals(afterTotals),
       results,

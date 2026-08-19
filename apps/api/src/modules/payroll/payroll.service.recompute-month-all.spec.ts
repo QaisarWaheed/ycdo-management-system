@@ -384,7 +384,8 @@ describe('PayrollService.recomputeMonthAll', () => {
 
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: true }, ACTING_USER);
 
-    expect(result.employeesFound).toBe(2); // e1 (2 rows) + e2 (1 row) = 2 unique employees
+    expect(result.totalEmployeesInScope).toBe(2); // e1 (2 rows) + e2 (1 row) = 2 unique employees
+    expect(result.batchEmployeesFound).toBe(2); // default limit 25 covers both
     expect(result.segmentsRecomputed).toBe(3); // 3 PENDING segments total would be recomputed
   });
 
@@ -418,7 +419,7 @@ describe('PayrollService.recomputeMonthAll', () => {
 
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM }, ACTING_USER);
 
-    expect(result.employeesFound).toBe(1);
+    expect(result.totalEmployeesInScope).toBe(1);
     expect(result.employeesProcessed).toBe(1); // employee entered exactly once
     expect(result.segmentsRecomputed).toBe(2); // both segments refreshed
     expect(db.payrollEntries.get(oldEntry.id)!.basicStipend).toBe(11200); // 14 days * 8h * 100/h
@@ -497,7 +498,7 @@ describe('PayrollService.recomputeMonthAll', () => {
 
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM }, ACTING_USER);
 
-    expect(result.employeesFound).toBe(1); // only e1
+    expect(result.totalEmployeesInScope).toBe(1); // only e1
     expect(result.results.some((r) => r.employeeId === 'e2')).toBe(false);
     const e2Entries = [...db.payrollEntries.values()].filter((e) =>
       db.stipendRecords.get(e.stipendRecordId)?.employeeId === 'e2',
@@ -528,7 +529,7 @@ describe('PayrollService.recomputeMonthAll', () => {
     const service = makeService(db);
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM }, ACTING_USER);
 
-    expect(result.employeesFound).toBe(3);
+    expect(result.totalEmployeesInScope).toBe(3);
     expect(result.employeesFailed).toBe(1);
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0].employeeId).toBe('e2');
@@ -626,5 +627,94 @@ describe('PayrollService.recomputeMonthAll', () => {
     // e1 recomputed to full month (24800), e2 frozen at its seeded 3000.
     expect(result.afterTotals.basicStipend).toBeCloseTo(24800 + 3000, 5);
     expect(db.payrollEntries.get(frozenEntry.id)!.basicStipend).toBe(3000); // frozen entry unchanged
+  });
+
+  // ── Batching (offset/limit at unique-employee level) ────────────────
+
+  function seedManyEmployees(db: FakeDb, count: number): string[] {
+    const ids: string[] = [];
+    for (let i = 0; i < count; i++) {
+      // Zero-padded so lexicographic (default sort()) order matches
+      // numeric order, keeping assertions below simple to reason about.
+      const id = `emp-${String(i).padStart(3, '0')}`;
+      ids.push(id);
+      seedEmployee(db, id);
+      const sr = seedStipend(db, id, 20000, new Date(Date.UTC(2000, 0, 1)), null);
+      seedPayrollEntry(db, sr.id, PayrollStatus.PENDING);
+    }
+    return ids;
+  }
+
+  it('batch 1 of 25: default limit returns exactly 25 employees, hasMore true, nextOffset 25', async () => {
+    const db = new FakeDb();
+    const allIds = seedManyEmployees(db, 30);
+    const service = makeService(db);
+
+    const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: true }, ACTING_USER);
+
+    expect(result.totalEmployeesInScope).toBe(30);
+    expect(result.limit).toBe(25);
+    expect(result.offset).toBe(0);
+    expect(result.batchEmployeesFound).toBe(25);
+    expect(result.nextOffset).toBe(25);
+    expect(result.hasMore).toBe(true);
+    expect(result.results.map((r) => r.employeeId)).toEqual(allIds.slice(0, 25));
+  });
+
+  it('next batch at offset 25: returns the final partial batch of 5, hasMore false', async () => {
+    const db = new FakeDb();
+    const allIds = seedManyEmployees(db, 30);
+    const service = makeService(db);
+
+    const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: true, offset: 25 }, ACTING_USER);
+
+    expect(result.totalEmployeesInScope).toBe(30);
+    expect(result.offset).toBe(25);
+    expect(result.batchEmployeesFound).toBe(5); // final partial batch
+    expect(result.nextOffset).toBe(30);
+    expect(result.hasMore).toBe(false);
+    expect(result.results.map((r) => r.employeeId)).toEqual(allIds.slice(25, 30));
+  });
+
+  it('deterministic ordering: repeated calls with the same offset/limit return the identical employee slice', async () => {
+    const db = new FakeDb();
+    seedManyEmployees(db, 12);
+    const service = makeService(db);
+
+    const first = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: true, limit: 5, offset: 3 }, ACTING_USER);
+    const second = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: true, limit: 5, offset: 3 }, ACTING_USER);
+
+    expect(first.results.map((r) => r.employeeId)).toEqual(second.results.map((r) => r.employeeId));
+  });
+
+  it('no duplicate employee across batches: paging through via nextOffset visits every employee exactly once', async () => {
+    const db = new FakeDb();
+    const allIds = seedManyEmployees(db, 23);
+    const service = makeService(db);
+
+    const seen: string[] = [];
+    let offset = 0;
+    const limit = 7;
+    // Loop bound generously; the assertions below are what actually prove
+    // termination/correctness, not this bound.
+    for (let i = 0; i < 10; i++) {
+      const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM, limit, offset }, ACTING_USER);
+      seen.push(...result.results.map((r) => r.employeeId));
+      if (!result.hasMore) break;
+      offset = result.nextOffset;
+    }
+
+    expect(seen).toHaveLength(23);
+    expect(new Set(seen).size).toBe(23); // no duplicates
+    expect([...seen].sort()).toEqual(allIds); // every employee visited
+  });
+
+  it('limit is capped at 50 by the DTO even if a caller requests more', async () => {
+    const db = new FakeDb();
+    seedManyEmployees(db, 5);
+    const service = makeService(db);
+
+    const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: true, limit: 999 } as any, ACTING_USER);
+    expect(result.limit).toBe(50); // service-level defensive re-clamp
   });
 });
