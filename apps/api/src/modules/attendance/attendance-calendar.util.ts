@@ -31,6 +31,42 @@ export function calendarDatesInMonth(year: number, month: number): Date[] {
   return dates;
 }
 
+/**
+ * Last Pakistan calendar day of `year`/`month` that may be shown or
+ * materialized: never after today. Null when the whole month is still in
+ * the future.
+ */
+export function pakistanVisibleAttendanceEnd(
+  year: number,
+  month: number,
+  now: Date = new Date(),
+): Date | null {
+  const { start, end } = pakistanMonthDateRange(year, month);
+  const today = toPakistanDateOnly(now);
+  if (today.getTime() < start.getTime()) return null;
+  return today.getTime() < end.getTime() ? today : end;
+}
+
+/** Days 1..today of the current month; a full past month; empty for a future month. */
+export function calendarDatesForAttendanceMonth(
+  year: number,
+  month: number,
+  now: Date = new Date(),
+): Date[] {
+  const { start } = pakistanMonthDateRange(year, month);
+  const visibleEnd = pakistanVisibleAttendanceEnd(year, month, now);
+  if (!visibleEnd) return [];
+  const dates: Date[] = [];
+  for (
+    let t = start.getTime();
+    t <= visibleEnd.getTime();
+    t += 24 * 60 * 60 * 1000
+  ) {
+    dates.push(new Date(t));
+  }
+  return dates;
+}
+
 export function isPreJoinAttendanceDate(
   date: Date,
   joiningDate: Date | null | undefined,

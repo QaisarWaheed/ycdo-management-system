@@ -191,6 +191,10 @@ export function EmployeePayrollTab({
                 ? format(new Date(joiningDate), 'dd/MM/yyyy')
                 : '—'}
             </span>
+            <span className="mt-1 block text-text-secondary">
+              This is the contract package. Earned month pay is in Payroll
+              History and updates until the month is marked Paid.
+            </span>
           </p>
           {!latestStipend ? (
             <p className="text-sm text-text-secondary">No stipend record found</p>

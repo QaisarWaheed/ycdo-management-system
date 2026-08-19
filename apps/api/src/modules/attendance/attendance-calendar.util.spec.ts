@@ -1,4 +1,5 @@
 import {
+  calendarDatesForAttendanceMonth,
   calendarDatesInMonth,
   isPreJoinAttendanceDate,
   isUninformedUpgradeNote,
@@ -35,5 +36,15 @@ describe('attendance-calendar.util', () => {
   it('does not upgrade pre-join unmarked notes to uninformed absent', () => {
     expect(isUninformedUpgradeNote(PRE_JOIN_UNMARKED_NOTE)).toBe(false);
     expect(isUninformedUpgradeNote(MONTH_CALENDAR_UNMARKED_NOTE)).toBe(true);
+  });
+
+  it('caps the current month at today and omits future months', () => {
+    const now = new Date(Date.UTC(2026, 7, 14, 10, 0, 0)); // 15:00 PK on 14 Aug
+    const dates = calendarDatesForAttendanceMonth(2026, 8, now);
+    expect(dates).toHaveLength(14);
+    expect(dates[0].toISOString()).toBe('2026-08-01T00:00:00.000Z');
+    expect(dates[13].toISOString()).toBe('2026-08-14T00:00:00.000Z');
+    expect(calendarDatesForAttendanceMonth(2026, 7, now)).toHaveLength(31);
+    expect(calendarDatesForAttendanceMonth(2026, 9, now)).toHaveLength(0);
   });
 });

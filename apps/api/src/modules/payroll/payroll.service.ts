@@ -256,7 +256,8 @@ export class PayrollService {
    * Explicit, "return everything" multi-segment recompute for one
    * employee/month. Unlike createOrGetEntry, this NEVER creates a new
    * PayrollEntry — it only refreshes segments that already have one
-   * (skipping PROCESSED/PAID, which stay frozen), and reports which
+   * (skipping PAID, which stay frozen; PROCESSED is still refreshed until
+   * paid so in-progress attendance corrections keep salary current), and reports which
    * overlapping segments have no entry yet at all (those still need an
    * explicit createOrGetEntry call, which also carries the
    * non-active-employee eligibility checks this method deliberately does
@@ -342,10 +343,7 @@ export class PayrollService {
         continue;
       }
 
-      if (
-        existing.status === PayrollStatus.PROCESSED ||
-        existing.status === PayrollStatus.PAID
-      ) {
+      if (existing.status === PayrollStatus.PAID) {
         results.push({
           stipendRecordId: stipendRecord.id,
           status: 'FROZEN',
@@ -361,6 +359,7 @@ export class PayrollService {
         undefined,
         unpaidLeaveDatesForMonth,
         stipendRecord.id === packageBearingId,
+        { refreshUnpaidProcessed: true },
       );
       results.push({
         stipendRecordId: stipendRecord.id,
@@ -408,9 +407,8 @@ export class PayrollService {
    * swap service — so this can never trigger another attendance mutation
    * or another recompute cycle.
    *
-   * PROCESSED/PAID segments are frozen exactly as recomputeEmployeeMonth
-   * already guarantees — this hook adds no new mutation path, only a new
-   * automatic caller of the existing one.
+   * PAID segments stay frozen. PENDING and PROCESSED (approved but not
+   * yet paid) are refreshed so in-progress months keep matching attendance.
    */
   async recomputePendingPayrollForAttendanceDate(
     employeeId: string,
@@ -597,8 +595,8 @@ export class PayrollService {
         });
         if (currentEntries.length === 0) continue; // entry set is closed; defensive only
 
-        const pendingCount = currentEntries.filter(
-          (e) => e.status === PayrollStatus.PENDING,
+        const unpaidCount = currentEntries.filter(
+          (e) => e.status !== PayrollStatus.PAID,
         ).length;
 
         const employee = await this.prisma.employee.findUnique({
@@ -606,8 +604,8 @@ export class PayrollService {
           select: { employeeCode: true, fullName: true },
         });
 
-        if (pendingCount === 0) {
-          // Only PROCESSED/PAID -> skip employee entirely, never mutated.
+        if (unpaidCount === 0) {
+          // Only PAID -> skip employee entirely, never mutated.
           employeesSkipped++;
           segmentsFrozen += currentEntries.length;
           results.push({
@@ -629,8 +627,8 @@ export class PayrollService {
           // Scope/precondition reporting only — no mutating helper is ever
           // called in this branch, so there is nothing to fabricate.
           employeesProcessed++;
-          const frozenHere = currentEntries.length - pendingCount;
-          segmentsRecomputed += pendingCount;
+          const frozenHere = currentEntries.length - unpaidCount;
+          segmentsRecomputed += unpaidCount;
           segmentsFrozen += frozenHere;
           results.push({
             employeeId,
@@ -642,9 +640,9 @@ export class PayrollService {
               payrollEntryId: e.id,
               statusBefore: e.status,
               outcome:
-                e.status === PayrollStatus.PENDING
-                  ? 'WOULD_RECOMPUTE'
-                  : 'FROZEN',
+                e.status === PayrollStatus.PAID
+                  ? 'FROZEN'
+                  : 'WOULD_RECOMPUTE',
             })),
           });
           continue;
@@ -959,6 +957,7 @@ export class PayrollService {
     forceNonActiveOverride: boolean | undefined,
     unpaidLeaveDatesForMonth: Date[],
     applyContractualPackage = stipendRecord.effectiveTo == null,
+    options: { refreshUnpaidProcessed?: boolean } = {},
   ) {
     let entry = await this.prisma.payrollEntry.findUnique({
       where: {
@@ -971,12 +970,15 @@ export class PayrollService {
       include: { deductions: true, allowances: true },
     });
 
+    if (entry && entry.status === PayrollStatus.PAID) {
+      return entry; // paid is frozen
+    }
     if (
       entry &&
-      (entry.status === PayrollStatus.PROCESSED ||
-        entry.status === PayrollStatus.PAID)
+      entry.status === PayrollStatus.PROCESSED &&
+      !options.refreshUnpaidProcessed
     ) {
-      return entry; // frozen — never overwritten or recomputed
+      return entry; // generate/OT leave PROCESSED locked; attendance recompute may refresh it
     }
 
     const markForced =
@@ -1066,9 +1068,15 @@ export class PayrollService {
       where: { id: entry.id },
       select: { status: true },
     });
+    if (statusNow?.status === PayrollStatus.PAID) {
+      return this.prisma.payrollEntry.findUniqueOrThrow({
+        where: { id: entry.id },
+        include: { deductions: true, allowances: true },
+      });
+    }
     if (
-      statusNow?.status === PayrollStatus.PROCESSED ||
-      statusNow?.status === PayrollStatus.PAID
+      statusNow?.status === PayrollStatus.PROCESSED &&
+      !options.refreshUnpaidProcessed
     ) {
       return this.prisma.payrollEntry.findUniqueOrThrow({
         where: { id: entry.id },
@@ -2651,18 +2659,17 @@ export class PayrollService {
         continue;
       }
 
-      if (
-        log.status === AttendanceStatus.LATE ||
-        log.status === AttendanceStatus.HALF_DAY
-      ) {
-        // Lateness (any occurrence) and lateness-driven HALF_DAY earn full
-        // scheduled-day credit. Phase 1C's late-occurrence cycle (Advice/
-        // Warning/Fine only at the 3rd/6th occurrence, Suspension at the
-        // 9th) is the sole monetary consequence for lateness — prorating
-        // basic pay by the actual late-arrival gap on every occurrence
-        // contradicted the explicit "no deduction on 1st/2nd/4th/5th/7th/
-        // 8th" policy.
+      if (log.status === AttendanceStatus.LATE) {
+        // Lateness (any occurrence) earns full scheduled-day credit.
+        // Phase 1C's late-occurrence cycle (Advice/Warning/Fine only at
+        // the 3rd/6th occurrence, Suspension at the 9th) is the sole
+        // extra monetary consequence — not a daily pro-rata of the gap.
         policyCreditMins += dayDutyMinutes;
+        continue;
+      }
+
+      if (log.status === AttendanceStatus.HALF_DAY) {
+        policyCreditMins += Math.round(dayDutyMinutes / 2);
         continue;
       }
 

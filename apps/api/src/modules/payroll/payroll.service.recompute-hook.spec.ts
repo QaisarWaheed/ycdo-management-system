@@ -420,19 +420,35 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     expect(db.payrollEntries.get(sepEntry.id)!.basicStipend).toBe(12345); // September untouched
   });
 
-  // 6. PROCESSED payroll remains financially unchanged.
-  it('6: a PROCESSED PayrollEntry is never mutated by the hook', async () => {
+  it('6: a PROCESSED (unpaid) PayrollEntry is still refreshed when attendance changes', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
-    const entry = seedPayrollEntry(db, sr.id, 8, 2026, PayrollStatus.PROCESSED, { basicStipend: 4489.97, totalDeductions: 500, netStipend: 3989.97 });
+    const entry = seedPayrollEntry(db, sr.id, 8, 2026, PayrollStatus.PROCESSED, { basicStipend: 0, totalDeductions: 0, netStipend: 0 });
     seedPresentDay(db, 10);
-    const before = { ...db.payrollEntries.get(entry.id)! };
     const service = makeService(db);
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
-    expect(db.payrollEntries.get(entry.id)).toEqual(before);
+    expect(db.payrollEntries.get(entry.id)!.basicStipend).toBe(800);
+    expect(db.payrollEntries.get(entry.id)!.status).toBe(PayrollStatus.PROCESSED);
+  });
+
+  it('6b: PRESENT -> HALF_DAY reduces unpaid basic', async () => {
+    const db = new FakeDb();
+    seedEmployee(db);
+    const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
+    seedPayrollEntry(db, sr.id, 8, 2026, PayrollStatus.PENDING);
+    seedPresentDay(db, 10);
+    const service = makeService(db);
+
+    await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(800);
+
+    db.attendanceLogs.find((l) => l.date.getTime() === augustDate(10).getTime())!.status =
+      AttendanceStatus.HALF_DAY;
+    await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(400);
   });
 
   // 7. PAID payroll remains financially unchanged.

@@ -65,10 +65,11 @@ import {
 } from './attendance-late.util';
 import {
   AUTO_UNMARKED_NOTE,
-  calendarDatesInMonth,
+  calendarDatesForAttendanceMonth,
   isPreJoinAttendanceDate,
   MONTH_CALENDAR_UNMARKED_NOTE,
   pakistanMonthDateRange,
+  pakistanVisibleAttendanceEnd,
   PRE_JOIN_UNMARKED_NOTE,
 } from './attendance-calendar.util';
 import {
@@ -1806,7 +1807,7 @@ export class AttendanceService {
     });
     if (!employee) return;
 
-    const dates = calendarDatesInMonth(year, month);
+    const dates = calendarDatesForAttendanceMonth(year, month);
     if (dates.length === 0) return;
 
     const existing = await this.prisma.attendanceLog.findMany({
@@ -1938,8 +1939,16 @@ export class AttendanceService {
     }
 
     if (query.month && query.year) {
-      const { start, end } = pakistanMonthDateRange(query.year, query.month);
-      where.date = { gte: start, lte: end };
+      const { start } = pakistanMonthDateRange(query.year, query.month);
+      const visibleEnd = pakistanVisibleAttendanceEnd(
+        query.year,
+        query.month,
+      );
+      if (!visibleEnd) {
+        where.date = { gte: start, lte: new Date(0) };
+      } else {
+        where.date = { gte: start, lte: visibleEnd };
+      }
     } else if (query.startDate && query.endDate) {
       where.date = {
         gte: this.toDateOnly(new Date(query.startDate)),
@@ -2558,15 +2567,17 @@ export class AttendanceService {
   async getEmployeeSummary(employeeId: string, month: number, year: number) {
     await this.ensureMonthLogsForEmployee(employeeId, month, year);
 
-    const { start, end } = pakistanMonthDateRange(year, month);
-
-    const logs = await this.prisma.attendanceLog.findMany({
-      where: {
-        employeeId,
-        type: AttendanceLogType.REGULAR,
-        date: { gte: start, lte: end },
-      },
-    });
+    const { start } = pakistanMonthDateRange(year, month);
+    const visibleEnd = pakistanVisibleAttendanceEnd(year, month);
+    const logs = visibleEnd
+      ? await this.prisma.attendanceLog.findMany({
+          where: {
+            employeeId,
+            type: AttendanceLogType.REGULAR,
+            date: { gte: start, lte: visibleEnd },
+          },
+        })
+      : [];
 
     const countByStatus = (status: AttendanceStatus) =>
       logs.filter((log) => log.status === status).length;

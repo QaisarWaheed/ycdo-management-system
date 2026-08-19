@@ -174,6 +174,13 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
     expect(b.workedMinutes).toBe(0);
   });
 
+  it('HALF_DAY earns half a scheduled-day of basic (PRESENT to HALF_DAY reduces pay)', async () => {
+    const logs = [buildLog(3, AttendanceStatus.HALF_DAY)];
+    const b = await computeBreakdown(logs);
+    expect(b.policyCreditMinutes).toBe(FULL_DAY_MINUTES / 2);
+    expect(b.hourlyBasicEarned).toBe(400); // 24800 / 31 * 0.5, via hours*rate
+  });
+
   // F. ON_LEAVE behavior unchanged
   it('F: ON_LEAVE still earns full scheduled-day policy credit (unchanged)', async () => {
     const logs = [buildLog(3, AttendanceStatus.ON_LEAVE)];

@@ -447,22 +447,20 @@ describe('PayrollService.recomputeMonthAll', () => {
     expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300); // 17 days * 8h * 112.5/h
   });
 
-  // E. PROCESSED employee skipped.
-  it('E: an employee whose only segment is PROCESSED is skipped entirely, never mutated', async () => {
+  it('E: an employee whose only segment is PROCESSED (unpaid) is still recomputed', async () => {
     const db = new FakeDb();
     seedEmployee(db, 'e1');
     const sr = seedStipend(db, 'e1', 24800, new Date(Date.UTC(2000, 0, 1)), null);
-    const entry = seedPayrollEntry(db, sr.id, PayrollStatus.PROCESSED, { basicStipend: 4489.97, netStipend: 4489.97 });
+    const entry = seedPayrollEntry(db, sr.id, PayrollStatus.PROCESSED, { basicStipend: 0, netStipend: 0 });
     seedFullMonthPresent(db, 'e1');
     const service = makeService(db);
 
-    const before = { ...db.payrollEntries.get(entry.id)! };
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM }, ACTING_USER);
 
-    expect(result.employeesSkipped).toBe(1);
-    expect(result.employeesProcessed).toBe(0);
-    expect(result.segmentsFrozen).toBe(1);
-    expect(db.payrollEntries.get(entry.id)).toEqual(before);
+    expect(result.employeesSkipped).toBe(0);
+    expect(result.employeesProcessed).toBe(1);
+    expect(db.payrollEntries.get(entry.id)!.basicStipend).toBe(24800);
+    expect(db.payrollEntries.get(entry.id)!.status).toBe(PayrollStatus.PROCESSED);
   });
 
   // F. PAID employee skipped.
@@ -481,26 +479,24 @@ describe('PayrollService.recomputeMonthAll', () => {
     expect(db.payrollEntries.get(entry.id)).toEqual(before);
   });
 
-  // G. Mixed frozen + PENDING employee only refreshes PENDING.
-  it('G: a mixed PROCESSED+PENDING employee only refreshes the PENDING segment, frozen segment reported separately', async () => {
+  it('G: a mixed PROCESSED+PENDING employee refreshes both unpaid segments', async () => {
     const db = new FakeDb();
     seedEmployee(db, 'e1');
     const oldSr = seedStipend(db, 'e1', 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
     const newSr = seedStipend(db, 'e1', 27900, AUG_15, null);
-    const oldEntry = seedPayrollEntry(db, oldSr.id, PayrollStatus.PROCESSED, { totalDeductions: 500, netStipend: 24300 });
+    const oldEntry = seedPayrollEntry(db, oldSr.id, PayrollStatus.PROCESSED, { basicStipend: 1, totalDeductions: 0, netStipend: 1 });
     const newEntry = seedPayrollEntry(db, newSr.id, PayrollStatus.PENDING);
     seedFullMonthPresent(db, 'e1');
     const service = makeService(db);
 
-    const frozenBefore = { ...db.payrollEntries.get(oldEntry.id)! };
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM }, ACTING_USER);
 
     expect(result.employeesProcessed).toBe(1);
     const employeeResult = result.results.find((r) => r.employeeId === 'e1')!;
-    expect(employeeResult.status).toBe('PARTIAL_RECOMPUTE');
-    expect(employeeResult.segments.find((s) => s.stipendRecordId === oldSr.id)?.outcome).toBe('FROZEN');
+    expect(employeeResult.status).toBe('RECOMPUTED');
+    expect(employeeResult.segments.find((s) => s.stipendRecordId === oldSr.id)?.outcome).toBe('RECOMPUTED');
     expect(employeeResult.segments.find((s) => s.stipendRecordId === newSr.id)?.outcome).toBe('RECOMPUTED');
-    expect(db.payrollEntries.get(oldEntry.id)).toEqual(frozenBefore); // untouched
+    expect(db.payrollEntries.get(oldEntry.id)!.basicStipend).toBe(11200); // 14 days * 8h * 100/h
     expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300); // 17 days * 8h * 112.5/h
   });
 
