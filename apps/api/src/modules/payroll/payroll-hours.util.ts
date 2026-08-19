@@ -20,8 +20,7 @@ export interface HourlyPayrollBreakdown {
    * Full scheduled-day credit for days where an explicit disciplinary
    * deduction (or its absence) is the sole intended monetary consequence —
    * LATE, ABSENT, UNINFORMED_ABSENT, unpaid
-   * REGULAR leave, and missing-checkout/24h-checkout-less days. HALF_DAY
-   * is credited at half a scheduled day instead. Kept
+   * REGULAR leave, HALF_DAY (half-day pay is a PayrollDeduction row), and missing-checkout/24h-checkout-less days. Kept
    * separate from workedMinutes (actual clocked time) and paidLeaveMinutes
    * (leave credit) so those two keep their literal meaning for display,
    * while still counting fully toward payableMinutes/hourlyBasicEarned.

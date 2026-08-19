@@ -276,7 +276,7 @@ describe('reverseAbsenceDeductionForDate', () => {
     expect(state.disciplineEvents).toHaveLength(0);
   });
 
-  it('Scenario H: PROCESSED payroll — deduction/totals untouched, DisciplineEvent still released, correction itself never blocked', async () => {
+  it('Scenario H: PROCESSED (unpaid) payroll — deduction is reversed and DisciplineEvent is released', async () => {
     const { tx, getState } = pendingScenario({ payrollStatus: 'PROCESSED' });
 
     const result = await reverseAbsenceDeductionForDate(
@@ -285,16 +285,14 @@ describe('reverseAbsenceDeductionForDate', () => {
       new Date('2026-08-18T00:00:00.000Z'),
     );
 
-    expect(result.deductionReversed).toBe(false);
-    expect(result.blockedByPayrollStatus).toBe(true);
+    expect(result.deductionReversed).toBe(true);
+    expect(result.blockedByPayrollStatus).toBe(false);
     expect(result.payrollStatus).toBe('PROCESSED');
-    expect(result.disciplineEventRemoved).toBe(true); // non-financial, still safe
+    expect(result.disciplineEventRemoved).toBe(true);
 
     const state = getState();
-    expect(state.deductions).toHaveLength(1); // untouched
-    expect(state.payrollEntry?.totalDeductions).toBe(5000); // untouched
-    expect(state.payrollEntry?.netStipend).toBe(25000); // untouched
-    expect(state.disciplineEvents).toHaveLength(0); // still released
+    expect(state.deductions).toHaveLength(0);
+    expect(state.disciplineEvents).toHaveLength(0);
   });
 
   it('Scenario I: PAID payroll behaves the same as PROCESSED', async () => {

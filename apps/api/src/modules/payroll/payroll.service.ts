@@ -2128,7 +2128,8 @@ export class PayrollService {
       .filter(
         (d) =>
           d.reason === DeductionType.UNINFORMED_ABSENCE ||
-          d.reason === DeductionType.UNPAID_LEAVE,
+          d.reason === DeductionType.UNPAID_LEAVE ||
+          d.reason === DeductionType.HALF_DAY,
       )
       .reduce((sum, d) => sum + Number(d.amount), 0);
 
@@ -2669,7 +2670,10 @@ export class PayrollService {
       }
 
       if (log.status === AttendanceStatus.HALF_DAY) {
-        policyCreditMins += Math.round(dayDutyMinutes / 2);
+        // Pay cut is the HALF_DAY PayrollDeduction (0.5 day), not a
+        // reduced policy-credit floor — otherwise the same half-day would
+        // be taken twice: once from basic and again on the deductions tab.
+        policyCreditMins += dayDutyMinutes;
         continue;
       }
 

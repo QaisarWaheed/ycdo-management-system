@@ -448,7 +448,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     db.attendanceLogs.find((l) => l.date.getTime() === augustDate(10).getTime())!.status =
       AttendanceStatus.HALF_DAY;
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
-    expect([...db.payrollEntries.values()][0].basicStipend).toBe(400);
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(800);
   });
 
   // 7. PAID payroll remains financially unchanged.

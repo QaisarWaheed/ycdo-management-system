@@ -729,7 +729,7 @@ describe('reconcileAttendanceFinancialConsequences', () => {
       expect(getState().deductions).toHaveLength(1); // untouched, still the original row
     });
 
-    it('PROCESSED payroll — reversal blocked, deduction untouched, DisciplineEvent still released', async () => {
+    it('PROCESSED payroll — unpaid, so the absence deduction is still reversed', async () => {
       const { tx, getState } = makeReconcileFakeTx({
         payrollEntry: pendingEntry('PROCESSED'),
         deductions: [uaDatedDeduction()],
@@ -751,9 +751,9 @@ describe('reconcileAttendanceFinancialConsequences', () => {
         after: snap(AttendanceStatus.PRESENT),
       });
 
-      expect(result.absenceReversal?.blockedByPayrollStatus).toBe(true);
-      expect(getState().deductions).toHaveLength(1);
-      expect(getState().payrollEntry?.totalDeductions).toBe(5000);
+      expect(result.absenceReversal?.blockedByPayrollStatus).toBe(false);
+      expect(result.absenceReversal?.deductionReversed).toBe(true);
+      expect(getState().deductions).toHaveLength(0);
       expect(getState().disciplineEvents).toHaveLength(0);
     });
 
@@ -940,6 +940,70 @@ describe('reconcileAttendanceFinancialConsequences', () => {
         date: DATE,
         before: snap(AttendanceStatus.PRESENT),
         after: snap(AttendanceStatus.ON_LEAVE),
+      });
+
+      expect(result.deductionApplied).toBe(false);
+      expect(getState().deductions).toHaveLength(0);
+    });
+
+    it('PRESENT -> HALF_DAY adds a 0.5-day deduction row', async () => {
+      const { tx, getState } = makeReconcileFakeTx({
+        payrollEntry: pendingEntry(),
+        deductions: [],
+      });
+
+      const result = await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: EMPLOYEE_ID,
+        date: DATE,
+        before: snap(AttendanceStatus.PRESENT),
+        after: snap(AttendanceStatus.HALF_DAY),
+      });
+
+      expect(result.deductionApplied).toBe(true);
+      const state = getState();
+      expect(state.deductions).toHaveLength(1);
+      expect(state.deductions[0].reason).toBe('HALF_DAY');
+      expect(state.deductions[0].description).toBe(
+        `Half day deduction (0.5 day stipend) — ${DATE_LABEL}`,
+      );
+      expect(state.payrollEntry?.totalDeductions).toBeGreaterThan(5000);
+    });
+
+    it('HALF_DAY -> PRESENT removes the half-day deduction', async () => {
+      const { tx, getState } = makeReconcileFakeTx({
+        payrollEntry: pendingEntry(),
+        deductions: [
+          {
+            id: 'ded-hd-1',
+            payrollEntryId: 'pe-1',
+            reason: 'HALF_DAY',
+            amount: 483.87,
+            description: `Half day deduction (0.5 day stipend) — ${DATE_LABEL}`,
+          },
+        ],
+      });
+
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: EMPLOYEE_ID,
+        date: DATE,
+        before: snap(AttendanceStatus.HALF_DAY),
+        after: snap(AttendanceStatus.PRESENT),
+      });
+
+      expect(getState().deductions).toHaveLength(0);
+    });
+
+    it('short-leave HALF_DAY does not create a half-day pay deduction', async () => {
+      const { tx, getState } = makeReconcileFakeTx({
+        payrollEntry: pendingEntry(),
+        deductions: [],
+      });
+
+      const result = await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: EMPLOYEE_ID,
+        date: DATE,
+        before: snap(AttendanceStatus.PRESENT),
+        after: snap(AttendanceStatus.HALF_DAY, { note: 'Short leave approved' }),
       });
 
       expect(result.deductionApplied).toBe(false);
@@ -1221,7 +1285,7 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
     expect(getState().deductions).toHaveLength(1);
   });
 
-  it('B. PRESENT -> ABSENT with PROCESSED payroll: no deduction, no totals mutation, blockedByPayrollStatus true', async () => {
+  it('B. PRESENT -> ABSENT with PROCESSED (unpaid) payroll: deduction is still applied', async () => {
     const { tx, getState } = makeReconcileFakeTx({
       payrollEntry: pendingEntry('PROCESSED'),
       deductions: [],
@@ -1234,13 +1298,12 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
       after: snap(AttendanceStatus.ABSENT),
     });
 
-    expect(result.deductionApplied).toBe(false);
-    expect(result.blockedByPayrollStatus).toBe(true);
+    expect(result.deductionApplied).toBe(true);
+    expect(result.blockedByPayrollStatus).toBe(false);
     expect(result.payrollStatus).toBe('PROCESSED');
     const state = getState();
-    expect(state.deductions).toHaveLength(0);
-    expect(state.payrollEntry?.totalDeductions).toBe(5000); // untouched
-    expect(state.payrollEntry?.netStipend).toBe(25000); // untouched
+    expect(state.deductions).toHaveLength(1);
+    expect(state.payrollEntry?.totalDeductions).toBeGreaterThan(5000);
   });
 
   it('C. PRESENT -> ABSENT with PAID payroll: same freeze behavior as PROCESSED', async () => {
@@ -1262,7 +1325,7 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
     expect(getState().deductions).toHaveLength(0);
   });
 
-  it('D. PRESENT -> UNINFORMED_ABSENT with PROCESSED payroll: no financial mutation, but DisciplineEvent tracking still runs', async () => {
+  it('D. PRESENT -> UNINFORMED_ABSENT with PROCESSED payroll: deduction + DisciplineEvent both apply', async () => {
     const { tx, getState } = makeReconcileFakeTx({
       payrollEntry: pendingEntry('PROCESSED'),
       deductions: [],
@@ -1276,14 +1339,12 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
       after: snap(AttendanceStatus.UNINFORMED_ABSENT),
     });
 
-    expect(result.deductionApplied).toBe(false);
-    expect(result.blockedByPayrollStatus).toBe(true);
+    expect(result.deductionApplied).toBe(true);
+    expect(result.blockedByPayrollStatus).toBe(false);
     expect(result.payrollStatus).toBe('PROCESSED');
-    // Non-financial discipline tracking is NOT gated by payroll status.
     expect(result.disciplineEventCreated).toBe(true);
     const state = getState();
-    expect(state.deductions).toHaveLength(0);
-    expect(state.payrollEntry?.totalDeductions).toBe(5000); // untouched
+    expect(state.deductions).toHaveLength(1);
     expect(state.disciplineEvents).toHaveLength(1);
     expect(state.disciplineEvents[0].category).toBe('UNINFORMED_ABSENT');
   });
@@ -1329,7 +1390,7 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
 
     expect(secondResult.disciplineEventCreated).toBe(false); // already claimed
     expect(getState().disciplineEvents).toHaveLength(1); // not duplicated
-    expect(getState().deductions).toHaveLength(0);
+    expect(getState().deductions).toHaveLength(1);
   });
 });
 

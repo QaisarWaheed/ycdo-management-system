@@ -664,6 +664,8 @@ export type DeductionType =
   | 'LATE_ARRIVAL'
   | 'UNINFORMED_ABSENCE'
   | 'DISCIPLINARY_FINE'
+  | 'UNPAID_LEAVE'
+  | 'HALF_DAY'
   | 'OTHER'
 
 export interface PayrollDeduction {
@@ -819,6 +821,7 @@ export const ATTENDANCE_STATUSES: AttendanceStatus[] = [
 export const DEDUCTION_TYPES: { value: DeductionType; label: string }[] = [
   { value: 'LATE_ARRIVAL', label: 'Late Arrival' },
   { value: 'UNINFORMED_ABSENCE', label: 'Uninformed Absence' },
+  { value: 'HALF_DAY', label: 'Half Day' },
   { value: 'DISCIPLINARY_FINE', label: 'Disciplinary Fine' },
   { value: 'OTHER', label: 'Other' },
 ]

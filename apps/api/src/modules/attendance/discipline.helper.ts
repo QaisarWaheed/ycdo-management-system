@@ -193,10 +193,31 @@ async function getBasicStipend(
   return Number(stipendRecord?.basicStipend ?? 0);
 }
 
+/** Attendance-driven deductions stay live until the month is marked Paid. */
+function isPayrollPaidFrozen(status: PayrollStatus): boolean {
+  return status === PayrollStatus.PAID;
+}
+
+function incidentDateLabel(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function halfDayDeductionDescription(date: Date): string {
+  return `Half day deduction (0.5 day stipend) — ${incidentDateLabel(date)}`;
+}
+
+export function isHalfDayPayDeductionEligible(row: {
+  status: AttendanceStatus;
+  note?: string | null;
+}): boolean {
+  if (row.status !== AttendanceStatus.HALF_DAY) return false;
+  return !(row.note ?? '').toLowerCase().includes('short leave');
+}
+
 export type AbsentApplicationResult = {
   deductionApplied: boolean;
   /** True when a deduction would otherwise have been created but the
-   * target PayrollEntry is PROCESSED/PAID — financial mutation was skipped
+   * target PayrollEntry is PAID — financial mutation was skipped
    * entirely. ABSENT has no non-financial discipline tracking to preserve
    * (no DisciplineEvent category), so this is the only side effect of this
    * function, unlike applyUninformedAbsentDeduction. */
@@ -209,9 +230,10 @@ export type AbsentApplicationResult = {
  * Financial deduction for a plain ABSENT day, gated on PayrollEntry.status
  * the same way every reversal function in this file already is — mirrors
  * the existing pattern in applyExtraLeaveRejectedDeduction, which this
- * function previously did not follow. On PROCESSED/PAID: no
+ * function previously did not follow. On PAID: no
  * PayrollDeduction is created, totalDeductions/netStipend are never
- * touched, blockedByPayrollStatus is reported.
+ * touched, blockedByPayrollStatus is reported. PROCESSED (unpaid) still
+ * receives the deduction so in-progress months stay in sync with attendance.
  */
 async function applyAbsentDeduction(
   tx: Prisma.TransactionClient,
@@ -242,7 +264,7 @@ async function applyAbsentDeduction(
   const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
   if (!payrollEntry) return noOp;
 
-  if (payrollEntry.status !== PayrollStatus.PENDING) {
+  if (isPayrollPaidFrozen(payrollEntry.status)) {
     return {
       ...noOp,
       blockedByPayrollStatus: true,
@@ -303,6 +325,145 @@ async function applyAbsentDeduction(
     blockedByPayrollStatus: false,
     deductionAmount,
     payrollStatus: payrollEntry.status,
+  };
+}
+
+async function applyHalfDayDeduction(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+): Promise<AbsentApplicationResult> {
+  const noOp: AbsentApplicationResult = {
+    deductionApplied: false,
+    blockedByPayrollStatus: false,
+    deductionAmount: null,
+    payrollStatus: null,
+  };
+
+  const basicStipend = await getBasicStipend(tx, employeeId, date);
+  if (basicStipend <= 0) return noOp;
+
+  const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
+  if (!payrollEntry) return noOp;
+
+  if (isPayrollPaidFrozen(payrollEntry.status)) {
+    return {
+      ...noOp,
+      blockedByPayrollStatus: true,
+      payrollStatus: payrollEntry.status,
+    };
+  }
+
+  const deductionAmount = dailyStipendRate(basicStipend, date) * 0.5;
+  const description = halfDayDeductionDescription(date);
+
+  const alreadyDeducted = await tx.payrollDeduction.findFirst({
+    where: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.HALF_DAY,
+      description,
+    },
+  });
+  if (alreadyDeducted) {
+    return { ...noOp, payrollStatus: payrollEntry.status };
+  }
+
+  await tx.payrollDeduction.create({
+    data: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.HALF_DAY,
+      amount: deductionAmount,
+      description,
+    },
+  });
+
+  await tx.payrollEntry.update({
+    where: { id: payrollEntry.id },
+    data: {
+      totalDeductions: { increment: deductionAmount },
+      netStipend: { decrement: deductionAmount },
+    },
+  });
+
+  return {
+    deductionApplied: true,
+    blockedByPayrollStatus: false,
+    deductionAmount,
+    payrollStatus: payrollEntry.status,
+  };
+}
+
+async function reverseHalfDayDeductionForDate(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+): Promise<AbsenceDeductionReversalResult> {
+  const dateLabel = incidentDateLabel(date);
+  const { month, year } = pakistanYearMonthFromDate(date);
+  const empty: AbsenceDeductionReversalResult = {
+    reversed: false,
+    deductionId: null,
+    deductionReversed: false,
+    deductionAmount: null,
+    blockedByPayrollStatus: false,
+    payrollStatus: null,
+    disciplineEventRemoved: false,
+  };
+
+  const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
+  if (!stipendRecord) return empty;
+
+  const payrollEntry = await tx.payrollEntry.findUnique({
+    where: {
+      stipendRecordId_month_year: {
+        stipendRecordId: stipendRecord.id,
+        month,
+        year,
+      },
+    },
+  });
+  if (!payrollEntry) return empty;
+
+  const deduction = await tx.payrollDeduction.findFirst({
+    where: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.HALF_DAY,
+      description: halfDayDeductionDescription(date),
+    },
+  });
+  if (!deduction) {
+    return { ...empty, payrollStatus: payrollEntry.status };
+  }
+
+  if (isPayrollPaidFrozen(payrollEntry.status)) {
+    return {
+      reversed: true,
+      deductionId: deduction.id,
+      deductionReversed: false,
+      deductionAmount: Number(deduction.amount),
+      blockedByPayrollStatus: true,
+      payrollStatus: payrollEntry.status,
+      disciplineEventRemoved: false,
+    };
+  }
+
+  await tx.payrollDeduction.delete({ where: { id: deduction.id } });
+  await tx.payrollEntry.update({
+    where: { id: payrollEntry.id },
+    data: {
+      totalDeductions: { decrement: deduction.amount },
+      netStipend: { increment: deduction.amount },
+    },
+  });
+
+  return {
+    reversed: true,
+    deductionId: deduction.id,
+    deductionReversed: true,
+    deductionAmount: Number(deduction.amount),
+    blockedByPayrollStatus: false,
+    payrollStatus: payrollEntry.status,
+    disciplineEventRemoved: false,
   };
 }
 
@@ -748,7 +909,7 @@ async function applyUninformedAbsentDeduction(
     };
   }
 
-  if (payrollEntry.status !== PayrollStatus.PENDING) {
+  if (isPayrollPaidFrozen(payrollEntry.status)) {
     return {
       ...tracking,
       deductionApplied: false,
@@ -1650,8 +1811,7 @@ export async function reverseAbsenceDeductionForDate(
 
       if (deduction) {
         deductionId = deduction.id;
-        if (payrollEntry.status !== PayrollStatus.PENDING) {
-          // Financial freeze — never mutate a PROCESSED/PAID entry.
+        if (isPayrollPaidFrozen(payrollEntry.status)) {
           blockedByPayrollStatus = true;
         } else {
           await tx.payrollDeduction.delete({ where: { id: deduction.id } });
@@ -2084,6 +2244,21 @@ export async function reconcileAttendanceFinancialConsequences(
   // beforeWasAbsentFamily && afterIsAbsentFamily && before.status ===
   // after.status: true no-op — the row didn't actually change category or
   // subtype (e.g. an unrelated field-only re-save).
+
+  const beforeWasHalfDay = before
+    ? isHalfDayPayDeductionEligible(before)
+    : false;
+  const afterIsHalfDay = isHalfDayPayDeductionEligible(after);
+
+  if (beforeWasHalfDay && !afterIsHalfDay) {
+    await reverseHalfDayDeductionForDate(tx, employeeId, date);
+  } else if (!beforeWasHalfDay && afterIsHalfDay) {
+    const applied = await applyHalfDayDeduction(tx, employeeId, date);
+    result.deductionApplied = result.deductionApplied || applied.deductionApplied;
+    result.blockedByPayrollStatus =
+      result.blockedByPayrollStatus || applied.blockedByPayrollStatus;
+    result.payrollStatus = applied.payrollStatus ?? result.payrollStatus;
+  }
 
   const beforeWasMissingCheckout = before
     ? isMissingCheckoutEligibleForDiscipline(before)

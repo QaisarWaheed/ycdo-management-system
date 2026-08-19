@@ -569,6 +569,7 @@ enum DeductionType {
   UNINFORMED_ABSENCE
   DISCIPLINARY_FINE
   UNPAID_LEAVE
+  HALF_DAY
   OTHER
   /// One-day deduction for a quota-exceeded Full Leave HR rejected. Distinct
   /// from UNPAID_LEAVE (which is matched by reason alone and recomputed/
