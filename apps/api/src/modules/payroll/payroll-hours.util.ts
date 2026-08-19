@@ -144,9 +144,9 @@ export function leaveCreditMinutes(
  * use the exact same date-key format as splitPaidUnpaidLeaveDays below —
  * a single source of truth, no format-drift risk between the two. */
 export function dateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 

@@ -64,6 +64,14 @@ import {
   toPakistanMinutesOfDay,
 } from './attendance-late.util';
 import {
+  AUTO_UNMARKED_NOTE,
+  calendarDatesInMonth,
+  isPreJoinAttendanceDate,
+  MONTH_CALENDAR_UNMARKED_NOTE,
+  pakistanMonthDateRange,
+  PRE_JOIN_UNMARKED_NOTE,
+} from './attendance-calendar.util';
+import {
   calculateLateMinutesFromCheckIn,
   getShiftAttendanceDate,
   isWithinAttendanceMarkingGrace,
@@ -89,7 +97,6 @@ import {
 } from '../../common/duty.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
-const AUTO_UNMARKED_NOTE = 'Auto-marked unmarked at shift start';
 const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
   UserRole.SUPER_ADMIN,
   UserRole.IT_ADMIN,
@@ -108,6 +115,17 @@ const ATTENDANCE_MARK_ONLY_ROLES: UserRole[] = [
 
 const ATTENDANCE_ALREADY_MARKED_MESSAGE =
   'Attendance already marked and cannot be modified. Please contact HR to update attendance.';
+
+const ACTIVE_LEAVE_STATUSES: LeaveStatus[] = [
+  LeaveStatus.PENDING,
+  LeaveStatus.BRANCH_APPROVED,
+  LeaveStatus.DEPT_APPROVED,
+  LeaveStatus.RELIEVER_PENDING,
+  LeaveStatus.RELIEVER_CONFIRMED,
+  LeaveStatus.HR_PENDING,
+  LeaveStatus.APPROVED,
+  LeaveStatus.PENDING_APPROVAL,
+];
 
 @Injectable()
 export class AttendanceService {
@@ -592,14 +610,12 @@ export class AttendanceService {
           },
         });
 
-        if (!twentyFourHour) {
-          await reconcileAttendanceFinancialConsequences(tx, {
-            employeeId: employee.id,
-            date: dateOnly,
-            before: anyExisting,
-            after: updated,
-          });
-        }
+        await reconcileAttendanceFinancialConsequences(tx, {
+          employeeId: employee.id,
+          date: dateOnly,
+          before: anyExisting,
+          after: updated,
+        });
 
         return updated;
       });
@@ -692,14 +708,24 @@ export class AttendanceService {
       status = AttendanceStatus.HALF_DAY;
     }
 
-    const log = await db.attendanceLog.update({
-      where: { id: openRegular.id },
-      data: {
-        checkOut: checkTime,
-        overtimeMinutes,
-        overtimePending: overtimeMinutes > 0 && !openRegular.overtimeApprovedAt,
-        status,
-      },
+    const log = await this.runInTx(db, async (tx) => {
+      const updated = await tx.attendanceLog.update({
+        where: { id: openRegular.id },
+        data: {
+          checkOut: checkTime,
+          overtimeMinutes,
+          overtimePending: overtimeMinutes > 0 && !openRegular.overtimeApprovedAt,
+          status,
+          sessionClosedAt: null,
+        },
+      });
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: employee.id,
+        date: openRegular.date,
+        before: openRegular,
+        after: updated,
+      });
+      return updated;
     });
 
     return { type: 'CHECKOUT' as const, log };
@@ -937,14 +963,6 @@ export class AttendanceService {
       if (is24HourShift(employee)) {
         // 24-hour staff are never late / half-day from check-in time.
         lateMinutes = 0;
-        if (
-          !dto.status ||
-          dto.status === AttendanceStatus.LATE ||
-          dto.status === AttendanceStatus.HALF_DAY ||
-          dto.status === AttendanceStatus.PRESENT
-        ) {
-          status = AttendanceStatus.PRESENT;
-        }
       } else {
         // existing's own snapshot (this exact date's duty) wins when this
         // is a re-mark of an already-existing row; current employee duty
@@ -971,6 +989,14 @@ export class AttendanceService {
 
         status = statusFromLateMinutes(lateMinutes);
       }
+    }
+
+    if (
+      is24HourShift(employee) &&
+      (status === AttendanceStatus.LATE || status === AttendanceStatus.HALF_DAY)
+    ) {
+      lateMinutes = 0;
+      status = AttendanceStatus.PRESENT;
     }
 
     const preDutyOvertime =
@@ -1426,6 +1452,51 @@ export class AttendanceService {
           // LeaveService.decideQuotaException.
           shortLeaveDecision = 'PENDING_APPROVAL';
         }
+      } else if (dto.status === AttendanceStatus.ON_LEAVE) {
+        const overlappingApproved = await tx.leaveRecord.findFirst({
+          where: {
+            employeeId: log.employeeId,
+            leaveType: { not: LeaveType.SHORT_LEAVE },
+            status: LeaveStatus.APPROVED,
+            startDate: { lte: log.date },
+            endDate: { gte: log.date },
+          },
+          select: { id: true },
+        });
+        if (!overlappingApproved) {
+          const overlappingPending = await tx.leaveRecord.findFirst({
+            where: {
+              employeeId: log.employeeId,
+              leaveType: { not: LeaveType.SHORT_LEAVE },
+              status: LeaveStatus.PENDING_APPROVAL,
+              startDate: { lte: log.date },
+              endDate: { gte: log.date },
+            },
+            select: { id: true },
+          });
+          if (overlappingPending) {
+            throw new ConflictException(
+              'This date already has a pending leave request. Approve or reject it before marking On Leave.',
+            );
+          }
+          const reason = dto.note?.trim();
+          await tx.leaveRecord.create({
+            data: {
+              employeeId: log.employeeId,
+              leaveType: LeaveType.REGULAR,
+              startDate: log.date,
+              endDate: log.date,
+              totalDays: 1,
+              reason:
+                reason && reason.length >= 3
+                  ? reason
+                  : 'Marked on leave from attendance',
+              status: LeaveStatus.APPROVED,
+              currentStage: null,
+              approvedBy: actingUser.id,
+            },
+          });
+        }
       }
 
       const result = await tx.attendanceLog.update({
@@ -1661,10 +1732,15 @@ export class AttendanceService {
         currentBranchId: true,
         dutyStartTime: true,
         dutyEndTime: true,
+        joiningDate: true,
       },
     });
 
     for (const employee of employees) {
+      if (isPreJoinAttendanceDate(date, employee.joiningDate)) {
+        continue;
+      }
+
       const onLeave = await this.prisma.leaveRecord.findFirst({
         where: {
           employeeId: employee.id,
@@ -1704,6 +1780,81 @@ export class AttendanceService {
         });
       }
     }
+  }
+
+  /**
+   * Materialize a REGULAR UNMARKED row for every calendar day in the month
+   * that does not already have a log (and is not covered by approved leave).
+   * Days before joiningDate are stored with PRE_JOIN_UNMARKED_NOTE so the
+   * uninformed-absent cron never fines them; they still pay zero basic
+   * (UNMARKED without punches, and they sit before stipend effectiveFrom).
+   */
+  private async ensureMonthLogsForEmployee(
+    employeeId: string,
+    month: number,
+    year: number,
+  ): Promise<void> {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        currentBranchId: true,
+        dutyStartTime: true,
+        dutyEndTime: true,
+        joiningDate: true,
+      },
+    });
+    if (!employee) return;
+
+    const dates = calendarDatesInMonth(year, month);
+    if (dates.length === 0) return;
+
+    const existing = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId,
+        type: AttendanceLogType.REGULAR,
+        date: { gte: dates[0], lte: dates[dates.length - 1] },
+      },
+      select: { date: true },
+    });
+    const existingKeys = new Set(existing.map((row) => row.date.getTime()));
+
+    const approvedLeave = await this.prisma.leaveRecord.findMany({
+      where: {
+        employeeId,
+        status: LeaveStatus.APPROVED,
+        startDate: { lte: dates[dates.length - 1] },
+        endDate: { gte: dates[0] },
+      },
+      select: { startDate: true, endDate: true },
+    });
+
+    const coveredByLeave = (date: Date) =>
+      approvedLeave.some(
+        (leave) => date >= leave.startDate && date <= leave.endDate,
+      );
+
+    const missing = dates.filter(
+      (date) => !existingKeys.has(date.getTime()) && !coveredByLeave(date),
+    );
+    if (missing.length === 0) return;
+
+    await this.prisma.attendanceLog.createMany({
+      data: missing.map((date) => ({
+        employeeId: employee.id,
+        branchId: employee.currentBranchId,
+        date,
+        type: AttendanceLogType.REGULAR,
+        status: AttendanceStatus.UNMARKED,
+        source: AttendanceSource.MANUAL,
+        note: isPreJoinAttendanceDate(date, employee.joiningDate)
+          ? PRE_JOIN_UNMARKED_NOTE
+          : MONTH_CALENDAR_UNMARKED_NOTE,
+        dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+        dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
+      })),
+      skipDuplicates: true,
+    });
   }
 
   async findAll(
@@ -1787,8 +1938,7 @@ export class AttendanceService {
     }
 
     if (query.month && query.year) {
-      const start = new Date(query.year, query.month - 1, 1);
-      const end = new Date(query.year, query.month, 0);
+      const { start, end } = pakistanMonthDateRange(query.year, query.month);
       where.date = { gte: start, lte: end };
     } else if (query.startDate && query.endDate) {
       where.date = {
@@ -1826,6 +1976,14 @@ export class AttendanceService {
           ? [...where.AND, searchFilter]
           : [where.AND, searchFilter]
         : [searchFilter];
+    }
+
+    if (query.employeeId && query.month && query.year) {
+      await this.ensureMonthLogsForEmployee(
+        query.employeeId,
+        query.month,
+        query.year,
+      );
     }
 
     const logs = await this.prisma.attendanceLog.findMany({
@@ -2065,7 +2223,7 @@ export class AttendanceService {
   }
 
   async relieverCheckIn(dto: RelieverCheckInDto) {
-    const dateOnly = this.toDateOnly(new Date(dto.date));
+    const dateOnly = toPakistanDateOnly(new Date(`${dto.date}T00:00:00+05:00`));
     const checkTime = dto.checkIn
       ? parseAttendanceDateTime(dto.checkIn)
       : new Date();
@@ -2119,7 +2277,7 @@ export class AttendanceService {
       );
     }
 
-    return this.prisma.relieverSession.create({
+    const session = await this.prisma.relieverSession.create({
       data: {
         employeeId: dto.employeeId,
         branchId: employee.currentBranchId,
@@ -2133,6 +2291,13 @@ export class AttendanceService {
         branch: { select: BRANCH_LABEL_SELECT },
       },
     });
+
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      dto.employeeId,
+      dateOnly,
+    );
+
+    return session;
   }
 
   async relieverCheckOut(dto: RelieverCheckOutDto) {
@@ -2177,6 +2342,11 @@ export class AttendanceService {
         branch: { select: BRANCH_LABEL_SELECT },
       },
     });
+
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      updated.employeeId,
+      updated.date,
+    );
 
     return updated;
   }
@@ -2321,7 +2491,7 @@ export class AttendanceService {
       totalMinutes: session.totalMinutes,
     };
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const result = await tx.relieverSession.update({
         where: { id: sessionId },
         data: {
@@ -2356,6 +2526,13 @@ export class AttendanceService {
 
       return result;
     });
+
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      result.employeeId,
+      result.date,
+    );
+
+    return result;
   }
 
   private async findRelieverAssignment(employeeId: string, dateOnly: Date) {
@@ -2379,12 +2556,14 @@ export class AttendanceService {
   }
 
   async getEmployeeSummary(employeeId: string, month: number, year: number) {
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 0);
+    await this.ensureMonthLogsForEmployee(employeeId, month, year);
+
+    const { start, end } = pakistanMonthDateRange(year, month);
 
     const logs = await this.prisma.attendanceLog.findMany({
       where: {
         employeeId,
+        type: AttendanceLogType.REGULAR,
         date: { gte: start, lte: end },
       },
     });
@@ -2865,9 +3044,7 @@ export class AttendanceService {
   }
 
   private toDateOnly(date: Date): Date {
-    const result = new Date(date);
-    result.setHours(0, 0, 0, 0);
-    return result;
+    return toPakistanDateOnly(date);
   }
 
   /** Pakistan calendar date one day before `dateOnly` (UTC date parts). */
@@ -2917,23 +3094,20 @@ export class AttendanceService {
    * Not for duplicate-CHECKIN detection — see findOpenRegularLogForDate and
    * findOpenRegularLogForAuto for that.
    *
-   * Excludes internally-closed sessions (Phase 4B) on both today's and
-   * yesterday's row: a checkout arriving after the missing-checkout process
-   * has already closed and disciplined a session must not silently reopen
-   * and complete it — see biometricRegularCheckout's caller, which then
-   * rejects with the existing "no open check-in found" error.
+   * Includes internally-closed missing-checkout sessions so a later biometric
+   * checkout can still complete the day and reverse that discipline.
    */
   private async findOpenRegularLog(employeeId: string, dateOnly: Date) {
     const todayOpen = await this.findOpenRegularLogForDate(
       employeeId,
       dateOnly,
-      true,
+      false,
     );
     if (todayOpen) return todayOpen;
     return this.findOpenRegularLogForDate(
       employeeId,
       this.pakistanYesterday(dateOnly),
-      true,
+      false,
     );
   }
 

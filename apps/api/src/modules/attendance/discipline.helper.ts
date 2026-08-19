@@ -11,9 +11,10 @@ import {
 } from '@prisma/client';
 import {
   dailyStipendRate,
-  stipendRecordToPackage,
 } from '../../common/stipend.util';
 import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
+import { is24HourShift } from './attendance-biometric.util';
+import { pakistanMonthWindowFromDate, pakistanYearMonthFromDate } from './attendance-calendar.util';
 import {
   parseTimeToMinutes,
   toPakistanMinutesOfDay,
@@ -239,6 +240,7 @@ async function applyAbsentDeduction(
   if (basicStipend <= 0) return noOp;
 
   const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
+  if (!payrollEntry) return noOp;
 
   if (payrollEntry.status !== PayrollStatus.PENDING) {
     return {
@@ -349,7 +351,11 @@ async function applyLateDiscipline(
 ): Promise<void> {
   const employee = await tx.employee.findUnique({
     where: { id: employeeId },
+    include: { shift: true },
   });
+  if (employee && is24HourShift(employee)) {
+    return;
+  }
   // Fine amount must use the rate that was EFFECTIVE ON `date`, not
   // today's rate — see getStipendRecordEffectiveOn.
   const stipendRecordForDate = await getStipendRecordEffectiveOn(
@@ -366,8 +372,7 @@ async function applyLateDiscipline(
   const dutyStartTime =
     dutyStartTimeSnapshot ?? employee?.dutyStartTime ?? null;
 
-  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-  const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(date);
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
 
@@ -513,7 +518,7 @@ async function applyLateDiscipline(
     // elsewhere; it simply skips the financial mutation. The FINE letter
     // below is still issued regardless (discipline tracking is not
     // coupled to financial mutation anywhere else in this file either).
-    if (payrollEntry.status === PayrollStatus.PENDING) {
+    if (payrollEntry?.status === PayrollStatus.PENDING) {
       const alreadyDeducted = await tx.payrollDeduction.findFirst({
         where: {
           payrollEntryId: payrollEntry.id,
@@ -595,8 +600,7 @@ async function applyUninformedAbsenceDisciplineTracking(
   employeeId: string,
   date: Date,
 ): Promise<UninformedAbsenceDisciplineTrackingResult> {
-  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-  const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(date);
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dayKey = dayStart.toISOString().slice(0, 10);
@@ -734,6 +738,15 @@ async function applyUninformedAbsentDeduction(
   }
 
   const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
+  if (!payrollEntry) {
+    return {
+      ...tracking,
+      deductionApplied: false,
+      blockedByPayrollStatus: false,
+      deductionAmount: null,
+      payrollStatus: null,
+    };
+  }
 
   if (payrollEntry.status !== PayrollStatus.PENDING) {
     return {
@@ -746,6 +759,25 @@ async function applyUninformedAbsentDeduction(
   }
 
   const deductionAmount = dailyStipendRate(basicStipend, date) * 2;
+  const uaDescription = `Uninformed absence deduction (2 days) — ${dayKey}`;
+  const absentDescription = `Absent without approved leave (2 days stipend) — ${dayKey}`;
+
+  const existingFamilyDeduction = await tx.payrollDeduction.findFirst({
+    where: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.UNINFORMED_ABSENCE,
+      OR: [{ description: uaDescription }, { description: absentDescription }],
+    },
+  });
+  if (existingFamilyDeduction) {
+    return {
+      ...tracking,
+      deductionApplied: false,
+      blockedByPayrollStatus: false,
+      deductionAmount: null,
+      payrollStatus: payrollEntry.status,
+    };
+  }
 
   await tx.payrollDeduction.create({
     data: {
@@ -755,7 +787,7 @@ async function applyUninformedAbsentDeduction(
       // Date suffix lets a later leave approval over this exact day find
       // and reverse this exact deduction (see reverseAbsenceDeductionForDate)
       // without risking matching a different day's identically-worded row.
-      description: `Uninformed absence deduction (2 days) — ${dayKey}`,
+      description: uaDescription,
     },
   });
 
@@ -791,8 +823,7 @@ async function getOrCreatePayrollEntry(
   employeeId: string,
   date: Date,
 ) {
-  const month = date.getMonth() + 1;
-  const year = date.getFullYear();
+  const { month, year } = pakistanYearMonthFromDate(date);
   const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
 
   if (!stipendRecord) {
@@ -801,43 +832,13 @@ async function getOrCreatePayrollEntry(
     );
   }
 
-  const existing = await tx.payrollEntry.findUnique({
+  return tx.payrollEntry.findUnique({
     where: {
       stipendRecordId_month_year: {
         stipendRecordId: stipendRecord.id,
         month,
         year,
       },
-    },
-  });
-
-  if (existing) {
-    return existing;
-  }
-
-  const pkg = stipendRecordToPackage(stipendRecord);
-  const fixedAllowances =
-    (pkg.allowances || 0) +
-    (pkg.reward || 0) +
-    (pkg.progressReward || 0) +
-    (pkg.fuelAllowance || 0);
-  const fixedDeductions =
-    (pkg.loanDeduction || 0) +
-    (pkg.advanceDeduction || 0) +
-    (pkg.fineDeduction || 0) +
-    (pkg.healthDeduction || 0);
-
-  return tx.payrollEntry.create({
-    data: {
-      stipendRecordId: stipendRecord.id,
-      month,
-      year,
-      // Placeholder until hourly recalculation runs for the pending entry.
-      basicStipend: pkg.basicStipend,
-      totalAllowances: fixedAllowances,
-      totalDeductions: fixedDeductions,
-      netStipend: pkg.lumpsumTotal,
-      status: 'PENDING',
     },
   });
 }
@@ -869,7 +870,7 @@ async function hasLetterForMonthlyOccurrence(
   lateCount: number,
   date: Date,
 ): Promise<boolean> {
-  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dateLabel = dayStart.toISOString().slice(0, 10);
@@ -990,8 +991,7 @@ export async function applyMissingCheckoutDiscipline(
 ): Promise<void> {
   const basicStipend = await getBasicStipend(tx, employeeId, date);
 
-  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-  const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(date);
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dayKey = dayStart.toISOString().slice(0, 10);
@@ -1096,7 +1096,7 @@ export async function applyMissingCheckoutDiscipline(
     // skips the financial mutation. The FINE letter below is still issued
     // regardless (discipline tracking is not coupled to financial
     // mutation anywhere else in this file either).
-    if (payrollEntry.status === PayrollStatus.PENDING) {
+    if (payrollEntry?.status === PayrollStatus.PENDING) {
       const alreadyDeducted = await tx.payrollDeduction.findFirst({
         where: {
           payrollEntryId: payrollEntry.id,
@@ -1160,7 +1160,7 @@ async function hasLetterForMonthlyMissingCheckoutOccurrence(
   missingCount: number,
   date: Date,
 ): Promise<boolean> {
-  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
   const existing = await tx.letter.findMany({
     where: {
       employeeId,
@@ -1170,11 +1170,17 @@ async function hasLetterForMonthlyMissingCheckoutOccurrence(
     select: { variables: true },
   });
 
+  const dateLabel = date.toISOString().slice(0, 10);
   return existing.some((letter) => {
     const vars = letter.variables as {
       monthlyMissingCheckoutOccurrence?: number;
+      incidentDate?: string;
+      reversedDueToShortLeave?: boolean;
     } | null;
-    return vars?.monthlyMissingCheckoutOccurrence === missingCount;
+    if (vars?.reversedDueToShortLeave) return false;
+    if (vars?.monthlyMissingCheckoutOccurrence !== missingCount) return false;
+    if (!vars.incidentDate) return true;
+    return vars.incidentDate === dateLabel;
   });
 }
 
@@ -1333,7 +1339,7 @@ export async function reverseLateDisciplineForDate(
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dateLabel = dayStart.toISOString().slice(0, 10);
-  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
 
   const noOpResult: LateDisciplineReversalResult = {
     reversed: false,
@@ -1370,7 +1376,23 @@ export async function reverseLateDisciplineForDate(
     return vars.incidentDate === dateLabel && !vars.reversedDueToShortLeave;
   });
 
-  if (!letter) return noOpResult; // no structured link to this exact date — nothing safely reversible, or already reversed
+  if (!letter) {
+    const deletedEvents = await tx.disciplineEvent.deleteMany({
+      where: {
+        employeeId,
+        category: DisciplineCategory.LATE,
+        incidentDate: dayStart,
+      },
+    });
+    if (deletedEvents.count > 0) {
+      return {
+        ...noOpResult,
+        reversed: true,
+        disciplineEventRemoved: true,
+      };
+    }
+    return noOpResult;
+  }
 
   const vars = letter.variables as {
     monthlyLateOccurrence?: number;
@@ -1383,8 +1405,7 @@ export async function reverseLateDisciplineForDate(
   let payrollStatus: string | null = null;
 
   if (letter.letterType === LetterType.FINE && occurrence != null) {
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
+    const { month, year } = pakistanYearMonthFromDate(date);
     // Reverse against the segment that was EFFECTIVE ON the incident date —
     // the same segment the original fine was (now correctly) applied to —
     // never the currently-active one, or a later salary revision would
@@ -1589,8 +1610,7 @@ export async function reverseAbsenceDeductionForDate(
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dateLabel = dayStart.toISOString().slice(0, 10);
-  const month = date.getMonth() + 1;
-  const year = date.getFullYear();
+  const { month, year } = pakistanYearMonthFromDate(date);
 
   let deductionId: string | null = null;
   let deductionReversed = false;
@@ -1728,7 +1748,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dateLabel = dayStart.toISOString().slice(0, 10);
-  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
 
   const noOpResult: MissingCheckoutReversalResult = {
     reversed: false,
@@ -1774,8 +1794,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
   let payrollStatus: string | null = null;
 
   if (letter.letterType === LetterType.FINE && occurrence != null) {
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
+    const { month, year } = pakistanYearMonthFromDate(date);
     // Reverse against the segment EFFECTIVE ON the incident date — the
     // same segment the original fine was applied to.
     const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
@@ -2111,6 +2130,9 @@ export async function applyExtraLeaveRejectedDeduction(
   const dateLabel = date.toISOString().slice(0, 10);
   const description = `Extra Full Leave rejected — 1-day deduction — ${dateLabel}`;
   const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
+  if (!payrollEntry) {
+    return { applied: false, reason: 'no payroll entry' };
+  }
 
   if (payrollEntry.status !== PayrollStatus.PENDING) {
     return { applied: false, reason: 'payroll entry is PROCESSED/PAID' };

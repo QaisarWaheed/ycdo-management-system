@@ -67,7 +67,17 @@ function makeSegmentFakeTx(seed: {
   approvedLeaveCoversDate?: boolean;
 }) {
   const stipendRecords = seed.stipendRecords;
-  const payrollEntries = seed.payrollEntries ?? [];
+  const payrollEntries =
+    seed.payrollEntries ??
+    stipendRecords.map((r, i) => ({
+      id: `pe-default-${i}`,
+      stipendRecordId: r.id,
+      month: 8,
+      year: 2026,
+      status: 'PENDING' as const,
+      totalDeductions: 0,
+      netStipend: r.basicStipend,
+    }));
   let deductions = seed.deductions ?? [];
   let disciplineEvents: FakeDisciplineEvent[] = [];
   const priorDates = seed.priorDates ?? [];
@@ -300,7 +310,7 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       lateMinutes: 30,
     });
 
-    const entries = getPayrollEntries();
+    const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
     expect(entries[0].stipendRecordId).toBe('sr-old');
     const dedns = getDeductions();
@@ -320,7 +330,7 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       lateMinutes: 30,
     });
 
-    const entries = getPayrollEntries();
+    const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
     expect(entries[0].stipendRecordId).toBe('sr-new');
     const dedns = getDeductions();
@@ -342,7 +352,7 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       incidentDate,
     );
 
-    const entries = getPayrollEntries();
+    const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
     expect(entries[0].stipendRecordId).toBe('sr-old');
     expect(entries[0].totalDeductions).toBeCloseTo((OLD_RATE_BASIC / 31) * 2, 5);
@@ -362,7 +372,7 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       dutyEndTime: '17:00',
     });
 
-    const entries = getPayrollEntries();
+    const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
     expect(entries[0].stipendRecordId).toBe('sr-old');
     expect(entries[0].totalDeductions).toBeCloseTo(OLD_RATE_BASIC / 31, 5);
@@ -377,7 +387,7 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
 
     await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.ABSENT, AUG_15);
 
-    const entries = getPayrollEntries();
+    const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
     expect(entries[0].stipendRecordId).toBe('sr-new');
     expect(entries[0].totalDeductions).toBeCloseTo((NEW_RATE_BASIC / 31) * 2, 5);
@@ -467,7 +477,9 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       AttendanceStatus.UNINFORMED_ABSENT,
       incidentDate,
     );
-    const afterFirst = getPayrollEntries()[0].totalDeductions;
+    const afterFirst = getPayrollEntries().find(
+      (e) => e.stipendRecordId === 'sr-old',
+    )!.totalDeductions;
     expect(getDeductions()).toHaveLength(1);
 
     await applyDisciplineRules(
@@ -480,7 +492,7 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     // DisciplineEvent's unique claim makes the second call a true no-op —
     // no second deduction row, totals unchanged.
     expect(getDeductions()).toHaveLength(1);
-    const entries = getPayrollEntries();
+    const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
     expect(entries[0].stipendRecordId).toBe('sr-old');
     expect(entries[0].totalDeductions).toBe(afterFirst);

@@ -141,6 +141,10 @@ function AssignAbsentRelieverDialog({
       })
       queryClient.invalidateQueries({ queryKey: ['attendance'] })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
+      queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-history'] })
       setRelieverId('')
       setSelectedReliever(undefined)
       setReason('Reliever assigned for absence')
@@ -600,6 +604,11 @@ function DailyLogTab({
         }}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['attendance'] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-history'] })
+          queryClient.invalidateQueries({ queryKey: ['leave'] })
+          queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
         }}
       />
 

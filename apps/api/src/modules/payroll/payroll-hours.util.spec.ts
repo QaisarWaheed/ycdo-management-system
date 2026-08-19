@@ -113,6 +113,26 @@ describe('payroll-hours.util', () => {
     expect(breakdown.netStipend).toBe(22000 + 5000 + 500 - 1000 - 1000);
   });
 
+  it('19 full-credit days in a 30-day month earn 19000 basic plus full allowances', () => {
+    const breakdown = buildHourlyPayrollBreakdown({
+      contractualBasicStipend: 30000,
+      dailyDutyHours: 8,
+      daysInMonth: 30,
+      workedMinutes: 0,
+      paidLeaveMinutes: 0,
+      policyCreditMinutes: 480 * 19,
+      fixedAllowances: 10000,
+      fixedPackageDeductions: 0,
+      disciplineDeductions: 0,
+      extraAllowances: 0,
+    });
+
+    expect(breakdown.hourlyRate).toBe(125);
+    expect(breakdown.payableHours).toBe(152);
+    expect(breakdown.hourlyBasicEarned).toBe(19000);
+    expect(breakdown.netStipend).toBe(29000);
+  });
+
   it('counts policyCreditMinutes toward payable hours alongside worked/leave minutes', () => {
     // e.g. a 1st-occurrence LATE day: no worked-minute proration, full
     // scheduled-day credit instead, with only the discipline cycle (not
@@ -137,7 +157,7 @@ describe('payroll-hours.util', () => {
   });
 
   it('splits paid vs unpaid leave for 3 allowed / 5 taken', () => {
-    const dates = [1, 2, 3, 4, 5].map((d) => new Date(2026, 5, d));
+    const dates = [1, 2, 3, 4, 5].map((d) => new Date(Date.UTC(2026, 5, d)));
     const split = splitPaidUnpaidLeaveDays({
       onLeaveDates: dates,
       monthlyAllowedLeaves: 3,
@@ -154,7 +174,7 @@ describe('payroll-hours.util', () => {
   });
 
   it('treats null monthlyAllowedLeaves as the default 2-paid-days-per-month policy', () => {
-    const dates = [1, 2, 3, 4, 5].map((d) => new Date(2026, 5, d));
+    const dates = [1, 2, 3, 4, 5].map((d) => new Date(Date.UTC(2026, 5, d)));
     const split = splitPaidUnpaidLeaveDays({
       onLeaveDates: dates,
       monthlyAllowedLeaves: null,

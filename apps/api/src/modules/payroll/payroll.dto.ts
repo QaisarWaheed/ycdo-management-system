@@ -1,6 +1,7 @@
 import { AllowanceType, DeductionType, PayrollStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  Equals,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -142,8 +143,7 @@ export class RecomputeMonthAllDto {
   /** Required, and must equal exactly 'RECOMPUTE_PENDING_PAYROLL', for any
    * request where dryRun is not true — see PayrollService.recomputeMonthAll. */
   @ValidateIf((o: RecomputeMonthAllDto) => o.dryRun !== true)
-  @IsString()
-  @IsNotEmpty()
+  @Equals('RECOMPUTE_PENDING_PAYROLL')
   confirm?: string;
 
   /** Unique-employee batch size (not PayrollEntry row count). Defaults to

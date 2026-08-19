@@ -499,12 +499,10 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
     expect(afterB.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
 
     const source = fs.readFileSync(path.join(__dirname, 'payroll.service.ts'), 'utf8');
+    expect(source).toContain('statusNow?.status === PayrollStatus.PROCESSED');
     const processedOrPaidGuard =
-      /\(\s*\w+\.status === PayrollStatus\.PROCESSED \|\|\s*\w+\.status === PayrollStatus\.PAID\s*\)\s*\)\s*\{\s*return \w+;/g;
+      /status === PayrollStatus\.PROCESSED \|\|[\s\S]{0,80}status === PayrollStatus\.PAID/g;
     const guardCount = (source.match(processedOrPaidGuard) ?? []).length;
-    // createOrGetEntry's own early return for the active segment, plus
-    // upsertPayrollEntryForStipendSegment's guard (shared by every other
-    // segment refresh path) — both must still be present.
     expect(guardCount).toBeGreaterThanOrEqual(2);
   });
 
@@ -537,5 +535,82 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
     const { breakdown } = await computeSegment(logs, { basicStipend: 24800, effectiveFrom: FAR_PAST, effectiveTo: AUG_15 });
     expect(breakdown.hourlyBasicEarned).not.toBe(wrongDenominatorResult);
     expect(breakdown.hourlyBasicEarned).toBe(11200); // correct, full-month-denominator result
+  });
+});
+
+describe('PayrollService.computeHourlyBreakdown — 19 present days and pre-join unmarked', () => {
+  function septemberDate(day: number): Date {
+    return new Date(Date.UTC(2026, 8, day, 0, 0, 0));
+  }
+
+  async function computeSeptember(
+    logs: FakeLog[],
+    employee: { joiningDate?: Date | null } = {},
+  ) {
+    const { service } = makeService(logs);
+    return (service as any).computeHourlyBreakdown('emp-1', 9, 2026, {
+      stipendRecord: {
+        basicStipend: 30000,
+        allowances: 10000,
+        effectiveFrom: FAR_PAST,
+        effectiveTo: null,
+      },
+      employee: { ...EMPLOYEE, ...employee },
+      existingDeductions: [],
+      existingAllowances: [],
+    });
+  }
+
+  it('19 PRESENT days in a 30-day month earn 19000 basic plus 10000 allowances', async () => {
+    const logs = Array.from({ length: 19 }, (_, i) => ({
+      date: septemberDate(i + 12),
+      checkIn: null,
+      checkOut: null,
+      status: AttendanceStatus.PRESENT,
+      note: null,
+      dutyStartTimeSnapshot: null,
+      dutyEndTimeSnapshot: null,
+    }));
+    const unmarked = Array.from({ length: 11 }, (_, i) => ({
+      date: septemberDate(i + 1),
+      checkIn: null,
+      checkOut: null,
+      status: AttendanceStatus.UNMARKED,
+      note: 'Unmarked — employee had not joined',
+      dutyStartTimeSnapshot: null,
+      dutyEndTimeSnapshot: null,
+    }));
+    const b = await computeSeptember([...unmarked, ...logs]);
+    expect(b.policyCreditMinutes).toBe(19 * FULL_DAY_MINUTES);
+    expect(b.hourlyBasicEarned).toBe(19000);
+    expect(b.fixedAllowances).toBe(10000);
+    expect(b.netStipend).toBe(29000);
+  });
+
+  it('does not credit PRESENT days before joiningDate', async () => {
+    const logs = [
+      {
+        date: septemberDate(10),
+        checkIn: null,
+        checkOut: null,
+        status: AttendanceStatus.PRESENT,
+        note: null,
+        dutyStartTimeSnapshot: null,
+        dutyEndTimeSnapshot: null,
+      },
+      {
+        date: septemberDate(14),
+        checkIn: null,
+        checkOut: null,
+        status: AttendanceStatus.PRESENT,
+        note: null,
+        dutyStartTimeSnapshot: null,
+        dutyEndTimeSnapshot: null,
+      },
+    ];
+    const b = await computeSeptember(logs, {
+      joiningDate: new Date(Date.UTC(2026, 8, 14)),
+    });
+    expect(b.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
   });
 });

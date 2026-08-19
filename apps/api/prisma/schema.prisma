@@ -219,7 +219,7 @@ model Employee {
   dutyStartTime          String?
   dutyEndTime            String?
   dutyTotalHours         Int?
-  /// Monthly paid leave allowance; null = unlimited paid leave (legacy).
+  /// Monthly paid leave allowance. Null/omitted uses the runtime default of 2 days (not unlimited).
   monthlyAllowedLeaves   Int?
   province               String?
   city                   String?

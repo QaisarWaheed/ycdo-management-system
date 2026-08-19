@@ -1569,19 +1569,20 @@ export function EmployeeProfilePage() {
           </div>
 
           {loadingSummary ? (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              {[...Array(6)].map((_, i) => (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
+              {[...Array(7)].map((_, i) => (
                 <Skeleton key={i} className="h-20" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
               {[
                 { label: 'Present', value: attendanceSummary?.present ?? 0 },
                 { label: 'Absent', value: attendanceSummary?.absent ?? 0 },
                 { label: 'Late', value: attendanceSummary?.late ?? 0 },
                 { label: 'Half Day', value: attendanceSummary?.halfDay ?? 0 },
                 { label: 'On Leave', value: attendanceSummary?.onLeave ?? 0 },
+                { label: 'Unmarked', value: attendanceSummary?.unmarked ?? 0 },
                 { label: 'Overtime Hrs', value: overtimeHours },
               ].map((item) => (
                 <Card key={item.label}>
@@ -2242,6 +2243,11 @@ export function EmployeeProfilePage() {
             queryKey: ['attendance-summary', id, month, year],
           })
           queryClient.invalidateQueries({ queryKey: ['working-hours', id] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-history', id] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+          queryClient.invalidateQueries({ queryKey: ['leave-balance', id] })
+          queryClient.invalidateQueries({ queryKey: ['leave', id] })
         }}
       />
 

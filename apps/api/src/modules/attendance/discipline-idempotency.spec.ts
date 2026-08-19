@@ -49,7 +49,7 @@ function asTx(tx: FakeTx): Prisma.TransactionClient {
 function makeFakeTx(priorLateDaysByCall: () => { date: Date }[]): FakeTx {
   const disciplineEventKeys = new Set<string>();
   const payrollDeductionDescriptions = new Set<string>();
-  let payrollEntryCreated = false;
+  let payrollEntryCreated = true;
 
   return {
     disciplineEvent: {

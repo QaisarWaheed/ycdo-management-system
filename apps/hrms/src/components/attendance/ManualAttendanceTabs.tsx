@@ -442,6 +442,9 @@ export function CheckInManualTab() {
       queryClient.invalidateQueries({ queryKey: ['active-shift-checkin'] })
       queryClient.invalidateQueries({ queryKey: ['attendance'] })
       queryClient.invalidateQueries({ queryKey: ['manual-checkout'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-history'] })
       setMarkingId(null)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -793,6 +796,9 @@ export function CheckOutManualTab() {
       toast({ title: 'Check-out marked successfully' })
       queryClient.invalidateQueries({ queryKey: ['manual-checkout'] })
       queryClient.invalidateQueries({ queryKey: ['attendance'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-history'] })
       setMarkingId(null)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -1060,6 +1066,10 @@ export function MarkLeaveManualTab() {
       })
       queryClient.invalidateQueries({ queryKey: ['attendance'] })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
+      queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-history'] })
       queryClient.invalidateQueries({ queryKey: ['active-shift-checkin'] })
       setMarkingId(null)
     },

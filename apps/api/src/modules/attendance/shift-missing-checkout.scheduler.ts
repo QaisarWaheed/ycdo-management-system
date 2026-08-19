@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { AttendanceLogType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PayrollService } from '../payroll/payroll.service';
 import { is24HourShift, isOvernightShift } from './attendance-biometric.util';
 import { applyMissingCheckoutDiscipline } from './discipline.helper';
 import { computeShiftEndDateTime, toPakistanDateOnly } from './shift-time.util';
@@ -89,7 +90,10 @@ export function evaluateMissingCheckoutEligibility(
 export class ShiftMissingCheckoutScheduler {
   private readonly logger = new Logger(ShiftMissingCheckoutScheduler.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private payrollService: PayrollService,
+  ) {}
 
   @Cron('*/5 * * * *')
   async flagMissingCheckouts() {
@@ -145,6 +149,11 @@ export class ShiftMissingCheckoutScheduler {
           data: { sessionClosedAt: now },
         });
       });
+
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        employee.id,
+        log.date,
+      );
 
       evaluated++;
     }

@@ -24,6 +24,8 @@ import { PayrollService } from '../payroll/payroll.service';
 import { enforceBranchScope } from '../../common/branch-scope.util';
 import { dutyWindowsOverlap, getDutyWindow } from '../../common/duty.util';
 import { is24HourShift } from '../attendance/attendance-biometric.util';
+import { toPakistanDateOnly } from '../attendance/attendance-late.util';
+import { pakistanYearMonthFromDate } from '../attendance/attendance-calendar.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import {
@@ -105,7 +107,8 @@ export class LeaveService {
 
     const seenMonths = new Set<string>();
     for (const date of dates) {
-      const key = `${date.getFullYear()}-${date.getMonth()}`;
+      const { year, month } = pakistanYearMonthFromDate(date);
+      const key = `${year}-${month}`;
       if (seenMonths.has(key)) continue;
       seenMonths.add(key);
       await this.payrollService.recomputePendingPayrollForAttendanceDate(
@@ -1098,7 +1101,10 @@ export class LeaveService {
 
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
-      include: { currentDepartment: { select: { name: true } } },
+      include: {
+        currentDepartment: { select: { name: true } },
+        shift: true,
+      },
     });
 
     if (!employee) {
@@ -1146,6 +1152,12 @@ export class LeaveService {
       startDate.getTime() !== endDate.getTime()
     ) {
       throw new BadRequestException('Short leave must be a single day');
+    }
+
+    if (dto.leaveType === LeaveType.SHORT_LEAVE && is24HourShift(employee)) {
+      throw new BadRequestException(
+        '24-hour staff are not eligible for Short Leave',
+      );
     }
 
     const overlapping = await this.prisma.leaveRecord.findFirst({
@@ -1969,6 +1981,8 @@ export class LeaveService {
           status: AttendanceStatus.ON_LEAVE,
           source: AttendanceSource.MANUAL,
           note: 'Approved leave',
+          dutyStartTimeSnapshot: leave.employee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: leave.employee.dutyEndTime ?? null,
         },
       });
 
@@ -2024,8 +2038,8 @@ export class LeaveService {
         leaveType: { not: LeaveType.SHORT_LEAVE },
         status: LeaveStatus.APPROVED,
         startDate: {
-          gte: new Date(year, 0, 1),
-          lte: new Date(year, 11, 31, 23, 59, 59, 999),
+          gte: new Date(Date.UTC(year, 0, 1)),
+          lte: new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999)),
         },
       },
       _sum: { totalDays: true },
@@ -2045,18 +2059,16 @@ export class LeaveService {
     const current = this.toDateOnly(startDate);
     const end = this.toDateOnly(endDate);
 
-    while (current <= end) {
+    while (current.getTime() <= end.getTime()) {
       dates.push(new Date(current));
-      current.setDate(current.getDate() + 1);
+      current.setUTCDate(current.getUTCDate() + 1);
     }
 
     return dates;
   }
 
   private toDateOnly(date: Date): Date {
-    const result = new Date(date);
-    result.setHours(0, 0, 0, 0);
-    return result;
+    return toPakistanDateOnly(date);
   }
 
   private formatDate(date: Date): string {

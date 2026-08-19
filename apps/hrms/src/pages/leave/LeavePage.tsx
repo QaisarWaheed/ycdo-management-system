@@ -248,6 +248,7 @@ function HRAssignRelieverDialog({
     onSuccess: () => {
       toast({ title: 'Reliever assigned successfully' })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
+      queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
       setRelieverId('')
       setSelectedReliever(undefined)
       onOpenChange(false)
@@ -562,7 +563,12 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
         role={approvalRole ?? 'SUPER_ADMIN'}
         open={!!approveLeave && !!approvalRole}
         onOpenChange={(open) => !open && setApproveLeave(null)}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['leave'] })}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['leave'] })
+          queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
+          queryClient.invalidateQueries({ queryKey: ['attendance'] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-history'] })
+        }}
       />
 
       <HRAssignRelieverDialog
@@ -575,7 +581,12 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
         leave={quotaExceptionLeave}
         open={!!quotaExceptionLeave}
         onOpenChange={(open) => !open && setQuotaExceptionLeave(null)}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['leave'] })}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['leave'] })
+          queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
+          queryClient.invalidateQueries({ queryKey: ['attendance'] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-history'] })
+        }}
       />
     </div>
   )
@@ -656,6 +667,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
           : 'Leave request submitted. HR will assign a reliever if needed.',
       })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
+      queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
       form.reset()
       setSelectedEmployeeId('')
       setRelieverId('')

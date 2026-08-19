@@ -9,8 +9,13 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollService } from '../payroll/payroll.service';
-import { applyDisciplineRules } from './discipline.helper';
-import { is24HourShiftRecord } from './attendance-biometric.util';
+import { applyDisciplineRules, reverseAbsenceDeductionForDate } from './discipline.helper';
+import { is24HourShift, is24HourShiftRecord } from './attendance-biometric.util';
+import {
+  AUTO_UNMARKED_NOTE,
+  isPreJoinAttendanceDate,
+  isUninformedUpgradeNote,
+} from './attendance-calendar.util';
 import {
   getShiftAttendanceDate,
   minutesSinceShiftStart,
@@ -19,7 +24,6 @@ import {
   toPakistanMinutesOfDay,
 } from './shift-time.util';
 
-const AUTO_UNMARKED_NOTE = 'Auto-marked unmarked at shift start';
 const AUTO_ABSENT_24H_NOTE = 'Auto-marked absent for 24-hour shift';
 
 @Injectable()
@@ -95,10 +99,6 @@ export class ShiftAbsentScheduler {
         status: { in: [AttendanceStatus.UNMARKED, AttendanceStatus.ABSENT] },
         checkIn: null,
         source: AttendanceSource.MANUAL,
-        OR: [
-          { note: AUTO_UNMARKED_NOTE },
-          { note: 'Auto-marked absent at shift start' },
-        ],
         NOT: { note: AUTO_ABSENT_24H_NOTE },
       },
       include: {
@@ -115,10 +115,16 @@ export class ShiftAbsentScheduler {
     for (const log of unmarkedLogs) {
       if (!log.employee.shift) continue;
 
+      if (!isUninformedUpgradeNote(log.note)) continue;
+
+      if (isPreJoinAttendanceDate(log.date, log.employee.joiningDate)) {
+        continue;
+      }
+
       const shift = log.employee.shift;
 
       // 24-hour staff stay ABSENT / never UNINFORMED_ABSENT
-      if (is24HourShiftRecord(shift)) {
+      if (is24HourShiftRecord(shift) || is24HourShift(log.employee)) {
         continue;
       }
 
@@ -219,6 +225,10 @@ export class ShiftAbsentScheduler {
     let marked = 0;
 
     for (const employee of employees) {
+      if (isPreJoinAttendanceDate(date, employee.joiningDate)) {
+        continue;
+      }
+
       const existing = await this.prisma.attendanceLog.findUnique({
         where: {
           employeeId_date_type: {
@@ -267,7 +277,7 @@ export class ShiftAbsentScheduler {
    * except 24-hour shift absents, which stay ABSENT.
    */
   private async normalizeLegacyAutoMarkedAbsent(): Promise<void> {
-    await this.prisma.attendanceLog.updateMany({
+    const rows = await this.prisma.attendanceLog.findMany({
       where: {
         status: AttendanceStatus.ABSENT,
         checkIn: null,
@@ -278,10 +288,24 @@ export class ShiftAbsentScheduler {
         ],
         NOT: { note: AUTO_ABSENT_24H_NOTE },
       },
-      data: {
-        status: AttendanceStatus.UNMARKED,
-        note: AUTO_UNMARKED_NOTE,
-      },
+      select: { id: true, employeeId: true, date: true },
     });
+
+    for (const row of rows) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.attendanceLog.update({
+          where: { id: row.id },
+          data: {
+            status: AttendanceStatus.UNMARKED,
+            note: AUTO_UNMARKED_NOTE,
+          },
+        });
+        await reverseAbsenceDeductionForDate(tx, row.employeeId, row.date);
+      });
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        row.employeeId,
+        row.date,
+      );
+    }
   }
 }

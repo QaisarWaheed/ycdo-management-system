@@ -79,7 +79,17 @@ function makeFreezeFakeTx(seed: {
   letters?: FakeLetter[];
 }) {
   const stipendRecords = seed.stipendRecords;
-  const payrollEntries = seed.payrollEntries ?? [];
+  const payrollEntries =
+    seed.payrollEntries ??
+    stipendRecords.map((r, i) => ({
+      id: `pe-default-${i}`,
+      stipendRecordId: r.id,
+      month: 8,
+      year: 2026,
+      status: 'PENDING' as const,
+      totalDeductions: 0,
+      netStipend: r.basicStipend,
+    }));
   let deductions = seed.deductions ?? [];
   let disciplineEvents: FakeDisciplineEvent[] = [];
   const priorLateDates = seed.priorLateDates ?? [];
@@ -496,7 +506,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
       lateMinutes: 30,
     });
 
-    const entries = getPayrollEntries();
+    const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
     expect(entries[0].stipendRecordId).toBe('sr-new'); // half-open: effectiveFrom inclusive
     expect(entries[0].totalDeductions).toBeCloseTo(NEW_RATE_BASIC / 31, 5);
