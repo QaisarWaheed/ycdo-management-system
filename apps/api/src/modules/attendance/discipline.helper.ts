@@ -14,7 +14,11 @@ import {
 } from '../../common/stipend.util';
 import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
 import { is24HourShift } from './attendance-biometric.util';
-import { pakistanMonthWindowFromDate, pakistanYearMonthFromDate } from './attendance-calendar.util';
+import {
+  pakistanMonthDateRange,
+  pakistanMonthWindowFromDate,
+  pakistanYearMonthFromDate,
+} from './attendance-calendar.util';
 import {
   parseTimeToMinutes,
   toPakistanMinutesOfDay,
@@ -533,16 +537,18 @@ async function applyLateDiscipline(
   const dutyStartTime =
     dutyStartTimeSnapshot ?? employee?.dutyStartTime ?? null;
 
-  const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(date);
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
 
-  // Count LATE and late-driven HALF_DAY days. Short-leave HALF_DAY is excluded.
-  // Include the current day even if the log has not been written yet.
+  // Count LATE and late-driven HALF_DAY days up to THIS incident date
+  // only — later days in the same month must not inflate today's
+  // occurrence (e.g. legacy backfill or bulk import that wrote the
+  // whole month before discipline ran).
   const priorLateDays = await tx.attendanceLog.findMany({
     where: {
       employeeId,
-      date: { gte: startOfMonth, lte: endOfMonth },
+      date: { gte: startOfMonth, lte: dayStart },
       OR: [
         { status: AttendanceStatus.LATE },
         {
@@ -2113,11 +2119,12 @@ export type ReconcileAttendanceFinancialConsequencesResult = {
  *            code-defined "un-suspend when reclassified below threshold"
  *            policy (see reverseAbsenceDeductionForDate's doc comment), so
  *            this deliberately does not invent one.
- *      (LATE application is intentionally NOT owned here — it must run
- *      BEFORE the attendance row is written, since it can upgrade the
- *      status being saved (LATE -> HALF_DAY at >60 minutes); callers keep
- *      calling applyDisciplineRules directly for that, pre-write, exactly
- *      as before this change.)
+ *      LATE entry (not eligible -> eligible, including `before: null`
+ *      creates): applyDisciplineRules as a post-write safety net when the
+ *      row is currently late-eligible. Idempotent via claimDisciplineEvent
+ *      — paths that already ran pre-write discipline are no-ops. Pre-write
+ *      dispatch is still preferred where status escalation (LATE -> HALF_DAY)
+ *      must happen before the write.
  *
  *  - CHECKOUT axis (missing-checkout vs not) — orthogonal to status, since a
  *    row can be simultaneously late AND missing its checkout:
@@ -2182,6 +2189,11 @@ export async function reconcileAttendanceFinancialConsequences(
       employeeId,
       date,
     );
+  } else if (afterIsLate) {
+    await applyDisciplineRules(tx, employeeId, after.status, date, {
+      lateMinutes: after.lateMinutes,
+      dutyStartTimeSnapshot: params.dutyStartTimeSnapshot ?? null,
+    });
   }
 
   if (beforeWasAbsentFamily && !afterIsAbsentFamily) {
@@ -2349,4 +2361,100 @@ export async function applyExtraLeaveRejectedDeduction(
   });
 
   return { applied: true };
+}
+
+export type RepairLateDisciplineResult = {
+  /** Days that had no LATE claim and were freshly disciplined. */
+  applied: number;
+  /** Days with a stale/wrong claim that were reversed and re-disciplined. */
+  repaired: number;
+  /** Days already correct, or left untouched (e.g. SUSPENSION). */
+  skipped: number;
+};
+
+/**
+ * Ensures every late-eligible REGULAR day in a Pakistan calendar month has
+ * the correct LATE discipline claim, letters, and (PENDING payroll) fines.
+ *
+ * Processes days in calendar order so occurrence numbers (3rd/6th fine,
+ * 9th suspension) match the live check-in path. Safe to call repeatedly:
+ * correct days no-op; missing days are filled; wrong claims (e.g. legacy
+ * bulk import that skipped discipline, or a bad one-off backfill) are
+ * reversed and re-applied.
+ *
+ * Only mutates payroll when the target month's entry is still PENDING —
+ * the same freeze every other discipline mutation respects.
+ */
+export async function repairLateDisciplineForPayrollMonth(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  month: number,
+  year: number,
+): Promise<RepairLateDisciplineResult> {
+  const { start, end } = pakistanMonthDateRange(year, month);
+
+  const logs = await tx.attendanceLog.findMany({
+    where: {
+      employeeId,
+      type: AttendanceLogType.REGULAR,
+      date: { gte: start, lte: end },
+    },
+    orderBy: { date: 'asc' },
+    select: {
+      date: true,
+      status: true,
+      lateMinutes: true,
+      note: true,
+      dutyStartTimeSnapshot: true,
+    },
+  });
+
+  const lateLogs = logs.filter((row) => isLateEligibleForDiscipline(row));
+  const result: RepairLateDisciplineResult = {
+    applied: 0,
+    repaired: 0,
+    skipped: 0,
+  };
+
+  for (let i = 0; i < lateLogs.length; i++) {
+    const log = lateLogs[i];
+    const expectedOccurrence = i + 1;
+    const dayStart = new Date(log.date);
+    dayStart.setUTCHours(0, 0, 0, 0);
+
+    const event = await tx.disciplineEvent.findFirst({
+      where: {
+        employeeId,
+        category: DisciplineCategory.LATE,
+        incidentDate: dayStart,
+      },
+    });
+
+    if (event?.occurrence === expectedOccurrence) {
+      result.skipped++;
+      continue;
+    }
+
+    if (event) {
+      const reversal = await reverseLateDisciplineForDate(
+        tx,
+        employeeId,
+        log.date,
+      );
+      if (reversal.letterType === LetterType.SUSPENSION) {
+        result.skipped++;
+        continue;
+      }
+      result.repaired++;
+    } else {
+      result.applied++;
+    }
+
+    await applyDisciplineRules(tx, employeeId, log.status, log.date, {
+      lateMinutes: log.lateMinutes,
+      dutyStartTimeSnapshot: log.dutyStartTimeSnapshot,
+    });
+  }
+
+  return result;
 }

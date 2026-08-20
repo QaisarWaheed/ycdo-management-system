@@ -43,6 +43,7 @@ import {
   parseAttendanceDateTime,
   toPakistanDateOnly,
 } from '../attendance/attendance-late.util';
+import { repairLateDisciplineForPayrollMonth } from '../attendance/discipline.helper';
 import {
   AddDeductionDto,
   AddAllowanceDto,
@@ -184,25 +185,12 @@ export class PayrollService {
       (existingActiveEntry.status === PayrollStatus.PROCESSED ||
         existingActiveEntry.status === PayrollStatus.PAID)
     ) {
-      const unpaidLeaveDatesForMonth = await this.computeMonthlyUnpaidLeaveDates(
+      await this.pruneStaleClosedSegmentPayrollEntries(
         dto.employeeId,
         dto.month,
         dto.year,
-        employee.monthlyAllowedLeaves,
+        overlappingStipendRecords,
       );
-      const otherSegments = overlappingStipendRecords.filter(
-        (r) => r.id !== activeStipendRecord.id,
-      );
-      for (const segment of otherSegments) {
-        await this.upsertPayrollEntryForStipendSegment(
-          segment,
-          dto,
-          employee,
-          undefined,
-          unpaidLeaveDatesForMonth,
-          segment.id === activeStipendRecord.id,
-        );
-      }
       return existingActiveEntry;
     }
 
@@ -249,30 +237,6 @@ export class PayrollService {
       true,
       segmentBackfillOptions,
     );
-
-    const otherSegments = overlappingStipendRecords.filter(
-      (r) => r.id !== activeStipendRecord.id,
-    );
-    for (const segment of otherSegments) {
-      // Never force-flag historical segments from THIS call — force-generate
-      // is a decision about the active segment this specific request is
-      // for; other segments keep whatever forcedNonActive value they
-      // already have (see upsertPayrollEntryForStipendSegment doc comment).
-      await this.upsertPayrollEntryForStipendSegment(
-        segment,
-        dto,
-        employee,
-        undefined,
-        unpaidLeaveDatesForMonth,
-        false,
-        {
-          ...segmentBackfillOptions,
-          backfillFromJoining:
-            segmentBackfillOptions.backfillFromJoining &&
-            segment.id === oldestStipendId,
-        },
-      );
-    }
 
     await this.pruneStaleClosedSegmentPayrollEntries(
       dto.employeeId,
@@ -407,6 +371,13 @@ export class PayrollService {
         entry: refreshedEntry,
       });
     }
+
+    await this.pruneStaleClosedSegmentPayrollEntries(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      overlappingStipendRecords,
+    );
 
     return results;
   }
@@ -1126,10 +1097,9 @@ export class PayrollService {
   }
 
   /**
-   * Removes duplicate/stale PENDING payroll rows:
-   * - closed packages created mid-month (late duplicate packages)
-   * - superseded active packages when HR created a new package without
-   *   closing the old one through salary increment
+   * One unpaid payroll slip per employee/month: the currently-active stipend.
+   * Closed or superseded packages in the same month are leftover increment
+   * rows and must not stay beside the current package.
    */
   private async pruneStaleClosedSegmentPayrollEntries(
     employeeId: string,
@@ -1162,11 +1132,7 @@ export class PayrollService {
 
     if (newestActive) {
       for (const segment of overlappingStipendRecords) {
-        if (
-          segment.effectiveTo != null &&
-          segment.effectiveFrom.getTime() >=
-            newestActive.effectiveFrom.getTime()
-        ) {
+        if (segment.id !== newestActive.id) {
           staleSegmentIds.add(segment.id);
         }
       }
@@ -1236,7 +1202,6 @@ export class PayrollService {
             (b.stipendRecord?.effectiveFrom?.getTime() ?? 0),
         );
       const newestActive = active[active.length - 1];
-      const newestActiveFrom = newestActive?.stipendRecord?.effectiveFrom;
 
       const kept = group.filter((e) => {
         const sr = e.stipendRecord;
@@ -1244,13 +1209,8 @@ export class PayrollService {
         if (sr.effectiveTo == null) {
           return !newestActive || e.id === newestActive.id;
         }
-        if (
-          newestActiveFrom &&
-          sr.effectiveFrom &&
-          sr.effectiveFrom.getTime() >= newestActiveFrom.getTime()
-        ) {
-          return false;
-        }
+        // A closed package next to an active one is the extra increment row.
+        if (newestActive) return false;
         return true;
       });
 
@@ -1518,6 +1478,25 @@ export class PayrollService {
       segmentStart,
       segmentEndExclusive,
     );
+
+    if (entry.status === PayrollStatus.PENDING) {
+      const repairStats = await this.prisma.$transaction(
+        (tx) =>
+          repairLateDisciplineForPayrollMonth(
+            tx,
+            dto.employeeId,
+            dto.month,
+            dto.year,
+          ),
+        { timeout: 120_000 },
+      );
+      if (repairStats.applied > 0 || repairStats.repaired > 0) {
+        this.logger.log(
+          `Late discipline repair ${dto.employeeId} ${dto.year}-${String(dto.month).padStart(2, '0')}: applied=${repairStats.applied} repaired=${repairStats.repaired} skipped=${repairStats.skipped}`,
+        );
+      }
+    }
+
     await this.syncAttendancePenaltyDeductions(
       entry.id,
       dto.employeeId,

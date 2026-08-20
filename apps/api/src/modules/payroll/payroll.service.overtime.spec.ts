@@ -125,11 +125,14 @@ function makeFakePrisma(db: FakeDb) {
         return hydrate(entry, include);
       },
       findMany: async ({ where, include }: any) => {
-        const ids: string[] = where.stipendRecordId.in;
-        return [...db.payrollEntries.values()]
-          .filter((e) => e.month === where.month && e.year === where.year)
-          .filter((e) => ids.includes(e.stipendRecordId))
-          .map((e) => hydrate(e, include));
+        let list = [...db.payrollEntries.values()];
+        if (where.month != null) list = list.filter((e) => e.month === where.month);
+        if (where.year != null) list = list.filter((e) => e.year === where.year);
+        if (where.status != null) list = list.filter((e) => e.status === where.status);
+        if (where.stipendRecordId?.in) {
+          list = list.filter((e) => where.stipendRecordId.in.includes(e.stipendRecordId));
+        }
+        return list.map((e) => hydrate(e, include));
       },
       create: async ({ data, include }: any) => {
         const entry: FakePayrollEntry = {
@@ -152,6 +155,12 @@ function makeFakePrisma(db: FakeDb) {
         Object.assign(entry, data);
         return hydrate(entry, include);
       },
+      delete: async ({ where }: any) => {
+        db.payrollEntries.delete(where.id);
+      },
+    },
+    stipendReceipt: {
+      deleteMany: async () => ({ count: 0 }),
     },
     payrollDeduction: {
       findFirst: async ({ where }: any) =>
@@ -161,6 +170,16 @@ function makeFakePrisma(db: FakeDb) {
           (d) => d.payrollEntryId === where.payrollEntryId && (!where.reason || d.reason === where.reason),
         ),
       deleteMany: async ({ where }: any) => {
+        if (where.payrollEntryId) {
+          let count = 0;
+          for (const [id, d] of db.deductions) {
+            if (d.payrollEntryId === where.payrollEntryId) {
+              db.deductions.delete(id);
+              count += 1;
+            }
+          }
+          return { count };
+        }
         const ids: string[] = where.id?.in ?? [];
         for (const id of ids) db.deductions.delete(id);
         return { count: ids.length };
@@ -189,6 +208,16 @@ function makeFakePrisma(db: FakeDb) {
           (a) => a.payrollEntryId === where.payrollEntryId && a.type === where.type,
         ),
       deleteMany: async ({ where }: any) => {
+        if (where.payrollEntryId) {
+          let count = 0;
+          for (const [id, a] of db.allowances) {
+            if (a.payrollEntryId === where.payrollEntryId) {
+              db.allowances.delete(id);
+              count += 1;
+            }
+          }
+          return { count };
+        }
         const ids: string[] = where.id?.in ?? [];
         for (const id of ids) db.allowances.delete(id);
         return { count: ids.length };
@@ -456,10 +485,10 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
 
   // M. applyOvertime writes each segment's overtime to its own PayrollEntry
   // row — never an arbitrary one.
-  it('M: applyOvertime writes each segment overtime to its own PayrollEntry row', async () => {
+  it('M: applyOvertime writes overtime onto the active PayrollEntry only', async () => {
     const db = new FakeDb();
     seedEmployee(db);
-    const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
+    seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
     const newSr = seedStipend(db, 27900, AUG_15, null);
     seedFullMonthPresent(db);
     seedOvertime(db, 10, 120);
@@ -468,11 +497,9 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
 
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
 
-    const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
+    expect(db.payrollEntries.size).toBe(1);
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    const oldOt = [...db.allowances.values()].find((a) => a.payrollEntryId === oldEntry.id && a.type === AllowanceType.OVERTIME);
     const newOt = [...db.allowances.values()].find((a) => a.payrollEntryId === newEntry.id && a.type === AllowanceType.OVERTIME);
-    expect(oldOt?.amount).toBe(200);
     expect(newOt?.amount).toBe(112.5);
   });
 
@@ -491,19 +518,15 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
 
     // First call creates both entries; freeze the old one afterward.
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
-    oldEntry.status = PayrollStatus.PROCESSED;
-    const frozenTotalAllowancesBefore = oldEntry.totalAllowances;
+    expect(
+      [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
+    ).toBeUndefined();
 
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
 
-    const oldEntryAfter = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
-    expect(oldEntryAfter.totalAllowances).toBe(frozenTotalAllowancesBefore); // untouched
-    expect([...db.allowances.values()].some((a) => a.payrollEntryId === oldEntryAfter.id && a.type === AllowanceType.OVERTIME)).toBe(false);
-
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
     const newOt = [...db.allowances.values()].find((a) => a.payrollEntryId === newEntry.id && a.type === AllowanceType.OVERTIME);
-    expect(newOt?.amount).toBe(112.5); // active segment still applies normally
+    expect(newOt?.amount).toBe(112.5);
   });
 
   // O. Re-applying overtime (e.g. after an attendance correction) replaces
@@ -527,14 +550,13 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
 
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
 
-    const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
-    const oldOtAllowances = [...db.allowances.values()].filter((a) => a.payrollEntryId === oldEntry.id && a.type === AllowanceType.OVERTIME);
-    expect(oldOtAllowances).toHaveLength(1); // replaced, not duplicated
-    expect(oldOtAllowances[0].amount).toBe(300); // 3h * 100/h
+    expect(db.payrollEntries.size).toBe(1);
+    const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
+    const newOtAllowances = [...db.allowances.values()].filter((a) => a.payrollEntryId === newEntry.id && a.type === AllowanceType.OVERTIME);
+    expect(newOtAllowances).toHaveLength(1);
 
     const log20 = db.attendanceLogs.find((l) => l.date.getTime() === augustDate(20).getTime())!;
-    expect(log20.overtimePending).toBe(false); // cleared by its own (new) segment's apply
-    expect(log10.overtimePending).toBe(false); // cleared by its own (old) segment's apply
+    expect(log20.overtimePending).toBe(false);
   });
 
   // P. Combined preview total equals the sum of segment totals across three
@@ -575,10 +597,11 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     const service = makeService(db);
 
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
+    expect(
+      [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
+    ).toBeUndefined();
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(oldEntry.basicStipend).toBe(11200); // 14 days * 8h * 100/h
-    expect(newEntry.basicStipend).toBe(15300); // 17 days * 8h * 112.5/h
+    expect(newEntry.basicStipend).toBe(15300);
   });
 
   // R. Regression: headcount/segment count remains correct after applying
@@ -596,6 +619,6 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
 
-    expect(db.payrollEntries.size).toBe(2); // exactly one per stipend segment, never duplicated
+    expect(db.payrollEntries.size).toBe(1);
   });
 });

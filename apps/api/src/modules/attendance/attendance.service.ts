@@ -389,6 +389,7 @@ export class AttendanceService {
           );
           const log = await this.reconcileUnmarkedCheckIn(
             db,
+            employee.id,
             employee,
             openRegularToday,
             twentyFourHour,
@@ -517,12 +518,14 @@ export class AttendanceService {
    * status. Should not occur via any current write path (every path that
    * sets checkIn also sets status in the same write) — this is a defensive
    * safety net for legacy/corrupted rows. Recomputes status from the row's
-   * own already-stored checkIn time; does not re-run discipline rules
-   * (deductions/letters), since this repairs a data-hygiene issue, it does
-   * not represent a new attendance event.
+   * own already-stored checkIn time and runs the same late-discipline +
+   * financial reconciliation as a normal biometric check-in, because the
+   * first time this row becomes LATE/HALF_DAY is still a genuine lateness
+   * event even though the punch timestamp was stored earlier.
    */
   private async reconcileUnmarkedCheckIn(
     db: PrismaService | Prisma.TransactionClient,
+    employeeId: string,
     employee: {
       dutyStartTime?: string | null;
       dutyEndTime?: string | null;
@@ -530,27 +533,65 @@ export class AttendanceService {
     },
     existing: {
       id: string;
+      date: Date;
       checkIn: Date | null;
-      status?: AttendanceStatus | null;
+      checkOut?: Date | null;
+      status: AttendanceStatus;
+      lateMinutes: number;
+      note?: string | null;
     },
     twentyFourHour: boolean,
     swapExempt = false,
   ) {
     const checkIn = existing.checkIn;
-    const lateMinutes =
+    if (!checkIn) {
+      throw new BadRequestException(
+        'Cannot reconcile unmarked check-in without a stored checkIn time',
+      );
+    }
+
+    let lateMinutes =
       twentyFourHour || swapExempt
         ? 0
         : computeBiometricLateMinutes(checkIn, employee);
-    const status =
+    let status =
       twentyFourHour || swapExempt
         ? existing.status === AttendanceStatus.SWAP_COVERED
           ? AttendanceStatus.SWAP_COVERED
           : AttendanceStatus.PRESENT
         : determineBiometricCheckInStatus(lateMinutes, employee, 0);
 
-    return db.attendanceLog.update({
-      where: { id: existing.id },
-      data: { status, lateMinutes },
+    return this.runInTx(db, async (tx) => {
+      if (!twentyFourHour && !swapExempt) {
+        const effectiveStatus = await applyDisciplineRules(
+          tx,
+          employeeId,
+          status,
+          existing.date,
+          {
+            lateMinutes,
+            dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+          },
+        );
+        if (effectiveStatus === AttendanceStatus.HALF_DAY) {
+          status = AttendanceStatus.HALF_DAY;
+        }
+      }
+
+      const updated = await tx.attendanceLog.update({
+        where: { id: existing.id },
+        data: { status, lateMinutes },
+      });
+
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId,
+        date: existing.date,
+        before: existing,
+        after: updated,
+        dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+      });
+
+      return updated;
     });
   }
 
@@ -604,6 +645,7 @@ export class AttendanceService {
           // not create a new check-in; it repaired an incomplete one.
           const log = await this.reconcileUnmarkedCheckIn(
             db,
+            employee.id,
             employee,
             anyExisting,
             twentyFourHour,
@@ -3325,63 +3367,91 @@ export class AttendanceService {
       where: { employeeId: dto.employeeId, date: dateOnly, type },
     });
 
-    let log;
-    if (existing) {
-      log = await this.prisma.attendanceLog.update({
-        where: { id: existing.id },
-        data: {
-          checkIn: dto.checkIn
-            ? parseAttendanceDateTime(dto.checkIn)
-            : existing.checkIn,
-          checkOut: dto.checkOut
-            ? parseAttendanceDateTime(dto.checkOut)
-            : existing.checkOut,
-          status: dto.status,
-          note: dto.note,
-          source: AttendanceSource.MANUAL,
-        },
-      });
-    } else {
-      const employee = await this.prisma.employee.findUnique({
-        where: { id: dto.employeeId },
-        select: { currentBranchId: true, dutyStartTime: true, dutyEndTime: true },
-      });
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+      select: {
+        currentBranchId: true,
+        dutyStartTime: true,
+        dutyEndTime: true,
+        shift: { select: { startTime: true, endTime: true } },
+      },
+    });
 
-      if (!employee) {
-        throw new NotFoundException(
-          `Employee with id ${dto.employeeId} not found`,
-        );
-      }
-
-      if (!employee.currentBranchId) {
-        throw new BadRequestException(
-          'Employee has no branch assignment for attendance import',
-        );
-      }
-
-      log = await this.prisma.attendanceLog.create({
-        data: {
-          employeeId: dto.employeeId,
-          branchId: employee.currentBranchId,
-          date: dateOnly,
-          type,
-          checkIn: dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : null,
-          checkOut: dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : null,
-          status: dto.status,
-          source: AttendanceSource.MANUAL,
-          note: dto.note,
-          dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
-          dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
-        },
-      });
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with id ${dto.employeeId} not found`,
+      );
     }
 
-    // Only REGULAR-type rows feed computeHourlyBreakdown's payableMinutes
-    // — an imported OVERTIME row is not payroll-relevant here (same
-    // distinction the biometric OT paths already make). No transaction
-    // wraps this method's writes, so this correctly fires after whichever
-    // branch above already committed its own write. See
-    // PayrollService.recomputePendingPayrollForAttendanceDate.
+    if (!employee.currentBranchId && !existing) {
+      throw new BadRequestException(
+        'Employee has no branch assignment for attendance import',
+      );
+    }
+
+    const checkIn = dto.checkIn
+      ? parseAttendanceDateTime(dto.checkIn)
+      : existing?.checkIn ?? null;
+    const checkOut = dto.checkOut
+      ? parseAttendanceDateTime(dto.checkOut)
+      : existing?.checkOut ?? null;
+    const lateMinutes =
+      checkIn && !is24HourShift(employee)
+        ? computeBiometricLateMinutes(checkIn, employee)
+        : existing?.lateMinutes ?? 0;
+
+    const log = await this.prisma.$transaction(async (tx) => {
+      const attendanceLog = existing
+        ? await tx.attendanceLog.update({
+            where: { id: existing.id },
+            data: {
+              checkIn,
+              checkOut,
+              status: dto.status,
+              lateMinutes,
+              note: dto.note,
+              source: AttendanceSource.MANUAL,
+            },
+          })
+        : await tx.attendanceLog.create({
+            data: {
+              employeeId: dto.employeeId,
+              branchId: employee.currentBranchId!,
+              date: dateOnly,
+              type,
+              checkIn,
+              checkOut,
+              status: dto.status,
+              lateMinutes,
+              source: AttendanceSource.MANUAL,
+              note: dto.note,
+              dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+              dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
+            },
+          });
+
+      if (type === AttendanceLogType.REGULAR) {
+        await reconcileAttendanceFinancialConsequences(tx, {
+          employeeId: dto.employeeId,
+          date: dateOnly,
+          before: existing,
+          after: attendanceLog,
+          dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'ATTENDANCE_IMPORTED',
+          entity: 'AttendanceLog',
+          entityId: attendanceLog.id,
+        },
+      });
+
+      return attendanceLog;
+    });
+
     if (type === AttendanceLogType.REGULAR) {
       await this.payrollService.recomputePendingPayrollForAttendanceDate(
         dto.employeeId,

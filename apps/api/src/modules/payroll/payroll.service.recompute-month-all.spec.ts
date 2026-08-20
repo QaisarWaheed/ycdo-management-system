@@ -143,6 +143,10 @@ function makeFakePrisma(db: FakeDb) {
         }
         if (where.month !== undefined) list = list.filter((e) => e.month === where.month);
         if (where.year !== undefined) list = list.filter((e) => e.year === where.year);
+        if (where.status) {
+          const allowed = where.status.in ?? [where.status];
+          list = list.filter((e) => allowed.includes(e.status));
+        }
         if (where.stipendRecordId?.in) {
           const ids: string[] = where.stipendRecordId.in;
           list = list.filter((e) => ids.includes(e.stipendRecordId));
@@ -174,6 +178,12 @@ function makeFakePrisma(db: FakeDb) {
         Object.assign(entry, data);
         return hydrate(entry, include);
       },
+      delete: async ({ where }: any) => {
+        db.payrollEntries.delete(where.id);
+      },
+    },
+    stipendReceipt: {
+      deleteMany: async () => ({ count: 0 }),
     },
     payrollDeduction: {
       findFirst: async ({ where }: any) =>
@@ -183,6 +193,16 @@ function makeFakePrisma(db: FakeDb) {
           (d) => d.payrollEntryId === where.payrollEntryId && (!where.reason || d.reason === where.reason),
         ),
       deleteMany: async ({ where }: any) => {
+        if (where.payrollEntryId) {
+          let count = 0;
+          for (const [id, d] of db.deductions) {
+            if (d.payrollEntryId === where.payrollEntryId) {
+              db.deductions.delete(id);
+              count += 1;
+            }
+          }
+          return { count };
+        }
         const ids: string[] = where.id?.in ?? [];
         for (const id of ids) db.deductions.delete(id);
         return { count: ids.length };
@@ -211,6 +231,16 @@ function makeFakePrisma(db: FakeDb) {
           (a) => a.payrollEntryId === where.payrollEntryId && a.type === where.type,
         ),
       deleteMany: async ({ where }: any) => {
+        if (where.payrollEntryId) {
+          let count = 0;
+          for (const [id, a] of db.allowances) {
+            if (a.payrollEntryId === where.payrollEntryId) {
+              db.allowances.delete(id);
+              count += 1;
+            }
+          }
+          return { count };
+        }
         const ids: string[] = where.id?.in ?? [];
         for (const id of ids) db.allowances.delete(id);
         return { count: ids.length };
@@ -431,7 +461,7 @@ describe('PayrollService.recomputeMonthAll', () => {
   });
 
   // D. Multi-segment PENDING employee recomputes once at employee level.
-  it('D: a multi-segment PENDING employee is entered once and both segments refresh', async () => {
+  it('D: a multi-segment PENDING employee keeps only the active payroll row', async () => {
     const db = new FakeDb();
     seedEmployee(db, 'e1');
     const oldSr = seedStipend(db, 'e1', 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -444,10 +474,9 @@ describe('PayrollService.recomputeMonthAll', () => {
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM }, ACTING_USER);
 
     expect(result.totalEmployeesInScope).toBe(1);
-    expect(result.employeesProcessed).toBe(1); // employee entered exactly once
-    expect(result.segmentsRecomputed).toBe(2); // both segments refreshed
-    expect(db.payrollEntries.get(oldEntry.id)!.basicStipend).toBe(11200); // 14 days * 8h * 100/h
-    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300); // 17 days * 8h * 112.5/h
+    expect(result.employeesProcessed).toBe(1);
+    expect(db.payrollEntries.get(oldEntry.id)).toBeUndefined();
+    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300);
   });
 
   it('E: an employee whose only segment is PROCESSED (unpaid) is still recomputed', async () => {
@@ -497,10 +526,8 @@ describe('PayrollService.recomputeMonthAll', () => {
     expect(result.employeesProcessed).toBe(1);
     const employeeResult = result.results.find((r) => r.employeeId === 'e1')!;
     expect(employeeResult.status).toBe('RECOMPUTED');
-    expect(employeeResult.segments.find((s) => s.stipendRecordId === oldSr.id)?.outcome).toBe('RECOMPUTED');
-    expect(employeeResult.segments.find((s) => s.stipendRecordId === newSr.id)?.outcome).toBe('RECOMPUTED');
-    expect(db.payrollEntries.get(oldEntry.id)!.basicStipend).toBe(11200); // 14 days * 8h * 100/h
-    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300); // 17 days * 8h * 112.5/h
+    expect(db.payrollEntries.get(oldEntry.id)?.status).toBe(PayrollStatus.PROCESSED);
+    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300);
   });
 
   // H. Employee with no existing PayrollEntry is never created.
