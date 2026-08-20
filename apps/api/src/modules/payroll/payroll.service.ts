@@ -34,7 +34,6 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import {
-  calendarDatesInMonth,
   isPreJoinAttendanceDate,
   pakistanMonthDateRange,
   pakistanYearMonthFromDate,
@@ -3295,8 +3294,8 @@ export class PayrollService {
       /** Payable attendance exists before the stipend package's
        * effectiveFrom (joining date set after work started). */
       backfillFromAttendance?: boolean;
-      /** When omitted, remaining days of the in-progress month are credited
-       * as if still payable (so mid-month generate does not zero 21–31). */
+      /** Pakistan business date for diagnostics/tests; basic pay is always
+       * derived from logged attendance only (no future-day credit). */
       asOf?: Date;
     },
   ): Promise<HourlyPayrollBreakdown> {
@@ -3501,43 +3500,6 @@ export class PayrollService {
           dayWin,
         );
         if (!anomalous) workedMins += minutes;
-      }
-    }
-
-    const asOf = toPakistanDateOnly(context.asOf ?? new Date());
-    const { monthStart } = this.pakistanMonthWindow(year, month);
-    if (asOf.getTime() >= monthStart.getTime()) {
-      const loggedTimes = new Set(logs.map((log) => log.date.getTime()));
-      const defaultWin = getDutyWindow({
-        dutyStartTime:
-          context.employee.dutyStartTime ?? context.employee.shift?.startTime,
-        dutyEndTime:
-          context.employee.dutyEndTime ?? context.employee.shift?.endTime,
-      });
-      const futureDayMinutes = Math.round(hoursFromDutyWindow(defaultWin) * 60);
-      for (const date of calendarDatesInMonth(year, month)) {
-        if (
-          !this.dateWithinSegment(
-            date,
-            segmentStart,
-            segmentEndExclusive,
-            monthEnd,
-          )
-        ) {
-          continue;
-        }
-        if (
-          this.skipPreJoinPayrollDay(
-            date,
-            context.employee.joiningDate,
-            context.backfillFromAttendance,
-          )
-        ) {
-          continue;
-        }
-        if (date.getTime() <= asOf.getTime()) continue;
-        if (loggedTimes.has(date.getTime())) continue;
-        policyCreditMins += futureDayMinutes;
       }
     }
 

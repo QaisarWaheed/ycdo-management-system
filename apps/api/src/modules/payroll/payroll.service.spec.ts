@@ -317,12 +317,11 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
     expect(b.netStipend).toBe(0);
   });
 
-  it('credits remaining days of an in-progress month that have no attendance log yet', async () => {
+  it('does not credit future days in an in-progress month without attendance logs', async () => {
     const logs = [buildLog(3, AttendanceStatus.PRESENT)];
     const b = await computeBreakdown(logs, {
       stipendRecord: { basicStipend: 24800 },
     });
-    // asOf is 1 Sep in computeBreakdown — August is closed, no future pad.
     expect(b.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
 
     const { service } = makeService(logs);
@@ -333,9 +332,8 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
       existingAllowances: [],
       asOf: new Date(Date.UTC(2026, 7, 14, 0, 0, 0)),
     });
-    // 1 logged day + 17 remaining (15–31 Aug)
-    expect(inProgress.policyCreditMinutes).toBe(18 * FULL_DAY_MINUTES);
-    expect(inProgress.hourlyBasicEarned).toBe(14400);
+    expect(inProgress.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
+    expect(inProgress.hourlyBasicEarned).toBe(800);
   });
 
   // F. ON_LEAVE behavior unchanged
@@ -408,14 +406,7 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
       }),
     );
     const b = await computeBreakdown(logs, { stipendRecord: { basicStipend: 35000 } });
-    // Full-month attendance earns the full contractual basic stipend, up to
-    // the pre-existing (unrelated to this fix) 2-decimal rounding of the
-    // hourly rate — replicate that exact rounding pipeline rather than raw
-    // division, since roundMoney(hourlyRate) * hours != basic / hours * hours.
-    const hourlyRate = computeHourlyRate(35000, 8, daysInAugust2026);
-    const expected = roundMoney(roundHoursFromMinutes(daysInAugust2026 * FULL_DAY_MINUTES) * hourlyRate);
-    expect(b.hourlyBasicEarned).toBe(expected);
-    expect(b.hourlyBasicEarned).toBeCloseTo(35000, 0);
+    expect(b.hourlyBasicEarned).toBe(35000);
   });
 
   // Reproduces one of the reported production symptoms directly: full
@@ -438,9 +429,9 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
     const expectedMinutes = 18 * FULL_DAY_MINUTES;
     expect(b.policyCreditMinutes).toBe(expectedMinutes);
     expect(b.workedMinutes).toBe(0);
-    const hourlyRate = computeHourlyRate(35000, 8, 31);
-    const expected = roundMoney(roundHoursFromMinutes(expectedMinutes) * hourlyRate);
-    expect(b.hourlyBasicEarned).toBe(expected);
+    expect(b.hourlyBasicEarned).toBe(
+      roundMoney((35000 * expectedMinutes) / (31 * FULL_DAY_MINUTES)),
+    );
     // Must be far above the previously-reported 4,489.97 collapse.
     expect(b.hourlyBasicEarned).toBeGreaterThan(20000);
   });

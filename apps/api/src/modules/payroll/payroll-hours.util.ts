@@ -274,7 +274,13 @@ export function buildHourlyPayrollBreakdown(input: {
   const payableMinutes =
     input.workedMinutes + input.paidLeaveMinutes + input.policyCreditMinutes;
   const payableHours = roundHoursFromMinutes(payableMinutes);
-  const hourlyBasicEarned = roundMoney(payableHours * hourlyRate);
+  const scheduledMinutes = input.daysInMonth * input.dailyDutyHours * 60;
+  const hourlyBasicEarned =
+    scheduledMinutes > 0
+      ? roundMoney(
+          (input.contractualBasicStipend * payableMinutes) / scheduledMinutes,
+        )
+      : 0;
   const netStipend = roundMoney(
     Math.max(
       0,

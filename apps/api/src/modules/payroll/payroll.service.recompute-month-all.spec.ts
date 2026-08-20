@@ -555,9 +555,7 @@ describe('PayrollService.recomputeMonthAll', () => {
     expect(result.failures[0].employeeId).toBe('e2');
     // e1 and e3 still processed despite e2's failure.
     expect(result.employeesProcessed).toBe(2);
-    // 20000/(8*31) rounds to 80.65/hr; 248h * 80.65 = 20001.2 (rounding
-    // pipeline, not a bug — see computeHourlyRate/roundMoney).
-    expect(db.payrollEntries.get(entry3.id)!.basicStipend).toBe(20001.2);
+    expect(db.payrollEntries.get(entry3.id)!.basicStipend).toBe(20000);
   });
 
   // J. Duplicate PayrollEntry rows are not created.
