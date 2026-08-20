@@ -312,7 +312,6 @@ const YCDO_LETTER_FOOTER = `
   <div>{{senderTitle}}</div>
   <div>{{orgLine}}</div>
 </div>
-<div class="computer-generated-notice">This is a computer generated letter and it does not require any signatures</div>
 `;
 
 /** Shown at the bottom of every issued letter (PDF + HTML preview). */
@@ -323,9 +322,9 @@ export const COMPUTER_GENERATED_NOTICE_HTML = `
 <div class="computer-generated-notice">${COMPUTER_GENERATED_NOTICE}</div>`;
 
 /**
- * Pins the disclaimer inside the first `.page` block so it occupies the
- * empty space at the bottom of page 1 instead of flowing onto a blank
- * second page after `.page { min-height: 250mm }`.
+ * Appends the disclaimer once, inside the first `.page` block (before its
+ * closing tag) when present. PDF generation hides this in-body copy and
+ * renders the same text via Puppeteer's footer instead.
  */
 export function appendComputerGeneratedNotice(htmlContent: string): string {
   if (htmlContent.includes('computer-generated-notice')) {

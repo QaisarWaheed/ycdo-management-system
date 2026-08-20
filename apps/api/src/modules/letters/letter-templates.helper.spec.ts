@@ -22,7 +22,7 @@ describe('buildLetterRef', () => {
 });
 
 describe('appendComputerGeneratedNotice', () => {
-  it('pins the notice inside the first page instead of after it', () => {
+  it('appends the notice inside the first page block', () => {
     const html = appendComputerGeneratedNotice(
       '<html><body><div class="page"><p>Hello</p></div></body></html>',
     );

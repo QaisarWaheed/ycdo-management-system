@@ -23,15 +23,9 @@ body {
 
 .ltr { direction: ltr; text-align: left; unicode-bidi: embed; }
 
-.page {
-  min-height: 245mm;
-  display: flex;
-  flex-direction: column;
-}
-
 .computer-generated-notice {
-  margin-top: auto;
-  padding-top: 10pt;
+  margin-top: 24pt;
+  padding-top: 8pt;
   border-top: 1px solid #ccc;
   text-align: center;
   font-size: 9.5pt;
@@ -41,6 +35,13 @@ body {
   line-height: 1.35;
   page-break-inside: avoid;
   break-inside: avoid;
+}
+
+@media print {
+  .page {
+    min-height: auto !important;
+    display: block !important;
+  }
 }
 
 /* ── Letterhead / English notification block (LTR) ── */
