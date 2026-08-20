@@ -200,9 +200,11 @@ export function buildLetterRef(
   shortOverride?: string | null,
 ): string {
   const short = shortOverride || getLetterTypeShort(letterType);
-  const first = letterNo.split('/')[0]?.replace(/\D/g, '') || '0';
-  const padded = first.slice(-3).padStart(3, '0');
-  return `HRMS/${short}/${padded}`;
+  const sequence = letterNo.split('/')[0]?.replace(/\D/g, '') || '';
+  if (!sequence || letterNo.startsWith('PREVIEW')) {
+    return letterNo;
+  }
+  return `HRMS/${short}/${sequence}`;
 }
 
 /** Split newline / bullet text into violation lines for WARNING templates. */
@@ -283,7 +285,7 @@ const YCDO_LETTER_HEADER = `
         <div class="loc">MULTAN, PAKISTAN</div>
       </div>
       <div class="letter-nos">
-        <div class="letter-no-line">Letter no: {{letterRef}}</div>
+        <div class="letter-no-line">Letter no: {{letterNo}}</div>
         <div class="letter-no-line">Dated: {{issueDate}}</div>
       </div>
     </div>
@@ -312,6 +314,36 @@ const YCDO_LETTER_FOOTER = `
 </div>
 `;
 
+/** Shown at the bottom of every issued letter (PDF + HTML preview). */
+export const COMPUTER_GENERATED_NOTICE =
+  'This is a computer generated letter and it does not require any signatures';
+
+export const COMPUTER_GENERATED_NOTICE_HTML = `
+<div class="computer-generated-notice" style="margin-top:28pt;padding-top:10pt;border-top:1px solid #ccc;text-align:center;font-size:10pt;font-family:'Segoe UI',Arial,sans-serif;direction:ltr;color:#444;">
+  ${COMPUTER_GENERATED_NOTICE}
+</div>`;
+
+/** Idempotent — safe to call from both HTML render and PDF generation paths. */
+export function appendComputerGeneratedNotice(htmlContent: string): string {
+  if (htmlContent.includes('computer-generated-notice')) {
+    return htmlContent;
+  }
+  const trimmed = htmlContent.trimEnd();
+  if (/<\/body>/i.test(trimmed)) {
+    return trimmed.replace(
+      /<\/body>/i,
+      `${COMPUTER_GENERATED_NOTICE_HTML}</body>`,
+    );
+  }
+  if (/<\/html>/i.test(trimmed)) {
+    return trimmed.replace(
+      /<\/html>/i,
+      `${COMPUTER_GENERATED_NOTICE_HTML}</html>`,
+    );
+  }
+  return `${trimmed}${COMPUTER_GENERATED_NOTICE_HTML}`;
+}
+
 let partialsRegistered = false;
 
 function ensurePartials() {
@@ -326,13 +358,15 @@ export function renderLetterHtml(
   variables: Record<string, unknown>,
 ): string {
   ensurePartials();
-  return renderHandlebarsTemplate(bodyHtml, {
-    letterStyles: URDU_LETTER_STYLES,
-    senderTitle: DEFAULT_SENDER_TITLE,
-    orgLine: DEFAULT_ORG_LINE,
-    letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || YCDO_LOGO_DATA_URI,
-    ...variables,
-  });
+  return appendComputerGeneratedNotice(
+    renderHandlebarsTemplate(bodyHtml, {
+      letterStyles: URDU_LETTER_STYLES,
+      senderTitle: DEFAULT_SENDER_TITLE,
+      orgLine: DEFAULT_ORG_LINE,
+      letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || YCDO_LOGO_DATA_URI,
+      ...variables,
+    }),
+  );
 }
 
 /** @deprecated Kept for type imports; prefer LetterRenderVariables. */

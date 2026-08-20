@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import puppeteer from 'puppeteer';
+import { appendComputerGeneratedNotice } from './letter-templates.helper';
 
 function resolveChromePath(): string | undefined {
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
@@ -37,6 +38,7 @@ function resolveChromePath(): string | undefined {
 }
 
 export async function generatePdf(htmlContent: string): Promise<Buffer> {
+  const html = appendComputerGeneratedNotice(htmlContent);
   const executablePath = resolveChromePath();
 
   const browser = await puppeteer.launch({
@@ -46,7 +48,7 @@ export async function generatePdf(htmlContent: string): Promise<Buffer> {
 
   try {
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'load', timeout: 20000 });
+    await page.setContent(html, { waitUntil: 'load', timeout: 20000 });
     // Allow webfonts (Urdu) a moment to paint when network is available.
     await page
       .evaluate(async () => {

@@ -39,6 +39,7 @@ import {
 import {
   DEFAULT_SENDER_TITLE,
   LETTER_TYPE_EN_HEADER,
+  appendComputerGeneratedNotice,
   buildLetterRef,
   defaultSubjectFor,
   parseAttendanceRows,
@@ -572,8 +573,6 @@ export class LettersService {
     const isEnglishLetterType = template.primaryLanguage === 'en';
 
     const variables: Record<string, unknown> = {
-      letterNo,
-      letterRef: buildLetterRef(letterType, letterNo, template.letterCode),
       issueDate:
         String(normalized.issueDate ?? '').trim() || formatIssueDatePkt(),
       senderTitle:
@@ -593,6 +592,8 @@ export class LettersService {
         ? this.formatDate(employee.joiningDate)
         : '',
       ...normalized,
+      letterNo,
+      letterRef: buildLetterRef(letterType, letterNo, template.letterCode),
       // Prefer HR-typed overrides (set after spread so they win over empties).
       // Urdu letter types get an auto-transliterated/translated fallback from
       // the (English) employee record; TRANSFER/SALARY_INCREMENT stay English.
@@ -764,7 +765,9 @@ export class LettersService {
       digitalAcceptance: false,
     };
 
-    const htmlContent = renderHandlebarsTemplate(template.bodyHtml, variables);
+    const htmlContent = appendComputerGeneratedNotice(
+      renderHandlebarsTemplate(template.bodyHtml, variables),
+    );
 
     return {
       htmlContent,
@@ -1002,18 +1005,19 @@ export class LettersService {
   async getPdf(letterId: string) {
     const letter = await this.findOne(letterId);
 
-    // Prefer existing file when present on disk / Cloudinary.
+    // Always rebuild from the stored letter number so download / WhatsApp
+    // attachments cannot serve a PDF that was generated without letterNo.
+    const repaired = await this.regeneratePdfForLetter(letter);
+    if (repaired) {
+      return repaired;
+    }
+
     if (letter.fileUrl) {
       try {
         return await this.loadExistingPdf(letter);
       } catch {
-        // Fall through to regenerate from stored template variables.
+        // Fall through to the same not-found message as a missing file.
       }
-    }
-
-    const repaired = await this.regeneratePdfForLetter(letter);
-    if (repaired) {
-      return repaired;
     }
 
     throw new NotFoundException(
@@ -1134,12 +1138,12 @@ export class LettersService {
         if (!merged.senderTitle) {
           merged.senderTitle = DEFAULT_SENDER_TITLE;
         }
-        if (!merged.letterRef) {
-          merged.letterRef = buildLetterRef(
-            letter.letterType,
-            String(letterNo),
-          );
-        }
+        merged.letterNo = String(letterNo);
+        merged.letterRef = buildLetterRef(
+          letter.letterType,
+          String(letterNo),
+          template.letterCode,
+        );
         const enHeader = LETTER_TYPE_EN_HEADER[letter.letterType];
         merged.enTitle = merged.enTitle ?? enHeader.title;
         merged.enPrescribed = merged.enPrescribed ?? enHeader.prescribed;

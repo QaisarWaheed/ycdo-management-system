@@ -1,7 +1,43 @@
 import {
+  appendComputerGeneratedNotice,
+  buildLetterRef,
+  COMPUTER_GENERATED_NOTICE,
   parseAttendanceRows,
   parseViolationLines,
 } from './letter-templates.helper';
+import { LetterType } from '@prisma/client';
+
+describe('buildLetterRef', () => {
+  it('keeps the full unique sequence instead of truncating to 3 digits', () => {
+    expect(buildLetterRef(LetterType.WARNING, '4191/YCDO/2026')).toBe(
+      'HRMS/WRN/4191',
+    );
+  });
+
+  it('returns preview placeholders as-is', () => {
+    expect(buildLetterRef(LetterType.WARNING, 'PREVIEW/YCDO/0000')).toBe(
+      'PREVIEW/YCDO/0000',
+    );
+  });
+});
+
+describe('appendComputerGeneratedNotice', () => {
+  it('appends notice before closing body tag', () => {
+    const html = appendComputerGeneratedNotice(
+      '<html><body><p>Hello</p></body></html>',
+    );
+    expect(html).toContain(COMPUTER_GENERATED_NOTICE);
+    expect(html.indexOf(COMPUTER_GENERATED_NOTICE)).toBeLessThan(
+      html.indexOf('</body>'),
+    );
+  });
+
+  it('does not duplicate when already present', () => {
+    const once = appendComputerGeneratedNotice('<html><body></body></html>');
+    const twice = appendComputerGeneratedNotice(once);
+    expect(twice.match(/computer-generated-notice/g)?.length).toBe(1);
+  });
+});
 
 describe('letter template parsers', () => {
   it('parses violation lines from newline text', () => {
