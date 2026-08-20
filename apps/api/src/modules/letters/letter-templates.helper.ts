@@ -312,6 +312,7 @@ const YCDO_LETTER_FOOTER = `
   <div>{{senderTitle}}</div>
   <div>{{orgLine}}</div>
 </div>
+<div class="computer-generated-notice">This is a computer generated letter and it does not require any signatures</div>
 `;
 
 /** Shown at the bottom of every issued letter (PDF + HTML preview). */

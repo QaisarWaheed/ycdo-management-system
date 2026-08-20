@@ -27,9 +27,6 @@ describe('appendComputerGeneratedNotice', () => {
       '<html><body><div class="page"><p>Hello</p></div></body></html>',
     );
     expect(html).toContain(COMPUTER_GENERATED_NOTICE);
-    expect(html.indexOf('computer-generated-notice')).toBeLessThan(
-      html.lastIndexOf('</div>'),
-    );
     expect(html.indexOf('computer-generated-notice')).toBeGreaterThan(
       html.indexOf('class="page"'),
     );

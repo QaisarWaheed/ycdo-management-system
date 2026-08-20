@@ -24,25 +24,21 @@ body {
 .ltr { direction: ltr; text-align: left; unicode-bidi: embed; }
 
 .page {
-  min-height: 250mm;
-  position: relative;
-  padding-bottom: 36pt;
+  min-height: 245mm;
+  display: flex;
+  flex-direction: column;
 }
 
 .computer-generated-notice {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  margin: 0;
-  padding-top: 8pt;
+  margin-top: auto;
+  padding-top: 10pt;
   border-top: 1px solid #ccc;
   text-align: center;
-  font-size: 9pt;
+  font-size: 9.5pt;
   font-family: 'Segoe UI', Arial, sans-serif;
   direction: ltr;
-  color: #444;
-  line-height: 1.3;
+  color: #333;
+  line-height: 1.35;
   page-break-inside: avoid;
   break-inside: avoid;
 }

@@ -1,7 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import puppeteer from 'puppeteer';
-import { appendComputerGeneratedNotice } from './letter-templates.helper';
+import {
+  COMPUTER_GENERATED_NOTICE,
+  appendComputerGeneratedNotice,
+} from './letter-templates.helper';
 
 function resolveChromePath(): string | undefined {
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
@@ -49,6 +52,12 @@ export async function generatePdf(htmlContent: string): Promise<Buffer> {
   try {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'load', timeout: 20000 });
+    await page.addStyleTag({
+      content: `
+        @page { margin: 0; }
+        .computer-generated-notice { display: none !important; }
+      `,
+    });
     // Allow webfonts (Urdu) a moment to paint when network is available.
     await page
       .evaluate(async () => {
@@ -61,11 +70,14 @@ export async function generatePdf(htmlContent: string): Promise<Buffer> {
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate: '<div></div>',
+      footerTemplate: `<div style="width:100%;font-size:10px;text-align:center;color:#333;font-family:Segoe UI,Arial,sans-serif;padding:0 16px 4px;">${COMPUTER_GENERATED_NOTICE}</div>`,
       margin: {
-        top: '0mm',
-        right: '0mm',
-        bottom: '0mm',
-        left: '0mm',
+        top: '12mm',
+        right: '12mm',
+        bottom: '16mm',
+        left: '12mm',
       },
     });
 
