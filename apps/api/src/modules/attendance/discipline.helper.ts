@@ -38,6 +38,13 @@ export type DisciplineOptions = {
    * EXISTING historical row (markManual, updateAttendance).
    */
   dutyStartTimeSnapshot?: string | null;
+  /**
+   * Payroll backfill / repair only: claim the LATE DisciplineEvent and
+   * apply cash fines, but do NOT issue Advice/Warning/Fine/Suspension
+   * letters (or auto-suspend). Live biometric/HR marking must leave this
+   * false so letters still fire when lateness happens in real time.
+   */
+  skipLetters?: boolean;
 };
 
 function isUniqueConstraintViolation(err: unknown): boolean {
@@ -97,6 +104,7 @@ export async function applyDisciplineRules(
 ): Promise<AttendanceStatus> {
   const lateMinutes = options.lateMinutes ?? 0;
   const dutyStartTimeSnapshot = options.dutyStartTimeSnapshot ?? null;
+  const skipLetters = options.skipLetters === true;
 
   // Late > 1 hour is recorded as HALF_DAY for attendance display only.
   // Pay is reduced naturally by unpaid hours; cash penalties apply only at
@@ -109,6 +117,7 @@ export async function applyDisciplineRules(
       date,
       lateMinutes,
       dutyStartTimeSnapshot,
+      skipLetters,
     );
     return AttendanceStatus.HALF_DAY;
   }
@@ -129,6 +138,7 @@ export async function applyDisciplineRules(
       date,
       lateMinutes,
       dutyStartTimeSnapshot,
+      skipLetters,
     );
     return status;
   }
@@ -145,6 +155,7 @@ export async function applyDisciplineRules(
       date,
       lateMinutes,
       dutyStartTimeSnapshot,
+      skipLetters,
     );
     return status;
   }
@@ -513,6 +524,7 @@ async function applyLateDiscipline(
   date: Date,
   todayLateMinutes: number,
   dutyStartTimeSnapshot: string | null = null,
+  skipLetters = false,
 ): Promise<void> {
   const employee = await tx.employee.findUnique({
     where: { id: employeeId },
@@ -591,33 +603,37 @@ async function applyLateDiscipline(
 
   if (positionInCycle === 1) {
     // 1st / 4th / 7th this month -> Advice, no deduction.
-    await issueLateLetterIfNotAlready(
-      tx,
-      employeeId,
-      LetterType.ADVICE,
-      lateCount,
-      date,
-      {
-        violations: `اس ماہ ${lateCount} مرتبہ لیٹ آمد۔ ${baseDetail} آئندہ وقت کی پابندی کی ہدایت کی جاتی ہے۔`,
-        incidentDate: dateLabel,
-      },
-    );
+    if (!skipLetters) {
+      await issueLateLetterIfNotAlready(
+        tx,
+        employeeId,
+        LetterType.ADVICE,
+        lateCount,
+        date,
+        {
+          violations: `اس ماہ ${lateCount} مرتبہ لیٹ آمد۔ ${baseDetail} آئندہ وقت کی پابندی کی ہدایت کی جاتی ہے۔`,
+          incidentDate: dateLabel,
+        },
+      );
+    }
     return;
   }
 
   if (positionInCycle === 2) {
     // 2nd / 5th / 8th this month -> Warning, no deduction.
-    await issueLateLetterIfNotAlready(
-      tx,
-      employeeId,
-      LetterType.WARNING,
-      lateCount,
-      date,
-      {
-        violations: `اس ماہ ${lateCount} مرتبہ لیٹ آمد (اس ماہ کی دوسری تنبیہ)۔ ${baseDetail}`,
-        incidentDate: dateLabel,
-      },
-    );
+    if (!skipLetters) {
+      await issueLateLetterIfNotAlready(
+        tx,
+        employeeId,
+        LetterType.WARNING,
+        lateCount,
+        date,
+        {
+          violations: `اس ماہ ${lateCount} مرتبہ لیٹ آمد (اس ماہ کی دوسری تنبیہ)۔ ${baseDetail}`,
+          incidentDate: dateLabel,
+        },
+      );
+    }
     return;
   }
 
@@ -628,6 +644,10 @@ async function applyLateDiscipline(
     // employee-status/login side effects together, so a replay that finds
     // this exact occurrence already handled changes nothing (does not
     // silently re-suspend an employee HR may have since reinstated).
+    // Payroll repair (skipLetters) claims the event only — never auto-
+    // suspends from a historical backfill.
+    if (skipLetters) return;
+
     const alreadyHandled = await hasLetterForMonthlyOccurrence(
       tx,
       employeeId,
@@ -715,22 +735,24 @@ async function applyLateDiscipline(
     }
   }
 
-  await issueLateLetterIfNotAlready(
-    tx,
-    employeeId,
-    LetterType.FINE,
-    lateCount,
-    date,
-    {
-      fineReason: `اس ماہ ${lateCount} مرتبہ لیٹ آمد کی بنا پر یک روزہ تنخواہ کی کٹوتی۔ ${baseDetail}`,
-      fineAmount: `Rs. ${deductionAmount.toFixed(2)}`,
-      deductionMonth: monthLabel,
-      // Structured date link (ADVICE/WARNING already carried this) — lets a
-      // later Short Leave correction on this exact date find and reverse
-      // this exact fine, see reverseLateDisciplineForDate below.
-      incidentDate: dateLabel,
-    },
-  );
+  if (!skipLetters) {
+    await issueLateLetterIfNotAlready(
+      tx,
+      employeeId,
+      LetterType.FINE,
+      lateCount,
+      date,
+      {
+        fineReason: `اس ماہ ${lateCount} مرتبہ لیٹ آمد کی بنا پر یک روزہ تنخواہ کی کٹوتی۔ ${baseDetail}`,
+        fineAmount: `Rs. ${deductionAmount.toFixed(2)}`,
+        deductionMonth: monthLabel,
+        // Structured date link (ADVICE/WARNING already carried this) — lets a
+        // later Short Leave correction on this exact date find and reverse
+        // this exact fine, see reverseLateDisciplineForDate below.
+        incidentDate: dateLabel,
+      },
+    );
+  }
 }
 
 export type UninformedAbsenceDisciplineTrackingResult = {
@@ -2118,10 +2140,13 @@ export type ReconcileAttendanceFinancialConsequencesResult = {
  *            policy (see reverseAbsenceDeductionForDate's doc comment), so
  *            this deliberately does not invent one.
  *      LATE entry (not eligible -> eligible, including `before: null`
- *      creates): applyDisciplineRules as a post-write safety net when the
- *      row is currently late-eligible. Idempotent via claimDisciplineEvent
- *      — paths that already ran pre-write discipline are no-ops. Pre-write
- *      dispatch is still preferred where status escalation (LATE -> HALF_DAY)
+ *      creates): applyDisciplineRules. Same transition shape as ABSENT_FAMILY
+ *      entry — already-LATE rows that only gain a checkout (or other
+ *      non-status edit) must NOT re-enter this branch; re-issuing letters /
+ *      PDF inside the attendance transaction was causing 500s on HR
+ *      checkout updates. Idempotent via claimDisciplineEvent when a path
+ *      still double-dispatches. Pre-write applyDisciplineRules remains
+ *      preferred in markManual/biometric where LATE -> HALF_DAY escalation
  *      must happen before the write.
  *
  *  - CHECKOUT axis (missing-checkout vs not) — orthogonal to status, since a
@@ -2187,7 +2212,9 @@ export async function reconcileAttendanceFinancialConsequences(
       employeeId,
       date,
     );
-  } else if (afterIsLate) {
+  } else if (!beforeWasLate && afterIsLate) {
+    // Entering LATE only — do not re-apply when the row was already late
+    // (e.g. HR adding checkOut on an existing LATE session).
     await applyDisciplineRules(tx, employeeId, after.status, date, {
       lateMinutes: after.lateMinutes,
       dutyStartTimeSnapshot: params.dutyStartTimeSnapshot ?? null,
@@ -2451,6 +2478,9 @@ export async function repairLateDisciplineForPayrollMonth(
     await applyDisciplineRules(tx, employeeId, log.status, log.date, {
       lateMinutes: log.lateMinutes,
       dutyStartTimeSnapshot: log.dutyStartTimeSnapshot,
+      // Payroll generate must repair fines/events without blasting a month
+      // of Advice/Warning/Fine letters all dated "today".
+      skipLetters: true,
     });
   }
 

@@ -1681,6 +1681,46 @@ describe('H. leave approval over LATE + missing-checkout on the same date', () =
   });
 });
 
+describe('LATE already-set + checkout only does not re-apply late discipline', () => {
+  it('LATE open session -> LATE with checkout: no new DisciplineEvent / letter', async () => {
+    const checkIn = new Date('2026-08-16T02:16:00.000Z');
+    const checkOut = new Date('2026-08-16T12:00:00.000Z');
+    const { tx, getState } = makeReconcileFakeTx({
+      payrollEntry: pendingEntry(),
+      deductions: [],
+      disciplineEvents: [
+        {
+          id: 'de-late-existing',
+          employeeId: EMPLOYEE_ID,
+          category: 'LATE',
+          incidentDate: DATE_LABEL,
+          occurrence: 1,
+        },
+      ],
+    });
+
+    await reconcileAttendanceFinancialConsequences(tx, {
+      employeeId: EMPLOYEE_ID,
+      date: DATE,
+      before: snap(AttendanceStatus.LATE, {
+        lateMinutes: 20,
+        checkIn,
+        checkOut: null,
+      }),
+      after: snap(AttendanceStatus.LATE, {
+        lateMinutes: 20,
+        checkIn,
+        checkOut,
+      }),
+    });
+
+    // Still only the pre-existing LATE event — checkout must not re-enter
+    // applyDisciplineRules (which previously 500'd HR checkout updates).
+    expect(getState().disciplineEvents).toHaveLength(1);
+    expect(tx.disciplineEvent.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('I. PROCESSED/PAID reversal behavior remains unchanged after the Bug A/B fix', () => {
   it('LATE + ABSENT_FAMILY + MISSING_CHECKOUT all stay frozen together on a PROCESSED payroll entry', async () => {
     const lateLetter: FakeLetter = {

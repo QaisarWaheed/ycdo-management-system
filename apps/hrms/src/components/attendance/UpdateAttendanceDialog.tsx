@@ -116,15 +116,25 @@ export function UpdateAttendanceDialog({
     mutationFn: () => {
       if (!log) throw new Error('No attendance record')
 
-      const payload: Record<string, unknown> = {
-        note: note || undefined,
-      }
+      const payload: Record<string, unknown> = {}
 
-      payload.checkIn = checkIn
-        ? combineDateAndTime(date, checkIn)
-        : null
-      payload.checkOut =
-        checkIn && checkOut ? combineDateAndTime(date, checkOut) : null
+      const originalCheckIn = log.checkIn ? toPakistanTime24(log.checkIn) : ''
+      const originalCheckOut = log.checkOut ? toPakistanTime24(log.checkOut) : ''
+      const originalNote = log.note ?? ''
+
+      // Only send fields that actually changed. Resending an unchanged checkIn
+      // on a LATE row re-triggered status/discipline paths and could 500 when
+      // HR was only adding a checkout.
+      if (checkIn !== originalCheckIn) {
+        payload.checkIn = checkIn ? combineDateAndTime(date, checkIn) : null
+      }
+      if (checkOut !== originalCheckOut) {
+        payload.checkOut =
+          checkIn && checkOut ? combineDateAndTime(date, checkOut) : null
+      }
+      if ((note || '') !== originalNote) {
+        payload.note = note || undefined
+      }
 
       if (statusOverride) {
         payload.status = status
@@ -132,7 +142,10 @@ export function UpdateAttendanceDialog({
       }
 
       if (canEditOvertime && overtimeMinutes !== '') {
-        payload.overtimeMinutes = Number(overtimeMinutes)
+        const originalOt = log.overtimeMinutes ?? 0
+        if (Number(overtimeMinutes) !== originalOt) {
+          payload.overtimeMinutes = Number(overtimeMinutes)
+        }
       }
 
       return attendanceApi.update(log.id, payload)
