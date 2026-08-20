@@ -68,7 +68,18 @@ const EMPLOYEE = {
 function makeService(logs: FakeLog[]) {
   const prisma = {
     attendanceLog: {
-      findMany: jest.fn().mockResolvedValue(logs),
+      findMany: jest.fn().mockImplementation((args?: { where?: { date?: { gte?: Date; lte?: Date; lt?: Date } } }) => {
+        const dateFilter = args?.where?.date;
+        if (!dateFilter) return Promise.resolve(logs);
+        return Promise.resolve(
+          logs.filter((l) => {
+            if (dateFilter.gte && l.date < dateFilter.gte) return false;
+            if (dateFilter.lte && l.date > dateFilter.lte) return false;
+            if (dateFilter.lt && !(l.date < dateFilter.lt)) return false;
+            return true;
+          }),
+        );
+      }),
     },
   };
   const service = new PayrollService(prisma as any, {} as any);
@@ -99,6 +110,7 @@ async function computeBreakdown(
     employee: EMPLOYEE,
     existingDeductions: opts.existingDeductions ?? [],
     existingAllowances: opts.existingAllowances ?? [],
+    asOf: new Date(Date.UTC(2026, 8, 1)),
   });
 }
 
@@ -179,6 +191,76 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
     const b = await computeBreakdown(logs);
     expect(b.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
     expect(b.hourlyBasicEarned).toBe(800);
+  });
+
+  it('UNMARKED still earns a full scheduled-day of basic; the 1-day cut is a PayrollDeduction', async () => {
+    const logs = [buildLog(3, AttendanceStatus.UNMARKED)];
+    const b = await computeBreakdown(logs);
+    expect(b.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
+    expect(b.hourlyBasicEarned).toBe(800);
+  });
+
+  it('oldest stipend created after joining still pays days before effectiveFrom', async () => {
+    const logs = [buildLog(3, AttendanceStatus.PRESENT)];
+    const { service } = makeService(logs);
+    const withoutBackfill = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
+      stipendRecord: {
+        basicStipend: 24800,
+        effectiveFrom: new Date(Date.UTC(2026, 7, 17)),
+        effectiveTo: null,
+      },
+      employee: { ...EMPLOYEE, joiningDate: new Date(Date.UTC(2022, 11, 7)) },
+      existingDeductions: [],
+      existingAllowances: [],
+      asOf: new Date(Date.UTC(2026, 8, 1)),
+      backfillFromJoining: false,
+    });
+    expect(withoutBackfill.policyCreditMinutes).toBe(0);
+
+    const withBackfill = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
+      stipendRecord: {
+        basicStipend: 24800,
+        effectiveFrom: new Date(Date.UTC(2026, 7, 17)),
+        effectiveTo: null,
+      },
+      employee: { ...EMPLOYEE, joiningDate: new Date(Date.UTC(2022, 11, 7)) },
+      existingDeductions: [],
+      existingAllowances: [],
+      asOf: new Date(Date.UTC(2026, 8, 1)),
+      backfillFromJoining: true,
+    });
+    expect(withBackfill.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
+    expect(withBackfill.hourlyBasicEarned).toBe(800);
+  });
+
+  it('never stores a negative net stipend', async () => {
+    const logs = [buildLog(3, AttendanceStatus.PRESENT)];
+    const b = await computeBreakdown(logs, {
+      existingDeductions: [{ amount: 5000 }],
+    });
+    expect(b.hourlyBasicEarned).toBe(800);
+    expect(b.netStipend).toBe(0);
+  });
+
+  it('credits remaining days of an in-progress month that have no attendance log yet', async () => {
+    const logs = [buildLog(3, AttendanceStatus.PRESENT)];
+    const b = await computeBreakdown(logs, {
+      stipendRecord: { basicStipend: 24800 },
+    });
+    // asOf is 1 Sep in computeBreakdown — August is closed, no future pad.
+    expect(b.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
+
+    const { service } = makeService(logs);
+    const inProgress = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
+      stipendRecord: { basicStipend: 24800, effectiveFrom: FAR_PAST, effectiveTo: null },
+      employee: EMPLOYEE,
+      existingDeductions: [],
+      existingAllowances: [],
+      asOf: new Date(Date.UTC(2026, 7, 14, 0, 0, 0)),
+    });
+    // 1 logged day + 17 remaining (15–31 Aug)
+    expect(inProgress.policyCreditMinutes).toBe(18 * FULL_DAY_MINUTES);
+    expect(inProgress.hourlyBasicEarned).toBe(14400);
   });
 
   // F. ON_LEAVE behavior unchanged
@@ -342,6 +424,7 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
       employee: EMPLOYEE,
       existingDeductions: [],
       existingAllowances: [],
+      asOf: new Date(Date.UTC(2026, 8, 1)),
     });
     return { breakdown, findMany };
   }
@@ -565,6 +648,7 @@ describe('PayrollService.computeHourlyBreakdown — 19 present days and pre-join
       employee: { ...EMPLOYEE, ...employee },
       existingDeductions: [],
       existingAllowances: [],
+      asOf: new Date(Date.UTC(2026, 9, 1)),
     });
   }
 
@@ -587,7 +671,9 @@ describe('PayrollService.computeHourlyBreakdown — 19 present days and pre-join
       dutyStartTimeSnapshot: null,
       dutyEndTimeSnapshot: null,
     }));
-    const b = await computeSeptember([...unmarked, ...logs]);
+    const b = await computeSeptember([...unmarked, ...logs], {
+      joiningDate: new Date(Date.UTC(2026, 8, 12)),
+    });
     expect(b.policyCreditMinutes).toBe(19 * FULL_DAY_MINUTES);
     expect(b.hourlyBasicEarned).toBe(19000);
     expect(b.fixedAllowances).toBe(10000);

@@ -166,6 +166,68 @@ export class RecomputeMonthAllDto {
   offset?: number;
 }
 
+export class ResetUnpaidPayrollDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsNotEmpty()
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  @IsNotEmpty()
+  year: number;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  /** When true, clears unpaid payroll in every month, not only month/year. */
+  @IsOptional()
+  @IsBoolean()
+  allUnpaidMonths?: boolean;
+
+  @Equals('RESET_UNPAID_PAYROLL')
+  confirm: 'RESET_UNPAID_PAYROLL';
+}
+
+export class RebuildPayrollDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsNotEmpty()
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  @IsNotEmpty()
+  year: number;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @Equals('REBUILD_PAYROLL')
+  confirm: 'REBUILD_PAYROLL';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
+}
+
 export class UpdatePayrollStatusDto {
   @IsEnum(PayrollStatus)
   @IsNotEmpty()

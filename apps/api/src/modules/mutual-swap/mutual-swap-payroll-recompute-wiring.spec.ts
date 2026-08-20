@@ -1,5 +1,9 @@
 import { MutualSwapService } from './mutual-swap.service';
 
+jest.mock('../attendance/discipline.helper', () => ({
+  reconcileAttendanceFinancialConsequences: jest.fn().mockResolvedValue({}),
+}));
+
 /**
  * Wiring-proof tests for the PERMANENT-behavior requirement, reliever/
  * swap flows: createSwap writes SWAP_COVERED for the covered employee

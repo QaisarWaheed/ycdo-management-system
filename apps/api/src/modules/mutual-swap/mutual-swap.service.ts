@@ -9,6 +9,7 @@ import {
   parseAttendanceDateTime,
   toPakistanDateOnly,
 } from '../attendance/attendance-late.util';
+import { reconcileAttendanceFinancialConsequences } from '../attendance/discipline.helper';
 import { CreateMutualSwapDto } from './mutual-swap.dto';
 
 /** Normalize "09:00:00" / "09:00" → "09:00" for exact string match. */
@@ -142,6 +143,13 @@ export class MutualSwapService {
           type: 'REGULAR',
         },
       });
+      const coveredBefore = await tx.attendanceLog.findFirst({
+        where: {
+          employeeId: dto.coveredEmployeeId,
+          date: dateOnly,
+          type: 'REGULAR',
+        },
+      });
 
       if (coveringLog) {
         await tx.attendanceLog.update({
@@ -149,6 +157,10 @@ export class MutualSwapService {
           data: {
             overtimeMinutes,
             overtimePending: true,
+            lateMinutes: 0,
+            ...(coveringLog.status === 'LATE' || coveringLog.status === 'HALF_DAY'
+              ? { status: 'PRESENT' as const }
+              : {}),
             note: `Double duty - covering ${coveredEmployee.fullName}'s shift`,
           },
         });
@@ -186,7 +198,7 @@ export class MutualSwapService {
         },
       });
 
-      await tx.attendanceLog.upsert({
+      const coveredAfter = await tx.attendanceLog.upsert({
         where: {
           employeeId_date_type: {
             employeeId: dto.coveredEmployeeId,
@@ -201,14 +213,38 @@ export class MutualSwapService {
           type: 'REGULAR',
           status: 'SWAP_COVERED',
           source: 'MANUAL',
+          lateMinutes: 0,
           note: `Mutual swap - covered by ${coveringEmployee.fullName}`,
           dutyStartTimeSnapshot: coveredEmployee.dutyStartTime ?? null,
           dutyEndTimeSnapshot: coveredEmployee.dutyEndTime ?? null,
         },
         update: {
           status: 'SWAP_COVERED',
+          lateMinutes: 0,
           note: `Mutual swap - covered by ${coveringEmployee.fullName}`,
         },
+      });
+
+      if (coveringLog) {
+        await reconcileAttendanceFinancialConsequences(tx, {
+          employeeId: dto.coveringEmployeeId,
+          date: dateOnly,
+          before: coveringLog,
+          after: {
+            ...coveringLog,
+            lateMinutes: 0,
+            status:
+              coveringLog.status === 'LATE' || coveringLog.status === 'HALF_DAY'
+                ? 'PRESENT'
+                : coveringLog.status,
+          },
+        });
+      }
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: dto.coveredEmployeeId,
+        date: dateOnly,
+        before: coveredBefore,
+        after: coveredAfter,
       });
 
       return created;

@@ -155,10 +155,10 @@ function makeFakePrisma(db: FakeDb) {
     },
     payrollDeduction: {
       findFirst: async ({ where }: any) =>
-        [...db.deductions.values()].find((d) => d.payrollEntryId === where.payrollEntryId && d.reason === where.reason) ?? null,
+        [...db.deductions.values()].find((d) => d.payrollEntryId === where.payrollEntryId && (!where.reason || d.reason === where.reason)) ?? null,
       findMany: async ({ where }: any) =>
         [...db.deductions.values()].filter(
-          (d) => d.payrollEntryId === where.payrollEntryId && d.reason === where.reason,
+          (d) => d.payrollEntryId === where.payrollEntryId && (!where.reason || d.reason === where.reason),
         ),
       deleteMany: async ({ where }: any) => {
         const ids: string[] = where.id?.in ?? [];
@@ -246,6 +246,9 @@ function makeFakePrisma(db: FakeDb) {
           .filter((s) => s.employeeId === where.employeeId)
           .filter((s) => inDateRange(s.date, where.date))
           .filter((s) => s.checkOut !== null),
+    },
+    letter: {
+      findMany: async () => [],
     },
     auditLog: {
       create: async ({ data }: any) => {

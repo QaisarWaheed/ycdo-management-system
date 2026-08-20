@@ -1,6 +1,6 @@
 import { useMemo, useState, Fragment } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { MoreHorizontal, Printer } from 'lucide-react'
 import { useForm } from 'react-hook-form'
@@ -593,6 +593,14 @@ function PayrollDetailDialog({
   )
 }
 
+/** Employee profiles, attendance tab cards, and portal My Payroll read the same PayrollEntry rows. */
+function invalidatePayrollViews(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+  queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+  queryClient.invalidateQueries({ queryKey: ['payroll-history'] })
+  queryClient.invalidateQueries({ queryKey: ['stipend-receipts'] })
+}
+
 function MonthlyPayrollTab() {
   const queryClient = useQueryClient()
   const now = new Date()
@@ -608,6 +616,8 @@ function MonthlyPayrollTab() {
     null,
   )
   const [confirmGenerate, setConfirmGenerate] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [resetAllUnpaidMonths, setResetAllUnpaidMonths] = useState(false)
   const [createSingleOpen, setCreateSingleOpen] = useState(false)
   const [singleEmployeeId, setSingleEmployeeId] = useState('')
   const [singleEmployeeStatus, setSingleEmployeeStatus] = useState<string | null>(
@@ -645,30 +655,71 @@ function MonthlyPayrollTab() {
   )
 
   const generateMutation = useMutation({
-    mutationFn: async () => {
-      const employees = await employeesApi.getAll({
-        statuses: 'ACTIVE,ON_REST',
+    mutationFn: () =>
+      payrollApi.rebuildMonthBatch({
+        month: monthYear.month,
+        year: monthYear.year,
         branchId: branchId || undefined,
+      }),
+    onSuccess: ({ generated, skipped, failed, total, failureNotes }) => {
+      toast({
+        title: `Generated ${generated} of ${total} payroll entries`,
+        description: [
+          'Calculated from attendance, stipend allowances, and issued fine letters.',
+          'Employee profiles and portal My Payroll will show these figures.',
+          skipped > 0 ? `Skipped (no stipend): ${skipped}` : null,
+          failed > 0
+            ? `Failed: ${failed}${failureNotes[0] ? ` (${failureNotes[0]})` : ''}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' '),
+        variant: failed > 0 ? 'destructive' : 'default',
       })
-      for (const emp of employees) {
-        await payrollApi.createEntry({
-          employeeId: emp.id,
-          month: monthYear.month,
-          year: monthYear.year,
-        })
-      }
-      return employees.length
-    },
-    onSuccess: (count) => {
-      toast({ title: `Generated ${count} payroll entries` })
-      queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
-      queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+      invalidatePayrollViews(queryClient)
       setConfirmGenerate(false)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
       toast({
         title: 'Failed to generate entries',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const resetMutation = useMutation({
+    mutationFn: () =>
+      payrollApi.resetUnpaid({
+        month: monthYear.month,
+        year: monthYear.year,
+        branchId: branchId || undefined,
+        allUnpaidMonths: resetAllUnpaidMonths || undefined,
+        confirm: 'RESET_UNPAID_PAYROLL',
+      }),
+    onSuccess: (result) => {
+      toast({
+        title: `Cleared ${result.deleted} unpaid payroll ${result.deleted === 1 ? 'entry' : 'entries'}`,
+        description: [
+          result.paidSkipped > 0
+            ? `${result.paidSkipped} PAID ${result.paidSkipped === 1 ? 'entry was' : 'entries were'} left unchanged.`
+            : null,
+          result.allUnpaidMonths
+            ? 'All unpaid months were cleared.'
+            : 'Employee profiles and portal payroll history will no longer show these rows.',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      })
+      invalidatePayrollViews(queryClient)
+      setConfirmReset(false)
+      setResetAllUnpaidMonths(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to clear payroll',
         description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
         variant: 'destructive',
       })
@@ -701,8 +752,7 @@ function MonthlyPayrollTab() {
           ? 'Forced payroll entry created'
           : 'Payroll entry created',
       })
-      queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
-      queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+      invalidatePayrollViews(queryClient)
       setCreateSingleOpen(false)
       setSingleEmployeeId('')
       setSingleEmployeeStatus(null)
@@ -723,8 +773,7 @@ function MonthlyPayrollTab() {
       payrollApi.updateStatus(id, { status }),
     onSuccess: () => {
       toast({ title: 'Payroll status updated' })
-      queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
-      queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+      invalidatePayrollViews(queryClient)
       setConfirmStatus(null)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -780,6 +829,12 @@ function MonthlyPayrollTab() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="destructive"
+            onClick={() => setConfirmReset(true)}
+          >
+            Clear unpaid payroll
+          </Button>
           <Button variant="outline" onClick={() => setCreateSingleOpen(true)}>
             Add entry for employee
           </Button>
@@ -941,7 +996,7 @@ function MonthlyPayrollTab() {
             <AddDeductionForm
               payrollEntryId={addDeductionEntry.id}
               onSuccess={() => {
-                queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+                invalidatePayrollViews(queryClient)
                 setAddDeductionEntry(null)
               }}
             />
@@ -952,12 +1007,69 @@ function MonthlyPayrollTab() {
       <ConfirmDialog
         open={confirmGenerate}
         title="Generate Payroll Entries"
-        description={`Create payroll entries for all ACTIVE and ON REST employees for ${format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')}?`}
+        description={`Calculate payroll for all ACTIVE and ON REST employees for ${format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')} from attendance (present, absent, half day, unmarked), stipend package allowances/deductions, reliever/additional-day pay, and issued fine letters. The same figures appear on employee profiles and in the employee portal.`}
         confirmLabel="Generate"
         loading={generateMutation.isPending}
         onConfirm={() => generateMutation.mutate()}
         onCancel={() => setConfirmGenerate(false)}
       />
+
+      <Dialog
+        open={confirmReset}
+        onOpenChange={(open) => {
+          setConfirmReset(open)
+          if (!open) setResetAllUnpaidMonths(false)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Clear unpaid payroll</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-text-secondary">
+            <p>
+              This removes PENDING and PROCESSED payroll for{' '}
+              {resetAllUnpaidMonths
+                ? 'every unpaid month'
+                : format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')}
+              {branchId ? ' in the selected branch' : ''} from the HR payroll
+              list, employee profile payroll tabs, attendance salary cards,
+              and the employee portal. PAID entries are never removed.
+            </p>
+            <p>
+              After clearing, click Generate Entries to rebuild from current
+              attendance and issued fine letters.
+            </p>
+            <label className="flex items-start gap-2 text-text-primary">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={resetAllUnpaidMonths}
+                onChange={(e) => setResetAllUnpaidMonths(e.target.checked)}
+              />
+              <span>Clear unpaid payroll in all months, not only this month</span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmReset(false)
+                setResetAllUnpaidMonths(false)
+              }}
+              disabled={resetMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => resetMutation.mutate()}
+              disabled={resetMutation.isPending}
+            >
+              {resetMutation.isPending ? 'Clearing…' : 'Clear unpaid payroll'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={createSingleOpen}

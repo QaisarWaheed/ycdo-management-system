@@ -22,6 +22,8 @@ import {
   CreatePayrollEntryDto,
   PayrollQueryDto,
   RecomputeMonthAllDto,
+  RebuildPayrollDto,
+  ResetUnpaidPayrollDto,
   SalaryIncrementDto,
   UpdatePayrollStatusDto,
 } from './payroll.dto';
@@ -105,6 +107,24 @@ export class PayrollController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.payrollService.recomputeMonthAll(dto, user);
+  }
+
+  @Post('reset-unpaid')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  resetUnpaidPayroll(
+    @Body() dto: ResetUnpaidPayrollDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.resetUnpaidPayroll(dto, user);
+  }
+
+  @Post('rebuild-from-attendance')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  rebuildPayrollFromAttendanceAndLetters(
+    @Body() dto: RebuildPayrollDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.rebuildPayrollFromAttendanceAndLetters(dto, user);
   }
 
   @Post('deductions')

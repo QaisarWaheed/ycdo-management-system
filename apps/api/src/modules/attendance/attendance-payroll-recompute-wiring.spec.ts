@@ -82,6 +82,7 @@ function makeService(overrides: {
       findUnique: jest.fn().mockResolvedValue(overrides.existingLog ?? null),
       update: jest.fn(),
     },
+    mutualSwap: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn(async (cb: any) => cb(tx)),
   };
 

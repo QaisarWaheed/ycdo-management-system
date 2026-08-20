@@ -381,11 +381,18 @@ export class AttendanceService {
         if (openRegularToday.status === AttendanceStatus.UNMARKED) {
           // checkIn is set but status was never finalized — fix it and
           // report success instead of rejecting as a duplicate.
+          const swapExempt = await this.isLateExemptForSwap(
+            db,
+            employee.id,
+            dateOnly,
+            openRegularToday.status,
+          );
           const log = await this.reconcileUnmarkedCheckIn(
             db,
             employee,
             openRegularToday,
             twentyFourHour,
+            swapExempt,
           );
           return { type: 'CHECKIN' as const, log, reconciled: true };
         }
@@ -484,6 +491,27 @@ export class AttendanceService {
     return fn(db);
   }
 
+  private async isLateExemptForSwap(
+    db: PrismaService | Prisma.TransactionClient,
+    employeeId: string,
+    date: Date,
+    existingStatus?: AttendanceStatus | null,
+  ): Promise<boolean> {
+    if (existingStatus === AttendanceStatus.SWAP_COVERED) return true;
+    const swap = await db.mutualSwap.findFirst({
+      where: {
+        date,
+        status: 'ACTIVE',
+        OR: [
+          { coveringEmployeeId: employeeId },
+          { coveredEmployeeId: employeeId },
+        ],
+      },
+      select: { id: true },
+    });
+    return !!swap;
+  }
+
   /**
    * Self-heal a row that has checkIn set but was never finalized to a real
    * status. Should not occur via any current write path (every path that
@@ -500,16 +528,25 @@ export class AttendanceService {
       dutyEndTime?: string | null;
       shift: { startTime: string; endTime: string } | null;
     },
-    existing: { id: string; checkIn: Date | null },
+    existing: {
+      id: string;
+      checkIn: Date | null;
+      status?: AttendanceStatus | null;
+    },
     twentyFourHour: boolean,
+    swapExempt = false,
   ) {
     const checkIn = existing.checkIn;
-    const lateMinutes = twentyFourHour
-      ? 0
-      : computeBiometricLateMinutes(checkIn, employee);
-    const status = twentyFourHour
-      ? AttendanceStatus.PRESENT
-      : determineBiometricCheckInStatus(lateMinutes, employee, 0);
+    const lateMinutes =
+      twentyFourHour || swapExempt
+        ? 0
+        : computeBiometricLateMinutes(checkIn, employee);
+    const status =
+      twentyFourHour || swapExempt
+        ? existing.status === AttendanceStatus.SWAP_COVERED
+          ? AttendanceStatus.SWAP_COVERED
+          : AttendanceStatus.PRESENT
+        : determineBiometricCheckInStatus(lateMinutes, employee, 0);
 
     return db.attendanceLog.update({
       where: { id: existing.id },
@@ -530,24 +567,34 @@ export class AttendanceService {
     twentyFourHour: boolean,
     db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
-    const lateMinutes = twentyFourHour
-      ? 0
-      : computeBiometricLateMinutes(checkTime, employee);
-    // An early arrival past the threshold already earns overtime at check-in.
-    const preDutyOvertimeMinutes = twentyFourHour
-      ? 0
-      : computePreDutyOvertimeMinutes(checkTime, employee);
-    let status = twentyFourHour
-      ? AttendanceStatus.PRESENT
-      : determineBiometricCheckInStatus(lateMinutes, employee, 0);
-
-    const anyExisting = await this.prisma.attendanceLog.findFirst({
+    const anyExisting = await db.attendanceLog.findFirst({
       where: {
         employeeId: employee.id,
         date: dateOnly,
         type: AttendanceLogType.REGULAR,
       },
     });
+
+    const swapExempt = await this.isLateExemptForSwap(
+      db,
+      employee.id,
+      dateOnly,
+      anyExisting?.status,
+    );
+    const lateMinutesRaw = twentyFourHour
+      ? 0
+      : computeBiometricLateMinutes(checkTime, employee);
+    const lateMinutes = swapExempt ? 0 : lateMinutesRaw;
+    const preDutyOvertimeMinutes = twentyFourHour
+      ? 0
+      : computePreDutyOvertimeMinutes(checkTime, employee);
+    let status = twentyFourHour
+      ? AttendanceStatus.PRESENT
+      : swapExempt
+        ? anyExisting?.status === AttendanceStatus.SWAP_COVERED
+          ? AttendanceStatus.SWAP_COVERED
+          : AttendanceStatus.PRESENT
+        : determineBiometricCheckInStatus(lateMinutes, employee, 0);
 
     if (anyExisting) {
       if (anyExisting.checkIn) {
@@ -560,6 +607,7 @@ export class AttendanceService {
             employee,
             anyExisting,
             twentyFourHour,
+            swapExempt,
           );
           return { type: 'CHECKIN' as const, log, reconciled: true };
         }
@@ -569,7 +617,7 @@ export class AttendanceService {
       }
 
       const log = await this.runInTx(db, async (tx) => {
-        if (!twentyFourHour) {
+        if (!twentyFourHour && !swapExempt) {
           const effectiveStatus = await applyDisciplineRules(
             tx,
             employee.id,
@@ -625,7 +673,7 @@ export class AttendanceService {
     }
 
     const log = await this.runInTx(db, async (tx) => {
-      if (!twentyFourHour) {
+      if (!twentyFourHour && !swapExempt) {
         const effectiveStatus = await applyDisciplineRules(
           tx,
           employee.id,
@@ -1000,6 +1048,25 @@ export class AttendanceService {
       status = AttendanceStatus.PRESENT;
     }
 
+    const swapExempt = await this.isLateExemptForSwap(
+      this.prisma,
+      dto.employeeId,
+      dateOnly,
+      existing?.status ?? status,
+    );
+    if (
+      swapExempt ||
+      status === AttendanceStatus.SWAP_COVERED
+    ) {
+      lateMinutes = 0;
+      if (status === AttendanceStatus.LATE || status === AttendanceStatus.HALF_DAY) {
+        status = AttendanceStatus.PRESENT;
+      }
+      if (existing?.status === AttendanceStatus.SWAP_COVERED) {
+        status = AttendanceStatus.SWAP_COVERED;
+      }
+    }
+
     const preDutyOvertime =
       checkIn && !is24HourShift(employee)
         ? computePreDutyOvertimeMinutes(checkIn, employee)
@@ -1261,6 +1328,9 @@ export class AttendanceService {
       dto.status !== AttendanceStatus.SHORT_LEAVE
     ) {
       data.status = dto.status;
+      if (dto.status === AttendanceStatus.SWAP_COVERED) {
+        data.lateMinutes = 0;
+      }
     }
     if (dto.checkIn !== undefined) {
       data.checkIn = dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : null;
@@ -1338,8 +1408,17 @@ export class AttendanceService {
       dto.checkIn !== undefined &&
       effectiveCheckIn
     ) {
-      if (is24HourShift(log.employee)) {
-        data.status = AttendanceStatus.PRESENT;
+      const swapExempt = await this.isLateExemptForSwap(
+        this.prisma,
+        log.employeeId,
+        log.date,
+        log.status,
+      );
+      if (is24HourShift(log.employee) || swapExempt || log.status === AttendanceStatus.SWAP_COVERED) {
+        data.status =
+          log.status === AttendanceStatus.SWAP_COVERED
+            ? AttendanceStatus.SWAP_COVERED
+            : AttendanceStatus.PRESENT;
         data.lateMinutes = 0;
       } else {
         // The duty that applied when this record actually happened —
