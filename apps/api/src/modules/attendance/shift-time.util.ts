@@ -94,6 +94,32 @@ export function attendanceGraceMinutesRemaining(
 }
 
 /**
+ * Whether an attendance-day row may be auto-created as UNMARKED yet.
+ *
+ * Past Pakistan calendar days: always yes (that day's duty already started).
+ * Future days: never.
+ * Today: only once wall-clock Pakistan time has reached `dutyStartTime`
+ * (e.g. overnight 21:00–09:00 must not get a "today" UNMARKED row at 10:00 —
+ * the previous night's session still owns yesterday, and today's shift has
+ * not started).
+ */
+export function hasDutyStartedForAttendanceDate(
+  attendanceDate: Date,
+  dutyStartTime: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  const day = toPakistanDateOnly(attendanceDate);
+  const pkToday = toPakistanDateOnly(now);
+  if (day.getTime() < pkToday.getTime()) return true;
+  if (day.getTime() > pkToday.getTime()) return false;
+
+  const dutyStart = dutyStartTime?.trim() || DEFAULT_DUTY_START;
+  const nowMinutes = toPakistanMinutesOfDay(now);
+  const startMinutes = parseTimeToMinutes(dutyStart);
+  return nowMinutes >= startMinutes;
+}
+
+/**
  * Absolute shift-end timestamp for one specific attendance day. The row's
  * `date` is already attributed to the shift's start day (getShiftAttendanceDate,
  * assigned at check-in time), so the exact end instant can be computed

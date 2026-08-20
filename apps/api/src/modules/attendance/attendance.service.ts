@@ -75,6 +75,7 @@ import {
 import {
   calculateLateMinutesFromCheckIn,
   getShiftAttendanceDate,
+  hasDutyStartedForAttendanceDate,
   isWithinAttendanceMarkingGrace,
   minutesSinceShiftStart,
   parseTimeToMinutes,
@@ -1857,6 +1858,14 @@ export class AttendanceService {
         continue;
       }
 
+      // Prefer the employee's own duty clock (source of truth) so overnight
+      // staff are not unmarked for "today" before their evening start.
+      if (
+        !hasDutyStartedForAttendanceDate(date, employee.dutyStartTime ?? null)
+      ) {
+        continue;
+      }
+
       const onLeave = await this.prisma.leaveRecord.findFirst({
         where: {
           employeeId: employee.id,
@@ -1904,6 +1913,13 @@ export class AttendanceService {
    * Days before joiningDate are stored with PRE_JOIN_UNMARKED_NOTE so the
    * uninformed-absent cron never fines them; they still pay zero basic
    * (UNMARKED without punches, and they sit before stipend effectiveFrom).
+   *
+   * Today's row is only created once the employee's duty start time has
+   * been reached (overnight 21:00–09:00 must not show "today" as unmarked
+   * while still on yesterday's shift, or during the day before the next
+   * 21:00 start). Premature month-calendar UNMARKED rows for today are
+   * removed on the same pass so existing bad rows self-heal when the
+   * month view loads.
    */
   private async ensureMonthLogsForEmployee(
     employeeId: string,
@@ -1922,8 +1938,29 @@ export class AttendanceService {
     });
     if (!employee) return;
 
-    const dates = calendarDatesForAttendanceMonth(year, month);
+    const now = new Date();
+    const dates = calendarDatesForAttendanceMonth(year, month, now);
     if (dates.length === 0) return;
+
+    const pkToday = toPakistanDateOnly(now);
+    const todayInMonth = dates.some((d) => d.getTime() === pkToday.getTime());
+    if (
+      todayInMonth &&
+      !hasDutyStartedForAttendanceDate(pkToday, employee.dutyStartTime, now)
+    ) {
+      // Self-heal rows created before this gate existed (overnight staff
+      // shown unmarked for "today" during the morning/afternoon).
+      await this.prisma.attendanceLog.deleteMany({
+        where: {
+          employeeId,
+          date: pkToday,
+          type: AttendanceLogType.REGULAR,
+          status: AttendanceStatus.UNMARKED,
+          checkIn: null,
+          note: MONTH_CALENDAR_UNMARKED_NOTE,
+        },
+      });
+    }
 
     const existing = await this.prisma.attendanceLog.findMany({
       where: {
@@ -1951,7 +1988,10 @@ export class AttendanceService {
       );
 
     const missing = dates.filter(
-      (date) => !existingKeys.has(date.getTime()) && !coveredByLeave(date),
+      (date) =>
+        !existingKeys.has(date.getTime()) &&
+        !coveredByLeave(date) &&
+        hasDutyStartedForAttendanceDate(date, employee.dutyStartTime, now),
     );
     if (missing.length === 0) return;
 
