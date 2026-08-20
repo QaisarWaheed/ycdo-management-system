@@ -155,11 +155,12 @@ export class PayrollService {
     // side effect so historical PENDING rows never go stale/orphaned
     // again — see recomputeEmployeeMonth for the explicit,
     // return-everything version of this same loop.
-    const overlappingStipendRecords = await this.findOverlappingStipendRecords(
-      dto.employeeId,
-      dto.month,
-      dto.year,
-    );
+    const { records: overlappingStipendRecords, backfillFromAttendance } =
+      await this.resolveStipendRecordsForPayrollMonth(
+        dto.employeeId,
+        dto.month,
+        dto.year,
+      );
     if (overlappingStipendRecords.length === 0) {
       throw new NotFoundException(
         `No stipend record found covering ${dto.month}/${dto.year} for ${employee.fullName} (${employee.employeeCode}). Add a stipend package with an effective date on or before this month, then generate again.`,
@@ -232,6 +233,14 @@ export class PayrollService {
     );
 
     const oldestStipendId = overlappingStipendRecords[0]?.id;
+    const singleSegmentMonth = overlappingStipendRecords.length === 1;
+    const segmentBackfillOptions = {
+      backfillFromJoining:
+        !backfillFromAttendance &&
+        singleSegmentMonth &&
+        activeStipendRecord.id === oldestStipendId,
+      backfillFromAttendance,
+    };
     const primaryResult = await this.upsertPayrollEntryForStipendSegment(
       activeStipendRecord,
       dto,
@@ -239,7 +248,7 @@ export class PayrollService {
       forceNonActive && !defaultEligible ? true : undefined,
       unpaidLeaveDatesForMonth,
       true,
-      { backfillFromJoining: activeStipendRecord.id === oldestStipendId },
+      segmentBackfillOptions,
     );
 
     const otherSegments = overlappingStipendRecords.filter(
@@ -257,9 +266,21 @@ export class PayrollService {
         undefined,
         unpaidLeaveDatesForMonth,
         false,
-        { backfillFromJoining: segment.id === oldestStipendId },
+        {
+          ...segmentBackfillOptions,
+          backfillFromJoining:
+            segmentBackfillOptions.backfillFromJoining &&
+            segment.id === oldestStipendId,
+        },
       );
     }
+
+    await this.pruneStaleClosedSegmentPayrollEntries(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      overlappingStipendRecords,
+    );
 
     return primaryResult;
   }
@@ -307,11 +328,12 @@ export class PayrollService {
       );
     }
 
-    const overlappingStipendRecords = await this.findOverlappingStipendRecords(
-      dto.employeeId,
-      dto.month,
-      dto.year,
-    );
+    const { records: overlappingStipendRecords, backfillFromAttendance } =
+      await this.resolveStipendRecordsForPayrollMonth(
+        dto.employeeId,
+        dto.month,
+        dto.year,
+      );
     if (overlappingStipendRecords.length === 0) {
       return [];
     }
@@ -371,7 +393,14 @@ export class PayrollService {
         undefined,
         unpaidLeaveDatesForMonth,
         stipendRecord.id === packageBearingId,
-        { refreshUnpaidProcessed: true, backfillFromJoining: stipendRecord.id === overlappingStipendRecords[0]?.id },
+        {
+          refreshUnpaidProcessed: true,
+          backfillFromJoining:
+            !backfillFromAttendance &&
+            overlappingStipendRecords.length === 1 &&
+            stipendRecord.id === overlappingStipendRecords[0]?.id,
+          backfillFromAttendance,
+        },
       );
       results.push({
         stipendRecordId: stipendRecord.id,
@@ -983,6 +1012,60 @@ export class PayrollService {
     });
   }
 
+  /**
+   * Stipend overlap for payroll generation. When no package overlaps the
+   * calendar month but the employee already has payable attendance there
+   * (common when joiningDate/stipend effectiveFrom were set after work
+   * started), use the nearest future stipend and backfill the month from
+   * month-start using that package's rates.
+   */
+  private async resolveStipendRecordsForPayrollMonth(
+    employeeId: string,
+    month: number,
+    year: number,
+  ): Promise<{
+    records: Awaited<ReturnType<PayrollService['findOverlappingStipendRecords']>>;
+    backfillFromAttendance: boolean;
+  }> {
+    const overlapping = await this.findOverlappingStipendRecords(
+      employeeId,
+      month,
+      year,
+    );
+    if (overlapping.length > 0) {
+      return { records: overlapping, backfillFromAttendance: false };
+    }
+
+    const { monthStart, monthEnd } = this.pakistanMonthWindow(year, month);
+    const hasPayableAttendance = await this.prisma.attendanceLog.count({
+      where: {
+        employeeId,
+        type: AttendanceLogType.REGULAR,
+        date: { gte: monthStart, lte: monthEnd },
+        NOT: { note: PRE_JOIN_UNMARKED_NOTE },
+      },
+    });
+    if (hasPayableAttendance === 0) {
+      return { records: [], backfillFromAttendance: false };
+    }
+
+    const nearestFutureStipend = await this.prisma.stipendRecord.findFirst({
+      where: {
+        employeeId,
+        effectiveFrom: { gt: monthEnd },
+      },
+      orderBy: { effectiveFrom: 'asc' },
+    });
+    if (!nearestFutureStipend) {
+      return { records: [], backfillFromAttendance: false };
+    }
+
+    return {
+      records: [nearestFutureStipend],
+      backfillFromAttendance: true,
+    };
+  }
+
   /** Shared by computeHourlyBreakdown and every segment-bounded child-row
    * helper — the single source of truth for "which dates, clamped to this
    * calendar month, does this StipendRecord's [effectiveFrom, effectiveTo)
@@ -991,13 +1074,23 @@ export class PayrollService {
     stipendRecord: { effectiveFrom: Date; effectiveTo?: Date | null },
     month: number,
     year: number,
-    opts?: { joiningDate?: Date | null; backfillFromJoining?: boolean },
+    opts?: {
+      joiningDate?: Date | null;
+      backfillFromJoining?: boolean;
+      backfillFromAttendance?: boolean;
+    },
   ): { segmentStart: Date; segmentEndExclusive: Date | null; monthEnd: Date } {
     const { monthStart, monthEnd } = this.pakistanMonthWindow(year, month);
     let segmentStart =
       stipendRecord.effectiveFrom > monthStart
         ? stipendRecord.effectiveFrom
         : monthStart;
+    if (
+      opts?.backfillFromAttendance &&
+      stipendRecord.effectiveFrom.getTime() > monthEnd.getTime()
+    ) {
+      segmentStart = monthStart;
+    }
     // Oldest stipend in the month: if HR created the package after joining,
     // still pay from joining/month-start so a late stipend row cannot wipe
     // the rest of the month.
@@ -1031,6 +1124,176 @@ export class PayrollService {
       return false;
     }
     return true;
+  }
+
+  /**
+   * Removes duplicate/stale PENDING payroll rows:
+   * - closed packages created mid-month (late duplicate packages)
+   * - superseded active packages when HR created a new package without
+   *   closing the old one through salary increment
+   */
+  private async pruneStaleClosedSegmentPayrollEntries(
+    employeeId: string,
+    month: number,
+    year: number,
+    overlappingStipendRecords: Array<{
+      id: string;
+      effectiveFrom: Date;
+      effectiveTo: Date | null;
+    }>,
+  ) {
+    const staleSegmentIds = new Set<string>();
+
+    const activeSegments = overlappingStipendRecords.filter(
+      (r) => r.effectiveTo === null,
+    );
+    const newestActive =
+      activeSegments.length > 0
+        ? activeSegments[activeSegments.length - 1]
+        : null;
+
+    if (activeSegments.length > 1) {
+      const keepActive = activeSegments[activeSegments.length - 1]!;
+      for (const segment of activeSegments) {
+        if (segment.id !== keepActive.id) {
+          staleSegmentIds.add(segment.id);
+        }
+      }
+    }
+
+    if (newestActive) {
+      for (const segment of overlappingStipendRecords) {
+        if (
+          segment.effectiveTo != null &&
+          segment.effectiveFrom.getTime() >=
+            newestActive.effectiveFrom.getTime()
+        ) {
+          staleSegmentIds.add(segment.id);
+        }
+      }
+    }
+
+    if (staleSegmentIds.size === 0) return;
+
+    const staleEntries = await this.prisma.payrollEntry.findMany({
+      where: {
+        month,
+        year,
+        status: PayrollStatus.PENDING,
+        stipendRecordId: { in: [...staleSegmentIds] },
+        stipendRecord: { employeeId },
+      },
+      select: { id: true },
+    });
+
+    for (const entry of staleEntries) {
+      await this.prisma.stipendReceipt.deleteMany({
+        where: { payrollEntryId: entry.id },
+      });
+      await this.prisma.payrollDeduction.deleteMany({
+        where: { payrollEntryId: entry.id },
+      });
+      await this.prisma.allowance.deleteMany({
+        where: { payrollEntryId: entry.id },
+      });
+      await this.prisma.payrollEntry.delete({ where: { id: entry.id } });
+    }
+  }
+
+  /** One history row per calendar month; drops stale segments, sums real increments. */
+  private aggregatePayrollHistoryByMonth<
+    T extends {
+      id: string;
+      month: number;
+      year: number;
+      basicStipend: unknown;
+      totalAllowances: unknown;
+      totalDeductions: unknown;
+      netStipend: unknown;
+      status: PayrollStatus;
+      stipendRecord?: {
+        effectiveFrom?: Date;
+        effectiveTo?: Date | null;
+      } | null;
+      deductions?: unknown[];
+      allowances?: unknown[];
+    },
+  >(entries: T[]): T[] {
+    const byMonth = new Map<string, T[]>();
+    for (const entry of entries) {
+      const key = `${entry.year}-${entry.month}`;
+      const bucket = byMonth.get(key) ?? [];
+      bucket.push(entry);
+      byMonth.set(key, bucket);
+    }
+
+    const merged: T[] = [];
+    for (const group of byMonth.values()) {
+      const active = group
+        .filter((e) => e.stipendRecord?.effectiveTo == null)
+        .sort(
+          (a, b) =>
+            (a.stipendRecord?.effectiveFrom?.getTime() ?? 0) -
+            (b.stipendRecord?.effectiveFrom?.getTime() ?? 0),
+        );
+      const newestActive = active[active.length - 1];
+      const newestActiveFrom = newestActive?.stipendRecord?.effectiveFrom;
+
+      const kept = group.filter((e) => {
+        const sr = e.stipendRecord;
+        if (!sr) return true;
+        if (sr.effectiveTo == null) {
+          return !newestActive || e.id === newestActive.id;
+        }
+        if (
+          newestActiveFrom &&
+          sr.effectiveFrom &&
+          sr.effectiveFrom.getTime() >= newestActiveFrom.getTime()
+        ) {
+          return false;
+        }
+        return true;
+      });
+
+      if (kept.length === 0) continue;
+      if (kept.length === 1) {
+        merged.push(kept[0]!);
+        continue;
+      }
+
+      const primary =
+        kept.find((e) => e.stipendRecord?.effectiveTo == null) ?? kept[0]!;
+
+      const statusRank = (s: PayrollStatus) =>
+        s === PayrollStatus.PAID ? 3 : s === PayrollStatus.PROCESSED ? 2 : 1;
+
+      merged.push({
+        ...primary,
+        basicStipend: roundMoney(
+          kept.reduce((sum, e) => sum + Number(e.basicStipend), 0),
+        ),
+        totalAllowances: roundMoney(
+          kept.reduce((sum, e) => sum + Number(e.totalAllowances), 0),
+        ),
+        totalDeductions: roundMoney(
+          kept.reduce((sum, e) => sum + Number(e.totalDeductions), 0),
+        ),
+        netStipend: roundMoney(
+          kept.reduce((sum, e) => sum + Number(e.netStipend), 0),
+        ),
+        status: kept.reduce<T>(
+          (best, e) =>
+            statusRank(e.status) > statusRank(best.status) ? e : best,
+          kept[0]!,
+        ).status,
+        deductions: kept.flatMap((e) => e.deductions ?? []),
+        allowances: kept.flatMap((e) => e.allowances ?? []),
+      });
+    }
+
+    return merged.sort((a, b) =>
+      a.year !== b.year ? b.year - a.year : b.month - a.month,
+    );
   }
 
   /**
@@ -1157,7 +1420,11 @@ export class PayrollService {
     forceNonActiveOverride: boolean | undefined,
     unpaidLeaveDatesForMonth: Date[],
     applyContractualPackage = stipendRecord.effectiveTo == null,
-    options: { refreshUnpaidProcessed?: boolean; backfillFromJoining?: boolean } = {},
+    options: {
+      refreshUnpaidProcessed?: boolean;
+      backfillFromJoining?: boolean;
+      backfillFromAttendance?: boolean;
+    } = {},
   ) {
     let entry = await this.prisma.payrollEntry.findUnique({
       where: {
@@ -1197,6 +1464,7 @@ export class PayrollService {
           existingAllowances: [],
           applyContractualPackage,
           backfillFromJoining: options.backfillFromJoining,
+          backfillFromAttendance: options.backfillFromAttendance,
         },
       );
       const createdTotals = this.clampPayrollTotals(initialBreakdown);
@@ -1217,6 +1485,7 @@ export class PayrollService {
       this.resolveSegmentDateBounds(stipendRecord, dto.month, dto.year, {
         joiningDate: employee.joiningDate,
         backfillFromJoining: options.backfillFromJoining,
+        backfillFromAttendance: options.backfillFromAttendance,
       });
     const unpaidLeaveDaysInSegment = unpaidLeaveDatesForMonth.filter((d) =>
       this.dateWithinSegment(d, segmentStart, segmentEndExclusive, monthEnd),
@@ -1260,6 +1529,7 @@ export class PayrollService {
       segmentStart,
       segmentEndExclusive,
       monthEnd,
+      options.backfillFromAttendance,
     );
     await this.syncFineLetterDeductions(
       entry.id,
@@ -1285,6 +1555,7 @@ export class PayrollService {
         existingAllowances: refreshed?.allowances ?? [],
         applyContractualPackage,
         backfillFromJoining: options.backfillFromJoining,
+        backfillFromAttendance: options.backfillFromAttendance,
       },
     );
     const totals = this.clampPayrollTotals(breakdown);
@@ -1442,6 +1713,15 @@ export class PayrollService {
     });
   }
 
+  private skipPreJoinPayrollDay(
+    date: Date,
+    joiningDate: Date | null | undefined,
+    backfillFromAttendance?: boolean,
+  ): boolean {
+    if (backfillFromAttendance) return false;
+    return isPreJoinAttendanceDate(date, joiningDate);
+  }
+
   /**
    * Keeps HALF_DAY / ABSENT / UNINFORMED_ABSENT / elapsed-UNMARKED
    * deduction rows in sync with this segment's attendance logs so generate
@@ -1457,6 +1737,7 @@ export class PayrollService {
     segmentStart: Date,
     segmentEndExclusive: Date | null,
     monthEnd: Date,
+    backfillFromAttendance?: boolean,
   ) {
     const logs = await this.prisma.attendanceLog.findMany({
       where: {
@@ -1478,7 +1759,11 @@ export class PayrollService {
     >();
 
     for (const log of logs) {
-      if (isPreJoinAttendanceDate(log.date, joiningDate)) continue;
+      if (
+        this.skipPreJoinPayrollDay(log.date, joiningDate, backfillFromAttendance)
+      ) {
+        continue;
+      }
       const label = log.date.toISOString().slice(0, 10);
       const daily = dailyStipendRate(contractualBasic, log.date);
 
@@ -2046,11 +2331,8 @@ export class PayrollService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    const overlappingStipendRecords = await this.findOverlappingStipendRecords(
-      employeeId,
-      month,
-      year,
-    );
+    const { records: overlappingStipendRecords } =
+      await this.resolveStipendRecordsForPayrollMonth(employeeId, month, year);
     if (overlappingStipendRecords.length === 0) {
       throw new BadRequestException(
         'No active stipend record found for this employee',
@@ -3010,6 +3292,9 @@ export class PayrollService {
        * cannot double-count the package. Historical closed segments get 0. */
       applyContractualPackage?: boolean;
       backfillFromJoining?: boolean;
+      /** Payable attendance exists before the stipend package's
+       * effectiveFrom (joining date set after work started). */
+      backfillFromAttendance?: boolean;
       /** When omitted, remaining days of the in-progress month are credited
        * as if still payable (so mid-month generate does not zero 21–31). */
       asOf?: Date;
@@ -3050,6 +3335,7 @@ export class PayrollService {
       this.resolveSegmentDateBounds(context.stipendRecord, month, year, {
         joiningDate: context.employee.joiningDate,
         backfillFromJoining: context.backfillFromJoining,
+        backfillFromAttendance: context.backfillFromAttendance,
       });
 
     const logs = await this.prisma.attendanceLog.findMany({
@@ -3079,7 +3365,13 @@ export class PayrollService {
     let policyCreditMins = 0;
 
     for (const log of logs) {
-      if (isPreJoinAttendanceDate(log.date, context.employee.joiningDate)) {
+      if (
+        this.skipPreJoinPayrollDay(
+          log.date,
+          context.employee.joiningDate,
+          context.backfillFromAttendance,
+        )
+      ) {
         continue;
       }
 
@@ -3234,7 +3526,13 @@ export class PayrollService {
         ) {
           continue;
         }
-        if (isPreJoinAttendanceDate(date, context.employee.joiningDate)) {
+        if (
+          this.skipPreJoinPayrollDay(
+            date,
+            context.employee.joiningDate,
+            context.backfillFromAttendance,
+          )
+        ) {
           continue;
         }
         if (date.getTime() <= asOf.getTime()) continue;
@@ -3428,7 +3726,8 @@ export class PayrollService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    return this.prisma.payrollEntry.findMany({
+    return this.aggregatePayrollHistoryByMonth(
+      await this.prisma.payrollEntry.findMany({
       where: {
         stipendRecord: { employeeId },
       },
@@ -3463,7 +3762,8 @@ export class PayrollService {
         },
       },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    });
+    }),
+    );
   }
 
   async getMonthlyPayrollSummary(

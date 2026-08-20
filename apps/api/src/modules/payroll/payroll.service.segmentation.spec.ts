@@ -169,6 +169,30 @@ function makeFakePrisma(db: FakeDb) {
         Object.assign(entry, data);
         return hydrate(entry, include);
       },
+      findMany: async ({ where }: any) =>
+        [...db.payrollEntries.values()].filter((e) => {
+          if (where.month != null && e.month !== where.month) return false;
+          if (where.year != null && e.year !== where.year) return false;
+          if (where.status != null && e.status !== where.status) return false;
+          if (
+            where.stipendRecordId?.in &&
+            !where.stipendRecordId.in.includes(e.stipendRecordId)
+          ) {
+            return false;
+          }
+          if (where.stipendRecord?.employeeId) {
+            const sr = [...db.stipendRecords.values()].find(
+              (r) => r.id === e.stipendRecordId,
+            );
+            if (!sr || sr.employeeId !== where.stipendRecord.employeeId) {
+              return false;
+            }
+          }
+          return true;
+        }),
+      delete: async ({ where }: any) => {
+        db.payrollEntries.delete(where.id);
+      },
     },
     payrollDeduction: {
       findFirst: async ({ where }: any) =>
@@ -178,6 +202,16 @@ function makeFakePrisma(db: FakeDb) {
           (d) => d.payrollEntryId === where.payrollEntryId && (!where.reason || d.reason === where.reason),
         ),
       deleteMany: async ({ where }: any) => {
+        if (where.payrollEntryId) {
+          let count = 0;
+          for (const [id, d] of db.deductions) {
+            if (d.payrollEntryId === where.payrollEntryId) {
+              db.deductions.delete(id);
+              count += 1;
+            }
+          }
+          return { count };
+        }
         const ids: string[] = where.id?.in ?? [];
         for (const id of ids) db.deductions.delete(id);
         return { count: ids.length };
@@ -206,6 +240,16 @@ function makeFakePrisma(db: FakeDb) {
           (a) => a.payrollEntryId === where.payrollEntryId && a.type === where.type,
         ),
       deleteMany: async ({ where }: any) => {
+        if (where.payrollEntryId) {
+          let count = 0;
+          for (const [id, a] of db.allowances) {
+            if (a.payrollEntryId === where.payrollEntryId) {
+              db.allowances.delete(id);
+              count += 1;
+            }
+          }
+          return { count };
+        }
         const ids: string[] = where.id?.in ?? [];
         for (const id of ids) db.allowances.delete(id);
         return { count: ids.length };
@@ -253,6 +297,9 @@ function makeFakePrisma(db: FakeDb) {
     },
     letter: {
       findMany: async () => [],
+    },
+    stipendReceipt: {
+      deleteMany: async () => ({ count: 0 }),
     },
     auditLog: {
       create: async ({ data }: any) => {

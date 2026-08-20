@@ -200,6 +200,29 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
     expect(b.hourlyBasicEarned).toBe(800);
   });
 
+  it('does not backfill when multiple stipend segments overlap the month', async () => {
+    const logs = [buildLog(3, AttendanceStatus.PRESENT)];
+    const { service } = makeService(logs);
+    const closedLateSegment = await (service as any).computeHourlyBreakdown(
+      'emp-1',
+      8,
+      2026,
+      {
+        stipendRecord: {
+          basicStipend: 15000,
+          effectiveFrom: new Date(Date.UTC(2026, 7, 17)),
+          effectiveTo: new Date(Date.UTC(2026, 7, 20)),
+        },
+        employee: { ...EMPLOYEE, joiningDate: new Date(Date.UTC(2022, 11, 7)) },
+        existingDeductions: [],
+        existingAllowances: [],
+        asOf: new Date(Date.UTC(2026, 8, 1)),
+        backfillFromJoining: false,
+      },
+    );
+    expect(closedLateSegment.policyCreditMinutes).toBe(0);
+  });
+
   it('oldest stipend created after joining still pays days before effectiveFrom', async () => {
     const logs = [buildLog(3, AttendanceStatus.PRESENT)];
     const { service } = makeService(logs);
@@ -231,6 +254,58 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
     });
     expect(withBackfill.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
     expect(withBackfill.hourlyBasicEarned).toBe(800);
+  });
+
+  it('backfills from month-start when stipend starts after the month but attendance exists', async () => {
+    const logs = [
+      buildLog(3, AttendanceStatus.PRESENT),
+      buildLog(10, AttendanceStatus.LATE),
+    ];
+    const { service } = makeService(logs);
+    const withoutBackfill = await (service as any).computeHourlyBreakdown(
+      'emp-1',
+      8,
+      2026,
+      {
+        stipendRecord: {
+          basicStipend: 25000,
+          effectiveFrom: new Date(Date.UTC(2026, 8, 1)),
+          effectiveTo: null,
+        },
+        employee: {
+          ...EMPLOYEE,
+          joiningDate: new Date(Date.UTC(2026, 8, 1)),
+        },
+        existingDeductions: [],
+        existingAllowances: [],
+        asOf: new Date(Date.UTC(2026, 8, 1)),
+        backfillFromAttendance: false,
+      },
+    );
+    expect(withoutBackfill.policyCreditMinutes).toBe(0);
+
+    const withBackfill = await (service as any).computeHourlyBreakdown(
+      'emp-1',
+      8,
+      2026,
+      {
+        stipendRecord: {
+          basicStipend: 25000,
+          effectiveFrom: new Date(Date.UTC(2026, 8, 1)),
+          effectiveTo: null,
+        },
+        employee: {
+          ...EMPLOYEE,
+          joiningDate: new Date(Date.UTC(2026, 8, 1)),
+        },
+        existingDeductions: [],
+        existingAllowances: [],
+        asOf: new Date(Date.UTC(2026, 8, 1)),
+        backfillFromAttendance: true,
+      },
+    );
+    expect(withBackfill.policyCreditMinutes).toBe(FULL_DAY_MINUTES * 2);
+    expect(withBackfill.hourlyBasicEarned).toBeGreaterThan(0);
   });
 
   it('never stores a negative net stipend', async () => {
