@@ -23,7 +23,29 @@ body {
 
 .ltr { direction: ltr; text-align: left; unicode-bidi: embed; }
 
-.page { min-height: 250mm; }
+.page {
+  min-height: 250mm;
+  position: relative;
+  padding-bottom: 36pt;
+}
+
+.computer-generated-notice {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding-top: 8pt;
+  border-top: 1px solid #ccc;
+  text-align: center;
+  font-size: 9pt;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  direction: ltr;
+  color: #444;
+  line-height: 1.3;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
 
 /* ── Letterhead / English notification block (LTR) ── */
 .letter-shell-top {

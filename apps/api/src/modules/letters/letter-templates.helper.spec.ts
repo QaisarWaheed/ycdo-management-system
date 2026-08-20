@@ -22,13 +22,16 @@ describe('buildLetterRef', () => {
 });
 
 describe('appendComputerGeneratedNotice', () => {
-  it('appends notice before closing body tag', () => {
+  it('pins the notice inside the first page instead of after it', () => {
     const html = appendComputerGeneratedNotice(
-      '<html><body><p>Hello</p></body></html>',
+      '<html><body><div class="page"><p>Hello</p></div></body></html>',
     );
     expect(html).toContain(COMPUTER_GENERATED_NOTICE);
-    expect(html.indexOf(COMPUTER_GENERATED_NOTICE)).toBeLessThan(
-      html.indexOf('</body>'),
+    expect(html.indexOf('computer-generated-notice')).toBeLessThan(
+      html.lastIndexOf('</div>'),
+    );
+    expect(html.indexOf('computer-generated-notice')).toBeGreaterThan(
+      html.indexOf('class="page"'),
     );
   });
 

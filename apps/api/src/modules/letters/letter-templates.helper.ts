@@ -319,16 +319,24 @@ export const COMPUTER_GENERATED_NOTICE =
   'This is a computer generated letter and it does not require any signatures';
 
 export const COMPUTER_GENERATED_NOTICE_HTML = `
-<div class="computer-generated-notice" style="margin-top:28pt;padding-top:10pt;border-top:1px solid #ccc;text-align:center;font-size:10pt;font-family:'Segoe UI',Arial,sans-serif;direction:ltr;color:#444;">
-  ${COMPUTER_GENERATED_NOTICE}
-</div>`;
+<div class="computer-generated-notice">${COMPUTER_GENERATED_NOTICE}</div>`;
 
-/** Idempotent — safe to call from both HTML render and PDF generation paths. */
+/**
+ * Pins the disclaimer inside the first `.page` block so it occupies the
+ * empty space at the bottom of page 1 instead of flowing onto a blank
+ * second page after `.page { min-height: 250mm }`.
+ */
 export function appendComputerGeneratedNotice(htmlContent: string): string {
   if (htmlContent.includes('computer-generated-notice')) {
     return htmlContent;
   }
   const trimmed = htmlContent.trimEnd();
+  if (/<div class="page">/i.test(trimmed) && /<\/div>\s*<\/body>/i.test(trimmed)) {
+    return trimmed.replace(
+      /<\/div>\s*<\/body>/i,
+      `${COMPUTER_GENERATED_NOTICE_HTML}</div></body>`,
+    );
+  }
   if (/<\/body>/i.test(trimmed)) {
     return trimmed.replace(
       /<\/body>/i,
