@@ -1501,30 +1501,24 @@ export class AttendanceService {
       data.overtimePending = false;
     }
 
+    // HR status override can leave status=LATE while lateMinutes > 60;
+    // the auto-recompute path already writes HALF_DAY via statusFromLateMinutes.
+    // Discipline (letters, fines, half-day deduction) is applied once post-write
+    // by reconcileAttendanceFinancialConsequences — not pre-write here. Running
+    // applyDisciplineRules before AND after the write duplicated side-effects
+    // and could abort the transaction (500) while leaving the row unchanged.
+    if (
+      data.status === AttendanceStatus.LATE &&
+      ((data.lateMinutes as number | undefined) ?? 0) > 60
+    ) {
+      data.status = AttendanceStatus.HALF_DAY;
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const updateData = { ...data };
       let shortLeaveDecision: 'APPROVED' | 'PENDING_APPROVAL' | undefined;
 
-      if (
-        effectiveCheckIn &&
-        updateData.status &&
-        (updateData.status === AttendanceStatus.LATE ||
-          updateData.status === AttendanceStatus.HALF_DAY)
-      ) {
-        updateData.status = await applyDisciplineRules(
-          tx,
-          log.employeeId,
-          updateData.status as AttendanceStatus,
-          log.date,
-          {
-            lateMinutes: (updateData.lateMinutes as number | undefined) ?? 0,
-            // Letter wording uses this row's own historical duty — see
-            // resolveAttendanceDutyTimes above.
-            dutyStartTimeSnapshot: resolveAttendanceDutyTimes(log, log.employee)
-              .dutyStartTime,
-          },
-        );
-      } else if (dto.status === AttendanceStatus.SHORT_LEAVE) {
+      if (dto.status === AttendanceStatus.SHORT_LEAVE) {
         // Unified monthly quota shared with the Portal Short Leave flow —
         // counted from LeaveRecord (every Short Leave, either flow, is now
         // represented as one), read live under this transaction to avoid a

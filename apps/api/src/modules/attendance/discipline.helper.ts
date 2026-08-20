@@ -994,9 +994,7 @@ async function getOrCreatePayrollEntry(
   const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
 
   if (!stipendRecord) {
-    throw new Error(
-      `No stipend record effective on ${date.toISOString().slice(0, 10)} for employee ${employeeId}`,
-    );
+    return null;
   }
 
   return tx.payrollEntry.findUnique({
