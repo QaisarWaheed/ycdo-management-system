@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { withReturnTo } from '@/lib/backNavigation'
+import { todayPakistan } from '@/lib/timeFormat'
 import {
   Table,
   TableBody,
@@ -43,7 +44,7 @@ import { ItAdminDashboard } from '@/pages/dashboard/ItAdminDashboard'
 import { MedicineManagerDashboard } from '@/pages/dashboard/MedicineManagerDashboard'
 
 function todayRange() {
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = todayPakistan()
   return { startDate: today, endDate: today }
 }
 

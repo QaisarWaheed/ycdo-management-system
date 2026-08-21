@@ -50,31 +50,71 @@ export class ShiftAbsentScheduler {
     const now = new Date();
     const nowMinutes = toPakistanMinutesOfDay(now);
 
-    const recentlyStartedShifts = await this.prisma.shift.findMany({
-      where: { isActive: true },
+    // Key off each employee's duty clock (with Shift template fallback) so
+    // staff with dutyStartTime but no shiftId still get an UNMARKED row
+    // when their shift begins (e.g. 02:30 starts).
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        relieverOnly: false,
+        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+      },
+      include: { shift: true },
     });
 
     let marked = 0;
 
-    for (const shift of recentlyStartedShifts) {
-      const shiftStartMinutes = parseTimeToMinutes(shift.startTime);
+    for (const employee of employees) {
+      const dutyStart =
+        employee.dutyStartTime?.trim() ||
+        employee.shift?.startTime?.trim() ||
+        null;
+      if (!dutyStart) continue;
 
       if (
-        nowMinutes < shiftStartMinutes ||
-        nowMinutes > shiftStartMinutes + 15
+        (employee.shift && is24HourShiftRecord(employee.shift)) ||
+        is24HourShift(employee)
       ) {
         continue;
       }
 
-      const attendanceDate = getShiftAttendanceDate(now, shift.startTime);
-      const is24h = is24HourShiftRecord(shift);
+      const shiftStartMinutes = parseTimeToMinutes(dutyStart);
+      const sinceStart = minutesSinceShiftStart(nowMinutes, shiftStartMinutes);
+      if (sinceStart < 0 || sinceStart > 15) {
+        continue;
+      }
 
-      marked += await this.markAbsentForShift(
-        shift.id,
-        attendanceDate,
-        is24h ? AUTO_ABSENT_24H_NOTE : AUTO_UNMARKED_NOTE,
-        is24h ? AttendanceStatus.ABSENT : AttendanceStatus.UNMARKED,
-      );
+      const attendanceDate = getShiftAttendanceDate(now, dutyStart);
+      if (isPreJoinAttendanceDate(attendanceDate, employee.joiningDate)) {
+        continue;
+      }
+
+      const existing = await this.prisma.attendanceLog.findUnique({
+        where: {
+          employeeId_date_type: {
+            employeeId: employee.id,
+            date: attendanceDate,
+            type: AttendanceLogType.REGULAR,
+          },
+        },
+      });
+
+      if (!existing) {
+        await this.prisma.attendanceLog.create({
+          data: {
+            employeeId: employee.id,
+            branchId: employee.currentBranchId,
+            date: attendanceDate,
+            type: AttendanceLogType.REGULAR,
+            status: AttendanceStatus.UNMARKED,
+            source: AttendanceSource.MANUAL,
+            note: AUTO_UNMARKED_NOTE,
+            dutyStartTimeSnapshot: employee.dutyStartTime ?? dutyStart,
+            dutyEndTimeSnapshot:
+              employee.dutyEndTime ?? employee.shift?.endTime ?? null,
+          },
+        });
+        marked++;
+      }
     }
 
     if (marked > 0) {
@@ -113,28 +153,36 @@ export class ShiftAbsentScheduler {
     let upgraded = 0;
 
     for (const log of unmarkedLogs) {
-      if (!log.employee.shift) continue;
-
       if (!isUninformedUpgradeNote(log.note)) continue;
 
       if (isPreJoinAttendanceDate(log.date, log.employee.joiningDate)) {
         continue;
       }
 
-      const shift = log.employee.shift;
+      // Prefer employee duty clock; fall back to linked Shift template.
+      // Employees with duty times but no shiftId still need UA upgrade.
+      const dutyStart =
+        log.dutyStartTimeSnapshot?.trim() ||
+        log.employee.dutyStartTime?.trim() ||
+        log.employee.shift?.startTime?.trim() ||
+        null;
+      if (!dutyStart) continue;
 
       // 24-hour staff stay ABSENT / never UNINFORMED_ABSENT
-      if (is24HourShiftRecord(shift) || is24HourShift(log.employee)) {
+      if (
+        (log.employee.shift && is24HourShiftRecord(log.employee.shift)) ||
+        is24HourShift(log.employee)
+      ) {
         continue;
       }
 
-      const expectedDate = getShiftAttendanceDate(now, shift.startTime);
+      const expectedDate = getShiftAttendanceDate(now, dutyStart);
 
       if (log.date.getTime() !== expectedDate.getTime()) {
         continue;
       }
 
-      const shiftStartMinutes = parseTimeToMinutes(shift.startTime);
+      const shiftStartMinutes = parseTimeToMinutes(dutyStart);
       const minutesSince = minutesSinceShiftStart(
         currentMinutes,
         shiftStartMinutes,

@@ -20,9 +20,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
+import { todayPakistan } from '@/lib/timeFormat'
 
 function todayRange() {
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = todayPakistan()
   return { startDate: today, endDate: today }
 }
 

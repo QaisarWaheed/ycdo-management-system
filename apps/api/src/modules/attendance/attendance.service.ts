@@ -1796,41 +1796,151 @@ export class AttendanceService {
     dateOnly: Date,
     employeeWhere?: Prisma.EmployeeWhereInput,
   ): Promise<void> {
-    const pkToday = toPakistanDateOnly(new Date());
+    const now = new Date();
+    const pkToday = toPakistanDateOnly(now);
     if (dateOnly.getTime() > pkToday.getTime()) {
       return;
     }
 
     const isToday = dateOnly.getTime() === pkToday.getTime();
-    const referenceTime = this.referenceTimeForCalendarDate(dateOnly, isToday);
-    const nowMinutes = isToday ? toPakistanMinutesOfDay(new Date()) : 1440;
+    if (isToday) {
+      await this.purgePrematureUnmarkedForDate(dateOnly, now, employeeWhere);
+    }
 
-    const shifts = await this.prisma.shift.findMany({
-      where: { isActive: true },
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        ...(employeeWhere ?? {}),
+      },
+      select: {
+        id: true,
+        currentBranchId: true,
+        dutyStartTime: true,
+        dutyEndTime: true,
+        dutyTotalHours: true,
+        joiningDate: true,
+        shift: { select: { startTime: true, endTime: true, name: true } },
+      },
     });
 
-    for (const shift of shifts) {
-      const attendanceDate = getShiftAttendanceDate(
-        referenceTime,
-        shift.startTime,
-      );
-      if (attendanceDate.getTime() !== dateOnly.getTime()) {
+    for (const employee of employees) {
+      if (isPreJoinAttendanceDate(dateOnly, employee.joiningDate)) {
+        continue;
+      }
+      if (is24HourShift(employee)) {
         continue;
       }
 
+      const dutyStart =
+        employee.dutyStartTime?.trim() ||
+        employee.shift?.startTime?.trim() ||
+        null;
+      if (!dutyStart) {
+        continue;
+      }
+
+      // Calendar "today" before evening start still belongs to yesterday for
+      // overnight duties — do not create a today UNMARKED placeholder.
       if (isToday) {
-        const shiftStartMinutes = parseTimeToMinutes(shift.startTime);
-        if (minutesSinceShiftStart(nowMinutes, shiftStartMinutes) < 0) {
+        const activeDate = getShiftAttendanceDate(now, dutyStart);
+        if (activeDate.getTime() !== dateOnly.getTime()) {
           continue;
         }
       }
 
-      await this.ensureUnmarkedLogsForShift(
-        shift.id,
-        dateOnly,
-        employeeWhere,
-      );
+      if (!hasDutyStartedForAttendanceDate(dateOnly, dutyStart, now)) {
+        continue;
+      }
+
+      const onLeave = await this.prisma.leaveRecord.findFirst({
+        where: {
+          employeeId: employee.id,
+          status: LeaveStatus.APPROVED,
+          startDate: { lte: dateOnly },
+          endDate: { gte: dateOnly },
+        },
+        select: { id: true },
+      });
+      if (onLeave) {
+        continue;
+      }
+
+      const existing = await this.prisma.attendanceLog.findUnique({
+        where: {
+          employeeId_date_type: {
+            employeeId: employee.id,
+            date: dateOnly,
+            type: AttendanceLogType.REGULAR,
+          },
+        },
+      });
+
+      if (!existing) {
+        await this.prisma.attendanceLog.create({
+          data: {
+            employeeId: employee.id,
+            branchId: employee.currentBranchId,
+            date: dateOnly,
+            type: AttendanceLogType.REGULAR,
+            status: AttendanceStatus.UNMARKED,
+            source: AttendanceSource.MANUAL,
+            note: AUTO_UNMARKED_NOTE,
+            dutyStartTimeSnapshot: employee.dutyStartTime ?? dutyStart,
+            dutyEndTimeSnapshot:
+              employee.dutyEndTime ?? employee.shift?.endTime ?? null,
+          },
+        });
+      }
     }
+  }
+
+  /**
+   * Removes today's empty UNMARKED placeholders created before the employee's
+   * duty start (or while "today" is still yesterday's overnight attendance
+   * day). Keeps the dashboard / attendance list from showing overnight staff
+   * as Unmarked immediately after midnight.
+   */
+  private async purgePrematureUnmarkedForDate(
+    dateOnly: Date,
+    now: Date,
+    employeeWhere?: Prisma.EmployeeWhereInput,
+  ): Promise<void> {
+    const openUnmarked = await this.prisma.attendanceLog.findMany({
+      where: {
+        type: AttendanceLogType.REGULAR,
+        date: dateOnly,
+        status: AttendanceStatus.UNMARKED,
+        checkIn: null,
+        ...(employeeWhere ? { employee: employeeWhere } : {}),
+      },
+      select: {
+        id: true,
+        dutyStartTimeSnapshot: true,
+        employee: {
+          select: {
+            dutyStartTime: true,
+            shift: { select: { startTime: true } },
+          },
+        },
+      },
+    });
+
+    const toDelete: string[] = [];
+    for (const row of openUnmarked) {
+      const dutyStart =
+        row.dutyStartTimeSnapshot?.trim() ||
+        row.employee.dutyStartTime?.trim() ||
+        row.employee.shift?.startTime?.trim() ||
+        null;
+      if (!hasDutyStartedForAttendanceDate(dateOnly, dutyStart, now)) {
+        toDelete.push(row.id);
+      }
+    }
+
+    if (toDelete.length === 0) return;
+    await this.prisma.attendanceLog.deleteMany({
+      where: { id: { in: toDelete } },
+    });
   }
 
   private async ensureUnmarkedLogsForShift(
@@ -1838,6 +1948,10 @@ export class AttendanceService {
     date: Date,
     employeeWhere?: Prisma.EmployeeWhereInput,
   ): Promise<void> {
+    // Kept for markAbsentForShift / schedulers that still key by shiftId.
+    // Day-list materialization uses ensureUnmarkedForActiveShiftsOnDate above
+    // (employee duty clock) so overnight + employees without a shift link
+    // are handled correctly.
     const employees = await this.prisma.employee.findMany({
       where: {
         shiftId,
@@ -1850,6 +1964,7 @@ export class AttendanceService {
         dutyStartTime: true,
         dutyEndTime: true,
         joiningDate: true,
+        shift: { select: { startTime: true, endTime: true } },
       },
     });
 
@@ -1858,11 +1973,12 @@ export class AttendanceService {
         continue;
       }
 
-      // Prefer the employee's own duty clock (source of truth) so overnight
-      // staff are not unmarked for "today" before their evening start.
-      if (
-        !hasDutyStartedForAttendanceDate(date, employee.dutyStartTime ?? null)
-      ) {
+      const dutyStart =
+        employee.dutyStartTime?.trim() ||
+        employee.shift?.startTime?.trim() ||
+        null;
+
+      if (!hasDutyStartedForAttendanceDate(date, dutyStart)) {
         continue;
       }
 
@@ -1899,8 +2015,9 @@ export class AttendanceService {
             status: AttendanceStatus.UNMARKED,
             source: AttendanceSource.MANUAL,
             note: AUTO_UNMARKED_NOTE,
-            dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
-            dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
+            dutyStartTimeSnapshot: employee.dutyStartTime ?? dutyStart,
+            dutyEndTimeSnapshot:
+              employee.dutyEndTime ?? employee.shift?.endTime ?? null,
           },
         });
       }
@@ -1934,9 +2051,17 @@ export class AttendanceService {
         dutyStartTime: true,
         dutyEndTime: true,
         joiningDate: true,
+        shift: { select: { startTime: true, endTime: true } },
       },
     });
     if (!employee) return;
+
+    const dutyStart =
+      employee.dutyStartTime?.trim() ||
+      employee.shift?.startTime?.trim() ||
+      null;
+    const dutyEnd =
+      employee.dutyEndTime?.trim() || employee.shift?.endTime?.trim() || null;
 
     const now = new Date();
     const dates = calendarDatesForAttendanceMonth(year, month, now);
@@ -1946,7 +2071,7 @@ export class AttendanceService {
     const todayInMonth = dates.some((d) => d.getTime() === pkToday.getTime());
     if (
       todayInMonth &&
-      !hasDutyStartedForAttendanceDate(pkToday, employee.dutyStartTime, now)
+      !hasDutyStartedForAttendanceDate(pkToday, dutyStart, now)
     ) {
       // Self-heal rows created before this gate existed (overnight staff
       // shown unmarked for "today" during the morning/afternoon).
@@ -1957,7 +2082,6 @@ export class AttendanceService {
           type: AttendanceLogType.REGULAR,
           status: AttendanceStatus.UNMARKED,
           checkIn: null,
-          note: MONTH_CALENDAR_UNMARKED_NOTE,
         },
       });
     }
@@ -1991,7 +2115,7 @@ export class AttendanceService {
       (date) =>
         !existingKeys.has(date.getTime()) &&
         !coveredByLeave(date) &&
-        hasDutyStartedForAttendanceDate(date, employee.dutyStartTime, now),
+        hasDutyStartedForAttendanceDate(date, dutyStart, now),
     );
     if (missing.length === 0) return;
 
@@ -2006,8 +2130,8 @@ export class AttendanceService {
         note: isPreJoinAttendanceDate(date, employee.joiningDate)
           ? PRE_JOIN_UNMARKED_NOTE
           : MONTH_CALENDAR_UNMARKED_NOTE,
-        dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
-        dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
+        dutyStartTimeSnapshot: employee.dutyStartTime ?? dutyStart,
+        dutyEndTimeSnapshot: employee.dutyEndTime ?? dutyEnd,
       })),
       skipDuplicates: true,
     });
@@ -2070,13 +2194,26 @@ export class AttendanceService {
       !!query.endDate &&
       query.startDate === query.endDate;
 
+    const dateOnly = isSingleDay
+      ? this.toDateOnly(new Date(query.startDate!))
+      : null;
+    const now = new Date();
+    const pkToday = toPakistanDateOnly(now);
+    const isQueryingToday =
+      !!dateOnly && dateOnly.getTime() === pkToday.getTime();
+
+    // Materialize/purge for single-day lists. For Pakistan "today", always
+    // run so premature overnight UNMARKED rows are removed even when the
+    // client filters by PRESENT/LATE/etc. (dashboard loads all statuses).
     const shouldEnsureUnmarked =
       isSingleDay &&
-      (!query.status || query.status === AttendanceStatus.UNMARKED);
+      (!query.status ||
+        query.status === AttendanceStatus.UNMARKED ||
+        isQueryingToday);
 
-    if (shouldEnsureUnmarked) {
+    if (shouldEnsureUnmarked && dateOnly) {
       await this.ensureUnmarkedForActiveShiftsOnDate(
-        this.toDateOnly(new Date(query.startDate!)),
+        dateOnly,
         scopedEmployeeWhere,
       );
     }
@@ -2239,19 +2376,40 @@ export class AttendanceService {
     });
 
     const dutyFilter = this.resolveDutyFilter(query);
-    if (dutyFilter === 'all') {
-      return mapped;
+    let result = mapped;
+    if (dutyFilter !== 'all') {
+      const minutesOfDay = toPakistanMinutesOfDay(now);
+      result = mapped.filter((log) => {
+        const emp = log.employee;
+        if (!emp) return true;
+        if (emp.relieverOnly) return true;
+        const win = getDutyWindow(emp);
+        if (!win) return true;
+        return isOnDutyAt(win, minutesOfDay, DUTY_FILTER_GRACE_MINUTES);
+      });
     }
 
-    const minutesOfDay = toPakistanMinutesOfDay(new Date());
-    return mapped.filter((log) => {
-      const emp = log.employee;
-      if (!emp) return true;
-      if (emp.relieverOnly) return true;
-      const win = getDutyWindow(emp);
-      if (!win) return true;
-      return isOnDutyAt(win, minutesOfDay, DUTY_FILTER_GRACE_MINUTES);
-    });
+    // Hard hide: empty UNMARKED for "today" before the employee's duty start
+    // (overnight 22:00 must not appear at 01:57). DB purge above is primary;
+    // this keeps the dashboard correct even if a stale row remains.
+    if (isQueryingToday) {
+      result = result.filter((log) => {
+        if (
+          log.status !== AttendanceStatus.UNMARKED ||
+          log.checkIn != null
+        ) {
+          return true;
+        }
+        const dutyStart =
+          log.dutyStartTimeSnapshot?.trim() ||
+          log.employee?.dutyStartTime?.trim() ||
+          log.employee?.shift?.startTime?.trim() ||
+          null;
+        return hasDutyStartedForAttendanceDate(log.date, dutyStart, now);
+      });
+    }
+
+    return result;
   }
 
   private isAttendanceMarkOnlyRole(role: UserRole): boolean {

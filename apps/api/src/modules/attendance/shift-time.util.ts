@@ -98,10 +98,9 @@ export function attendanceGraceMinutesRemaining(
  *
  * Past Pakistan calendar days: always yes (that day's duty already started).
  * Future days: never.
- * Today: only once wall-clock Pakistan time has reached `dutyStartTime`
- * (e.g. overnight 21:00–09:00 must not get a "today" UNMARKED row at 10:00 —
- * the previous night's session still owns yesterday, and today's shift has
- * not started).
+ * Today: only when this calendar day is the active shift-attendance date
+ * (overnight 22:00 at 01:37 still belongs to yesterday) AND wall-clock is
+ * at/after duty start.
  */
 export function hasDutyStartedForAttendanceDate(
   attendanceDate: Date,
@@ -114,9 +113,14 @@ export function hasDutyStartedForAttendanceDate(
   if (day.getTime() > pkToday.getTime()) return false;
 
   const dutyStart = dutyStartTime?.trim() || DEFAULT_DUTY_START;
+  const activeAttendanceDate = getShiftAttendanceDate(now, dutyStart);
+  if (activeAttendanceDate.getTime() !== day.getTime()) {
+    return false;
+  }
+
   const nowMinutes = toPakistanMinutesOfDay(now);
   const startMinutes = parseTimeToMinutes(dutyStart);
-  return nowMinutes >= startMinutes;
+  return minutesSinceShiftStart(nowMinutes, startMinutes) >= 0;
 }
 
 /**
