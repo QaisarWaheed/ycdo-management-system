@@ -74,6 +74,7 @@ import {
 } from './attendance-calendar.util';
 import {
   calculateLateMinutesFromCheckIn,
+  DEFAULT_DUTY_START,
   getShiftAttendanceDate,
   hasDutyStartedForAttendanceDate,
   isWithinAttendanceMarkingGrace,
@@ -1810,6 +1811,7 @@ export class AttendanceService {
     const employees = await this.prisma.employee.findMany({
       where: {
         status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        relieverOnly: false,
         ...(employeeWhere ?? {}),
       },
       select: {
@@ -1823,6 +1825,7 @@ export class AttendanceService {
       },
     });
 
+    const eligible: typeof employees = [];
     for (const employee of employees) {
       if (isPreJoinAttendanceDate(dateOnly, employee.joiningDate)) {
         continue;
@@ -1852,46 +1855,66 @@ export class AttendanceService {
         continue;
       }
 
-      const onLeave = await this.prisma.leaveRecord.findFirst({
+      eligible.push(employee);
+    }
+
+    if (eligible.length === 0) {
+      return;
+    }
+
+    const eligibleIds = eligible.map((e) => e.id);
+
+    const [onLeaveRows, existingLogs] = await Promise.all([
+      this.prisma.leaveRecord.findMany({
         where: {
-          employeeId: employee.id,
+          employeeId: { in: eligibleIds },
           status: LeaveStatus.APPROVED,
           startDate: { lte: dateOnly },
           endDate: { gte: dateOnly },
         },
-        select: { id: true },
-      });
-      if (onLeave) {
-        continue;
-      }
-
-      const existing = await this.prisma.attendanceLog.findUnique({
+        select: { employeeId: true },
+      }),
+      this.prisma.attendanceLog.findMany({
         where: {
-          employeeId_date_type: {
-            employeeId: employee.id,
-            date: dateOnly,
-            type: AttendanceLogType.REGULAR,
-          },
+          employeeId: { in: eligibleIds },
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
         },
-      });
+        select: { employeeId: true },
+      }),
+    ]);
 
-      if (!existing) {
-        await this.prisma.attendanceLog.create({
-          data: {
-            employeeId: employee.id,
-            branchId: employee.currentBranchId,
-            date: dateOnly,
-            type: AttendanceLogType.REGULAR,
-            status: AttendanceStatus.UNMARKED,
-            source: AttendanceSource.MANUAL,
-            note: AUTO_UNMARKED_NOTE,
-            dutyStartTimeSnapshot: employee.dutyStartTime ?? dutyStart,
-            dutyEndTimeSnapshot:
-              employee.dutyEndTime ?? employee.shift?.endTime ?? null,
-          },
-        });
-      }
+    const onLeaveIds = new Set(onLeaveRows.map((r) => r.employeeId));
+    const existingIds = new Set(existingLogs.map((r) => r.employeeId));
+
+    const toCreate = eligible.filter(
+      (e) => !onLeaveIds.has(e.id) && !existingIds.has(e.id),
+    );
+    if (toCreate.length === 0) {
+      return;
     }
+
+    await this.prisma.attendanceLog.createMany({
+      data: toCreate.map((employee) => {
+        const dutyStart =
+          employee.dutyStartTime?.trim() ||
+          employee.shift?.startTime?.trim() ||
+          DEFAULT_DUTY_START;
+        return {
+          employeeId: employee.id,
+          branchId: employee.currentBranchId,
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
+          status: AttendanceStatus.UNMARKED,
+          source: AttendanceSource.MANUAL,
+          note: AUTO_UNMARKED_NOTE,
+          dutyStartTimeSnapshot: employee.dutyStartTime ?? dutyStart,
+          dutyEndTimeSnapshot:
+            employee.dutyEndTime ?? employee.shift?.endTime ?? null,
+        };
+      }),
+      skipDuplicates: true,
+    });
   }
 
   /**

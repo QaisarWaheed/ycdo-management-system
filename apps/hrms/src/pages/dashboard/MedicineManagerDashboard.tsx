@@ -134,8 +134,10 @@ export function MedicineManagerDashboard() {
     queryFn: () =>
       attendanceApi.getAll({
         ...today,
+        dutyFilter: 'all',
         ...(medicineDeptId ? { departmentId: medicineDeptId } : {}),
       }),
+    refetchInterval: 60_000,
   })
 
   const { data: activity = [], isLoading: loadingActivity } = useQuery({

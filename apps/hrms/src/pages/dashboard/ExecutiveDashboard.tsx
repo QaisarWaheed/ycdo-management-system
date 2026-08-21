@@ -49,7 +49,12 @@ export function ExecutiveDashboard() {
   const { data: attendance = [] } = useQuery({
     queryKey: ['attendance', today],
     queryFn: () =>
-      attendanceApi.getAll({ startDate: today, endDate: today }),
+      attendanceApi.getAll({
+        startDate: today,
+        endDate: today,
+        dutyFilter: 'all',
+      }),
+    refetchInterval: 60_000,
   })
 
   const { data: disciplinary = [] } = useQuery({

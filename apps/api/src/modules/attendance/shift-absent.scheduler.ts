@@ -79,7 +79,9 @@ export class ShiftAbsentScheduler {
 
       const shiftStartMinutes = parseTimeToMinutes(dutyStart);
       const sinceStart = minutesSinceShiftStart(nowMinutes, shiftStartMinutes);
-      if (sinceStart < 0 || sinceStart > 15) {
+      // Wider than one 5-min tick so a delayed process still materializes
+      // UNMARKED shortly after duty start (dashboard also batch-ensures).
+      if (sinceStart < 0 || sinceStart > 120) {
         continue;
       }
 

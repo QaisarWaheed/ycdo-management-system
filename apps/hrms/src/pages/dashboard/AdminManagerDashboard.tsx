@@ -122,8 +122,9 @@ export function AdminManagerDashboard() {
   const { data: attendance = [], isLoading: loadingAttendance } = useQuery({
     queryKey: ['attendance', 'today', branchId],
     queryFn: () =>
-      attendanceApi.getAll({ ...today, branchId }),
+      attendanceApi.getAll({ ...today, branchId, dutyFilter: 'all' }),
     enabled: !!branchId,
+    refetchInterval: 60_000,
   })
 
   const { data: relievers = [], isLoading: loadingRelievers } = useQuery({
