@@ -1227,6 +1227,31 @@ export async function applyMissingCheckoutDiscipline(
   );
   if (!claimed) return; // already processed for this open day — true no-op
 
+  // Belt-and-suspenders: if a letter (including reversed) already exists for
+  // this incident date, never issue another — even if the DisciplineEvent
+  // was deleted by an older reverse path before we started keeping claims.
+  const priorForDay = await tx.letter.findMany({
+    where: {
+      employeeId,
+      letterType: {
+        in: [LetterType.ADVICE, LetterType.WARNING, LetterType.FINE],
+      },
+      generatedAt: { gte: startOfMonth },
+    },
+    select: { variables: true },
+  });
+  const alreadyHandledIncident = priorForDay.some((letter) => {
+    const vars = letter.variables as {
+      monthlyMissingCheckoutOccurrence?: number;
+      incidentDate?: string;
+    } | null;
+    return (
+      vars?.monthlyMissingCheckoutOccurrence != null &&
+      vars.incidentDate === dayKey
+    );
+  });
+  if (alreadyHandledIncident) return;
+
   const checkInLabel = formatMinutesAsHHmm(
     toPakistanMinutesOfDay(options.checkIn),
   );
@@ -1371,7 +1396,11 @@ async function hasLetterForMonthlyMissingCheckoutOccurrence(
       monthlyMissingCheckoutOccurrence?: number;
       incidentDate?: string;
       reversedDueToShortLeave?: boolean;
+      reversed?: boolean;
     } | null;
+    // Soft-voided late-style flag — ignore. MC uses `reversed`; those rows
+    // still block re-issue for the same occurrence+incidentDate so turning
+    // TEMPORARY_AUTO_CHECKOUT off cannot recreate the same letter.
     if (vars?.reversedDueToShortLeave) return false;
     if (vars?.monthlyMissingCheckoutOccurrence !== missingCount) return false;
     if (!vars.incidentDate) return true;
@@ -1923,9 +1952,10 @@ export type MissingCheckoutReversalResult = {
  * DISCIPLINARY_FINE deduction and restores PayrollEntry.totalDeductions/
  * netStipend, but ONLY when that entry is still PENDING. Any type: the
  * letter is kept but annotated reversed and requiresAcknowledgement is
- * cleared. The date's DisciplineEvent(MISSING_CHECKOUT) claim is released
- * unconditionally so a later genuine re-open of the same date can be
- * processed again.
+ * cleared. The date's DisciplineEvent(MISSING_CHECKOUT) claim is KEPT so
+ * turning TEMPORARY_AUTO_CHECKOUT off (or a later cron tick) cannot
+ * re-issue a letter for the same incident date after checkout was
+ * provided / auto-punched.
  *
  * Fully idempotent: a second call for the same date finds no active letter
  * (already annotated reversed) and returns a no-op result.
@@ -2052,13 +2082,23 @@ export async function reverseMissingCheckoutDisciplineForDate(
     },
   });
 
-  const deletedEvents = await tx.disciplineEvent.deleteMany({
-    where: {
-      employeeId,
-      category: DisciplineCategory.MISSING_CHECKOUT,
-      incidentDate: dayStart,
-    },
-  });
+  // Keep DisciplineEvent so this incidentDate can never be claimed again
+  // after TEMPORARY_AUTO_CHECKOUT is turned off (or checkOut is cleared).
+  // Ensure a claim exists even if an older reverse path had deleted it.
+  if (occurrence != null) {
+    try {
+      await tx.disciplineEvent.create({
+        data: {
+          employeeId,
+          category: DisciplineCategory.MISSING_CHECKOUT,
+          incidentDate: dayStart,
+          occurrence,
+        },
+      });
+    } catch (err: unknown) {
+      if (!isUniqueConstraintViolation(err)) throw err;
+    }
+  }
 
   return {
     reversed: true,
@@ -2068,7 +2108,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
     deductionAmount,
     blockedByPayrollStatus,
     payrollStatus,
-    disciplineEventRemoved: deletedEvents.count > 0,
+    disciplineEventRemoved: false,
   };
 }
 

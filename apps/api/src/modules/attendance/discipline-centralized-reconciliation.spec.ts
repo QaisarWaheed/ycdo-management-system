@@ -408,7 +408,7 @@ describe('reverseMissingCheckoutDisciplineForDate', () => {
     };
   }
 
-  it('PENDING payroll — deduction reversed, totals restored, letter annotated, DisciplineEvent removed', async () => {
+  it('PENDING payroll — deduction reversed, totals restored, letter annotated, DisciplineEvent kept', async () => {
     const { tx, getState } = makeReconcileFakeTx({
       payrollEntry: pendingEntry(),
       deductions: [mcDeduction()],
@@ -433,18 +433,19 @@ describe('reverseMissingCheckoutDisciplineForDate', () => {
     expect(result.reversed).toBe(true);
     expect(result.deductionReversed).toBe(true);
     expect(result.deductionAmount).toBe(968.75);
-    expect(result.disciplineEventRemoved).toBe(true);
+    expect(result.disciplineEventRemoved).toBe(false);
 
     const state = getState();
     expect(state.deductions).toHaveLength(0);
     expect(state.payrollEntry?.totalDeductions).toBeCloseTo(5000 - 968.75);
     expect(state.payrollEntry?.netStipend).toBeCloseTo(25000 + 968.75);
-    expect(state.disciplineEvents).toHaveLength(0);
+    // Claim retained so TEMPORARY_AUTO_CHECKOUT=false cannot re-issue.
+    expect(state.disciplineEvents).toHaveLength(1);
     expect(state.letters[0].requiresAcknowledgement).toBe(false);
     expect(state.letters[0].variables.reversed).toBe(true);
   });
 
-  it('PROCESSED payroll — deduction/totals untouched, letter/DisciplineEvent still released', async () => {
+  it('PROCESSED payroll — deduction/totals untouched, letter reversed, DisciplineEvent kept', async () => {
     const { tx, getState } = makeReconcileFakeTx({
       payrollEntry: pendingEntry('PROCESSED'),
       deductions: [mcDeduction()],
@@ -471,7 +472,7 @@ describe('reverseMissingCheckoutDisciplineForDate', () => {
     const state = getState();
     expect(state.deductions).toHaveLength(1);
     expect(state.payrollEntry?.totalDeductions).toBe(5000);
-    expect(state.disciplineEvents).toHaveLength(0); // non-financial, still released
+    expect(state.disciplineEvents).toHaveLength(1);
   });
 
   it('PAID payroll behaves the same as PROCESSED', async () => {
@@ -1061,7 +1062,7 @@ describe('reconcileAttendanceFinancialConsequences', () => {
 
       expect(result.missingCheckoutReversal?.deductionReversed).toBe(true);
       expect(getState().deductions).toHaveLength(0);
-      expect(getState().disciplineEvents).toHaveLength(0);
+      expect(getState().disciplineEvents).toHaveLength(1);
     });
 
     it('PROCESSED payroll — missing-checkout deduction stays frozen, blockedByPayrollStatus reported', async () => {
