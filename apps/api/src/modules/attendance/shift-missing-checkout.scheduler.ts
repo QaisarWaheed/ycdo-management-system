@@ -1,11 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { AttendanceLogType } from '@prisma/client';
+import { resolveAttendanceDutyTimes } from '../../common/duty.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollService } from '../payroll/payroll.service';
 import { is24HourShift, isOvernightShift } from './attendance-biometric.util';
-import { applyMissingCheckoutDiscipline } from './discipline.helper';
+import {
+  applyMissingCheckoutDiscipline,
+  reconcileAttendanceFinancialConsequences,
+} from './discipline.helper';
 import { computeShiftEndDateTime, toPakistanDateOnly } from './shift-time.util';
+import {
+  isTemporaryAutoCheckoutEnabled,
+  TEMPORARY_AUTO_CHECKOUT_NOTE,
+} from './temporary-auto-checkout';
 
 /**
  * Grace period after the scheduled shift end before a missing checkout
@@ -13,6 +21,9 @@ import { computeShiftEndDateTime, toPakistanDateOnly } from './shift-time.util';
  * ends (biometric sync delay, brief overtime handoff, etc.) — mirrors the
  * spirit of markUninformedAbsent's grace on the check-in side, kept shorter
  * here since this only drives letters/deductions, never attendance status.
+ *
+ * During TEMPORARY_AUTO_CHECKOUT=true the same grace gates auto-punching
+ * checkOut at duty end (no discipline).
  */
 export const MISSING_CHECKOUT_GRACE_MINUTES = 30;
 
@@ -38,10 +49,15 @@ export function evaluateMissingCheckoutEligibility(
   employee: MissingCheckoutEmployee,
   logDate: Date,
   now: Date,
+  dutyOverride?: { dutyStartTime: string | null; dutyEndTime: string | null },
 ):
   | { eligible: true; shiftEnd: Date; minutesPastEnd: number }
   | { eligible: false; reason: string } {
-  if (!employee.dutyStartTime || !employee.dutyEndTime) {
+  const dutyStart =
+    dutyOverride?.dutyStartTime?.trim() || employee.dutyStartTime;
+  const dutyEnd = dutyOverride?.dutyEndTime?.trim() || employee.dutyEndTime;
+
+  if (!dutyStart || !dutyEnd) {
     return {
       eligible: false,
       reason: 'no dutyStartTime/dutyEndTime configured',
@@ -54,13 +70,10 @@ export function evaluateMissingCheckoutEligibility(
     };
   }
 
-  const crossesMidnight = isOvernightShift(
-    employee.dutyStartTime,
-    employee.dutyEndTime,
-  );
+  const crossesMidnight = isOvernightShift(dutyStart, dutyEnd);
   const shiftEnd = computeShiftEndDateTime(
     logDate,
-    employee.dutyEndTime,
+    dutyEnd,
     crossesMidnight,
   );
   const minutesPastEnd = (now.getTime() - shiftEnd.getTime()) / 60000;
@@ -74,17 +87,19 @@ export function evaluateMissingCheckoutEligibility(
 
 /**
  * Detects AttendanceLog rows where checkIn is set, checkOut is still null,
- * and the shift has genuinely finished (+ grace) — then applies the
- * missing-checkout disciplinary cycle AND marks the backend session
- * internally closed (Phase 4B: sessionClosedAt), without ever writing a
- * checkOut value. Fully separate from shift-checkout.scheduler.ts (overtime
- * prompts only) and from shift-absent.scheduler.ts (missing check-IN only);
- * deliberately its own file so it can be disabled/reverted independently of
- * either.
+ * and the shift has genuinely finished (+ grace).
  *
- * Detection is derived purely from AttendanceLog state, so it applies
- * identically no matter which of the three live paths (biometric, admin
- * self-mark, HR manual) wrote the check-in.
+ * Normal mode: applies the missing-checkout disciplinary cycle AND marks
+ * the backend session internally closed (sessionClosedAt), without writing
+ * checkOut.
+ *
+ * Temporary mode (TEMPORARY_AUTO_CHECKOUT=true): writes checkOut = duty end
+ * after the same grace, skips all checkout discipline, and reverses any
+ * prior missing-checkout consequences for that day. Flip the env flag off
+ * and redeploy to restore normal mode — discipline code paths stay intact.
+ *
+ * Fully separate from shift-checkout.scheduler.ts (overtime prompts only)
+ * and from shift-absent.scheduler.ts (missing check-IN only).
  */
 @Injectable()
 export class ShiftMissingCheckoutScheduler {
@@ -98,17 +113,21 @@ export class ShiftMissingCheckoutScheduler {
   @Cron('*/5 * * * *')
   async flagMissingCheckouts() {
     const now = new Date();
+    const temporaryAutoCheckout = isTemporaryAutoCheckoutEnabled();
     const pkToday = toPakistanDateOnly(now);
     const pkYesterday = new Date(pkToday);
     pkYesterday.setUTCDate(pkYesterday.getUTCDate() - 1);
 
+    // Temporary mode also picks up rows already session-closed without a
+    // real checkOut (disciplined before the flag was turned on) so they
+    // get an auto punch + discipline reversal.
     const openLogs = await this.prisma.attendanceLog.findMany({
       where: {
         type: AttendanceLogType.REGULAR,
         date: { in: [pkToday, pkYesterday] },
         checkIn: { not: null },
         checkOut: null,
-        sessionClosedAt: null,
+        ...(temporaryAutoCheckout ? {} : { sessionClosedAt: null }),
       },
       include: {
         employee: {
@@ -127,28 +146,82 @@ export class ShiftMissingCheckoutScheduler {
 
     for (const log of openLogs) {
       const employee = log.employee;
+      const duty = resolveAttendanceDutyTimes(log, employee);
       const evaluation = evaluateMissingCheckoutEligibility(
         employee,
         log.date,
         now,
+        duty,
       );
       if (!evaluation.eligible) continue;
 
-      await this.prisma.$transaction(async (tx) => {
-        await applyMissingCheckoutDiscipline(tx, employee.id, log.date, {
-          checkIn: log.checkIn,
-          dutyEndTime: employee.dutyEndTime,
-        });
+      if (temporaryAutoCheckout) {
+        if (evaluation.shiftEnd.getTime() <= (log.checkIn?.getTime() ?? 0)) {
+          continue;
+        }
 
-        // checkOut stays NULL — the employee never actually checked out.
-        // sessionClosedAt is the separate, internal "stop treating this as
-        // an open session" marker consumed by findOpenRegularLog /
-        // findOpenRegularLogForAuto.
-        await tx.attendanceLog.update({
-          where: { id: log.id },
-          data: { sessionClosedAt: now },
+        await this.prisma.$transaction(async (tx) => {
+          const before = await tx.attendanceLog.findUnique({
+            where: { id: log.id },
+          });
+          if (!before || before.checkOut != null || !before.checkIn) {
+            return;
+          }
+
+          const noteParts = [
+            before.note?.trim(),
+            TEMPORARY_AUTO_CHECKOUT_NOTE,
+          ].filter(Boolean);
+
+          const after = await tx.attendanceLog.update({
+            where: { id: log.id },
+            data: {
+              checkOut: evaluation.shiftEnd,
+              sessionClosedAt: before.sessionClosedAt ?? now,
+              note: noteParts.join(' | '),
+            },
+          });
+
+          // Reverses any prior missing-checkout Advice/Warning/Fine for this
+          // day. applyMissingCheckoutDiscipline is also no-op while the flag
+          // is on, so no new discipline can be issued on this path.
+          await reconcileAttendanceFinancialConsequences(tx, {
+            employeeId: before.employeeId,
+            date: before.date,
+            before: {
+              status: before.status,
+              lateMinutes: before.lateMinutes,
+              checkIn: before.checkIn,
+              checkOut: before.checkOut,
+              note: before.note,
+            },
+            after: {
+              status: after.status,
+              lateMinutes: after.lateMinutes,
+              checkIn: after.checkIn,
+              checkOut: after.checkOut,
+              note: after.note,
+            },
+            dutyStartTimeSnapshot: before.dutyStartTimeSnapshot,
+          });
         });
-      });
+      } else {
+        await this.prisma.$transaction(async (tx) => {
+          await applyMissingCheckoutDiscipline(tx, employee.id, log.date, {
+            checkIn: log.checkIn!,
+            dutyEndTime: duty.dutyEndTime,
+          });
+
+          // checkOut stays NULL — the employee never actually checked out.
+          // sessionClosedAt is the separate, internal "stop treating this as
+          // an open session" marker consumed by findOpenRegularLog /
+          // findOpenRegularLogForAuto.
+          await tx.attendanceLog.update({
+            where: { id: log.id },
+            data: { sessionClosedAt: now },
+          });
+        });
+      }
 
       await this.payrollService.recomputePendingPayrollForAttendanceDate(
         employee.id,
@@ -160,7 +233,9 @@ export class ShiftMissingCheckoutScheduler {
 
     if (evaluated > 0) {
       this.logger.log(
-        `Missing-checkout discipline evaluated and internally closed ${evaluated} attendance record(s)`,
+        temporaryAutoCheckout
+          ? `Temporary auto-checkout punched ${evaluated} attendance record(s) at duty end (discipline skipped)`
+          : `Missing-checkout discipline evaluated and internally closed ${evaluated} attendance record(s)`,
       );
     }
   }

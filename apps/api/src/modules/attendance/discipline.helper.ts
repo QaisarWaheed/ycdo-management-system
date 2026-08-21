@@ -23,6 +23,7 @@ import {
   parseTimeToMinutes,
   toPakistanMinutesOfDay,
 } from './attendance-late.util';
+import { isTemporaryAutoCheckoutEnabled } from './temporary-auto-checkout';
 
 export type DisciplineOptions = {
   lateMinutes?: number;
@@ -1176,6 +1177,13 @@ export async function applyMissingCheckoutDiscipline(
   date: Date,
   options: MissingCheckoutOptions,
 ): Promise<void> {
+  // Temporary ops mode: auto-checkout path owns closure; do not issue
+  // Advice/Warning/Fine or deductions. Flip TEMPORARY_AUTO_CHECKOUT off to
+  // restore this function's normal behaviour — no other edits required.
+  if (isTemporaryAutoCheckoutEnabled()) {
+    return;
+  }
+
   const basicStipend = await getBasicStipend(tx, employeeId, date);
 
   const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(date);
