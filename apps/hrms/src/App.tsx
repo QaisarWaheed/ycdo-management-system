@@ -32,6 +32,7 @@ import { ShiftsPage } from '@/pages/shifts/ShiftsPage'
 import { RuleBookPage } from '@/pages/rule-book/RuleBookPage'
 import { BranchContactsPage } from '@/pages/branch-contacts/BranchContactsPage'
 import { BiometricIdsPage } from '@/pages/employees/BiometricIdsPage'
+import { PortalLoginStatusPage } from '@/pages/portal/PortalLoginStatusPage'
 
 export default function App() {
   return (
@@ -43,6 +44,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/portal-login"
+        element={
+          <ProtectedRoute>
+            <PortalLoginStatusPage />
           </ProtectedRoute>
         }
       />

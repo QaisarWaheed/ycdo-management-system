@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleDashed,
   Clock,
+  Monitor,
   Timer,
   UserPlus,
   Users,
@@ -16,6 +17,7 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
+import { portalPresenceApi } from '@/api/endpoints/portalPresence'
 import { recruitmentApi } from '@/api/endpoints/recruitment'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import type { AttendanceLog, Employee, LeaveRecord } from '@/types'
@@ -248,7 +250,9 @@ function AdminDashboard() {
     isError: errorAttendance,
   } = useQuery({
     queryKey: ['attendance', 'today', today],
-    queryFn: () => attendanceApi.getAll(today),
+    queryFn: () =>
+      attendanceApi.getAll({ ...today, dutyFilter: 'all' }),
+    refetchInterval: 60_000,
   })
 
   const {
@@ -287,6 +291,16 @@ function AdminDashboard() {
     queryFn: () => leaveApi.getTodayRelievers(),
   })
 
+  const {
+    data: portalPresence,
+    isLoading: loadingPortalPresence,
+    isError: errorPortalPresence,
+  } = useQuery({
+    queryKey: ['portal-presence', 'summary'],
+    queryFn: () => portalPresenceApi.getSummary(),
+    refetchInterval: 60_000,
+  })
+
   const attendanceLogs = (attendance ?? []) as AttendanceLog[]
   const unmarkedToday = attendanceLogs.filter((l) => l.status === 'UNMARKED').length
   const presentToday = attendanceLogs.filter((l) => l.status === 'PRESENT').length
@@ -315,6 +329,37 @@ function AdminDashboard() {
           iconBg="bg-primary/10 text-primary"
           subtitle="Active & on-leave staff"
           to="/employees"
+        />
+        <StatCard
+          label="Portal online"
+          value={portalPresence?.online ?? 0}
+          icon={Monitor}
+          loading={loadingPortalPresence}
+          error={errorPortalPresence}
+          iconBg="bg-emerald-100 text-emerald-700"
+          subtitle={`Logged in last ${portalPresence?.onlineWindowMinutes ?? 30} min`}
+          to="/portal-login?status=ONLINE"
+        />
+        <StatCard
+          label="Never logged in"
+          value={portalPresence?.neverLoggedIn ?? 0}
+          icon={Monitor}
+          loading={loadingPortalPresence}
+          error={errorPortalPresence}
+          iconBg="bg-slate-100 text-slate-700"
+          subtitle="Portal account unused"
+          to="/portal-login?status=NEVER_LOGGED_IN"
+          alertWhenPositive
+        />
+        <StatCard
+          label="Portal accounts"
+          value={portalPresence?.withPortalAccount ?? 0}
+          icon={Users}
+          loading={loadingPortalPresence}
+          error={errorPortalPresence}
+          iconBg="bg-sky-100 text-sky-700"
+          subtitle="Active employee logins"
+          to="/portal-login"
         />
         <StatCard
           label="Unmarked Today"

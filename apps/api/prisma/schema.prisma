@@ -918,6 +918,8 @@ model User {
   isActive   Boolean   @default(true)
   createdAt  DateTime  @default(now())
   lastLogin  DateTime?
+  /// Set only on successful Employee Portal login (not HRMS).
+  lastPortalLogin DateTime?
 
   employee   Employee?               @relation(fields: [employeeId], references: [id])
   branch     Branch?                 @relation(fields: [branchId], references: [id])

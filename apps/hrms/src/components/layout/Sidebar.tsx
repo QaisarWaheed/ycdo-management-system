@@ -16,6 +16,7 @@ import {
   LogOut,
   MapPin,
   MessageCircleWarning,
+  Monitor,
   Phone,
   Shield,
   ShieldCheck,
@@ -32,6 +33,7 @@ import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
 const allNavItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/employees', label: 'Employees', icon: Users },
+  { to: '/portal-login', label: 'Portal Login', icon: Monitor },
   { to: '/attendance', label: 'Attendance', icon: Clock },
   { to: '/branch-change-request', label: 'Branch Change Request', icon: MapPin },
   { to: '/leave', label: 'Leave', icon: Calendar },
@@ -116,6 +118,7 @@ function navItemsForRole(role?: string) {
       [
         '/dashboard',
         '/employees',
+        '/portal-login',
         '/attendance',
         '/leave',
         '/branch-contacts',
