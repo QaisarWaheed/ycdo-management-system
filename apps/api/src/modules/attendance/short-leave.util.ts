@@ -45,15 +45,15 @@ export type ShortLeaveEmployee = {
   shift?: { name?: string | null; startTime: string; endTime: string } | null;
 };
 
-/**
- * One continuous Short Leave block covers up to one quarter of the
- * configured duty span. Duration is measured from the employee's actual
- * dutyStartTime/dutyEndTime window (getDutyWindow), not the separately-
- * stored dutyTotalHours summary field, so it always matches the real shift.
- * 8-hour duty → 120 min; 12-hour duty → 180 min; other lengths scale the
- * same way. 24-hour shifts are not eligible.
- */
-export function resolveShortLeaveAllowanceMinutes(
+/** 12-hour duty → up to 3 hours Short Leave. */
+export const SHORT_LEAVE_ALLOWANCE_12H_MINUTES = 180;
+/** 8-hour duty or shorter → up to 2 hours Short Leave. */
+export const SHORT_LEAVE_ALLOWANCE_8H_OR_LESS_MINUTES = 120;
+
+const DUTY_12H_MINUTES = 12 * 60;
+const DUTY_8H_MINUTES = 8 * 60;
+
+export function resolveDutySpanMinutes(
   employee: ShortLeaveEmployee,
 ): number | null {
   const win = getDutyWindow(employee);
@@ -63,8 +63,28 @@ export function resolveShortLeaveAllowanceMinutes(
     ? 1440 - win.startMin + win.endMin
     : win.endMin - win.startMin;
 
-  if (totalMinutes <= 0) return null;
-  return Math.round(totalMinutes / 4);
+  return totalMinutes > 0 ? totalMinutes : null;
+}
+
+/**
+ * Short Leave allowance from configured duty start/end only:
+ * - exactly 12-hour duty → 180 minutes (3 hours)
+ * - 8-hour duty or shorter → 120 minutes (2 hours)
+ * Other duty lengths are not eligible until duty times are corrected.
+ */
+export function resolveShortLeaveAllowanceMinutes(
+  employee: ShortLeaveEmployee,
+): number | null {
+  const totalMinutes = resolveDutySpanMinutes(employee);
+  if (totalMinutes == null) return null;
+
+  if (totalMinutes === DUTY_12H_MINUTES) {
+    return SHORT_LEAVE_ALLOWANCE_12H_MINUTES;
+  }
+  if (totalMinutes <= DUTY_8H_MINUTES) {
+    return SHORT_LEAVE_ALLOWANCE_8H_OR_LESS_MINUTES;
+  }
+  return null;
 }
 
 export type ShortLeaveDeviationResult =
@@ -108,10 +128,18 @@ export function evaluateShortLeaveDeviation(
 
   const allowanceMinutes = resolveShortLeaveAllowanceMinutes(employee);
   if (allowanceMinutes == null) {
+    const span = resolveDutySpanMinutes(employee);
+    if (span == null) {
+      return {
+        valid: false,
+        reason:
+          'Short Leave is not available for 24-hour staff or when duty start/end times are missing or invalid',
+      };
+    }
     return {
       valid: false,
       reason:
-        'Short Leave is not available for 24-hour staff or when duty start/end times are missing or invalid',
+        'Short Leave allowance is 3 hours for 12-hour duty and 2 hours for 8-hour (or shorter) duty; this employee\'s configured duty length is neither — update duty start/end times on the employee profile',
     };
   }
 
