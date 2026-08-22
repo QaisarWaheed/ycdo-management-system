@@ -45,13 +45,13 @@ export type ShortLeaveEmployee = {
   shift?: { name?: string | null; startTime: string; endTime: string } | null;
 };
 
-/** 12-hour duty → up to 3 hours Short Leave. */
-export const SHORT_LEAVE_ALLOWANCE_12H_MINUTES = 180;
-/** 8-hour duty or shorter → up to 2 hours Short Leave. */
-export const SHORT_LEAVE_ALLOWANCE_8H_OR_LESS_MINUTES = 120;
+/** Up to 2 hours Short Leave (8h or less, and 9h duty). */
+export const SHORT_LEAVE_ALLOWANCE_2H_MINUTES = 120;
+/** Up to 3 hours Short Leave (10h, 11h, and 12h duty). */
+export const SHORT_LEAVE_ALLOWANCE_3H_MINUTES = 180;
 
+const DUTY_10H_MINUTES = 10 * 60;
 const DUTY_12H_MINUTES = 12 * 60;
-const DUTY_8H_MINUTES = 8 * 60;
 
 export function resolveDutySpanMinutes(
   employee: ShortLeaveEmployee,
@@ -68,9 +68,9 @@ export function resolveDutySpanMinutes(
 
 /**
  * Short Leave allowance from configured duty start/end only:
- * - exactly 12-hour duty → 180 minutes (3 hours)
- * - 8-hour duty or shorter → 120 minutes (2 hours)
- * Other duty lengths are not eligible until duty times are corrected.
+ * - 8-hour or shorter, and 9-hour duty → 120 minutes (2 hours)
+ * - 10-hour, 11-hour, and 12-hour duty → 180 minutes (3 hours)
+ * Duty longer than 12 hours (non-24h) is not eligible.
  */
 export function resolveShortLeaveAllowanceMinutes(
   employee: ShortLeaveEmployee,
@@ -78,11 +78,11 @@ export function resolveShortLeaveAllowanceMinutes(
   const totalMinutes = resolveDutySpanMinutes(employee);
   if (totalMinutes == null) return null;
 
-  if (totalMinutes === DUTY_12H_MINUTES) {
-    return SHORT_LEAVE_ALLOWANCE_12H_MINUTES;
+  if (totalMinutes < DUTY_10H_MINUTES) {
+    return SHORT_LEAVE_ALLOWANCE_2H_MINUTES;
   }
-  if (totalMinutes <= DUTY_8H_MINUTES) {
-    return SHORT_LEAVE_ALLOWANCE_8H_OR_LESS_MINUTES;
+  if (totalMinutes <= DUTY_12H_MINUTES) {
+    return SHORT_LEAVE_ALLOWANCE_3H_MINUTES;
   }
   return null;
 }
@@ -139,7 +139,7 @@ export function evaluateShortLeaveDeviation(
     return {
       valid: false,
       reason:
-        'Short Leave allowance is 3 hours for 12-hour duty and 2 hours for 8-hour (or shorter) duty; this employee\'s configured duty length is neither — update duty start/end times on the employee profile',
+        'Short Leave allowance is 2 hours for duty up to 9 hours and 3 hours for 10–12 hour duty; this employee\'s configured duty is longer than 12 hours — update duty start/end times on the employee profile',
     };
   }
 
