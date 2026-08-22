@@ -27,6 +27,7 @@ import {
   MarkAbsenteesDto,
   OvertimePunchDto,
   PortalCheckDto,
+  RawScanDto,
   RelieverCheckInDto,
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
@@ -56,6 +57,19 @@ export class AttendanceController {
     }
 
     return this.attendanceService.biometricPush(dto);
+  }
+
+  @Post('raw-scan')
+  rawScan(
+    @Headers('x-device-key') deviceKey: string,
+    @Body() dto: RawScanDto,
+  ) {
+    const expectedKey = this.configService.get<string>('BIOMETRIC_DEVICE_KEY');
+    if (!deviceKey || deviceKey !== expectedKey) {
+      throw new UnauthorizedException('Invalid device key');
+    }
+
+    return this.attendanceService.rawScan(dto);
   }
 
   @Post('manual')

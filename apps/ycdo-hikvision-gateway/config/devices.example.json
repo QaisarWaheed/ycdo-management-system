@@ -1,0 +1,12 @@
+{
+  "devices": [
+    {
+      "name": "YCDO Central Hospital",
+      "token": "REPLACE_WITH_A_LONG_RANDOM_DEVICE_TOKEN",
+      "hrmsDeviceId": "YCDO-CENTRAL-HOSPITAL",
+      "hikvisionDeviceIds": [],
+      "allowedPublicIps": [],
+      "enabled": true
+    }
+  ]
+}

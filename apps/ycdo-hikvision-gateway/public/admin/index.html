@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YCDO Hikvision Gateway</title>
+  <link rel="stylesheet" href="/admin/styles.css" />
+</head>
+<body>
+  <div id="login-screen" class="login-screen hidden">
+    <form id="login-form" class="login-card">
+      <h1>Gateway Admin</h1>
+      <p class="muted">Enter your admin token to manage devices and view attendance events.</p>
+      <label for="admin-token">Admin token</label>
+      <input id="admin-token" type="password" autocomplete="current-password" required />
+      <button type="submit">Sign in</button>
+      <p id="login-error" class="error hidden"></p>
+    </form>
+  </div>
+
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div>
+        <h1>YCDO Hikvision Gateway</h1>
+        <p id="hrms-link" class="muted"></p>
+      </div>
+      <button id="logout-btn" type="button" class="btn-secondary">Logout</button>
+    </header>
+
+    <nav class="tabs">
+      <button type="button" class="tab active" data-tab="dashboard">Dashboard</button>
+      <button type="button" class="tab" data-tab="devices">Devices</button>
+      <button type="button" class="tab" data-tab="events">Attendance Events</button>
+    </nav>
+
+    <main>
+      <section id="tab-dashboard" class="panel active">
+        <div class="stats-grid">
+          <div class="stat-card"><span id="stat-devices">0</span><label>Devices</label></div>
+          <div class="stat-card"><span id="stat-enabled">0</span><label>Enabled</label></div>
+          <div class="stat-card warn"><span id="stat-pending">0</span><label>Pending delivery</label></div>
+          <div class="stat-card ok"><span id="stat-delivered">0</span><label>Delivered (all time)</label></div>
+          <div class="stat-card"><span id="stat-today">0</span><label>Events today</label></div>
+          <div class="stat-card bad"><span id="stat-rejected">0</span><label>Rejected by HRMS</label></div>
+        </div>
+        <div id="storage-notice" class="notice">
+          <strong>Persistent storage required.</strong>
+          Devices and attendance events are stored in SQLite at
+          <code id="storage-db-path">/app/data/events.db</code>.
+          In CapRover: <strong>App Configs → Persistent Directories → Path in App: <code>/app/data</code></strong>
+          → Save &amp; Update. Without this, devices are lost on every redeploy.
+        </div>
+      </section>
+
+      <section id="tab-devices" class="panel">
+        <div class="panel-header">
+          <h2>Connected terminals</h2>
+          <button id="add-device-btn" type="button" class="btn-primary">Add device</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>HRMS device ID</th>
+                <th>Status</th>
+                <th>Hikvision URL</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="devices-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-events" class="panel">
+        <div class="panel-header">
+          <h2>Attendance events</h2>
+          <div class="filters">
+            <input id="filter-employee" type="text" placeholder="Employee no." />
+            <select id="filter-device">
+              <option value="">All devices</option>
+            </select>
+            <select id="filter-delivery">
+              <option value="">All delivery status</option>
+              <option value="PENDING">PENDING</option>
+              <option value="RETRY">RETRY</option>
+              <option value="DELIVERED">DELIVERED</option>
+              <option value="REJECTED_BY_HRMS">REJECTED_BY_HRMS</option>
+            </select>
+            <button id="refresh-events-btn" type="button" class="btn-secondary">Refresh</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Time</th>
+                <th>Device</th>
+                <th>Employee</th>
+                <th>Punch</th>
+                <th>Delivery</th>
+                <th>Reason</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="events-body"></tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <button id="events-prev" type="button" class="btn-secondary">Previous</button>
+          <span id="events-page-info"></span>
+          <button id="events-next" type="button" class="btn-secondary">Next</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="device-dialog">
+    <form id="device-form" method="dialog">
+      <h3 id="device-dialog-title">Add device</h3>
+      <input type="hidden" id="device-id" />
+      <label>Name<input id="device-name" required placeholder="YCDO Central Hospital" /></label>
+      <label>HRMS device ID<input id="device-hrms-id" required placeholder="YCDO-CENTRAL-HOSPITAL" /></label>
+      <label>Allowed public IPs <span class="muted">(comma-separated, optional)</span>
+        <input id="device-ips" placeholder="203.0.113.25" />
+      </label>
+      <label>Hikvision device IDs <span class="muted">(comma-separated, optional)</span>
+        <input id="device-hik-ids" placeholder="" />
+      </label>
+      <label class="checkbox"><input id="device-enabled" type="checkbox" checked /> Enabled</label>
+      <div class="dialog-actions">
+        <button type="button" id="device-cancel" class="btn-secondary">Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="event-dialog">
+    <div id="event-detail" class="event-detail"></div>
+    <div class="dialog-actions">
+      <button type="button" id="event-close" class="btn-secondary">Close</button>
+    </div>
+  </dialog>
+
+  <script src="/admin/app.js"></script>
+</body>
+</html>

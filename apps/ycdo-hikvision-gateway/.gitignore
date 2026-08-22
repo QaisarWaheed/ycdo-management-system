@@ -1,0 +1,5 @@
+.env
+config/devices.json
+data/
+node_modules/
+*.log

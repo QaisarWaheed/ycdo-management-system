@@ -37,6 +37,28 @@ export class BiometricPushDto {
     | 'AUTO';
 }
 
+export class RawScanDto {
+  @IsString()
+  @IsNotEmpty()
+  biometricId: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  timestamp: string;
+
+  @IsString()
+  @IsNotEmpty()
+  deviceId: string;
+
+  @IsNotEmpty()
+  @IsIn(['checkIn', 'checkOut', 'overtimeIn', 'overtimeOut'])
+  deviceStatus: 'checkIn' | 'checkOut' | 'overtimeIn' | 'overtimeOut';
+
+  @IsOptional()
+  @IsString()
+  serialNo?: string;
+}
+
 export class OvertimePunchDto {
   @IsNotEmpty()
   @IsIn(['OVERTIME_CHECKIN', 'OVERTIME_CHECKOUT'])

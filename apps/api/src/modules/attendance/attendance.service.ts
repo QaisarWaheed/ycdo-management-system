@@ -29,6 +29,7 @@ import {
   ManualAttendanceDto,
   MarkAbsenteesDto,
   PortalCheckDto,
+  RawScanDto,
   RelieverCheckInDto,
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
@@ -226,6 +227,292 @@ export class AttendanceService {
       dateOnly,
       twentyFourHour,
     );
+  }
+
+  async rawScan(dto: RawScanDto) {
+    if (dto.serialNo) {
+      const prior = await this.prisma.biometricDeviceEvent.findUnique({
+        where: {
+          deviceId_serialNo: {
+            deviceId: dto.deviceId,
+            serialNo: dto.serialNo,
+          },
+        },
+      });
+      if (prior) {
+        return {
+          ok: true as const,
+          idempotent: true,
+          accepted: false,
+          reason: 'DEVICE_EVENT_ALREADY_PROCESSED',
+        };
+      }
+    }
+
+    const device = await this.prisma.biometricDevice.findUnique({
+      where: { deviceId: dto.deviceId },
+    });
+    if (!device) {
+      return this.finishRawScan(dto, null, false, 'DEVICE_NOT_REGISTERED');
+    }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { biometricId: dto.biometricId },
+      include: { shift: true },
+    });
+    if (!employee) {
+      return this.finishRawScan(dto, null, false, 'EMPLOYEE_NOT_FOUND');
+    }
+
+    if (
+      employee.status !== EmployeeStatus.ACTIVE &&
+      employee.status !== EmployeeStatus.TRAINEE
+    ) {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'EMPLOYEE_NOT_ACTIVE',
+      );
+    }
+
+    const checkTime = parseAttendanceDateTime(dto.timestamp);
+    const dateOnly = toPakistanDateOnly(checkTime);
+    const branchId = employee.currentBranchId ?? device.branchId;
+    const twentyFourHour = is24HourShift(employee);
+
+    switch (dto.deviceStatus) {
+      case 'checkIn':
+        return this.rawScanCheckIn(
+          dto,
+          employee,
+          branchId,
+          checkTime,
+          dateOnly,
+          twentyFourHour,
+        );
+      case 'checkOut':
+        return this.rawScanCheckOut(
+          dto,
+          employee,
+          branchId,
+          checkTime,
+          dateOnly,
+          twentyFourHour,
+        );
+      case 'overtimeIn':
+        return this.rawScanOvertimeIn(
+          dto,
+          employee,
+          branchId,
+          checkTime,
+          dateOnly,
+        );
+      case 'overtimeOut':
+        return this.rawScanOvertimeOut(
+          dto,
+          employee,
+          checkTime,
+          dateOnly,
+        );
+      default:
+        return this.finishRawScan(
+          dto,
+          employee.id,
+          false,
+          'INVALID_ATTENDANCE_STATUS',
+        );
+    }
+  }
+
+  private async finishRawScan(
+    dto: RawScanDto,
+    employeeId: string | null,
+    accepted: boolean,
+    reason: string,
+  ) {
+    if (dto.serialNo) {
+      await this.prisma.biometricDeviceEvent.create({
+        data: {
+          deviceId: dto.deviceId,
+          serialNo: dto.serialNo,
+          employeeId,
+          accepted,
+          reason,
+        },
+      });
+    }
+    return { ok: true as const, accepted, reason };
+  }
+
+  private async rawScanCheckIn(
+    dto: RawScanDto,
+    employee: {
+      id: string;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      shift: { startTime: string; endTime: string } | null;
+    },
+    branchId: string | null,
+    checkTime: Date,
+    dateOnly: Date,
+    twentyFourHour: boolean,
+  ) {
+    const openRegular = await this.findOpenRegularLog(employee.id, dateOnly);
+    if (openRegular?.checkIn) {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'ALREADY_CHECKED_IN',
+      );
+    }
+
+    await this.biometricRegularCheckIn(
+      employee,
+      branchId,
+      checkTime,
+      dateOnly,
+      twentyFourHour,
+    );
+    return this.finishRawScan(dto, employee.id, true, 'ACCEPTED');
+  }
+
+  private async rawScanCheckOut(
+    dto: RawScanDto,
+    employee: {
+      id: string;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      shift: { startTime: string; endTime: string } | null;
+    },
+    branchId: string | null,
+    checkTime: Date,
+    dateOnly: Date,
+    twentyFourHour: boolean,
+  ) {
+    if (twentyFourHour) {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'CHECKOUT_NOT_REQUIRED',
+      );
+    }
+
+    const closedToday = await this.prisma.attendanceLog.findFirst({
+      where: {
+        employeeId: employee.id,
+        date: dateOnly,
+        type: AttendanceLogType.REGULAR,
+        checkOut: { not: null },
+      },
+    });
+    if (closedToday) {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'ALREADY_CHECKED_OUT',
+      );
+    }
+
+    const openRegular = await this.findOpenRegularLog(employee.id, dateOnly);
+    if (!openRegular?.checkIn) {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'CHECKOUT_WITHOUT_CHECKIN',
+      );
+    }
+
+    await this.biometricRegularCheckout(
+      employee,
+      branchId,
+      checkTime,
+      dateOnly,
+      twentyFourHour,
+    );
+    return this.finishRawScan(dto, employee.id, true, 'ACCEPTED');
+  }
+
+  private async rawScanOvertimeIn(
+    dto: RawScanDto,
+    employee: { id: string },
+    branchId: string | null,
+    checkTime: Date,
+    dateOnly: Date,
+  ) {
+    try {
+      await this.assertRegularShiftCompletedForOvertime(employee.id, dateOnly);
+    } catch {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'NO_DUTY_FOR_TIMESTAMP',
+      );
+    }
+
+    const existingOt = await this.findOvertimeLogForDate(
+      employee.id,
+      dateOnly,
+    );
+    if (existingOt?.checkIn) {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'OVERTIME_ALREADY_STARTED',
+      );
+    }
+
+    if (!branchId) {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'NO_DUTY_FOR_TIMESTAMP',
+      );
+    }
+
+    await this.biometricOvertimeCheckIn(
+      employee,
+      branchId,
+      checkTime,
+      dateOnly,
+    );
+    return this.finishRawScan(dto, employee.id, true, 'ACCEPTED');
+  }
+
+  private async rawScanOvertimeOut(
+    dto: RawScanDto,
+    employee: { id: string },
+    checkTime: Date,
+    dateOnly: Date,
+  ) {
+    const openOt = await this.findOpenOvertimeLog(employee.id, dateOnly);
+    if (!openOt?.checkIn) {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'OVERTIME_OUT_WITHOUT_IN',
+      );
+    }
+
+    if (openOt.checkOut) {
+      return this.finishRawScan(
+        dto,
+        employee.id,
+        false,
+        'OVERTIME_ALREADY_COMPLETED',
+      );
+    }
+
+    await this.biometricOvertimeCheckOut(employee, checkTime, dateOnly);
+    return this.finishRawScan(dto, employee.id, true, 'ACCEPTED');
   }
 
   private async biometricRegularCheckIn(

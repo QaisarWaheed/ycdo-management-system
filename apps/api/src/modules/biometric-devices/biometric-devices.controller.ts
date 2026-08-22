@@ -42,7 +42,7 @@ export class BiometricDevicesController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.IT_ADMIN, UserRole.SUPER_ADMIN)
   remove(@Param('id') id: string) {
     return this.biometricDevicesService.remove(id);
   }

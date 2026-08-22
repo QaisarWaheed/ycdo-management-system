@@ -63,6 +63,18 @@ model BiometricDevice {
   branch Branch @relation(fields: [branchId], references: [id])
 }
 
+model BiometricDeviceEvent {
+  id         String   @id @default(uuid())
+  deviceId   String
+  serialNo   String
+  employeeId String?
+  accepted   Boolean
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@unique([deviceId, serialNo])
+}
+
 model FaceSyncJob {
   id         String   @id @default(uuid())
   employeeId String
