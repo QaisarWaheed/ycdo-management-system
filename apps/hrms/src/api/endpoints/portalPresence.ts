@@ -35,12 +35,8 @@ export interface PortalPresenceQuery {
 
 export const portalPresenceApi = {
   getSummary: () =>
-    api
-      .get<PortalPresenceSummary>('/portal-presence/summary')
-      .then((r) => r.data),
+    api.get<unknown, PortalPresenceSummary>('/portal-presence/summary'),
 
   getAll: (params?: PortalPresenceQuery) =>
-    api
-      .get<PortalPresenceRow[]>('/portal-presence', { params })
-      .then((r) => r.data),
+    api.get<unknown, PortalPresenceRow[]>('/portal-presence', { params }),
 }
