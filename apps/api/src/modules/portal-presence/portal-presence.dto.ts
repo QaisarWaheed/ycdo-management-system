@@ -1,8 +1,7 @@
 import { IsIn, IsOptional, IsString } from 'class-validator';
 
 export const PORTAL_PRESENCE_STATUSES = [
-  'ONLINE',
-  'OFFLINE',
+  'LOGGED_IN',
   'NEVER_LOGGED_IN',
 ] as const;
 
@@ -21,6 +20,3 @@ export class PortalPresenceQueryDto {
   @IsIn([...PORTAL_PRESENCE_STATUSES])
   status?: PortalPresenceStatus;
 }
-
-/** Minutes after last portal login while still counted as "online". */
-export const PORTAL_ONLINE_WINDOW_MINUTES = 30;

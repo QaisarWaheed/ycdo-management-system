@@ -83,15 +83,15 @@ export function HrOperationsDashboard() {
         </Card>
         <Card
           className="cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md"
-          onClick={() => navigate('/portal-login?status=ONLINE')}
+          onClick={() => navigate('/portal-login?status=LOGGED_IN')}
         >
           <CardContent className="p-6">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-3xl font-bold">
-                  {portalPresence?.online ?? 0}
+                  {portalPresence?.loggedIn ?? 0}
                 </p>
-                <p className="text-sm text-text-secondary">Portal online</p>
+                <p className="text-sm text-text-secondary">Logged in to portal</p>
               </div>
               <Monitor className="h-5 w-5 text-emerald-600" />
             </div>

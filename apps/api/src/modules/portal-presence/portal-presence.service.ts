@@ -2,22 +2,46 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  PORTAL_ONLINE_WINDOW_MINUTES,
   PortalPresenceQueryDto,
   PortalPresenceStatus,
 } from './portal-presence.dto';
 
-function onlineSince(): Date {
-  return new Date(Date.now() - PORTAL_ONLINE_WINDOW_MINUTES * 60 * 1000);
+/** Same base set as Login Access → Employee (Portal): linked employee logins. */
+function employeePortalWhere(
+  extra?: Prisma.UserWhereInput,
+): Prisma.UserWhereInput {
+  return {
+    employeeId: { not: null },
+    ...extra,
+  };
+}
+
+function hasLoggedIntoPortalWhere(): Prisma.UserWhereInput {
+  return {
+    OR: [{ lastPortalLogin: { not: null } }, { lastLogin: { not: null } }],
+  };
+}
+
+function neverLoggedIntoPortalWhere(): Prisma.UserWhereInput {
+  return {
+    lastPortalLogin: null,
+    lastLogin: null,
+  };
 }
 
 function resolveStatus(
   lastPortalLogin: Date | null,
-  cutoff: Date,
+  lastLogin: Date | null,
 ): PortalPresenceStatus {
-  if (!lastPortalLogin) return 'NEVER_LOGGED_IN';
-  if (lastPortalLogin.getTime() >= cutoff.getTime()) return 'ONLINE';
-  return 'OFFLINE';
+  if (lastPortalLogin || lastLogin) return 'LOGGED_IN';
+  return 'NEVER_LOGGED_IN';
+}
+
+function effectivePortalLogin(
+  lastPortalLogin: Date | null,
+  lastLogin: Date | null,
+): Date | null {
+  return lastPortalLogin ?? lastLogin;
 }
 
 @Injectable()
@@ -25,59 +49,37 @@ export class PortalPresenceService {
   constructor(private prisma: PrismaService) {}
 
   async getSummary() {
-    const cutoff = onlineSince();
+    const baseWhere = employeePortalWhere();
 
-    const baseWhere: Prisma.UserWhereInput = {
-      employeeId: { not: null },
-      isActive: true,
-      employee: {
-        status: { in: ['ACTIVE', 'APPOINTED', 'ON_LEAVE'] },
-      },
-    };
-
-    const [withPortalAccount, online, neverLoggedIn, offline] =
+    const [withPortalAccount, loggedIn, neverLoggedIn, active, disabled] =
       await Promise.all([
         this.prisma.user.count({ where: baseWhere }),
         this.prisma.user.count({
-          where: {
-            ...baseWhere,
-            lastPortalLogin: { gte: cutoff },
-          },
+          where: employeePortalWhere(hasLoggedIntoPortalWhere()),
         }),
         this.prisma.user.count({
-          where: {
-            ...baseWhere,
-            lastPortalLogin: null,
-          },
+          where: employeePortalWhere(neverLoggedIntoPortalWhere()),
         }),
         this.prisma.user.count({
-          where: {
-            ...baseWhere,
-            AND: [
-              { lastPortalLogin: { not: null } },
-              { lastPortalLogin: { lt: cutoff } },
-            ],
-          },
+          where: employeePortalWhere({ isActive: true }),
+        }),
+        this.prisma.user.count({
+          where: employeePortalWhere({ isActive: false }),
         }),
       ]);
 
     return {
       withPortalAccount,
-      online,
-      offline,
+      loggedIn,
       neverLoggedIn,
-      onlineWindowMinutes: PORTAL_ONLINE_WINDOW_MINUTES,
+      active,
+      disabled,
     };
   }
 
   async findAll(query: PortalPresenceQueryDto) {
-    const cutoff = onlineSince();
-
-    const where: Prisma.UserWhereInput = {
-      employeeId: { not: null },
-      isActive: true,
+    const where: Prisma.UserWhereInput = employeePortalWhere({
       employee: {
-        status: { in: ['ACTIVE', 'APPOINTED', 'ON_LEAVE'] },
         ...(query.branchId
           ? { currentBranchId: query.branchId }
           : {}),
@@ -100,17 +102,12 @@ export class PortalPresenceService {
             }
           : {}),
       },
-    };
+    });
 
-    if (query.status === 'ONLINE') {
-      where.lastPortalLogin = { gte: cutoff };
+    if (query.status === 'LOGGED_IN') {
+      Object.assign(where, hasLoggedIntoPortalWhere());
     } else if (query.status === 'NEVER_LOGGED_IN') {
-      where.lastPortalLogin = null;
-    } else if (query.status === 'OFFLINE') {
-      where.AND = [
-        { lastPortalLogin: { not: null } },
-        { lastPortalLogin: { lt: cutoff } },
-      ];
+      Object.assign(where, neverLoggedIntoPortalWhere());
     }
 
     const users = await this.prisma.user.findMany({
@@ -132,17 +129,21 @@ export class PortalPresenceService {
           },
         },
       },
-      orderBy: [{ lastPortalLogin: 'desc' }, { email: 'asc' }],
+      orderBy: [{ lastPortalLogin: 'desc' }, { lastLogin: 'desc' }, { email: 'asc' }],
     });
 
     return users.map((u) => {
-      const status = resolveStatus(u.lastPortalLogin, cutoff);
+      const lastPortalLoginAt = effectivePortalLogin(
+        u.lastPortalLogin,
+        u.lastLogin,
+      );
+      const status = resolveStatus(u.lastPortalLogin, u.lastLogin);
       return {
         userId: u.id,
         email: u.email,
         isActive: u.isActive,
         lastLogin: u.lastLogin,
-        lastPortalLogin: u.lastPortalLogin,
+        lastPortalLogin: lastPortalLoginAt,
         status,
         employee: u.employee
           ? {

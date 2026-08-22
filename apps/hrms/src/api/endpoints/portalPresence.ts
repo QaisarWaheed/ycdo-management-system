@@ -1,13 +1,13 @@
 import api from '../axios'
 
-export type PortalPresenceStatus = 'ONLINE' | 'OFFLINE' | 'NEVER_LOGGED_IN'
+export type PortalPresenceStatus = 'LOGGED_IN' | 'NEVER_LOGGED_IN'
 
 export interface PortalPresenceSummary {
   withPortalAccount: number
-  online: number
-  offline: number
+  loggedIn: number
   neverLoggedIn: number
-  onlineWindowMinutes: number
+  active: number
+  disabled: number
 }
 
 export interface PortalPresenceRow {

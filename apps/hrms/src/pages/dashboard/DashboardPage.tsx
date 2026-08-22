@@ -331,14 +331,24 @@ function AdminDashboard() {
           to="/employees"
         />
         <StatCard
-          label="Portal online"
-          value={portalPresence?.online ?? 0}
+          label="Portal accounts"
+          value={portalPresence?.withPortalAccount ?? 0}
+          icon={Users}
+          loading={loadingPortalPresence}
+          error={errorPortalPresence}
+          iconBg="bg-sky-100 text-sky-700"
+          subtitle="Employee portal logins"
+          to="/portal-login"
+        />
+        <StatCard
+          label="Logged in to portal"
+          value={portalPresence?.loggedIn ?? 0}
           icon={Monitor}
           loading={loadingPortalPresence}
           error={errorPortalPresence}
           iconBg="bg-emerald-100 text-emerald-700"
-          subtitle={`Logged in last ${portalPresence?.onlineWindowMinutes ?? 30} min`}
-          to="/portal-login?status=ONLINE"
+          subtitle="Successful sign-in at least once"
+          to="/portal-login?status=LOGGED_IN"
         />
         <StatCard
           label="Never logged in"
@@ -350,16 +360,6 @@ function AdminDashboard() {
           subtitle="Portal account unused"
           to="/portal-login?status=NEVER_LOGGED_IN"
           alertWhenPositive
-        />
-        <StatCard
-          label="Portal accounts"
-          value={portalPresence?.withPortalAccount ?? 0}
-          icon={Users}
-          loading={loadingPortalPresence}
-          error={errorPortalPresence}
-          iconBg="bg-sky-100 text-sky-700"
-          subtitle="Active employee logins"
-          to="/portal-login"
         />
         <StatCard
           label="Unmarked Today"
