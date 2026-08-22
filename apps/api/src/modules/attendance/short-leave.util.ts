@@ -46,13 +46,12 @@ export type ShortLeaveEmployee = {
 };
 
 /**
- * One continuous Short Leave block covers up to 3 hours of a 12-hour duty,
- * or up to 2 hours of an 8-hour duty — both exactly a quarter of the
- * configured duty span. Any other configured duty length has no defined
- * Short Leave policy and is intentionally rejected rather than guessed.
- * Duration is measured from the employee's actual dutyStartTime/dutyEndTime
- * window (getDutyWindow), not the separately-stored dutyTotalHours summary
- * field, so it always matches the real configured shift.
+ * One continuous Short Leave block covers up to one quarter of the
+ * configured duty span. Duration is measured from the employee's actual
+ * dutyStartTime/dutyEndTime window (getDutyWindow), not the separately-
+ * stored dutyTotalHours summary field, so it always matches the real shift.
+ * 8-hour duty → 120 min; 12-hour duty → 180 min; other lengths scale the
+ * same way. 24-hour shifts are not eligible.
  */
 export function resolveShortLeaveAllowanceMinutes(
   employee: ShortLeaveEmployee,
@@ -64,9 +63,8 @@ export function resolveShortLeaveAllowanceMinutes(
     ? 1440 - win.startMin + win.endMin
     : win.endMin - win.startMin;
 
-  if (totalMinutes === 8 * 60) return 120;
-  if (totalMinutes === 12 * 60) return 180;
-  return null;
+  if (totalMinutes <= 0) return null;
+  return Math.round(totalMinutes / 4);
 }
 
 export type ShortLeaveDeviationResult =
@@ -113,7 +111,7 @@ export function evaluateShortLeaveDeviation(
     return {
       valid: false,
       reason:
-        "Short Leave duration policy is only defined for 8-hour and 12-hour duty; this employee's configured duty length is neither",
+        'Short Leave is not available for 24-hour staff or when duty start/end times are missing or invalid',
     };
   }
 
