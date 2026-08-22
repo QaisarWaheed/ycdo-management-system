@@ -21,6 +21,9 @@ import {
   ApplyOvertimeDto,
   CreatePayrollEntryDto,
   PayrollQueryDto,
+  RecomputeMonthAllDto,
+  RebuildPayrollDto,
+  ResetUnpaidPayrollDto,
   SalaryIncrementDto,
   UpdatePayrollStatusDto,
 } from './payroll.dto';
@@ -64,6 +67,64 @@ export class PayrollController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.payrollService.createOrGetEntry(dto, user);
+  }
+
+  /**
+   * Explicit multi-segment recompute for one employee/month — refreshes
+   * every overlapping PENDING StipendRecord segment's PayrollEntry
+   * (skipping PROCESSED/PAID), reporting which segments have no entry yet
+   * at all. Does not create new entries — use POST /payroll/entries for
+   * that. See PayrollService.recomputeEmployeeMonth.
+   */
+  @Post('recompute-month')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  recomputeEmployeeMonth(
+    @Body() dto: ApplyOvertimeDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.recomputeEmployeeMonth(dto, user);
+  }
+
+  /**
+   * Bulk, generic-by-month/year recompute for EXISTING stale payroll data
+   * (built for the August 2026 cleanup after Steps 1-6). Batched at the
+   * unique-employee level via optional `limit` (default 25, max 50) /
+   * `offset` against a deterministic ordering, so a large month can be
+   * walked in several short requests instead of one that risks a 504 —
+   * page with the previous response's `nextOffset` until `hasMore` is
+   * false. Never called automatically — no cron, no bootstrap hook, this
+   * route is the only entry point. See PayrollService.recomputeMonthAll
+   * for the full safety contract: employee-level (not row-level)
+   * processing, PROCESSED/PAID always frozen, no new PayrollEntry ever
+   * created, strictly sequential, one employee's failure never aborts the
+   * batch, and mutation requires `confirm: "RECOMPUTE_PENDING_PAYROLL"`
+   * unless `dryRun: true`.
+   */
+  @Post('recompute-month-all')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  recomputeMonthAll(
+    @Body() dto: RecomputeMonthAllDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.recomputeMonthAll(dto, user);
+  }
+
+  @Post('reset-unpaid')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  resetUnpaidPayroll(
+    @Body() dto: ResetUnpaidPayrollDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.resetUnpaidPayroll(dto, user);
+  }
+
+  @Post('rebuild-from-attendance')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  rebuildPayrollFromAttendanceAndLetters(
+    @Body() dto: RebuildPayrollDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.payrollService.rebuildPayrollFromAttendanceAndLetters(dto, user);
   }
 
   @Post('deductions')

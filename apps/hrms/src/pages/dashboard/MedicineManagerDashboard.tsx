@@ -19,13 +19,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
+import { todayPakistan } from '@/lib/timeFormat'
 import {
   MEDICINE_DEPARTMENT_NAME,
   isMedicineDepartmentName,
 } from '@/lib/medicineScope'
 
 function todayRange() {
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = todayPakistan()
   return { startDate: today, endDate: today }
 }
 
@@ -133,8 +134,10 @@ export function MedicineManagerDashboard() {
     queryFn: () =>
       attendanceApi.getAll({
         ...today,
+        dutyFilter: 'all',
         ...(medicineDeptId ? { departmentId: medicineDeptId } : {}),
       }),
+    refetchInterval: 60_000,
   })
 
   const { data: activity = [], isLoading: loadingActivity } = useQuery({

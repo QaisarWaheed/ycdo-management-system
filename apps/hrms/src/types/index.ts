@@ -523,11 +523,13 @@ export type LeaveStatus =
   | 'APPROVED'
   | 'REJECTED'
   | 'CANCELLED'
+  | 'PENDING_APPROVAL'
 
 export type LeaveApprovalStage =
   | 'BRANCH_MANAGER'
   | 'DEPARTMENT_INCHARGE'
   | 'HR_OPERATIONS'
+  | 'QUOTA_EXCEPTION'
 
 export type LeaveApprovalAction = 'APPROVED' | 'REJECTED'
 
@@ -623,6 +625,8 @@ export interface AttendanceLog {
   type?: 'REGULAR' | 'OVERTIME'
   source?: string
   note?: string | null
+  dutyStartTimeSnapshot?: string | null
+  dutyEndTimeSnapshot?: string | null
   employee?: {
     fullName: string
     employeeCode: string
@@ -652,6 +656,7 @@ export type AttendanceStatus =
   | 'ON_LEAVE'
   | 'UNINFORMED_ABSENT'
   | 'SWAP_COVERED'
+  | 'SHORT_LEAVE'
 
 export type PayrollStatus = 'PENDING' | 'PROCESSED' | 'PAID'
 
@@ -659,6 +664,8 @@ export type DeductionType =
   | 'LATE_ARRIVAL'
   | 'UNINFORMED_ABSENCE'
   | 'DISCIPLINARY_FINE'
+  | 'UNPAID_LEAVE'
+  | 'HALF_DAY'
   | 'OTHER'
 
 export interface PayrollDeduction {
@@ -808,11 +815,13 @@ export const ATTENDANCE_STATUSES: AttendanceStatus[] = [
   'ON_LEAVE',
   'UNINFORMED_ABSENT',
   'SWAP_COVERED',
+  'SHORT_LEAVE',
 ]
 
 export const DEDUCTION_TYPES: { value: DeductionType; label: string }[] = [
   { value: 'LATE_ARRIVAL', label: 'Late Arrival' },
   { value: 'UNINFORMED_ABSENCE', label: 'Uninformed Absence' },
+  { value: 'HALF_DAY', label: 'Half Day' },
   { value: 'DISCIPLINARY_FINE', label: 'Disciplinary Fine' },
   { value: 'OTHER', label: 'Other' },
 ]
@@ -964,6 +973,7 @@ export type LetterType =
   | 'REJOINING'
   | 'SALARY_INCREMENT'
   | 'EXPERIENCE'
+  | 'EXPLANATION_FINE'
   | 'CUSTOM'
 
 export type DocumentType =
@@ -979,6 +989,7 @@ export const LETTER_TYPES: { value: LetterType; label: string }[] = [
   { value: 'ADVICE', label: 'Advice' },
   { value: 'DISCIPLINARY', label: 'Disciplinary' },
   { value: 'EXPLANATION', label: 'Explanation' },
+  { value: 'EXPLANATION_FINE', label: 'Explanation & Fine' },
   { value: 'SHOW_CAUSE', label: 'Show Cause' },
   { value: 'FINE', label: 'Fine' },
   { value: 'INQUIRY', label: 'Inquiry' },

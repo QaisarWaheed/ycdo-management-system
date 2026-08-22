@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleDashed,
   Clock,
+  Monitor,
   Timer,
   UserPlus,
   Users,
@@ -16,6 +17,7 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
+import { portalPresenceApi } from '@/api/endpoints/portalPresence'
 import { recruitmentApi } from '@/api/endpoints/recruitment'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import type { AttendanceLog, Employee, LeaveRecord } from '@/types'
@@ -25,6 +27,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { withReturnTo } from '@/lib/backNavigation'
+import { todayPakistan } from '@/lib/timeFormat'
 import {
   Table,
   TableBody,
@@ -43,7 +46,7 @@ import { ItAdminDashboard } from '@/pages/dashboard/ItAdminDashboard'
 import { MedicineManagerDashboard } from '@/pages/dashboard/MedicineManagerDashboard'
 
 function todayRange() {
-  const today = format(new Date(), 'yyyy-MM-dd')
+  const today = todayPakistan()
   return { startDate: today, endDate: today }
 }
 
@@ -247,7 +250,9 @@ function AdminDashboard() {
     isError: errorAttendance,
   } = useQuery({
     queryKey: ['attendance', 'today', today],
-    queryFn: () => attendanceApi.getAll(today),
+    queryFn: () =>
+      attendanceApi.getAll({ ...today, dutyFilter: 'all' }),
+    refetchInterval: 60_000,
   })
 
   const {
@@ -286,6 +291,16 @@ function AdminDashboard() {
     queryFn: () => leaveApi.getTodayRelievers(),
   })
 
+  const {
+    data: portalPresence,
+    isLoading: loadingPortalPresence,
+    isError: errorPortalPresence,
+  } = useQuery({
+    queryKey: ['portal-presence', 'summary'],
+    queryFn: () => portalPresenceApi.getSummary(),
+    refetchInterval: 60_000,
+  })
+
   const attendanceLogs = (attendance ?? []) as AttendanceLog[]
   const unmarkedToday = attendanceLogs.filter((l) => l.status === 'UNMARKED').length
   const presentToday = attendanceLogs.filter((l) => l.status === 'PRESENT').length
@@ -314,6 +329,37 @@ function AdminDashboard() {
           iconBg="bg-primary/10 text-primary"
           subtitle="Active & on-leave staff"
           to="/employees"
+        />
+        <StatCard
+          label="Portal accounts"
+          value={portalPresence?.withPortalAccount ?? 0}
+          icon={Users}
+          loading={loadingPortalPresence}
+          error={errorPortalPresence}
+          iconBg="bg-sky-100 text-sky-700"
+          subtitle="Employee portal logins"
+          to="/portal-login"
+        />
+        <StatCard
+          label="Logged in to portal"
+          value={portalPresence?.loggedIn ?? 0}
+          icon={Monitor}
+          loading={loadingPortalPresence}
+          error={errorPortalPresence}
+          iconBg="bg-emerald-100 text-emerald-700"
+          subtitle="Successful sign-in at least once"
+          to="/portal-login?status=LOGGED_IN"
+        />
+        <StatCard
+          label="Never logged in"
+          value={portalPresence?.neverLoggedIn ?? 0}
+          icon={Monitor}
+          loading={loadingPortalPresence}
+          error={errorPortalPresence}
+          iconBg="bg-slate-100 text-slate-700"
+          subtitle="Portal account unused"
+          to="/portal-login?status=NEVER_LOGGED_IN"
+          alertWhenPositive
         />
         <StatCard
           label="Unmarked Today"

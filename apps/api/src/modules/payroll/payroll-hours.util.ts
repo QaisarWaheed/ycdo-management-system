@@ -16,6 +16,17 @@ export interface HourlyPayrollBreakdown {
   workedHours: number;
   paidLeaveMinutes: number;
   paidLeaveHours: number;
+  /**
+   * Full scheduled-day credit for days where an explicit disciplinary
+   * deduction (or its absence) is the sole intended monetary consequence —
+   * LATE, ABSENT, UNINFORMED_ABSENT, unpaid
+   * REGULAR leave, HALF_DAY (half-day pay is a PayrollDeduction row), and missing-checkout/24h-checkout-less days. Kept
+   * separate from workedMinutes (actual clocked time) and paidLeaveMinutes
+   * (leave credit) so those two keep their literal meaning for display,
+   * while still counting fully toward payableMinutes/hourlyBasicEarned.
+   */
+  policyCreditMinutes: number;
+  policyCreditHours: number;
   payableMinutes: number;
   payableHours: number;
   hourlyBasicEarned: number;
@@ -24,6 +35,21 @@ export interface HourlyPayrollBreakdown {
   disciplineDeductions: number;
   extraAllowances: number;
   netStipend: number;
+}
+
+/**
+ * Duty length in hours purely from a start/end window (no dutyTotalHours
+ * shortcut) — used wherever the window itself was already resolved against
+ * a specific date (e.g. an AttendanceLog's own snapshot), since there is no
+ * historical dutyTotalHours to match it against, only the time pair.
+ */
+export function hoursFromDutyWindow(win: DutyWindow | null): number {
+  if (!win) return 8;
+  if (win.is24h) return 24;
+
+  let minutes = win.endMin - win.startMin;
+  if (minutes <= 0) minutes += 24 * 60;
+  return Math.round((minutes / 60) * 100) / 100;
 }
 
 export function resolveDailyDutyHours(employee: {
@@ -40,12 +66,7 @@ export function resolveDailyDutyHours(employee: {
     dutyStartTime: employee.dutyStartTime ?? employee.shift?.startTime,
     dutyEndTime: employee.dutyEndTime ?? employee.shift?.endTime,
   });
-  if (!win) return 8;
-  if (win.is24h) return 24;
-
-  let minutes = win.endMin - win.startMin;
-  if (minutes <= 0) minutes += 24 * 60;
-  return Math.round((minutes / 60) * 100) / 100;
+  return hoursFromDutyWindow(win);
 }
 
 export function computeHourlyRate(
@@ -118,16 +139,30 @@ export function leaveCreditMinutes(
   return 0;
 }
 
-function dateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+/** Exported so callers attributing individual unpaid-leave dates to a
+ * specific stipend segment (see PayrollService.computeMonthlyUnpaidLeaveDates)
+ * use the exact same date-key format as splitPaidUnpaidLeaveDays below —
+ * a single source of truth, no format-drift risk between the two. */
+export function dateKey(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
 /**
+ * Default monthly paid-REGULAR-leave allowance applied when an employee has
+ * no explicit Employee.monthlyAllowedLeaves override. Business policy: 2
+ * paid leave days per calendar month for everyone unless HR has recorded an
+ * explicit exception on the employee record.
+ */
+export const DEFAULT_MONTHLY_ALLOWED_LEAVES = 2;
+
+/**
  * Split full ON_LEAVE days into paid vs unpaid using monthly allowance.
- * null/undefined allowance = all paid (legacy). SHORT leave is not counted here.
+ * null/undefined allowance falls back to DEFAULT_MONTHLY_ALLOWED_LEAVES — an
+ * explicit per-employee value (including 0) always overrides the default.
+ * SHORT leave is not counted here (see leaveCreditMinutes).
  */
 export function splitPaidUnpaidLeaveDays(input: {
   onLeaveDates: Date[];
@@ -145,16 +180,11 @@ export function splitPaidUnpaidLeaveDays(input: {
   ].sort((a, b) => a.getTime() - b.getTime());
 
   const leaveDays = uniqueSorted.length;
-  if (input.monthlyAllowedLeaves == null) {
-    return {
-      leaveDays,
-      paidLeaveDays: leaveDays,
-      unpaidLeaveDays: 0,
-      paidLeaveDateKeys: new Set(uniqueSorted.map(dateKey)),
-    };
-  }
+  const allowance =
+    input.monthlyAllowedLeaves == null
+      ? DEFAULT_MONTHLY_ALLOWED_LEAVES
+      : Math.max(0, Math.floor(input.monthlyAllowedLeaves));
 
-  const allowance = Math.max(0, Math.floor(input.monthlyAllowedLeaves));
   const paid = uniqueSorted.slice(0, allowance);
   const unpaidLeaveDays = Math.max(0, leaveDays - allowance);
   return {
@@ -163,6 +193,45 @@ export function splitPaidUnpaidLeaveDays(input: {
     unpaidLeaveDays,
     paidLeaveDateKeys: new Set(paid.map(dateKey)),
   };
+}
+
+/**
+ * Payable extra reliever minutes = actual session duration minus whatever
+ * portion of it overlaps the reliever's own paid duty window. Reuses
+ * payableMinutesWithinDutyWindow (the same overlap math already proven for
+ * the employee's own regular-attendance payable minutes) rather than a new
+ * formula — its existing crossesMidnight handling already covers overnight
+ * duty windows and overnight sessions correctly, and win.is24h already
+ * makes it return the full session as "within duty", giving 0 payable extra
+ * for 24-hour staff covering during their own duty period by construction.
+ *
+ * `employee.relieverOnly` and "no configured duty window at all" are the
+ * only reliable existing signals for "this employee has no own paid duty" —
+ * there is no day-of-week/rest-day concept anywhere in this codebase, so a
+ * regular employee relieving on what would be their normal weekly off day
+ * cannot be distinguished from a normal working day with current data.
+ */
+export function computeRelieverPayableMinutes(
+  employee: {
+    relieverOnly?: boolean;
+    dutyStartTime?: string | null;
+    dutyEndTime?: string | null;
+  },
+  session: { checkIn: Date; checkOut: Date; totalMinutes: number },
+): number {
+  if (employee.relieverOnly) return session.totalMinutes;
+
+  const win = getDutyWindow(employee);
+  if (!win) return session.totalMinutes;
+
+  const overlap = payableMinutesWithinDutyWindow(
+    session.checkIn,
+    session.checkOut,
+    win,
+  );
+  if (overlap.anomalous) return session.totalMinutes;
+
+  return Math.max(0, session.totalMinutes - overlap.minutes);
 }
 
 export function unpaidLeaveDeductionAmount(
@@ -190,6 +259,7 @@ export function buildHourlyPayrollBreakdown(input: {
   daysInMonth: number;
   workedMinutes: number;
   paidLeaveMinutes: number;
+  policyCreditMinutes: number;
   fixedAllowances: number;
   fixedPackageDeductions: number;
   disciplineDeductions: number;
@@ -201,15 +271,25 @@ export function buildHourlyPayrollBreakdown(input: {
     input.dailyDutyHours,
     input.daysInMonth,
   );
-  const payableMinutes = input.workedMinutes + input.paidLeaveMinutes;
+  const payableMinutes =
+    input.workedMinutes + input.paidLeaveMinutes + input.policyCreditMinutes;
   const payableHours = roundHoursFromMinutes(payableMinutes);
-  const hourlyBasicEarned = roundMoney(payableHours * hourlyRate);
+  const scheduledMinutes = input.daysInMonth * input.dailyDutyHours * 60;
+  const hourlyBasicEarned =
+    scheduledMinutes > 0
+      ? roundMoney(
+          (input.contractualBasicStipend * payableMinutes) / scheduledMinutes,
+        )
+      : 0;
   const netStipend = roundMoney(
-    hourlyBasicEarned +
-      input.fixedAllowances +
-      input.extraAllowances -
-      input.fixedPackageDeductions -
-      input.disciplineDeductions,
+    Math.max(
+      0,
+      hourlyBasicEarned +
+        input.fixedAllowances +
+        input.extraAllowances -
+        input.fixedPackageDeductions -
+        input.disciplineDeductions,
+    ),
   );
 
   return {
@@ -222,6 +302,8 @@ export function buildHourlyPayrollBreakdown(input: {
     workedHours: roundHoursFromMinutes(input.workedMinutes),
     paidLeaveMinutes: input.paidLeaveMinutes,
     paidLeaveHours: roundHoursFromMinutes(input.paidLeaveMinutes),
+    policyCreditMinutes: input.policyCreditMinutes,
+    policyCreditHours: roundHoursFromMinutes(input.policyCreditMinutes),
     payableMinutes,
     payableHours,
     hourlyBasicEarned,

@@ -70,8 +70,14 @@ export function BranchManagerDashboard() {
   const { data: attendance = [] } = useQuery({
     queryKey: ['attendance', today, branchId],
     queryFn: () =>
-      attendanceApi.getAll({ startDate: today, endDate: today, branchId }),
+      attendanceApi.getAll({
+        startDate: today,
+        endDate: today,
+        branchId,
+        dutyFilter: 'all',
+      }),
     enabled: !!branchId,
+    refetchInterval: 60_000,
   })
 
   const { data: pendingLeaves = [], refetch } = useQuery({

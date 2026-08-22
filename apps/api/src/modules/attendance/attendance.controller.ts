@@ -32,6 +32,7 @@ import {
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
   UpdateAttendanceDto,
+  UpdateRelieverSessionDto,
 } from './attendance.dto';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { AttendanceService } from './attendance.service';
@@ -59,6 +60,13 @@ export class AttendanceController {
     return this.attendanceService.biometricPush(dto);
   }
 
+  /**
+   * Thin-agent contract: the agent forwards the device's raw event verbatim
+   * (no status mapping, no dedup, no CHECKIN/CHECKOUT guessing on the agent
+   * side). Runs in parallel with POST /attendance/biometric-push, which is
+   * unchanged — branches can move to this endpoint independently of one
+   * another, and the old endpoint keeps working for branches that don't.
+   */
   @Post('raw-scan')
   rawScan(
     @Headers('x-device-key') deviceKey: string,
@@ -178,11 +186,28 @@ export class AttendanceController {
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  relieverCheckOut(
-    @Body() dto: RelieverCheckOutDto,
+  relieverCheckOut(@Body() dto: RelieverCheckOutDto) {
+    return this.attendanceService.relieverCheckOut(dto);
+  }
+
+  /** HR correction to an existing session's recorded checkIn/checkOut. */
+  @Patch('reliever-sessions/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  updateRelieverSession(
+    @Param('id') id: string,
+    @Body() dto: UpdateRelieverSessionDto,
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    return this.attendanceService.relieverCheckOut(dto, user);
+    return this.attendanceService.updateRelieverSession(id, dto, user);
   }
 
   @Get('reliever/:employeeId')

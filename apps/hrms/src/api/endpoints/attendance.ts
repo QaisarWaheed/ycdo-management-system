@@ -51,4 +51,12 @@ export const attendanceApi = {
   }) => api.post('/attendance/reliever-sessions/check-in', data),
   relieverCheckOut: (data: { sessionId: string; checkOut?: string }) =>
     api.post('/attendance/reliever-sessions/check-out', data),
+  updateRelieverSession: (
+    sessionId: string,
+    data: { checkIn?: string; checkOut?: string },
+  ) =>
+    api.patch<unknown, RelieverSession>(
+      `/attendance/reliever-sessions/${sessionId}`,
+      data,
+    ),
 }

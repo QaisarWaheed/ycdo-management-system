@@ -20,7 +20,12 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PayrollService } from '../payroll/payroll.service';
 import { enforceBranchScope } from '../../common/branch-scope.util';
+import { dutyWindowsOverlap, getDutyWindow } from '../../common/duty.util';
+import { is24HourShift } from '../attendance/attendance-biometric.util';
+import { toPakistanDateOnly } from '../attendance/attendance-late.util';
+import { pakistanYearMonthFromDate } from '../attendance/attendance-calendar.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import {
@@ -38,6 +43,17 @@ import {
   assertEmployeeInMedicineScope,
   isMedicineManagerRole,
 } from '../../common/medicine-scope.util';
+import {
+  applyExtraLeaveRejectedDeduction,
+  reconcileAttendanceFinancialConsequences,
+} from '../attendance/discipline.helper';
+import {
+  countApprovedFullLeaveOccurrencesThisMonth,
+  countShortLeaveOccurrencesThisMonth,
+  MONTHLY_FULL_LEAVE_LIMIT,
+  MONTHLY_SHORT_LEAVE_LIMIT,
+  reconcileShortLeaveAttendance,
+} from '../attendance/short-leave.util';
 
 const MAX_LEAVES_PER_YEAR = 24;
 
@@ -63,7 +79,44 @@ export class LeaveService {
   constructor(
     private prisma: PrismaService,
     private accessScopeService: AccessScopeService,
+    private payrollService: PayrollService,
   ) {}
+
+  /**
+   * Fires the centralized PENDING-payroll recompute hook (see
+   * PayrollService.recomputePendingPayrollForAttendanceDate) for every
+   * distinct calendar month a leave's attendance write touched — a leave
+   * spanning a month boundary must recompute BOTH months, never just the
+   * one containing startDate. Short Leave only ever writes a single day
+   * (leave.startDate — see markLeaveAttendance/reconcileShortLeaveAttendance),
+   * so it recomputes only that one month. Always called AFTER the
+   * triggering transaction has already committed, and only when
+   * markLeaveAttendance actually ran (callers check leave.status ===
+   * APPROVED first — see each call site).
+   */
+  private async recomputePendingPayrollForLeave(leave: {
+    employeeId: string;
+    startDate: Date;
+    endDate: Date;
+    leaveType: LeaveType;
+  }): Promise<void> {
+    const dates =
+      leave.leaveType === LeaveType.SHORT_LEAVE
+        ? [leave.startDate]
+        : this.getDateRange(leave.startDate, leave.endDate);
+
+    const seenMonths = new Set<string>();
+    for (const date of dates) {
+      const { year, month } = pakistanYearMonthFromDate(date);
+      const key = `${year}-${month}`;
+      if (seenMonths.has(key)) continue;
+      seenMonths.add(key);
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        leave.employeeId,
+        date,
+      );
+    }
+  }
 
   async apply(dto: ApplyLeaveDto) {
     const employee = await this.prisma.employee.findUnique({
@@ -117,38 +170,21 @@ export class LeaveService {
         throw new BadRequestException('Short leave must be for a single day');
       }
 
-      if (leaveType === LeaveType.SHORT_LEAVE) {
-        const monthStart = new Date(
-          startDate.getFullYear(),
-          startDate.getMonth(),
-          1,
+      // 24-hour staff are completely out of scope for Short Leave — reject
+      // here rather than letting the request run the full approval chain
+      // only to silently fail to apply at final reconciliation.
+      if (leaveType === LeaveType.SHORT_LEAVE && is24HourShift(employee)) {
+        throw new BadRequestException(
+          '24-hour staff are not eligible for Short Leave',
         );
-        const monthEnd = new Date(
-          startDate.getFullYear(),
-          startDate.getMonth() + 1,
-          0,
-          23,
-          59,
-          59,
-          999,
-        );
-
-        const shortLeaveCount = await this.prisma.leaveRecord.count({
-          where: {
-            employeeId: dto.employeeId,
-            leaveType: LeaveType.SHORT_LEAVE,
-            status: { in: ACTIVE_LEAVE_STATUSES },
-            startDate: { gte: monthStart, lte: monthEnd },
-          },
-        });
-
-        if (shortLeaveCount >= 2) {
-          throw new BadRequestException(
-            'Maximum 2 short leaves allowed per month',
-          );
-        }
       }
 
+      // Monthly Short Leave quota (shared with the HR-emergency flow) is no
+      // longer gated at request time — a request is always allowed to enter
+      // the approval chain; the quota is checked once, uniformly, at final
+      // HR approval (see hrOperationsApprove), which is also where a
+      // quota-exceeding request is diverted to PENDING_APPROVAL instead of
+      // being hard-rejected here.
       totalDays = leaveType === LeaveType.SHORT_LEAVE ? 0 : 1;
     } else {
       totalDays = this.calculateTotalDays(startDate, endDate);
@@ -200,18 +236,19 @@ export class LeaveService {
             'Employee cannot be their own reliever',
           );
         }
-        const preferred = await tx.employee.findUnique({
-          where: { id: dto.relieverId },
-        });
-        if (!preferred) {
-          throw new NotFoundException('Selected reliever not found');
-        }
-        if (
-          preferred.status !== EmployeeStatus.ACTIVE &&
-          preferred.status !== EmployeeStatus.APPOINTED
-        ) {
-          throw new BadRequestException('Selected reliever is not active');
-        }
+        await this.assertRelieverEligible(
+          tx,
+          dto.relieverId,
+          startDate,
+          endDate,
+        );
+        await this.assertNoRelieverDoubleBooking(
+          tx,
+          dto.relieverId,
+          employee,
+          startDate,
+          endDate,
+        );
         await tx.relieverRequest.create({
           data: {
             leaveRecordId: record.id,
@@ -507,7 +544,7 @@ export class LeaveService {
       where: { id: actingUser.id },
     });
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.leaveApproval.create({
         data: {
           leaveId,
@@ -519,6 +556,50 @@ export class LeaveService {
       });
 
       if (dto.action === LeaveApprovalAction.APPROVED) {
+        // Monthly entitlement gate — a leave the chain has approved may
+        // still exceed the employee's normal monthly Full Leave (2) or
+        // Short Leave (3, shared with the HR-emergency flow) allowance.
+        // When it does, it is diverted to PENDING_APPROVAL for a distinct
+        // HR quota-exception decision instead of becoming APPROVED here.
+        // An already-approved extra leave does not free up a new normal
+        // slot — the count below only ever counts OTHER occurrences.
+        const withinQuota =
+          leave.leaveType === LeaveType.SHORT_LEAVE
+            ? (await countShortLeaveOccurrencesThisMonth(
+                tx,
+                leave.employeeId,
+                leave.startDate,
+                leaveId,
+              )) < MONTHLY_SHORT_LEAVE_LIMIT
+            : (await countApprovedFullLeaveOccurrencesThisMonth(
+                tx,
+                leave.employeeId,
+                leave.startDate,
+                leaveId,
+              )) < MONTHLY_FULL_LEAVE_LIMIT;
+
+        if (!withinQuota) {
+          const pending = await tx.leaveRecord.update({
+            where: { id: leaveId },
+            data: {
+              status: LeaveStatus.PENDING_APPROVAL,
+              currentStage: LeaveApprovalStage.HR_OPERATIONS,
+            },
+            include: this.leaveInclude(),
+          });
+
+          await tx.notification.create({
+            data: {
+              employeeId: leave.employeeId,
+              type: 'LEAVE_PENDING_QUOTA_APPROVAL',
+              message:
+                'Your leave has cleared the normal approval chain but exceeds your monthly entitlement. It now requires a separate HR decision.',
+            },
+          });
+
+          return pending;
+        }
+
         const updated = await tx.leaveRecord.update({
           where: { id: leaveId },
           data: {
@@ -570,6 +651,156 @@ export class LeaveService {
 
       return updated;
     });
+
+    // Fires only after the transaction above has committed, and only when
+    // markLeaveAttendance actually ran — the APPROVED-and-within-quota
+    // branch is the only one that reaches LeaveStatus.APPROVED here (the
+    // over-quota branch returns PENDING_APPROVAL, rejection returns
+    // REJECTED).
+    if (result.status === LeaveStatus.APPROVED) {
+      await this.recomputePendingPayrollForLeave(result);
+    }
+
+    return result;
+  }
+
+  /**
+   * The distinct HR decision on a PENDING_APPROVAL (quota-exceeded) leave —
+   * separate from hrOperationsApprove's normal chain-approval action so the
+   * two meanings ("the chain approved this" vs "HR is granting/denying an
+   * over-quota exception") stay unambiguous. Logged via the same
+   * LeaveApproval audit trail, under LeaveApprovalStage.QUOTA_EXCEPTION.
+   */
+  async decideQuotaException(
+    leaveId: string,
+    dto: ApproveLeaveDto,
+    actingUser: ActingUser,
+  ) {
+    if (
+      actingUser.role !== UserRole.HR_OPERATIONS_MANAGER &&
+      actingUser.role !== UserRole.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Only HR Operations Manager can decide a quota exception',
+      );
+    }
+
+    const leave = await this.getLeaveWithEmployee(leaveId);
+
+    if (leave.status !== LeaveStatus.PENDING_APPROVAL) {
+      throw new BadRequestException(
+        'Leave is not pending a quota-exception decision',
+      );
+    }
+
+    if (dto.action === LeaveApprovalAction.REJECTED && !dto.notes?.trim()) {
+      throw new BadRequestException(
+        'A rejection reason is required to reject a quota exception',
+      );
+    }
+
+    const actingUserRecord = await this.prisma.user.findUnique({
+      where: { id: actingUser.id },
+    });
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.leaveApproval.create({
+        data: {
+          leaveId,
+          stage: LeaveApprovalStage.QUOTA_EXCEPTION,
+          action: dto.action,
+          actionBy: actingUser.id,
+          notes: dto.notes,
+        },
+      });
+
+      if (dto.action === LeaveApprovalAction.APPROVED) {
+        const updated = await tx.leaveRecord.update({
+          where: { id: leaveId },
+          data: {
+            status: LeaveStatus.APPROVED,
+            approvedBy: actingUser.id,
+          },
+          include: {
+            employee: true,
+            relieverRequest: true,
+          },
+        });
+
+        // Treated exactly like a normal approval — for Short Leave this
+        // still re-validates duration inside reconcileShortLeaveAttendance,
+        // so a quota exception never bypasses the 2h/3h duration rule.
+        await this.markLeaveAttendance(tx, updated);
+
+        await tx.auditLog.create({
+          data: {
+            userId: actingUser.id,
+            action: 'LEAVE_QUOTA_EXCEPTION_APPROVED',
+            entity: 'LeaveRecord',
+            entityId: leaveId,
+          },
+        });
+
+        await tx.notification.create({
+          data: {
+            employeeId: leave.employeeId,
+            type: 'LEAVE_APPROVED',
+            message: `Your extra leave (beyond monthly entitlement) has been approved by HR Operations. Approved by: ${actingUserRecord?.email ?? 'HR Operations'}`,
+          },
+        });
+
+        return updated;
+      }
+
+      const updated = await tx.leaveRecord.update({
+        where: { id: leaveId },
+        data: { status: LeaveStatus.REJECTED },
+        include: this.leaveInclude(),
+      });
+
+      // No leave protection. Full Leave (REGULAR/EMERGENCY) gets the 1-day
+      // deduction; Short Leave gets none — markLeaveAttendance/
+      // reconcileShortLeaveAttendance was never called, so whatever
+      // discipline already existed on the underlying date (from the
+      // original biometric/manual classification) simply stands untouched.
+      if (leave.leaveType !== LeaveType.SHORT_LEAVE) {
+        await applyExtraLeaveRejectedDeduction(
+          tx,
+          leave.employeeId,
+          leave.startDate,
+        );
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUser.id,
+          action: 'LEAVE_QUOTA_EXCEPTION_REJECTED',
+          entity: 'LeaveRecord',
+          entityId: leaveId,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          employeeId: leave.employeeId,
+          type: 'LEAVE_REJECTED',
+          message: `Your extra leave (beyond monthly entitlement) was rejected by HR Operations. Reason: ${dto.notes}`,
+        },
+      });
+
+      return updated;
+    });
+
+    // Fires only after the transaction above has committed, and only when
+    // markLeaveAttendance actually ran — same reasoning as
+    // hrOperationsApprove above. applyExtraLeaveRejectedDeduction (the
+    // rejection branch) is a discipline-only fine, not a basicStipend/
+    // hours recompute, so it deliberately does not trigger this hook.
+    if (result.status === LeaveStatus.APPROVED) {
+      await this.recomputePendingPayrollForLeave(result);
+    }
+
+    return result;
   }
 
   async getLeaveWithApprovals(leaveId: string) {
@@ -611,6 +842,40 @@ export class LeaveService {
     }
 
     return leave;
+  }
+
+  /**
+   * Monthly quota context for a PENDING_APPROVAL decision — how many OTHER
+   * occurrences this employee already has this calendar month, and the
+   * applicable limit. Read-only; reuses the exact same counters the quota
+   * gate itself uses (hrOperationsApprove / markEmergencyLeave), so what HR
+   * sees here always matches what actually gated this leave.
+   */
+  async getQuotaContext(leaveId: string) {
+    const leave = await this.getLeaveWithEmployee(leaveId);
+
+    const isShortLeave = leave.leaveType === LeaveType.SHORT_LEAVE;
+    const monthlyOccurrenceCount = isShortLeave
+      ? await countShortLeaveOccurrencesThisMonth(
+          this.prisma,
+          leave.employeeId,
+          leave.startDate,
+          leaveId,
+        )
+      : await countApprovedFullLeaveOccurrencesThisMonth(
+          this.prisma,
+          leave.employeeId,
+          leave.startDate,
+          leaveId,
+        );
+
+    return {
+      leaveType: leave.leaveType,
+      monthlyOccurrenceCount,
+      monthlyLimit: isShortLeave
+        ? MONTHLY_SHORT_LEAVE_LIMIT
+        : MONTHLY_FULL_LEAVE_LIMIT,
+    };
   }
 
   async findAll(
@@ -745,6 +1010,18 @@ export class LeaveService {
     const totalDays = this.calculateTotalDays(startDate, endDate);
 
     const leave = await this.prisma.$transaction(async (tx) => {
+      // Emergency Full Leave shares the SAME monthly quota as Portal Full
+      // Leave (both count via countApprovedFullLeaveOccurrencesThisMonth,
+      // which already treats REGULAR + EMERGENCY as one combined bucket).
+      // Bypassing the chain does not bypass the entitlement — exceeding it
+      // still requires a distinct HR quota-exception decision.
+      const withinQuota =
+        (await countApprovedFullLeaveOccurrencesThisMonth(
+          tx,
+          dto.employeeId,
+          startDate,
+        )) < MONTHLY_FULL_LEAVE_LIMIT;
+
       const record = await tx.leaveRecord.create({
         data: {
           employeeId: dto.employeeId,
@@ -753,26 +1030,37 @@ export class LeaveService {
           endDate,
           totalDays,
           reason: dto.emergencyReason,
-          status: LeaveStatus.APPROVED,
+          status: withinQuota
+            ? LeaveStatus.APPROVED
+            : LeaveStatus.PENDING_APPROVAL,
           currentStage: null,
+          approvedBy: withinQuota ? actingUser.id : null,
         },
         include: { employee: true },
       });
 
-      await this.markLeaveAttendance(tx, record);
+      if (withinQuota) {
+        await this.markLeaveAttendance(tx, record);
+      }
 
       await tx.notification.create({
         data: {
           employeeId: dto.employeeId,
-          type: 'EMERGENCY_LEAVE',
-          message: `Emergency leave has been marked by HR for ${this.formatDate(startDate)} to ${this.formatDate(endDate)}. Reason: ${dto.emergencyReason}`,
+          type: withinQuota
+            ? 'EMERGENCY_LEAVE'
+            : 'LEAVE_PENDING_QUOTA_APPROVAL',
+          message: withinQuota
+            ? `Emergency leave has been marked by HR for ${this.formatDate(startDate)} to ${this.formatDate(endDate)}. Reason: ${dto.emergencyReason}`
+            : `Emergency leave for ${this.formatDate(startDate)} to ${this.formatDate(endDate)} exceeds your monthly Full Leave entitlement and now requires a separate HR decision.`,
         },
       });
 
       await tx.auditLog.create({
         data: {
           userId: actingUser.id,
-          action: 'EMERGENCY_LEAVE',
+          action: withinQuota
+            ? 'EMERGENCY_LEAVE'
+            : 'EMERGENCY_LEAVE_PENDING_QUOTA',
           entity: 'LeaveRecord',
           entityId: record.id,
         },
@@ -780,6 +1068,13 @@ export class LeaveService {
 
       return record;
     });
+
+    // Fires only after the transaction above has committed, and only when
+    // markLeaveAttendance actually ran (the within-quota branch — the
+    // over-quota branch leaves `leave.status` at PENDING_APPROVAL).
+    if (leave.status === LeaveStatus.APPROVED) {
+      await this.recomputePendingPayrollForLeave(leave);
+    }
 
     return leave;
   }
@@ -806,7 +1101,10 @@ export class LeaveService {
 
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
-      include: { currentDepartment: { select: { name: true } } },
+      include: {
+        currentDepartment: { select: { name: true } },
+        shift: true,
+      },
     });
 
     if (!employee) {
@@ -856,6 +1154,12 @@ export class LeaveService {
       throw new BadRequestException('Short leave must be a single day');
     }
 
+    if (dto.leaveType === LeaveType.SHORT_LEAVE && is24HourShift(employee)) {
+      throw new BadRequestException(
+        '24-hour staff are not eligible for Short Leave',
+      );
+    }
+
     const overlapping = await this.prisma.leaveRecord.findFirst({
       where: {
         employeeId: dto.employeeId,
@@ -899,18 +1203,19 @@ export class LeaveService {
             'Employee cannot be their own reliever',
           );
         }
-        const preferred = await tx.employee.findUnique({
-          where: { id: dto.relieverId },
-        });
-        if (!preferred) {
-          throw new NotFoundException('Selected reliever not found');
-        }
-        if (
-          preferred.status !== EmployeeStatus.ACTIVE &&
-          preferred.status !== EmployeeStatus.APPOINTED
-        ) {
-          throw new BadRequestException('Selected reliever is not active');
-        }
+        await this.assertRelieverEligible(
+          tx,
+          dto.relieverId,
+          startDate,
+          endDate,
+        );
+        await this.assertNoRelieverDoubleBooking(
+          tx,
+          dto.relieverId,
+          employee,
+          startDate,
+          endDate,
+        );
 
         await tx.relieverRequest.create({
           data: {
@@ -958,6 +1263,11 @@ export class LeaveService {
 
       return record;
     });
+
+    // Fires only after the transaction above has committed. Unlike
+    // markEmergencyLeave, this method has no quota gate — markLeaveAttendance
+    // always runs, so the hook always fires unconditionally here.
+    await this.recomputePendingPayrollForLeave(leave);
 
     return leave;
   }
@@ -1161,23 +1471,19 @@ export class LeaveService {
       throw new BadRequestException('You cannot assign yourself as reliever');
     }
 
-    const reliever = await this.prisma.employee.findUnique({
-      where: { id: dto.relieverId },
-      include: { shift: true },
-    });
-
-    if (!reliever) {
-      throw new NotFoundException(
-        `Reliever employee with id ${dto.relieverId} not found`,
-      );
-    }
-
-    if (
-      reliever.status !== EmployeeStatus.ACTIVE &&
-      reliever.status !== EmployeeStatus.APPOINTED
-    ) {
-      throw new BadRequestException('Selected reliever is not active');
-    }
+    await this.assertRelieverEligible(
+      this.prisma,
+      dto.relieverId,
+      leaveRecord.startDate,
+      leaveRecord.endDate,
+    );
+    await this.assertNoRelieverDoubleBooking(
+      this.prisma,
+      dto.relieverId,
+      leaveRecord.employee,
+      leaveRecord.startDate,
+      leaveRecord.endDate,
+    );
 
     const requesterName = leaveRecord.employee.fullName;
 
@@ -1328,6 +1634,21 @@ export class LeaveService {
         `Reliever employee with id ${dto.relieverId} not found`,
       );
     }
+
+    await this.assertRelieverEligible(
+      this.prisma,
+      dto.relieverId,
+      leaveRecord.startDate,
+      leaveRecord.endDate,
+    );
+    await this.assertNoRelieverDoubleBooking(
+      this.prisma,
+      dto.relieverId,
+      leaveRecord.employee,
+      leaveRecord.startDate,
+      leaveRecord.endDate,
+      leaveId,
+    );
 
     const employeeName = leaveRecord.employee.fullName;
 
@@ -1488,6 +1809,109 @@ export class LeaveService {
     }));
   }
 
+  /**
+   * Shared reliever eligibility gate — active status + not on their own
+   * approved leave for the covered date range. Called from every reliever
+   * assignment entry point (apply, markVerifiedLeave, requestReliever,
+   * hrAssignReliever) so all four behave identically instead of each
+   * re-implementing its own partial check.
+   */
+  private async assertRelieverEligible(
+    db: Prisma.TransactionClient | PrismaService,
+    relieverId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<void> {
+    const reliever = await db.employee.findUnique({
+      where: { id: relieverId },
+    });
+    if (!reliever) {
+      throw new NotFoundException('Selected reliever not found');
+    }
+    if (
+      reliever.status !== EmployeeStatus.ACTIVE &&
+      reliever.status !== EmployeeStatus.APPOINTED
+    ) {
+      throw new BadRequestException('Selected reliever is not active');
+    }
+
+    const ownLeaveConflict = await db.leaveRecord.findFirst({
+      where: {
+        employeeId: relieverId,
+        status: LeaveStatus.APPROVED,
+        startDate: { lte: endDate },
+        endDate: { gte: startDate },
+      },
+    });
+    if (ownLeaveConflict) {
+      throw new ConflictException(
+        'Selected reliever has approved leave covering this date range',
+      );
+    }
+  }
+
+  /**
+   * Prevents assigning the same reliever to two covered employees whose own
+   * duty windows overlap in clock time on an overlapping date range — they
+   * cannot physically cover both at once. RelieverRequest itself carries no
+   * time window, so the covered employees' duty windows (existing, reliable
+   * data) are used as the best available proxy. A reliever with no duty
+   * window on either side of the comparison cannot be evaluated and is not
+   * blocked, so legitimate non-overlapping assignments are never rejected
+   * just because duty times aren't configured.
+   */
+  private async assertNoRelieverDoubleBooking(
+    db: Prisma.TransactionClient | PrismaService,
+    relieverId: string,
+    coveredEmployee: {
+      dutyStartTime: string | null;
+      dutyEndTime: string | null;
+    },
+    startDate: Date,
+    endDate: Date,
+    excludeLeaveRecordId?: string,
+  ): Promise<void> {
+    const newWin = getDutyWindow(coveredEmployee);
+    if (!newWin) return;
+
+    const existingAssignments = await db.relieverRequest.findMany({
+      where: {
+        relieverId,
+        status: {
+          in: [
+            RelieverRequestStatus.ACCEPTED,
+            RelieverRequestStatus.HR_ASSIGNED,
+          ],
+        },
+        ...(excludeLeaveRecordId
+          ? { leaveRecordId: { not: excludeLeaveRecordId } }
+          : {}),
+        leaveRecord: {
+          status: LeaveStatus.APPROVED,
+          startDate: { lte: endDate },
+          endDate: { gte: startDate },
+        },
+      },
+      include: {
+        leaveRecord: {
+          include: {
+            employee: { select: { dutyStartTime: true, dutyEndTime: true } },
+          },
+        },
+      },
+    });
+
+    for (const assignment of existingAssignments) {
+      const otherWin = getDutyWindow(assignment.leaveRecord.employee);
+      if (!otherWin) continue;
+      if (dutyWindowsOverlap(newWin, otherWin)) {
+        throw new ConflictException(
+          'Selected reliever is already covering another overlapping duty window on this date range',
+        );
+      }
+    }
+  }
+
   private async markLeaveAttendance(
     tx: Prisma.TransactionClient,
     leave: {
@@ -1495,38 +1919,46 @@ export class LeaveService {
       startDate: Date;
       endDate: Date;
       leaveType: LeaveType;
-      employee: { currentBranchId: string };
+      employee: {
+        currentBranchId: string;
+        dutyStartTime: string | null;
+        dutyEndTime: string | null;
+        dutyTotalHours?: number | null;
+        shift?: { name?: string | null; startTime: string; endTime: string } | null;
+      };
     },
   ) {
     if (leave.leaveType === LeaveType.SHORT_LEAVE) {
-      await tx.attendanceLog.upsert({
-        where: {
-          employeeId_date_type: {
-            employeeId: leave.employeeId,
-            date: leave.startDate,
-            type: AttendanceLogType.REGULAR,
-          },
-        },
-        create: {
-          employeeId: leave.employeeId,
-          branchId: leave.employee.currentBranchId,
-          date: leave.startDate,
-          type: AttendanceLogType.REGULAR,
-          status: AttendanceStatus.HALF_DAY,
-          source: AttendanceSource.MANUAL,
-          note: 'Approved short leave',
-        },
-        update: {
-          status: AttendanceStatus.HALF_DAY,
-          source: AttendanceSource.MANUAL,
-          note: 'Approved short leave',
-        },
-      });
+      // Canonical reconciliation shared with the HR-emergency flow (see
+      // attendance.service.ts) — validates duration against real
+      // checkIn/checkOut when it already exists, writes AttendanceStatus
+      // .SHORT_LEAVE (not HALF_DAY — the two flows now converge on the same
+      // treatment), and reverses lateness discipline only when valid.
+      // Silently no-ops on an invalid/unsupported case (e.g. a chain-
+      // approved leave whose actual attendance turns out to exceed the
+      // duration limit) — the leave itself still ends up APPROVED, but
+      // without the Short Leave attendance/payroll benefit for that day.
+      await reconcileShortLeaveAttendance(
+        tx,
+        leave.employeeId,
+        leave.startDate,
+        leave.employee,
+      );
       return;
     }
 
     for (const day of this.getDateRange(leave.startDate, leave.endDate)) {
-      await tx.attendanceLog.upsert({
+      const existing = await tx.attendanceLog.findUnique({
+        where: {
+          employeeId_date_type: {
+            employeeId: leave.employeeId,
+            date: day,
+            type: AttendanceLogType.REGULAR,
+          },
+        },
+      });
+
+      const updated = await tx.attendanceLog.upsert({
         where: {
           employeeId_date_type: {
             employeeId: leave.employeeId,
@@ -1542,12 +1974,31 @@ export class LeaveService {
           status: AttendanceStatus.ON_LEAVE,
           source: AttendanceSource.MANUAL,
           note: 'Approved leave',
+          dutyStartTimeSnapshot: leave.employee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: leave.employee.dutyEndTime ?? null,
         },
         update: {
           status: AttendanceStatus.ON_LEAVE,
           source: AttendanceSource.MANUAL,
           note: 'Approved leave',
+          dutyStartTimeSnapshot: leave.employee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: leave.employee.dutyEndTime ?? null,
         },
+      });
+
+      // Reconciles both directions this leave approval can move a day out
+      // of: ABSENT/UNINFORMED_ABSENT (previously handled here directly) AND
+      // LATE/lateness-HALF_DAY (previously NOT handled — a leave retroactively
+      // approved over an already-late day never reversed the late fine).
+      // Never touches an already-ON_LEAVE row or an unrelated status
+      // (idempotent on reruns) — before is read fresh from the database, so
+      // a second run of this same approval sees the already-updated state
+      // and no-ops.
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: leave.employeeId,
+        date: day,
+        before: existing,
+        after: updated,
       });
     }
   }
@@ -1587,8 +2038,8 @@ export class LeaveService {
         leaveType: { not: LeaveType.SHORT_LEAVE },
         status: LeaveStatus.APPROVED,
         startDate: {
-          gte: new Date(year, 0, 1),
-          lte: new Date(year, 11, 31, 23, 59, 59, 999),
+          gte: new Date(Date.UTC(year, 0, 1)),
+          lte: new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999)),
         },
       },
       _sum: { totalDays: true },
@@ -1608,18 +2059,16 @@ export class LeaveService {
     const current = this.toDateOnly(startDate);
     const end = this.toDateOnly(endDate);
 
-    while (current <= end) {
+    while (current.getTime() <= end.getTime()) {
       dates.push(new Date(current));
-      current.setDate(current.getDate() + 1);
+      current.setUTCDate(current.getUTCDate() + 1);
     }
 
     return dates;
   }
 
   private toDateOnly(date: Date): Date {
-    const result = new Date(date);
-    result.setHours(0, 0, 0, 0);
-    return result;
+    return toPakistanDateOnly(date);
   }
 
   private formatDate(date: Date): string {

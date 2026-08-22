@@ -23,13 +23,39 @@ body {
 
 .ltr { direction: ltr; text-align: left; unicode-bidi: embed; }
 
-.page { min-height: 250mm; }
+.computer-generated-notice {
+  margin-top: 24pt;
+  padding-top: 8pt;
+  border-top: 1px solid #ccc;
+  text-align: center;
+  font-size: 9.5pt;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  direction: ltr;
+  color: #333;
+  line-height: 1.35;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+@media print {
+  .page {
+    min-height: auto !important;
+    display: block !important;
+  }
+}
 
 /* ── Letterhead / English notification block (LTR) ── */
 .letter-shell-top {
   direction: ltr;
   text-align: left;
   margin-bottom: 10pt;
+}
+
+.bismillah {
+  direction: rtl;
+  text-align: center;
+  font-size: 13pt;
+  margin-bottom: 8pt;
 }
 
 .letterhead-row {
@@ -39,6 +65,19 @@ body {
   gap: 12pt;
   margin-bottom: 10pt;
 }
+
+.letterhead-right {
+  text-align: right;
+}
+
+.letterhead-org {
+  text-align: right;
+  font-family: 'Times New Roman', Times, Georgia, serif;
+}
+
+.letterhead-org .office { font-size: 10.5pt; }
+.letterhead-org .org-name { font-size: 13pt; font-weight: 700; line-height: 1.25; }
+.letterhead-org .loc { font-size: 10.5pt; }
 
 .letterhead-logo {
   width: 78pt;
@@ -56,6 +95,7 @@ body {
 }
 
 .letter-nos {
+  margin-top: 6pt;
   text-align: right;
   font-family: 'Segoe UI', Arial, sans-serif;
   font-size: 10.5pt;
@@ -65,13 +105,6 @@ body {
 
 .letter-nos .letter-no-line {
   font-weight: 700;
-}
-
-.letter-nos .ref-line {
-  direction: rtl;
-  text-align: right;
-  font-family: 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', 'Segoe UI', sans-serif;
-  font-size: 11pt;
 }
 
 .notification-block {
@@ -84,26 +117,7 @@ body {
 .notification-block .en-title {
   font-size: 16pt;
   font-weight: 700;
-  margin: 0 0 4pt;
-}
-
-.notification-block .en-prescribed {
-  font-size: 13pt;
-  font-weight: 700;
-  margin: 0 0 6pt;
-}
-
-.notification-block .en-subtitle {
-  font-size: 10pt;
-  font-weight: 400;
   margin: 0;
-  color: #222;
-}
-
-.hr-line {
-  border: 0;
-  border-top: 1.5pt solid #222;
-  margin: 10pt 0 14pt;
 }
 
 /* ── Urdu meta (RTL) ── */
@@ -184,7 +198,7 @@ body {
 
 .closing {
   margin-top: 8pt;
-  text-align: right;
+  text-align: left;
 }
 
 .signature {
@@ -192,13 +206,6 @@ body {
   text-align: left;
   font-size: 12pt;
   line-height: 1.7;
-}
-
-.signature .sig-line {
-  display: inline-block;
-  width: 120pt;
-  border-top: 1px solid #000;
-  margin-bottom: 6pt;
 }
 
 .fill-line {

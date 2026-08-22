@@ -18,6 +18,8 @@
     margin: 0;
   }
 
+  .bismillah { text-align: center; font-size: 13pt; margin-bottom: 8pt; }
+
   .letterhead-row {
     display: flex;
     align-items: flex-start;
@@ -25,14 +27,14 @@
     margin-bottom: 6pt;
   }
   .letterhead-row img { max-height: 55px; }
+  .letterhead-right { text-align: right; }
   .letterhead-org {
-    text-align: center;
-    flex: 1;
+    text-align: right;
   }
   .letterhead-org .office { font-size: 10.5pt; }
   .letterhead-org .name { font-size: 13pt; font-weight: bold; }
   .letterhead-org .loc { font-size: 10.5pt; }
-  .letterhead-meta { text-align: right; font-size: 11pt; white-space: nowrap; }
+  .letterhead-meta { margin-top: 6pt; text-align: right; font-size: 11pt; white-space: nowrap; }
 
   .title {
     text-align: center;
@@ -60,16 +62,20 @@
 </head>
 <body>
 
+<div class="bismillah">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
+
 <div class="letterhead-row">
   {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
-  <div class="letterhead-org">
-    <div class="office">OFFICE OF THE</div>
-    <div class="name">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
-    <div class="loc">MULTAN, PAKISTAN</div>
-  </div>
-  <div class="letterhead-meta">
-    <div>Letter no: {{letterNo}}</div>
-    <div>Dated: {{issueDate}}</div>
+  <div class="letterhead-right">
+    <div class="letterhead-org">
+      <div class="office">OFFICE OF THE</div>
+      <div class="name">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
+      <div class="loc">MULTAN, PAKISTAN</div>
+    </div>
+    <div class="letterhead-meta">
+      <div>Letter no: {{letterNo}}</div>
+      <div>Dated: {{issueDate}}</div>
+    </div>
   </div>
 </div>
 

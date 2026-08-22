@@ -1,6 +1,7 @@
 import { AllowanceType, DeductionType, PayrollStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  Equals,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -119,6 +120,112 @@ export class ApplyOvertimeDto {
   @Min(2020)
   @IsNotEmpty()
   year: number;
+}
+
+export class RecomputeMonthAllDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsNotEmpty()
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  @IsNotEmpty()
+  year: number;
+
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+
+  /** Required, and must equal exactly 'RECOMPUTE_PENDING_PAYROLL', for any
+   * request where dryRun is not true — see PayrollService.recomputeMonthAll. */
+  @ValidateIf((o: RecomputeMonthAllDto) => o.dryRun !== true)
+  @Equals('RECOMPUTE_PENDING_PAYROLL')
+  confirm?: string;
+
+  /** Unique-employee batch size (not PayrollEntry row count). Defaults to
+   * 25 when omitted; capped at 50 to keep each call comfortably clear of
+   * a 504 timeout. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+
+  /** Unique-employee offset into the deterministically-sorted employee
+   * list for this month/year — page through a large month via repeated
+   * calls using the previous response's nextOffset. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
+}
+
+export class ResetUnpaidPayrollDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsNotEmpty()
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  @IsNotEmpty()
+  year: number;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  /** When true, clears unpaid payroll in every month, not only month/year. */
+  @IsOptional()
+  @IsBoolean()
+  allUnpaidMonths?: boolean;
+
+  @Equals('RESET_UNPAID_PAYROLL')
+  confirm: 'RESET_UNPAID_PAYROLL';
+}
+
+export class RebuildPayrollDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @IsNotEmpty()
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  @IsNotEmpty()
+  year: number;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @Equals('REBUILD_PAYROLL')
+  confirm: 'REBUILD_PAYROLL';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
 }
 
 export class UpdatePayrollStatusDto {

@@ -36,3 +36,7 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# CapRover / local deploy archives (exceed GitHub 100MB limit)
+**/deploy.tar.gz
+*.tar.gz

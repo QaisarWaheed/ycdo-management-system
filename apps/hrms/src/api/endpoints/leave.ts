@@ -46,6 +46,12 @@ export interface EmergencyLeavePayload {
   emergencyReason: string
 }
 
+export interface QuotaContext {
+  leaveType: 'REGULAR' | 'SHORT_LEAVE' | 'EMERGENCY'
+  monthlyOccurrenceCount: number
+  monthlyLimit: number
+}
+
 export interface VerifiedLeavePayload {
   employeeId: string
   startDate: string
@@ -69,6 +75,10 @@ export const leaveApi = {
     api.patch(`/leave/${id}/dept-approve`, data),
   hrApprove: (id: string, data: ApproveLeavePayload) =>
     api.patch(`/leave/${id}/hr-approve`, data),
+  decideQuotaException: (id: string, data: ApproveLeavePayload) =>
+    api.patch(`/leave/${id}/quota-exception`, data),
+  getQuotaContext: (id: string) =>
+    api.get<unknown, QuotaContext>(`/leave/${id}/quota-context`),
   updateStatus: (id: string, data: Record<string, unknown>) =>
     api.patch(`/leave/${id}/status`, data),
   getBalance: (employeeId: string, year?: number) =>

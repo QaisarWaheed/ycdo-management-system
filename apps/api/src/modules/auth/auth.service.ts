@@ -90,7 +90,7 @@ export class AuthService {
       return this.startSuperAdminOtpChallenge(user);
     }
 
-    return this.issueSession(user, roles);
+    return this.issueSession(user, roles, dto.client);
   }
 
   async verifyLoginOtp(dto: VerifyLoginOtpDto) {
@@ -129,7 +129,7 @@ export class AuthService {
       throw new ForbiddenException('OTP verification is only for Super Admin');
     }
 
-    return this.issueSession(user, roles);
+    return this.issueSession(user, roles, 'hrms');
   }
 
   async resendLoginOtp(dto: ResendLoginOtpDto) {
@@ -210,10 +210,15 @@ export class AuthService {
   private async issueSession(
     user: User,
     roles: UserRole[],
+    client?: string,
   ) {
+    const now = new Date();
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastLogin: new Date() },
+      data: {
+        lastLogin: now,
+        ...(client === 'portal' ? { lastPortalLogin: now } : {}),
+      },
     });
 
     const payload = {

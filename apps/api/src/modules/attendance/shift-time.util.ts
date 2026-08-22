@@ -93,4 +93,73 @@ export function attendanceGraceMinutesRemaining(
   return Math.max(0, graceMinutes - minutesSince);
 }
 
+/**
+ * Whether an attendance-day row may be auto-created as UNMARKED yet.
+ *
+ * Past Pakistan calendar days: always yes (that day's duty already started).
+ * Future days: never.
+ * Today: only when this calendar day is the active shift-attendance date
+ * (overnight 22:00 at 01:37 still belongs to yesterday) AND wall-clock is
+ * at/after duty start.
+ */
+export function hasDutyStartedForAttendanceDate(
+  attendanceDate: Date,
+  dutyStartTime: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  const day = toPakistanDateOnly(attendanceDate);
+  const pkToday = toPakistanDateOnly(now);
+  if (day.getTime() < pkToday.getTime()) return true;
+  if (day.getTime() > pkToday.getTime()) return false;
+
+  const dutyStart = dutyStartTime?.trim() || DEFAULT_DUTY_START;
+  const activeAttendanceDate = getShiftAttendanceDate(now, dutyStart);
+  if (activeAttendanceDate.getTime() !== day.getTime()) {
+    return false;
+  }
+
+  const nowMinutes = toPakistanMinutesOfDay(now);
+  const startMinutes = parseTimeToMinutes(dutyStart);
+  return minutesSinceShiftStart(nowMinutes, startMinutes) >= 0;
+}
+
+/**
+ * Absolute shift-end timestamp for one specific attendance day. The row's
+ * `date` is already attributed to the shift's start day (getShiftAttendanceDate,
+ * assigned at check-in time), so the exact end instant can be computed
+ * directly (date + end clock time, +1 day if the shift crosses midnight)
+ * instead of a wraparound "minutes since" comparison — there is no ambiguity
+ * about which calendar occurrence of the end time is meant once the specific
+ * date is already known.
+ */
+export function computeShiftEndDateTime(
+  attendanceDate: Date,
+  dutyEndTime: string,
+  crossesMidnight: boolean,
+): Date {
+  const dateStr = attendanceDate.toISOString().slice(0, 10);
+  const endMinutes = parseTimeToMinutes(dutyEndTime);
+  const end = new Date(`${dateStr}T00:00:00+05:00`);
+  end.setUTCMinutes(
+    end.getUTCMinutes() + endMinutes + (crossesMidnight ? 1440 : 0),
+  );
+  return end;
+}
+
+/**
+ * Absolute shift-start timestamp for one specific attendance day. The row's
+ * `date` is always the shift's own start day (see computeShiftEndDateTime's
+ * comment), so unlike the end time this never needs a +1 day adjustment.
+ */
+export function computeShiftStartDateTime(
+  attendanceDate: Date,
+  dutyStartTime: string,
+): Date {
+  const dateStr = attendanceDate.toISOString().slice(0, 10);
+  const startMinutes = parseTimeToMinutes(dutyStartTime);
+  const start = new Date(`${dateStr}T00:00:00+05:00`);
+  start.setUTCMinutes(start.getUTCMinutes() + startMinutes);
+  return start;
+}
+
 export { toPakistanDateOnly, toPakistanMinutesOfDay, parseTimeToMinutes };

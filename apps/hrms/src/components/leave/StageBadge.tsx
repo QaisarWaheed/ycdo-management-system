@@ -34,12 +34,22 @@ export function StageBadge({
     BRANCH_MANAGER: 'Awaiting Branch Manager',
     DEPARTMENT_INCHARGE: 'Awaiting Dept Incharge',
     HR_OPERATIONS: 'Awaiting HR Operations',
+    QUOTA_EXCEPTION: 'Awaiting Quota Exception Decision',
   }
 
   const styles: Record<LeaveApprovalStage, string> = {
     BRANCH_MANAGER: 'border-blue-200 bg-blue-100 text-blue-800',
     DEPARTMENT_INCHARGE: 'border-purple-200 bg-purple-100 text-purple-800',
     HR_OPERATIONS: 'border-orange-200 bg-orange-100 text-orange-800',
+    QUOTA_EXCEPTION: 'border-amber-200 bg-amber-100 text-amber-900',
+  }
+
+  if (status === 'PENDING_APPROVAL') {
+    return (
+      <Badge className="border-amber-200 bg-amber-100 text-amber-900">
+        Awaiting Quota Exception Decision
+      </Badge>
+    )
   }
 
   if (

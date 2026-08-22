@@ -19,6 +19,7 @@ function findApproval(approvals: LeaveApproval[] | undefined, stage: string) {
 
 export function ApprovalTrail({ leave }: { leave: LeaveRecord }) {
   const approvals = leave.approvals ?? []
+  const quotaExceptionApproval = findApproval(approvals, 'QUOTA_EXCEPTION')
 
   const steps = [
     {
@@ -38,6 +39,17 @@ export function ApprovalTrail({ leave }: { leave: LeaveRecord }) {
       title: 'HR Operations',
       approval: findApproval(approvals, 'HR_OPERATIONS'),
     },
+    // Only shown when relevant — a leave that never exceeded its monthly
+    // entitlement never has this stage, and showing "Pending" for every
+    // ordinary leave would be noise.
+    ...(leave.status === 'PENDING_APPROVAL' || quotaExceptionApproval
+      ? [
+          {
+            title: 'HR Quota Exception',
+            approval: quotaExceptionApproval,
+          },
+        ]
+      : []),
   ]
 
   return (

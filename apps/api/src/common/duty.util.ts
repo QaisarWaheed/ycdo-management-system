@@ -2,6 +2,47 @@
 
 export const DUTY_FILTER_GRACE_MINUTES = 60;
 
+/**
+ * Single source of truth for "which duty window applies to this attendance
+ * record" across every module that evaluates historical attendance
+ * (status/lateMinutes, payroll, reliever pay, Short Leave). AttendanceLog's
+ * own dutyStartTimeSnapshot/dutyEndTimeSnapshot — the duty that genuinely
+ * applied on that record's date — always wins when present. Current
+ * Employee.dutyStartTime/dutyEndTime is only used as a fallback for rows
+ * that predate the snapshot feature (both fields NULL) — it is NEVER a
+ * substitute for a snapshot that already exists, and callers must not treat
+ * a 'current' result as historically authoritative for an old record; it is
+ * simply the best available approximation for data that cannot be
+ * reconstructed (see the audit — there is no historical duty-change log).
+ */
+export function resolveAttendanceDutyTimes(
+  log:
+    | {
+        dutyStartTimeSnapshot?: string | null;
+        dutyEndTimeSnapshot?: string | null;
+      }
+    | null
+    | undefined,
+  employee: { dutyStartTime?: string | null; dutyEndTime?: string | null },
+): {
+  dutyStartTime: string | null;
+  dutyEndTime: string | null;
+  source: 'snapshot' | 'current';
+} {
+  if (log?.dutyStartTimeSnapshot && log?.dutyEndTimeSnapshot) {
+    return {
+      dutyStartTime: log.dutyStartTimeSnapshot,
+      dutyEndTime: log.dutyEndTimeSnapshot,
+      source: 'snapshot',
+    };
+  }
+  return {
+    dutyStartTime: employee.dutyStartTime ?? null,
+    dutyEndTime: employee.dutyEndTime ?? null,
+    source: 'current',
+  };
+}
+
 export interface DutyWindow {
   startMin: number; // minutes since midnight, PKT
   endMin: number;
@@ -72,6 +113,31 @@ export function isOnDutyAt(
   const startWithGrace = ((s % 1440) + 1440) % 1440;
   const endWithGrace = e % 1440;
   return minutesOfDay >= startWithGrace || minutesOfDay <= endWithGrace;
+}
+
+/**
+ * Do two duty windows overlap in clock time? Either window being 24h always
+ * overlaps. Non-24h windows are compared against each other shifted by a
+ * full day in both directions, so an overnight window (e.g. 20:00-04:00)
+ * correctly overlaps a window that starts the next calendar day.
+ */
+export function dutyWindowsOverlap(a: DutyWindow, b: DutyWindow): boolean {
+  if (a.is24h || b.is24h) return true;
+
+  const aEnd = a.crossesMidnight
+    ? a.endMin + 1440
+    : Math.max(a.endMin, a.startMin);
+  const bStart = b.startMin;
+  const bEndBase = b.crossesMidnight
+    ? b.endMin + 1440
+    : Math.max(b.endMin, b.startMin);
+
+  for (const shift of [-1440, 0, 1440]) {
+    const s = bStart + shift;
+    const e = bEndBase + shift;
+    if (a.startMin < e && s < aEnd) return true;
+  }
+  return false;
 }
 
 /** Minutes after duty start that are still counted as on time. */

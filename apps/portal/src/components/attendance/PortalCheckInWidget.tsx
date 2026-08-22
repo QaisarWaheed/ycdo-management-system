@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, LogIn, LogOut, MapPin } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Clock } from 'lucide-react'
 import { attendanceApi } from '@/api/endpoints/attendance'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { toast } from '@/hooks/use-toast'
 import { formatDuration } from '@/lib/helpers'
-import { getNativePosition } from '@/lib/native'
 import { parseTimeToMinutes } from '@/lib/shiftUtils'
 import { cn } from '@/lib/utils'
 import type { ActiveTimer } from '@/types'
@@ -86,12 +83,6 @@ function getShiftProgress(
   return { percent, markerPercent }
 }
 
-function requestLocation(): Promise<{
-  coords: { latitude: number; longitude: number; accuracy: number }
-}> {
-  return getNativePosition()
-}
-
 function ShiftProgressBar({
   shift,
   checkInIso,
@@ -131,34 +122,16 @@ function WidgetContent({
   timer,
   shift,
   compact,
-  onCheckIn,
-  onCheckOut,
-  onOvertimeCheckIn,
-  onOvertimeCheckOut,
-  checkingIn,
-  checkingOut,
-  overtimePunching,
 }: {
   timer: ActiveTimer
   shift?: { startTime: string; endTime: string; name?: string }
   compact?: boolean
-  onCheckIn: () => void
-  onCheckOut: () => void
-  onOvertimeCheckIn: () => void
-  onOvertimeCheckOut: () => void
-  checkingIn: boolean
-  checkingOut: boolean
-  overtimePunching: boolean
 }) {
   const { primaryShift, reliever, overtime } = timer
   const primaryActive = primaryShift.isActive
   const shiftComplete =
     primaryShift.checkedIn && !primaryShift.isActive && !!primaryShift.checkOut
   const otActive = !!overtime?.isActive
-  const canOtCheckIn = !!overtime?.canCheckIn
-  const canOtCheckOut = !!overtime?.canCheckOut
-  const showOtPrompt =
-    canOtCheckIn && (!!overtime?.promptPending || shiftComplete)
 
   const primaryElapsed = useLiveElapsed(
     primaryShift.checkIn,
@@ -209,9 +182,6 @@ function WidgetContent({
     statusColor = 'border-blue-200 bg-blue-50 text-blue-800'
     displayTime = fixedDuration
   }
-
-  const canCheckIn = !primaryShift.checkedIn
-  const canCheckOut = primaryShift.checkedIn && !primaryShift.checkOut
 
   return (
     <div className={cn('space-y-3', compact && 'space-y-2')}>
@@ -289,86 +259,6 @@ function WidgetContent({
         )}
       </div>
 
-      {(canCheckIn || canCheckOut) && (
-        <div className="flex flex-wrap gap-2">
-          {canCheckIn && (
-            <Button
-              className="bg-green-600 hover:bg-green-700"
-              disabled={checkingIn || checkingOut || overtimePunching}
-              onClick={onCheckIn}
-            >
-              <LogIn className="mr-2 h-4 w-4" />
-              {checkingIn ? 'Getting location...' : 'Check In'}
-            </Button>
-          )}
-          {canCheckOut && (
-            <Button
-              variant="destructive"
-              disabled={checkingIn || checkingOut || overtimePunching}
-              onClick={onCheckOut}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              {checkingOut ? 'Getting location...' : 'Check Out'}
-            </Button>
-          )}
-          <p className="flex w-full items-center gap-1 text-xs text-text-secondary">
-            <MapPin className="h-3 w-3" />
-            Location access required for check-in/out
-          </p>
-        </div>
-      )}
-
-      {(showOtPrompt || canOtCheckOut) && (
-        <div
-          className={cn(
-            'rounded-lg border-2 border-amber-300 bg-amber-50 p-4 text-amber-950',
-            compact && 'p-3',
-          )}
-        >
-          {showOtPrompt && (
-            <>
-              <p className={cn('font-medium', compact && 'text-sm')}>
-                Your shift has ended
-              </p>
-              <p className="mt-1 text-sm text-amber-900/80">
-                Staying for overtime? Mark your check-in.
-              </p>
-              <Button
-                className="mt-3 bg-amber-700 hover:bg-amber-800"
-                disabled={overtimePunching || checkingIn || checkingOut}
-                onClick={onOvertimeCheckIn}
-              >
-                <LogIn className="mr-2 h-4 w-4" />
-                {overtimePunching
-                  ? 'Recording...'
-                  : 'Mark Overtime Check-In'}
-              </Button>
-            </>
-          )}
-          {canOtCheckOut && (
-            <>
-              <p className={cn('font-medium', compact && 'text-sm')}>
-                Overtime in progress
-              </p>
-              <p className="mt-1 text-sm text-amber-900/80">
-                Mark check-out when you finish overtime.
-              </p>
-              <Button
-                variant="destructive"
-                className="mt-3"
-                disabled={overtimePunching || checkingIn || checkingOut}
-                onClick={onOvertimeCheckOut}
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                {overtimePunching
-                  ? 'Recording...'
-                  : 'Mark Overtime Check-Out'}
-              </Button>
-            </>
-          )}
-        </div>
-      )}
-
       {reliever.isActive && (
         <div
           className={cn(
@@ -400,137 +290,12 @@ export function PortalCheckInWidget({
   shift,
   compact,
 }: PortalCheckInWidgetProps) {
-  const queryClient = useQueryClient()
-  const [checkingIn, setCheckingIn] = useState(false)
-  const [checkingOut, setCheckingOut] = useState(false)
-  const [overtimePunching, setOvertimePunching] = useState(false)
-
   const { data: timer, isLoading } = useQuery({
     queryKey: ['attendance-timer', employeeId],
     queryFn: () => attendanceApi.getMyTimer(employeeId),
     enabled: !!employeeId,
     refetchInterval: 30_000,
   })
-
-  const invalidateAttendance = () => {
-    queryClient.invalidateQueries({ queryKey: ['attendance-timer', employeeId] })
-    queryClient.invalidateQueries({ queryKey: ['attendance-logs'] })
-    queryClient.invalidateQueries({ queryKey: ['attendance-summary'] })
-    queryClient.invalidateQueries({ queryKey: ['working-hours'] })
-    queryClient.invalidateQueries({ queryKey: ['attendance-today'] })
-    queryClient.invalidateQueries({ queryKey: ['notifications'] })
-  }
-
-  const checkInMutation = useMutation({
-    mutationFn: (coords: { latitude: number; longitude: number }) =>
-      attendanceApi.portalCheckIn(coords),
-    onSuccess: (data) => {
-      toast({
-        title: 'Check-in recorded',
-        description: `Verified within ${data.distance}m of your branch`,
-      })
-      invalidateAttendance()
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Check-in failed',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-    onSettled: () => setCheckingIn(false),
-  })
-
-  const checkOutMutation = useMutation({
-    mutationFn: (coords: { latitude: number; longitude: number }) =>
-      attendanceApi.portalCheckOut(coords),
-    onSuccess: (data) => {
-      toast({
-        title: 'Check-out recorded',
-        description: `You worked ${data.hoursWorked} hours today`,
-      })
-      invalidateAttendance()
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Check-out failed',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-    onSettled: () => setCheckingOut(false),
-  })
-
-  const overtimeMutation = useMutation({
-    mutationFn: (punchType: 'OVERTIME_CHECKIN' | 'OVERTIME_CHECKOUT') =>
-      attendanceApi.overtimePunch(punchType),
-    onSuccess: (_data, punchType) => {
-      toast({
-        title:
-          punchType === 'OVERTIME_CHECKIN'
-            ? 'Overtime check-in recorded'
-            : 'Overtime check-out recorded',
-      })
-      invalidateAttendance()
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Overtime punch failed',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
-        variant: 'destructive',
-      })
-    },
-    onSettled: () => setOvertimePunching(false),
-  })
-
-  const handleCheckIn = async () => {
-    setCheckingIn(true)
-    try {
-      const pos = await requestLocation()
-      checkInMutation.mutate({
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      })
-    } catch {
-      setCheckingIn(false)
-      toast({
-        title: 'Location access required',
-        description: 'Please enable location services to check in',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleCheckOut = async () => {
-    setCheckingOut(true)
-    try {
-      const pos = await requestLocation()
-      checkOutMutation.mutate({
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      })
-    } catch {
-      setCheckingOut(false)
-      toast({
-        title: 'Location access required',
-        description: 'Please enable location services to check out',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleOvertimeCheckIn = () => {
-    setOvertimePunching(true)
-    overtimeMutation.mutate('OVERTIME_CHECKIN')
-  }
-
-  const handleOvertimeCheckOut = () => {
-    setOvertimePunching(true)
-    overtimeMutation.mutate('OVERTIME_CHECKOUT')
-  }
 
   if (isLoading) {
     return (
@@ -544,20 +309,7 @@ export function PortalCheckInWidget({
 
   if (!timer) return null
 
-  const content = (
-    <WidgetContent
-      timer={timer}
-      shift={shift}
-      compact={compact}
-      onCheckIn={handleCheckIn}
-      onCheckOut={handleCheckOut}
-      onOvertimeCheckIn={handleOvertimeCheckIn}
-      onOvertimeCheckOut={handleOvertimeCheckOut}
-      checkingIn={checkingIn || checkInMutation.isPending}
-      checkingOut={checkingOut || checkOutMutation.isPending}
-      overtimePunching={overtimePunching || overtimeMutation.isPending}
-    />
-  )
+  const content = <WidgetContent timer={timer} shift={shift} compact={compact} />
 
   if (compact) {
     return content

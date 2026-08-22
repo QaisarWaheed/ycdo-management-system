@@ -95,25 +95,11 @@ export function UrduLetterCanvas({
         href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap"
       />
 
-      {letterType === 'WARNING' ? (
-        <div className="mb-4 text-center">
-          <div className="text-lg font-bold leading-snug" dir="ltr">
-            Notification
-            <br />
-            Prescribed Letter of Warning
-          </div>
-          <p className="mt-1 text-xs text-gray-600" dir="ltr">
-            It is notified that following notified format is approved for
-            warning Letter
-          </p>
-        </div>
-      ) : (
-        <div className="mb-4 text-center text-base font-bold">{subject}</div>
-      )}
+      <div className="mb-4 text-center text-base font-bold">{subject}</div>
 
       <div className="mb-4 space-y-1 text-[15px]">
         {byKey.senderTitle && (
-          <Row label="منجانب:">
+          <Row label="مخاطب:">
             <FieldInput
               field={byKey.senderTitle}
               value={get('senderTitle')}
@@ -414,7 +400,7 @@ export function UrduLetterCanvas({
 
       <div className="mt-8 text-left text-sm text-gray-700">
         <div>{get('senderTitle') || '…………………'}</div>
-        <div>YCDO ملتان، پاکستان</div>
+        <div>YCDO ملتان پاکستان</div>
       </div>
 
       <p className="mt-3 text-center text-xs text-teal-700">

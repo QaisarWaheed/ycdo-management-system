@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { Monitor } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { leaveApi } from '@/api/endpoints/leave'
+import { portalPresenceApi } from '@/api/endpoints/portalPresence'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import {
   ApproveRejectDialog,
@@ -21,9 +24,11 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import type { LeaveRecord } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { cn } from '@/lib/utils'
 
 export function HrOperationsDashboard() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [reviewLeave, setReviewLeave] = useState<LeaveRecord | null>(null)
   const year = new Date().getFullYear()
   const month = new Date().getMonth() + 1
@@ -37,6 +42,12 @@ export function HrOperationsDashboard() {
   const { data: monthLeaves = [] } = useQuery({
     queryKey: ['leave', 'hr-month', year, month],
     queryFn: () => leaveApi.getAll({ year, month }),
+  })
+
+  const { data: portalPresence } = useQuery({
+    queryKey: ['portal-presence', 'summary'],
+    queryFn: () => portalPresenceApi.getSummary(),
+    refetchInterval: 60_000,
   })
 
   const stats = useMemo(() => {
@@ -68,6 +79,42 @@ export function HrOperationsDashboard() {
           <CardContent className="p-6">
             <p className="text-3xl font-bold">{stats.rejected}</p>
             <p className="text-sm text-text-secondary">Rejected This Month</p>
+          </CardContent>
+        </Card>
+        <Card
+          className="cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md"
+          onClick={() => navigate('/portal-login?status=LOGGED_IN')}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-3xl font-bold">
+                  {portalPresence?.loggedIn ?? 0}
+                </p>
+                <p className="text-sm text-text-secondary">Logged in to portal</p>
+              </div>
+              <Monitor className="h-5 w-5 text-emerald-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          className={cn(
+            'cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md',
+            (portalPresence?.neverLoggedIn ?? 0) > 0 &&
+              'border-red-300 bg-red-50/50',
+          )}
+          onClick={() => navigate('/portal-login?status=NEVER_LOGGED_IN')}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-3xl font-bold">
+                  {portalPresence?.neverLoggedIn ?? 0}
+                </p>
+                <p className="text-sm text-text-secondary">Never logged in</p>
+              </div>
+              <Monitor className="h-5 w-5 text-slate-600" />
+            </div>
           </CardContent>
         </Card>
       </div>

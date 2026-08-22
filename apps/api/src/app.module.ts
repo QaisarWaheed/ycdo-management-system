@@ -39,6 +39,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { LocationValuesModule } from './modules/location-values/location-values.module';
 import { MutualSwapModule } from './modules/mutual-swap/mutual-swap.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
+import { PortalPresenceModule } from './modules/portal-presence/portal-presence.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -51,6 +52,7 @@ import { PrismaModule } from './prisma/prisma.module';
     }),
     PrismaModule,
     PermissionsModule,
+    PortalPresenceModule,
     AuditLogsModule,
     AuthModule,
     BranchesModule,

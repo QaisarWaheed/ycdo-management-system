@@ -125,4 +125,81 @@ export const payrollApi = {
       params: { branchId, month, year },
       responseType: 'blob',
     }),
+
+  resetUnpaid: (data: {
+    month: number
+    year: number
+    branchId?: string
+    allUnpaidMonths?: boolean
+    confirm: 'RESET_UNPAID_PAYROLL'
+  }) =>
+    api.post<
+      unknown,
+      {
+        deleted: number
+        paidSkipped: number
+        month: number
+        year: number
+        allUnpaidMonths: boolean
+      }
+    >('/payroll/reset-unpaid', data),
+
+  rebuildFromAttendance: (data: {
+    month: number
+    year: number
+    branchId?: string
+    confirm: 'REBUILD_PAYROLL'
+    limit?: number
+    offset?: number
+  }) =>
+    api.post<
+      unknown,
+      {
+        generated: number
+        skipped: number
+        failed: number
+        skippedDetails: Array<{ employeeId: string; reason: string }>
+        failures: Array<{ employeeId: string; error: string }>
+        totalEmployeesInScope: number
+        offset: number
+        limit: number
+        nextOffset: number
+        hasMore: boolean
+      }
+    >('/payroll/rebuild-from-attendance', data),
+
+  /** Walk every employee batch until the month is fully regenerated. */
+  async rebuildMonthBatch(params: {
+    month: number
+    year: number
+    branchId?: string
+  }) {
+    let offset = 0
+    let generated = 0
+    let skipped = 0
+    let failed = 0
+    const failureNotes: string[] = []
+    let total = 0
+    for (;;) {
+      const page = await payrollApi.rebuildFromAttendance({
+        month: params.month,
+        year: params.year,
+        branchId: params.branchId,
+        confirm: 'REBUILD_PAYROLL',
+        limit: 25,
+        offset,
+      })
+      generated += page.generated
+      skipped += page.skipped
+      failed += page.failed
+      total = page.totalEmployeesInScope
+      for (const f of page.failures) {
+        failureNotes.push(f.error)
+      }
+      if (!page.hasMore) {
+        return { generated, skipped, failed, total, failureNotes }
+      }
+      offset = page.nextOffset
+    }
+  },
 }

@@ -125,7 +125,12 @@ export function buildPayslipSlipFromEntry(data: {
 
   const absence = deductions
     .filter(
-      (d) => d.reason === 'UNINFORMED_ABSENCE' || d.reason === 'UNPAID_LEAVE',
+      (d) =>
+        d.reason === 'UNINFORMED_ABSENCE' ||
+        d.reason === 'UNPAID_LEAVE' ||
+        d.reason === 'HALF_DAY' ||
+        (d.reason === 'OTHER' &&
+          (d.description ?? '').startsWith('Unmarked day')),
     )
     .reduce((s, d) => s + money(d.amount), 0)
   const fineEntries = deductions

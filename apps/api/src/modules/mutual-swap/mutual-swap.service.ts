@@ -4,10 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PayrollService } from '../payroll/payroll.service';
 import {
   parseAttendanceDateTime,
   toPakistanDateOnly,
 } from '../attendance/attendance-late.util';
+import { reconcileAttendanceFinancialConsequences } from '../attendance/discipline.helper';
 import { CreateMutualSwapDto } from './mutual-swap.dto';
 
 /** Normalize "09:00:00" / "09:00" → "09:00" for exact string match. */
@@ -18,7 +20,10 @@ function normalizeTime(time?: string | null): string {
 
 @Injectable()
 export class MutualSwapService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private payrollService: PayrollService,
+  ) {}
 
   private parseDateOnly(dateStr: string): Date {
     return toPakistanDateOnly(parseAttendanceDateTime(`${dateStr}T12:00:00`));
@@ -138,6 +143,13 @@ export class MutualSwapService {
           type: 'REGULAR',
         },
       });
+      const coveredBefore = await tx.attendanceLog.findFirst({
+        where: {
+          employeeId: dto.coveredEmployeeId,
+          date: dateOnly,
+          type: 'REGULAR',
+        },
+      });
 
       if (coveringLog) {
         await tx.attendanceLog.update({
@@ -145,6 +157,10 @@ export class MutualSwapService {
           data: {
             overtimeMinutes,
             overtimePending: true,
+            lateMinutes: 0,
+            ...(coveringLog.status === 'LATE' || coveringLog.status === 'HALF_DAY'
+              ? { status: 'PRESENT' as const }
+              : {}),
             note: `Double duty - covering ${coveredEmployee.fullName}'s shift`,
           },
         });
@@ -170,6 +186,8 @@ export class MutualSwapService {
           overtimePending: true,
           source: 'MANUAL',
           note: `Mutual swap - covering ${coveredEmployee.fullName}`,
+          dutyStartTimeSnapshot: coveringEmployee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: coveringEmployee.dutyEndTime ?? null,
         },
         update: {
           checkIn: overtimeStart,
@@ -180,7 +198,7 @@ export class MutualSwapService {
         },
       });
 
-      await tx.attendanceLog.upsert({
+      const coveredAfter = await tx.attendanceLog.upsert({
         where: {
           employeeId_date_type: {
             employeeId: dto.coveredEmployeeId,
@@ -195,16 +213,53 @@ export class MutualSwapService {
           type: 'REGULAR',
           status: 'SWAP_COVERED',
           source: 'MANUAL',
+          lateMinutes: 0,
           note: `Mutual swap - covered by ${coveringEmployee.fullName}`,
+          dutyStartTimeSnapshot: coveredEmployee.dutyStartTime ?? null,
+          dutyEndTimeSnapshot: coveredEmployee.dutyEndTime ?? null,
         },
         update: {
           status: 'SWAP_COVERED',
+          lateMinutes: 0,
           note: `Mutual swap - covered by ${coveringEmployee.fullName}`,
         },
       });
 
+      if (coveringLog) {
+        await reconcileAttendanceFinancialConsequences(tx, {
+          employeeId: dto.coveringEmployeeId,
+          date: dateOnly,
+          before: coveringLog,
+          after: {
+            ...coveringLog,
+            lateMinutes: 0,
+            status:
+              coveringLog.status === 'LATE' || coveringLog.status === 'HALF_DAY'
+                ? 'PRESENT'
+                : coveringLog.status,
+          },
+        });
+      }
+      await reconcileAttendanceFinancialConsequences(tx, {
+        employeeId: dto.coveredEmployeeId,
+        date: dateOnly,
+        before: coveredBefore,
+        after: coveredAfter,
+      });
+
       return created;
     });
+
+    // Fires only after the transaction above has committed. Only the
+    // COVERED employee's write (status -> SWAP_COVERED) is payroll-relevant
+    // — a full-day-credit status in computeHourlyBreakdown, same as
+    // PRESENT. The covering employee's writes are OT-only (overtimeMinutes/
+    // an OVERTIME-type row), which does not feed payableMinutes, so
+    // recomputing for them would be pure wasted work.
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      dto.coveredEmployeeId,
+      dateOnly,
+    );
 
     return {
       swap,
@@ -328,6 +383,15 @@ export class MutualSwapService {
         data: { status: 'UNMARKED', note: null },
       }),
     ]);
+
+    // Fires only after the transaction above has committed. Reverses
+    // createSwap's payroll-relevant write (SWAP_COVERED -> UNMARKED for the
+    // covered employee) — same asymmetry as createSwap: the covering
+    // employee's reversed writes are OT-only, not payableMinutes-relevant.
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      swap.coveredEmployeeId,
+      swap.date,
+    );
 
     return { message: 'Swap cancelled and attendance reversed' };
   }

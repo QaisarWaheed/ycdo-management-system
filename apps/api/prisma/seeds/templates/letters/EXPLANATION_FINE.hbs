@@ -17,11 +17,27 @@
       پہلے Letter of Advice اور بعد ازاں Letter of Warning بھی جاری کیا گیا، مگر اس کے
       باوجود آپ کی جانب سے ادارہ کی ہدایات اور SOP's پر مکمل عملدرآمد نہیں کیا جا رہا۔
     </p>
+    {{#if adviceLetterNo}}
+    {{#if warningLetterNo}}
     <p class="reference-block">
       <strong>حوالہ:</strong><br/>
       1- Letter of Advice نمبر: {{adviceLetterNo}}&nbsp;&nbsp;&nbsp;مورخہ: {{adviceLetterDate}}<br/>
       2- Letter of Warning نمبر: {{warningLetterNo}}&nbsp;&nbsp;&nbsp;مورخہ: {{warningLetterDate}}
     </p>
+    {{else}}
+    <p class="reference-block">
+      <strong>حوالہ:</strong><br/>
+      1- Letter of Advice نمبر: {{adviceLetterNo}}&nbsp;&nbsp;&nbsp;مورخہ: {{adviceLetterDate}}
+    </p>
+    {{/if}}
+    {{else}}
+    {{#if warningLetterNo}}
+    <p class="reference-block">
+      <strong>حوالہ:</strong><br/>
+      1- Letter of Warning نمبر: {{warningLetterNo}}&nbsp;&nbsp;&nbsp;مورخہ: {{warningLetterDate}}
+    </p>
+    {{/if}}
+    {{/if}}
     <p>
       مزید برآں درج ذیل امور بھی مشاہدے میں آئے ہیں جن کے متعلق آپ سے تحریری وضاحت
       مطلوب ہے:

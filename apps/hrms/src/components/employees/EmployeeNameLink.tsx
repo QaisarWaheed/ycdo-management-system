@@ -8,6 +8,7 @@ type EmployeeLike = {
   fullName?: string | null
   firstName?: string
   lastName?: string
+  employeeCode?: string | null
 }
 
 type EmployeeNameLinkProps = {

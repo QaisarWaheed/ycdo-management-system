@@ -1,6 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import puppeteer from 'puppeteer';
+import {
+  COMPUTER_GENERATED_NOTICE,
+  appendComputerGeneratedNotice,
+} from './letter-templates.helper';
 
 function resolveChromePath(): string | undefined {
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
@@ -37,6 +41,7 @@ function resolveChromePath(): string | undefined {
 }
 
 export async function generatePdf(htmlContent: string): Promise<Buffer> {
+  const html = appendComputerGeneratedNotice(htmlContent);
   const executablePath = resolveChromePath();
 
   const browser = await puppeteer.launch({
@@ -46,7 +51,16 @@ export async function generatePdf(htmlContent: string): Promise<Buffer> {
 
   try {
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'load', timeout: 20000 });
+    await page.setContent(html, { waitUntil: 'load', timeout: 20000 });
+    // Hide the in-body disclaimer — the same text is rendered by Puppeteer's
+    // footer template below so it never appears twice in the PDF.
+    // Do NOT override @page margins here; the HTML's own @page rule already
+    // defines size + margins and Puppeteer's `margin` option below adds the
+    // footer reservation on top. Zeroing @page margin here wiped the page-size
+    // declaration and caused the PDF to open with no visible borders at 100%.
+    await page.addStyleTag({
+      content: `.computer-generated-notice { display: none !important; }`,
+    });
     // Allow webfonts (Urdu) a moment to paint when network is available.
     await page
       .evaluate(async () => {
@@ -59,11 +73,16 @@ export async function generatePdf(htmlContent: string): Promise<Buffer> {
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate: '<div></div>',
+      footerTemplate: `<div style="width:100%;font-size:10px;text-align:center;color:#333;font-family:Segoe UI,Arial,sans-serif;padding:0 16px 4px;">${COMPUTER_GENERATED_NOTICE}</div>`,
+      // Match the @page rule in urdu-letter-styles.ts: 14mm sides, 16mm bottom
+      // (footer lives in this bottom space), 14mm top.
       margin: {
-        top: '0mm',
-        right: '0mm',
-        bottom: '0mm',
-        left: '0mm',
+        top: '14mm',
+        right: '14mm',
+        bottom: '16mm',
+        left: '14mm',
       },
     });
 

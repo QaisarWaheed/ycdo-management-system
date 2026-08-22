@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>{{{letterStyles}}}</style>
+</head>
+<body>
+<div class="page">
+  {{> ycdoLetterHeader}}
+
+  <p class="salutation">السلام علیکم!</p>
+
+  <div class="body">
+    <p>
+      تحریر ہے کہ آپ کو متعدد بار تاکید کی گئی ہے کہ آپ اپنے فرائض کی انجام دہی میں ادارے کی
+      SOP's پر عملدرآمد کریں، لیکن باوجود تاکید اور باضابطہ ٹریننگ کے آپ درج ذیل SOP's کی
+      خلاف ورزی کر رہے ہیں۔
+    </p>
+  </div>
+
+  <div class="violations">
+    <div class="heading">خلاف ورزیاں (Violations):-</div>
+    <ol>
+      {{#each violations}}
+        <li>{{this}}</li>
+      {{else}}
+        <li></li>
+        <li></li>
+        <li></li>
+      {{/each}}
+    </ol>
+  </div>
+
+  <div class="body">
+    <p>
+      لہٰذا آپ کو وارننگ دی جاتی ہے کہ آپ بروقت اپنی SOP's پر عملدرآمد کریں۔ ساتھ ہی آپ کی
+      مذکورہ بالا خلاف ورزی کے پیشِ نظر آپ پر {{#if fineAmount}}{{fineAmount}}{{else}}مقررہ{{/if}}
+      روپے جرمانہ عائد کیا جاتا ہے جو {{#if deductionMonth}}ماہ {{deductionMonth}}{{else}}رواں{{/if}}
+      کی تنخواہ سے منہا کر لیا جائے گا۔ بصورتِ دیگر ادارہ اپنے قواعد و ضوابط کے مطابق آپ کے خلاف
+      مزید انتظامی کارروائی کرنے کا مجاز ہوگا۔ آپ کے SOP's پر عملدرآمد نہ کرنے سے نہ صرف ادارے کے
+      انتظامی معاملات میں دشواری ہو رہی ہے بلکہ مریضوں کا بھی استحصال ہو رہا ہے۔ ادارہ آپ سے امید
+      کرتا ہے کہ آپ اللہ تعالیٰ کی خدمتِ انسانیت کے حصول کی خاطر اس سفر میں YCDO کے شانہ بشانہ
+      رہیں گے۔
+    </p>
+  </div>
+
+  <p class="blessing">اللہ تعالیٰ آپ کا حامی و ناصر ہو!</p>
+
+  {{> ycdoLetterFooter}}
+</div>
+</body>
+</html>

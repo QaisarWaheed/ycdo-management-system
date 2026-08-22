@@ -23,7 +23,7 @@ export interface LetterRenderVariables {
 /** Matches official warning PDF signatory. */
 export const DEFAULT_SENDER_TITLE = 'چیئرمین ایڈمن ڈیپارٹمنٹ';
 
-export const DEFAULT_ORG_LINE = 'YCDO ملتان، پاکستان';
+export const DEFAULT_ORG_LINE = 'YCDO ملتان پاکستان';
 
 /** Urdu subjects shown on the letter (centered / عنوان). */
 export const LETTER_TYPE_SUBJECT: Record<LetterType, string> = {
@@ -43,6 +43,7 @@ export const LETTER_TYPE_SUBJECT: Record<LetterType, string> = {
   REJOINING: 'واپسیِ ملازمت',
   SALARY_INCREMENT: 'تنخواہ / الاؤنس اضافہ',
   EXPERIENCE: 'تجربہ سرٹیفکیٹ',
+  EXPLANATION_FINE: 'تحریری وضاحت طلب و جرمانہ نوٹس',
   CUSTOM: '',
 };
 
@@ -51,103 +52,33 @@ export const LETTER_TYPE_EN_HEADER: Record<
   Exclude<LetterType, 'APPOINTMENT'>,
   { title: string; prescribed: string; subtitle: string }
 > = {
-  WARNING: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Letter of Warning"',
-    subtitle:
-      'It is notified that the following notified format is approved for Letter of Warning.',
-  },
-  ADVICE: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Letter of Advice"',
-    subtitle:
-      'It is notified that the following notified format is approved for Letter of Advice.',
-  },
-  DISCIPLINARY: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Letter of Displeasure"',
-    subtitle:
-      'It is notified that the following notified format is approved for Letter of Displeasure.',
-  },
-  EXPLANATION: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Explanation Request"',
-    subtitle:
-      'It is notified that the following notified format is approved for Explanation Request.',
-  },
-  SHOW_CAUSE: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Show Cause Notice"',
-    subtitle:
-      'It is notified that the following notified format is approved for Show Cause Notice.',
-  },
-  FINE: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Fine / Penalty Letter"',
-    subtitle:
-      'It is notified that the following notified format is approved for Fine / Penalty Letter.',
-  },
-  INQUIRY: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Inquiry Notice"',
-    subtitle:
-      'It is notified that the following notified format is approved for Inquiry Notice.',
-  },
-  APPRECIATION: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Letter of Appreciation"',
-    subtitle:
-      'It is notified that the following notified format is approved for Letter of Appreciation.',
-  },
-  TRANSFER: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Transfer / Posting"',
-    subtitle:
-      'It is notified that the following notified format is approved for Transfer / Posting.',
-  },
-  SUSPENSION: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Suspension Notice"',
-    subtitle:
-      'It is notified that the following notified format is approved for Suspension Notice.',
-  },
-  TERMINATION: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Termination Letter"',
-    subtitle:
-      'It is notified that the following notified format is approved for Termination Letter.',
-  },
-  REINSTATEMENT: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Reinstatement Letter"',
-    subtitle:
-      'It is notified that the following notified format is approved for Reinstatement Letter.',
-  },
-  REJOINING: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Rejoining Letter"',
-    subtitle:
-      'It is notified that the following notified format is approved for Rejoining Letter.',
-  },
+  WARNING: { title: 'LETTER OF WARNING', prescribed: '', subtitle: '' },
+  ADVICE: { title: 'LETTER OF ADVICE', prescribed: '', subtitle: '' },
+  DISCIPLINARY: { title: 'LETTER OF DISPLEASURE', prescribed: '', subtitle: '' },
+  EXPLANATION: { title: 'LETTER OF EXPLANATION', prescribed: '', subtitle: '' },
+  SHOW_CAUSE: { title: 'SHOW CAUSE NOTICE', prescribed: '', subtitle: '' },
+  FINE: { title: 'LETTER OF FINE / PENALTY', prescribed: '', subtitle: '' },
+  INQUIRY: { title: 'INQUIRY NOTICE', prescribed: '', subtitle: '' },
+  APPRECIATION: { title: 'LETTER OF APPRECIATION', prescribed: '', subtitle: '' },
+  TRANSFER: { title: 'NOTIFICATION OF TRANSFER', prescribed: '', subtitle: '' },
+  SUSPENSION: { title: 'SUSPENSION NOTICE', prescribed: '', subtitle: '' },
+  TERMINATION: { title: 'TERMINATION LETTER', prescribed: '', subtitle: '' },
+  REINSTATEMENT: { title: 'REINSTATEMENT LETTER', prescribed: '', subtitle: '' },
+  REJOINING: { title: 'REJOINING LETTER', prescribed: '', subtitle: '' },
   SALARY_INCREMENT: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Salary Increment"',
-    subtitle:
-      'It is notified that the following notified format is approved for Salary Increment.',
-  },
-  EXPERIENCE: {
-    title: 'Notification',
-    prescribed: 'Prescribed "Experience Certificate"',
-    subtitle:
-      'It is notified that the following notified format is approved for Experience Certificate.',
-  },
-  // Custom (IT-authored) templates always carry their own enTitle/enPrescribed/
-  // enSubtitle on the LetterTemplate row; this entry is just a safe fallback.
-  CUSTOM: {
-    title: 'Notification',
+    title: 'SALARY INCREMENT NOTIFICATION',
     prescribed: '',
     subtitle: '',
   },
+  EXPERIENCE: { title: 'EXPERIENCE CERTIFICATE', prescribed: '', subtitle: '' },
+  EXPLANATION_FINE: {
+    title: 'LETTER OF EXPLANATION & FINE',
+    prescribed: '',
+    subtitle: '',
+  },
+  // Custom (IT-authored) templates always carry their own enTitle on the
+  // LetterTemplate row; this entry is just a safe fallback.
+  CUSTOM: { title: 'NOTIFICATION', prescribed: '', subtitle: '' },
 };
 
 export const LETTER_TEMPLATE_META: Record<
@@ -214,6 +145,10 @@ export const LETTER_TEMPLATE_META: Record<
     name: 'Experience Certificate (Urdu)',
     requiredVars: ['lastWorkingDate'],
   },
+  EXPLANATION_FINE: {
+    name: 'Explanation & Fine Letter (Urdu)',
+    requiredVars: ['violations', 'fineAmount', 'deductionMonth'],
+  },
   // Custom templates carry their own name/requiredVars on the LetterTemplate
   // row; this entry is just a safe fallback and is not otherwise read.
   CUSTOM: {
@@ -239,6 +174,7 @@ const LETTER_TYPE_SHORT: Record<LetterType, string> = {
   REJOINING: 'RJN',
   SALARY_INCREMENT: 'INC',
   EXPERIENCE: 'EXL',
+  EXPLANATION_FINE: 'EXF',
   CUSTOM: 'GEN',
 };
 
@@ -264,9 +200,11 @@ export function buildLetterRef(
   shortOverride?: string | null,
 ): string {
   const short = shortOverride || getLetterTypeShort(letterType);
-  const first = letterNo.split('/')[0]?.replace(/\D/g, '') || '0';
-  const padded = first.slice(-3).padStart(3, '0');
-  return `HRMS/${short}/${padded}`;
+  const sequence = letterNo.split('/')[0]?.replace(/\D/g, '') || '';
+  if (!sequence || letterNo.startsWith('PREVIEW')) {
+    return letterNo;
+  }
+  return `HRMS/${short}/${sequence}`;
 }
 
 /** Split newline / bullet text into violation lines for WARNING templates. */
@@ -331,6 +269,7 @@ export function parseAttendanceRows(raw: unknown): AttendanceRow[] {
 
 const YCDO_LETTER_HEADER = `
 <div class="letter-shell-top">
+  <div class="bismillah">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
   <div class="letterhead-row">
     <div>
       {{#if letterheadLogoUrl}}
@@ -339,21 +278,25 @@ const YCDO_LETTER_HEADER = `
         <div class="letterhead-logo-fallback">YCDO<br/>SERVE HUMANITY</div>
       {{/if}}
     </div>
-    <div class="letter-nos">
-      <div class="letter-no-line">Letter No. {{letterNo}}</div>
-      <div class="ref-line"><span class="ltr">{{letterRef}}</span> :بحوالہ</div>
+    <div class="letterhead-right">
+      <div class="letterhead-org">
+        <div class="office">OFFICE OF THE</div>
+        <div class="org-name">YOUTH COMMUNITY<br/>DEVELOPMENT ORGANIZATION</div>
+        <div class="loc">MULTAN, PAKISTAN</div>
+      </div>
+      <div class="letter-nos">
+        <div class="letter-no-line">Letter no: {{letterNo}}</div>
+        <div class="letter-no-line">Dated: {{issueDate}}</div>
+      </div>
     </div>
   </div>
   <div class="notification-block">
     <p class="en-title">{{enTitle}}</p>
-    <p class="en-prescribed">{{enPrescribed}}</p>
   </div>
-  <hr class="hr-line" />
 </div>
 
 <div class="meta-block">
-  <div class="row"><span class="label">تاریخ:</span> {{issueDate}}</div>
-  <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
+  <div class="row"><span class="label">مخاطب:</span> {{senderTitle}}</div>
   <div class="row">{{orgLine}}</div>
   <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
   {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
@@ -366,11 +309,48 @@ const YCDO_LETTER_FOOTER = `
   <p>والسلام</p>
 </div>
 <div class="signature">
-  <div class="sig-line"></div>
   <div>{{senderTitle}}</div>
   <div>{{orgLine}}</div>
 </div>
 `;
+
+/** Shown at the bottom of every issued letter (PDF + HTML preview). */
+export const COMPUTER_GENERATED_NOTICE =
+  'This is a computer generated letter and it does not require any signatures';
+
+export const COMPUTER_GENERATED_NOTICE_HTML = `
+<div class="computer-generated-notice">${COMPUTER_GENERATED_NOTICE}</div>`;
+
+/**
+ * Appends the disclaimer once, inside the first `.page` block (before its
+ * closing tag) when present. PDF generation hides this in-body copy and
+ * renders the same text via Puppeteer's footer instead.
+ */
+export function appendComputerGeneratedNotice(htmlContent: string): string {
+  if (htmlContent.includes('computer-generated-notice')) {
+    return htmlContent;
+  }
+  const trimmed = htmlContent.trimEnd();
+  if (/<div class="page">/i.test(trimmed) && /<\/div>\s*<\/body>/i.test(trimmed)) {
+    return trimmed.replace(
+      /<\/div>\s*<\/body>/i,
+      `${COMPUTER_GENERATED_NOTICE_HTML}</div></body>`,
+    );
+  }
+  if (/<\/body>/i.test(trimmed)) {
+    return trimmed.replace(
+      /<\/body>/i,
+      `${COMPUTER_GENERATED_NOTICE_HTML}</body>`,
+    );
+  }
+  if (/<\/html>/i.test(trimmed)) {
+    return trimmed.replace(
+      /<\/html>/i,
+      `${COMPUTER_GENERATED_NOTICE_HTML}</html>`,
+    );
+  }
+  return `${trimmed}${COMPUTER_GENERATED_NOTICE_HTML}`;
+}
 
 let partialsRegistered = false;
 
@@ -386,13 +366,15 @@ export function renderLetterHtml(
   variables: Record<string, unknown>,
 ): string {
   ensurePartials();
-  return renderHandlebarsTemplate(bodyHtml, {
-    letterStyles: URDU_LETTER_STYLES,
-    senderTitle: DEFAULT_SENDER_TITLE,
-    orgLine: DEFAULT_ORG_LINE,
-    letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || YCDO_LOGO_DATA_URI,
-    ...variables,
-  });
+  return appendComputerGeneratedNotice(
+    renderHandlebarsTemplate(bodyHtml, {
+      letterStyles: URDU_LETTER_STYLES,
+      senderTitle: DEFAULT_SENDER_TITLE,
+      orgLine: DEFAULT_ORG_LINE,
+      letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || YCDO_LOGO_DATA_URI,
+      ...variables,
+    }),
+  );
 }
 
 /** @deprecated Kept for type imports; prefer LetterRenderVariables. */

@@ -8,8 +8,14 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { applyDisciplineRules } from './discipline.helper';
-import { is24HourShiftRecord } from './attendance-biometric.util';
+import { PayrollService } from '../payroll/payroll.service';
+import { applyDisciplineRules, reverseAbsenceDeductionForDate } from './discipline.helper';
+import { is24HourShift, is24HourShiftRecord } from './attendance-biometric.util';
+import {
+  AUTO_UNMARKED_NOTE,
+  isPreJoinAttendanceDate,
+  isUninformedUpgradeNote,
+} from './attendance-calendar.util';
 import {
   getShiftAttendanceDate,
   minutesSinceShiftStart,
@@ -18,47 +24,99 @@ import {
   toPakistanMinutesOfDay,
 } from './shift-time.util';
 
-const AUTO_UNMARKED_NOTE = 'Auto-marked unmarked at shift start';
 const AUTO_ABSENT_24H_NOTE = 'Auto-marked absent for 24-hour shift';
 
 @Injectable()
 export class ShiftAbsentScheduler {
   private readonly logger = new Logger(ShiftAbsentScheduler.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private payrollService: PayrollService,
+  ) {}
 
-  @Cron('*/15 * * * *')
+  // Every 5 min (not 15) so an UNMARKED placeholder exists close to the
+  // actual shift start rather than up to ~15 min after it. The lazy
+  // backfill (ensureUnmarkedForActiveShiftsOnDate, attendance.service.ts)
+  // already covers the gap instantly whenever someone views attendance;
+  // this is only the proactive backstop for when nobody does. The +15
+  // marking window below is left wider than the new 5-min cadence on
+  // purpose — three consecutive ticks get a chance to catch each shift
+  // start instead of exactly one, which is more forgiving of a delayed tick.
+  @Cron('*/5 * * * *')
   async markShiftStartAbsent() {
     await this.normalizeLegacyAutoMarkedAbsent();
 
     const now = new Date();
     const nowMinutes = toPakistanMinutesOfDay(now);
 
-    const recentlyStartedShifts = await this.prisma.shift.findMany({
-      where: { isActive: true },
+    // Key off each employee's duty clock (with Shift template fallback) so
+    // staff with dutyStartTime but no shiftId still get an UNMARKED row
+    // when their shift begins (e.g. 02:30 starts).
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        relieverOnly: false,
+        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+      },
+      include: { shift: true },
     });
 
     let marked = 0;
 
-    for (const shift of recentlyStartedShifts) {
-      const shiftStartMinutes = parseTimeToMinutes(shift.startTime);
+    for (const employee of employees) {
+      const dutyStart =
+        employee.dutyStartTime?.trim() ||
+        employee.shift?.startTime?.trim() ||
+        null;
+      if (!dutyStart) continue;
 
       if (
-        nowMinutes < shiftStartMinutes ||
-        nowMinutes > shiftStartMinutes + 15
+        (employee.shift && is24HourShiftRecord(employee.shift)) ||
+        is24HourShift(employee)
       ) {
         continue;
       }
 
-      const attendanceDate = getShiftAttendanceDate(now, shift.startTime);
-      const is24h = is24HourShiftRecord(shift);
+      const shiftStartMinutes = parseTimeToMinutes(dutyStart);
+      const sinceStart = minutesSinceShiftStart(nowMinutes, shiftStartMinutes);
+      // Wider than one 5-min tick so a delayed process still materializes
+      // UNMARKED shortly after duty start (dashboard also batch-ensures).
+      if (sinceStart < 0 || sinceStart > 120) {
+        continue;
+      }
 
-      marked += await this.markAbsentForShift(
-        shift.id,
-        attendanceDate,
-        is24h ? AUTO_ABSENT_24H_NOTE : AUTO_UNMARKED_NOTE,
-        is24h ? AttendanceStatus.ABSENT : AttendanceStatus.UNMARKED,
-      );
+      const attendanceDate = getShiftAttendanceDate(now, dutyStart);
+      if (isPreJoinAttendanceDate(attendanceDate, employee.joiningDate)) {
+        continue;
+      }
+
+      const existing = await this.prisma.attendanceLog.findUnique({
+        where: {
+          employeeId_date_type: {
+            employeeId: employee.id,
+            date: attendanceDate,
+            type: AttendanceLogType.REGULAR,
+          },
+        },
+      });
+
+      if (!existing) {
+        await this.prisma.attendanceLog.create({
+          data: {
+            employeeId: employee.id,
+            branchId: employee.currentBranchId,
+            date: attendanceDate,
+            type: AttendanceLogType.REGULAR,
+            status: AttendanceStatus.UNMARKED,
+            source: AttendanceSource.MANUAL,
+            note: AUTO_UNMARKED_NOTE,
+            dutyStartTimeSnapshot: employee.dutyStartTime ?? dutyStart,
+            dutyEndTimeSnapshot:
+              employee.dutyEndTime ?? employee.shift?.endTime ?? null,
+          },
+        });
+        marked++;
+      }
     }
 
     if (marked > 0) {
@@ -83,10 +141,6 @@ export class ShiftAbsentScheduler {
         status: { in: [AttendanceStatus.UNMARKED, AttendanceStatus.ABSENT] },
         checkIn: null,
         source: AttendanceSource.MANUAL,
-        OR: [
-          { note: AUTO_UNMARKED_NOTE },
-          { note: 'Auto-marked absent at shift start' },
-        ],
         NOT: { note: AUTO_ABSENT_24H_NOTE },
       },
       include: {
@@ -101,28 +155,42 @@ export class ShiftAbsentScheduler {
     let upgraded = 0;
 
     for (const log of unmarkedLogs) {
-      if (!log.employee.shift) continue;
+      if (!isUninformedUpgradeNote(log.note)) continue;
 
-      const shift = log.employee.shift;
-
-      // 24-hour staff stay ABSENT / never UNINFORMED_ABSENT
-      if (is24HourShiftRecord(shift)) {
+      if (isPreJoinAttendanceDate(log.date, log.employee.joiningDate)) {
         continue;
       }
 
-      const expectedDate = getShiftAttendanceDate(now, shift.startTime);
+      // Prefer employee duty clock; fall back to linked Shift template.
+      // Employees with duty times but no shiftId still need UA upgrade.
+      const dutyStart =
+        log.dutyStartTimeSnapshot?.trim() ||
+        log.employee.dutyStartTime?.trim() ||
+        log.employee.shift?.startTime?.trim() ||
+        null;
+      if (!dutyStart) continue;
+
+      // 24-hour staff stay ABSENT / never UNINFORMED_ABSENT
+      if (
+        (log.employee.shift && is24HourShiftRecord(log.employee.shift)) ||
+        is24HourShift(log.employee)
+      ) {
+        continue;
+      }
+
+      const expectedDate = getShiftAttendanceDate(now, dutyStart);
 
       if (log.date.getTime() !== expectedDate.getTime()) {
         continue;
       }
 
-      const shiftStartMinutes = parseTimeToMinutes(shift.startTime);
+      const shiftStartMinutes = parseTimeToMinutes(dutyStart);
       const minutesSince = minutesSinceShiftStart(
         currentMinutes,
         shiftStartMinutes,
       );
 
-      if (minutesSince < 180) continue;
+      if (minutesSince < 120) continue;
 
       await this.prisma.$transaction(async (tx) => {
         await tx.attendanceLog.update({
@@ -147,12 +215,22 @@ export class ShiftAbsentScheduler {
         });
       });
 
+      // Fires only after the transaction above has committed. UNMARKED/
+      // ABSENT -> UNINFORMED_ABSENT changes this day's policy-credit
+      // minutes in computeHourlyBreakdown (same credit-ladder floor as
+      // PRESENT/ON_LEAVE/etc — see PayrollService), so a PENDING month's
+      // basicStipend can genuinely change here.
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        log.employee.id,
+        log.date,
+      );
+
       upgraded++;
     }
 
     if (upgraded > 0) {
       this.logger.log(
-        `Upgraded ${upgraded} employee(s) to uninformed absent after 3 hours`,
+        `Upgraded ${upgraded} employee(s) to uninformed absent after 2 hours`,
       );
     }
   }
@@ -197,6 +275,10 @@ export class ShiftAbsentScheduler {
     let marked = 0;
 
     for (const employee of employees) {
+      if (isPreJoinAttendanceDate(date, employee.joiningDate)) {
+        continue;
+      }
+
       const existing = await this.prisma.attendanceLog.findUnique({
         where: {
           employeeId_date_type: {
@@ -217,9 +299,23 @@ export class ShiftAbsentScheduler {
             status,
             source: AttendanceSource.MANUAL,
             note,
+            dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+            dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
           },
         });
         marked++;
+
+        // Only the 24h-shift ABSENT branch is payroll-relevant here — a
+        // bare UNMARKED create (normal shifts) contributes zero credit
+        // either way, so recomputing for it would be pure wasted work.
+        // Covers both callers (markShiftStartAbsent cron and
+        // backfillAbsentForDate) since they both funnel through here.
+        if (status === AttendanceStatus.ABSENT) {
+          await this.payrollService.recomputePendingPayrollForAttendanceDate(
+            employee.id,
+            date,
+          );
+        }
       }
     }
 
@@ -231,7 +327,7 @@ export class ShiftAbsentScheduler {
    * except 24-hour shift absents, which stay ABSENT.
    */
   private async normalizeLegacyAutoMarkedAbsent(): Promise<void> {
-    await this.prisma.attendanceLog.updateMany({
+    const rows = await this.prisma.attendanceLog.findMany({
       where: {
         status: AttendanceStatus.ABSENT,
         checkIn: null,
@@ -242,10 +338,24 @@ export class ShiftAbsentScheduler {
         ],
         NOT: { note: AUTO_ABSENT_24H_NOTE },
       },
-      data: {
-        status: AttendanceStatus.UNMARKED,
-        note: AUTO_UNMARKED_NOTE,
-      },
+      select: { id: true, employeeId: true, date: true },
     });
+
+    for (const row of rows) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.attendanceLog.update({
+          where: { id: row.id },
+          data: {
+            status: AttendanceStatus.UNMARKED,
+            note: AUTO_UNMARKED_NOTE,
+          },
+        });
+        await reverseAbsenceDeductionForDate(tx, row.employeeId, row.date);
+      });
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        row.employeeId,
+        row.date,
+      );
+    }
   }
 }

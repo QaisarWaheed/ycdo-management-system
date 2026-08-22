@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
@@ -23,6 +23,7 @@ import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
 import { lettersApi } from '@/api/endpoints/letters'
+import { payrollApi } from '@/api/endpoints/payroll'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { incentivesApi } from '@/api/endpoints/incentives'
@@ -87,6 +88,7 @@ import type {
   EmploymentHistory,
   Incentive,
   Letter,
+  PayrollEntry,
   PreviousEmployment,
   QualType,
   StipendRecord,
@@ -605,6 +607,25 @@ export function EmployeeProfilePage() {
     queryFn: () => attendanceApi.getAll({ employeeId: id, month, year }),
     enabled: !!id,
   })
+  const { data: payrollHistory = [] } = useQuery({
+    queryKey: ['payroll-history', id],
+    queryFn: () => payrollApi.getHistory(id),
+    enabled: !!id,
+  })
+  const monthPayroll = useMemo(() => {
+    return (payrollHistory as PayrollEntry[]).filter(
+      (entry) => entry.month === month && entry.year === year,
+    )
+  }, [payrollHistory, month, year])
+  const monthPayrollBasic = monthPayroll.reduce(
+    (sum, entry) => sum + Number(entry.basicStipend),
+    0,
+  )
+  const monthPayrollNet = monthPayroll.reduce(
+    (sum, entry) => sum + Number(entry.netStipend),
+    0,
+  )
+  const monthPayrollPaid = monthPayroll.some((entry) => entry.status === 'PAID')
   const canEditAttendance = hasRole([...ATTENDANCE_EDIT_ROLES])
 
   const { data: leaves = [], isLoading: loadingLeaves } = useQuery({
@@ -1569,19 +1590,20 @@ export function EmployeeProfilePage() {
           </div>
 
           {loadingSummary ? (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              {[...Array(6)].map((_, i) => (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
+              {[...Array(7)].map((_, i) => (
                 <Skeleton key={i} className="h-20" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
               {[
                 { label: 'Present', value: attendanceSummary?.present ?? 0 },
                 { label: 'Absent', value: attendanceSummary?.absent ?? 0 },
                 { label: 'Late', value: attendanceSummary?.late ?? 0 },
                 { label: 'Half Day', value: attendanceSummary?.halfDay ?? 0 },
                 { label: 'On Leave', value: attendanceSummary?.onLeave ?? 0 },
+                { label: 'Unmarked', value: attendanceSummary?.unmarked ?? 0 },
                 { label: 'Overtime Hrs', value: overtimeHours },
               ].map((item) => (
                 <Card key={item.label}>
@@ -1592,6 +1614,28 @@ export function EmployeeProfilePage() {
                 </Card>
               ))}
             </div>
+          )}
+
+          {monthPayroll.length > 0 && (
+            <Card>
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div>
+                  <p className="text-sm text-text-secondary">
+                    Calculated salary for {format(new Date(year, month - 1, 1), 'MMMM yyyy')}
+                  </p>
+                  <p className="text-xl font-bold">
+                    PKR {monthPayrollNet.toLocaleString('en-PK')}
+                  </p>
+                  <p className="text-xs text-text-secondary">
+                    Earned basic PKR {monthPayrollBasic.toLocaleString('en-PK')}
+                    {monthPayrollPaid
+                      ? ' · Paid (locked)'
+                      : ' · Updates when attendance is saved'}
+                  </p>
+                </div>
+                <StatusBadge status={monthPayrollPaid ? 'PAID' : monthPayroll[0].status} />
+              </CardContent>
+            </Card>
           )}
 
           <Card>
@@ -2242,6 +2286,11 @@ export function EmployeeProfilePage() {
             queryKey: ['attendance-summary', id, month, year],
           })
           queryClient.invalidateQueries({ queryKey: ['working-hours', id] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-history', id] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
+          queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
+          queryClient.invalidateQueries({ queryKey: ['leave-balance', id] })
+          queryClient.invalidateQueries({ queryKey: ['leave', id] })
         }}
       />
 

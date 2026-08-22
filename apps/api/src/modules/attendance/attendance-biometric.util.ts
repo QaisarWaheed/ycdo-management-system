@@ -88,7 +88,11 @@ export function is24HourShiftRecord(shift: {
   startTime: string;
   endTime: string;
 }): boolean {
-  return is24HourShift({ shift });
+  return is24HourShift({
+    shift,
+    dutyStartTime: shift.startTime,
+    dutyEndTime: shift.endTime,
+  });
 }
 
 export function computeBiometricLateMinutes(

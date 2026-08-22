@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   DEFAULT_SENDER_TITLE,
+  buildLetterRef,
   defaultSubjectFor,
   parseViolationLines,
   renderLetterHtml,
@@ -79,7 +80,8 @@ export async function issueAutoTemplatedLetter(
   );
 
   const variables: Record<string, unknown> = {
-    letterNo,
+    ...input.extraFields,
+    violations,
     issueDate,
     senderTitle:
       String(input.extraFields.senderTitle ?? '').trim() ||
@@ -93,8 +95,12 @@ export async function issueAutoTemplatedLetter(
     department: employee.currentDepartment?.name ?? '',
     branch: employee.currentBranch?.name ?? '',
     cnic: employee.cnic ?? '',
-    ...input.extraFields,
-    violations,
+    letterNo,
+    letterRef: buildLetterRef(
+      input.letterType,
+      letterNo,
+      template?.letterCode,
+    ),
   };
 
   let fileUrl: string | null = null;

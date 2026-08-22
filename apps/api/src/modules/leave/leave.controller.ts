@@ -250,6 +250,24 @@ export class LeaveController {
     return this.leaveService.hrOperationsApprove(id, dto, user);
   }
 
+  /** Decides a PENDING_APPROVAL (quota-exceeded) leave — see decideQuotaException. */
+  @Patch(':id/quota-exception')
+  @Roles(UserRole.HR_OPERATIONS_MANAGER, UserRole.SUPER_ADMIN)
+  decideQuotaException(
+    @Param('id') id: string,
+    @Body() dto: ApproveLeaveDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.leaveService.decideQuotaException(id, dto, user);
+  }
+
+  /** Monthly quota count backing a PENDING_APPROVAL decision — see getQuotaContext. */
+  @Get(':id/quota-context')
+  @Roles(UserRole.HR_OPERATIONS_MANAGER, UserRole.SUPER_ADMIN)
+  getQuotaContext(@Param('id') id: string) {
+    return this.leaveService.getQuotaContext(id);
+  }
+
   @Get(':id')
   @Roles(...LEAVE_READ_ROLES)
   findOne(@Param('id') id: string) {

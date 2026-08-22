@@ -1,12 +1,28 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+
+type TemplateFieldSeed = {
+  key: string;
+  label: string;
+  type?: 'text' | 'textarea' | 'number' | 'date' | 'select';
+  hint?: string;
+  required?: boolean;
+  options?: { value: string; label: string }[];
+};
 
 type TemplateSeed = {
   code: string;
   name: string;
   file: string;
   requiredVars: string[];
+  isCustom?: boolean;
+  subjectUr?: string;
+  enTitle?: string;
+  enPrescribed?: string;
+  enSubtitle?: string;
+  letterCode?: string;
+  fieldsSchema?: TemplateFieldSeed[];
 };
 
 const TEMPLATES: TemplateSeed[] = [
@@ -106,6 +122,54 @@ const TEMPLATES: TemplateSeed[] = [
     file: 'letters/EXPERIENCE.hbs',
     requiredVars: ['lastWorkingDate'],
   },
+  {
+    // First-class letter type (LetterType.EXPLANATION_FINE) selectable from
+    // the Generate Letter wizard's type grid — not an IT-authored "Custom"
+    // template, so isCustom/fieldsSchema are intentionally omitted; its field
+    // list lives in apps/hrms/src/lib/letterFieldConfig.ts like every other
+    // built-in Urdu type.
+    code: 'EXPLANATION_FINE',
+    name: 'Explanation & Fine Letter (Urdu)',
+    file: 'letters/EXPLANATION_FINE.hbs',
+    requiredVars: ['violations', 'fineAmount', 'deductionMonth'],
+    subjectUr: 'تحریری وضاحت طلب و جرمانہ نوٹس',
+    enTitle: 'LETTER OF EXPLANATION & FINE',
+    letterCode: 'EXF',
+  },
+  {
+    code: 'WARNING_FINE',
+    name: 'Warning & Fine Letter (Urdu)',
+    file: 'letters/WARNING_FINE.hbs',
+    requiredVars: ['violations', 'fineAmount', 'deductionMonth'],
+    isCustom: true,
+    subjectUr: 'وارننگ و جرمانہ نوٹس',
+    enTitle: 'LETTER OF WARNING & FINE',
+    letterCode: 'WNF',
+    fieldsSchema: [
+      { key: 'employeeName', label: 'نام (بجانب)', required: true },
+      { key: 'designation', label: 'عہدہ' },
+      { key: 'branch', label: 'برانچ / مقام' },
+      { key: 'senderTitle', label: 'مخاطب' },
+      {
+        key: 'violations',
+        label: 'خلاف ورزیاں (ہر سطر ایک نکتہ)',
+        type: 'textarea',
+        required: true,
+        hint: 'اردو میں لکھیں — ہر لائن الگ نکتہ بنے گا',
+      },
+      {
+        key: 'fineAmount',
+        label: 'رقم / کٹوتی (مثلاً 500/- یا دو یوم تنخواہ)',
+        required: true,
+      },
+      {
+        key: 'deductionMonth',
+        label: 'ماہِ کٹوتی',
+        required: true,
+        hint: 'مثلاً: اگست 2026',
+      },
+    ],
+  },
 ];
 
 function readTemplate(relativePath: string): string {
@@ -135,6 +199,15 @@ export async function seedLetterTemplates(prisma: PrismaClient) {
         name: tpl.name,
         bodyHtml,
         requiredVars: tpl.requiredVars,
+        isCustom: tpl.isCustom ?? false,
+        subjectUr: tpl.subjectUr,
+        enTitle: tpl.enTitle,
+        enPrescribed: tpl.enPrescribed,
+        enSubtitle: tpl.enSubtitle,
+        letterCode: tpl.letterCode,
+        fieldsSchema: tpl.fieldsSchema
+          ? (tpl.fieldsSchema as unknown as Prisma.InputJsonValue)
+          : undefined,
         version: 1,
         active: true,
       },

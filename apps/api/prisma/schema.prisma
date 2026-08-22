@@ -181,6 +181,7 @@ model Employee {
   stipendRecords      StipendRecord[]
   attendanceLogs      AttendanceLog[]
   disciplinaryActions DisciplinaryAction[]
+  disciplineEvents    DisciplineEvent[]
   letters             Letter[]
   whatsappLetterSends WhatsAppLetterSend[]
   leaveRecords        LeaveRecord[]
@@ -230,7 +231,7 @@ model Employee {
   dutyStartTime          String?
   dutyEndTime            String?
   dutyTotalHours         Int?
-  /// Monthly paid leave allowance; null = unlimited paid leave (legacy).
+  /// Monthly paid leave allowance. Null/omitted uses the runtime default of 2 days (not unlimited).
   monthlyAllowedLeaves   Int?
   province               String?
   city                   String?
@@ -400,6 +401,20 @@ model AttendanceLog {
   source          AttendanceSource @default(BIOMETRIC)
   note            String?
   createdAt       DateTime         @default(now())
+  /// Set once the backend stops treating this session as open (missing
+  /// checkout past grace, or a controlled backfill) — independent of
+  /// checkOut, which stays NULL because the employee never actually
+  /// checked out. NULL means still open/active.
+  sessionClosedAt DateTime?
+  /// The employee's dutyStartTime/dutyEndTime AT THE MOMENT this record was
+  /// created — a fixed historical snapshot, never touched again after
+  /// creation (including on later edits to this same row). Exists so a
+  /// later change to Employee.dutyStartTime/dutyEndTime cannot retroactively
+  /// alter what a past attendance record appears to show. NULL only for
+  /// rows created before this field existed, or if the employee had no
+  /// duty time configured at creation (e.g. reliever-only).
+  dutyStartTimeSnapshot String?
+  dutyEndTimeSnapshot   String?
 
   employee Employee @relation(fields: [employeeId], references: [id])
   branch   Branch   @relation(fields: [branchId], references: [id])
@@ -422,11 +437,68 @@ enum AttendanceStatus {
   HOLIDAY
   UNINFORMED_ABSENT
   SWAP_COVERED
+  /// HR-only, retroactive: an already-recorded attendance row (real
+  /// checkIn/checkOut) reclassified as covering a single continuous late
+  /// arrival OR early departure within the employee's duty-duration limit.
+  /// Distinct from LeaveType.SHORT_LEAVE (a prospective, request-based leave
+  /// that writes HALF_DAY) — see short-leave.util.ts.
+  SHORT_LEAVE
 }
 
 enum AttendanceSource {
   BIOMETRIC
   MANUAL
+}
+
+/// Permanent, DB-backed idempotency record for one raw device event
+/// (POST /attendance/raw-scan). (deviceId, serialNo) uniquely identifies a
+/// single hardware event; a replayed/retried delivery of the same event is
+/// detected here and skipped, independent of any agent- or server-process
+/// memory. Deliberately has no foreign keys — this table only needs to
+/// answer "have I already handled this exact device event", not join to
+/// other data.
+model ProcessedDeviceEvent {
+  id          String   @id @default(uuid())
+  deviceId    String
+  serialNo    String
+  biometricId String?
+  employeeId  String?
+  punchType   String?
+  rawStatus   String?
+  processedAt DateTime @default(now())
+
+  @@unique([deviceId, serialNo])
+  @@index([deviceId])
+}
+
+enum DisciplineCategory {
+  LATE
+  UNINFORMED_ABSENT
+  MISSING_CHECKOUT
+}
+
+/// Atomic idempotency gate for discipline.helper.ts's monthly-cycle
+/// processing (late arrivals, uninformed absences, missing checkouts).
+/// One genuine incident — one employee, one category, one date — may be
+/// claimed at most once, enforced by the unique constraint below rather
+/// than an application-level check-then-insert (which cannot be made safe
+/// under concurrency). occurrence is informational only (derived at claim
+/// time, for audit/debugging) and deliberately NOT part of the unique key:
+/// it can legitimately shift after a correction elsewhere in the same
+/// month (e.g. an earlier date reclassified to Short Leave), while the
+/// incident's own date never does. Mirrors the same proven pattern already
+/// used for biometric replay protection — see ProcessedDeviceEvent above.
+model DisciplineEvent {
+  id           String             @id @default(uuid())
+  employeeId   String
+  category     DisciplineCategory
+  incidentDate DateTime           @db.Date
+  occurrence   Int
+  createdAt    DateTime           @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, category, incidentDate])
 }
 
 // ─── STIPEND ──────────────────────────────────────────────
@@ -509,7 +581,14 @@ enum DeductionType {
   UNINFORMED_ABSENCE
   DISCIPLINARY_FINE
   UNPAID_LEAVE
+  HALF_DAY
   OTHER
+  /// One-day deduction for a quota-exceeded Full Leave HR rejected. Distinct
+  /// from UNPAID_LEAVE (which is matched by reason alone and recomputed/
+  /// upserted as a monthly aggregate elsewhere — reusing it here would risk
+  /// that aggregate logic silently overwriting or deleting this exact,
+  /// incident-linked deduction).
+  EXTRA_LEAVE_REJECTED
 }
 
 enum PayrollStatus {
@@ -673,6 +752,7 @@ enum LetterType {
   REJOINING
   SALARY_INCREMENT
   EXPERIENCE
+  EXPLANATION_FINE
   CUSTOM
 }
 
@@ -716,6 +796,9 @@ enum LeaveApprovalStage {
   BRANCH_MANAGER
   DEPARTMENT_INCHARGE
   HR_OPERATIONS
+  /// The distinct HR decision on a PENDING_APPROVAL (quota-exceeded) leave —
+  /// logged via the same LeaveApproval audit trail as every other stage.
+  QUOTA_EXCEPTION
 }
 
 enum LeaveApprovalAction {
@@ -740,6 +823,13 @@ enum LeaveStatus {
   APPROVED
   REJECTED
   CANCELLED
+  /// Chain-approved (or HR-emergency-created) but exceeds the employee's
+  /// normal monthly Full Leave (2) or Short Leave (3, shared across the
+  /// portal and HR-emergency flows) entitlement — awaiting a distinct HR
+  /// quota-exception decision (see LeaveApprovalStage.QUOTA_EXCEPTION).
+  /// Approving moves to APPROVED and reconciles attendance exactly like a
+  /// normal approval; rejecting moves to REJECTED with no leave protection.
+  PENDING_APPROVAL
 }
 
 enum StipendStatus {
@@ -840,6 +930,8 @@ model User {
   isActive   Boolean   @default(true)
   createdAt  DateTime  @default(now())
   lastLogin  DateTime?
+  /// Set only on successful Employee Portal login (not HRMS).
+  lastPortalLogin DateTime?
 
   employee   Employee?               @relation(fields: [employeeId], references: [id])
   branch     Branch?                 @relation(fields: [branchId], references: [id])

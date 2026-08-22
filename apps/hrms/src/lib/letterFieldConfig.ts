@@ -35,7 +35,7 @@ const URDU_IDENTITY_FIELDS: LetterFieldDef[] = [
   },
   {
     key: 'senderTitle',
-    label: 'منجانب',
+    label: 'مخاطب',
     onTemplate: true,
     hint: 'مثلاً: چیئرمین ایڈمن ڈیپارٹمنٹ',
   },
@@ -107,6 +107,45 @@ export const LETTER_FIELD_CONFIG: Partial<
       label: 'آخری تاریخِ جواب',
       type: 'date',
       onTemplate: true,
+    },
+  ],
+  EXPLANATION_FINE: [
+    ...URDU_IDENTITY_FIELDS,
+    { key: 'adviceLetterNo', label: 'سابقہ Letter of Advice نمبر (اختیاری)' },
+    {
+      key: 'adviceLetterDate',
+      label: 'Letter of Advice تاریخ (اختیاری)',
+      type: 'date',
+    },
+    { key: 'warningLetterNo', label: 'سابقہ Letter of Warning نمبر (اختیاری)' },
+    {
+      key: 'warningLetterDate',
+      label: 'Letter of Warning تاریخ (اختیاری)',
+      type: 'date',
+    },
+    {
+      key: 'violations',
+      label: 'امور جن پر وضاحت درکار ہے (ہر سطر ایک نکتہ)',
+      type: 'textarea',
+      onTemplate: true,
+      hint: 'اردو میں لکھیں — ہر لائن الگ نکتہ بنے گا',
+    },
+    {
+      key: 'responseDeadline',
+      label: 'آخری تاریخِ جواب',
+      type: 'date',
+      onTemplate: true,
+    },
+    {
+      key: 'fineAmount',
+      label: 'رقم / کٹوتی (مثلاً 500/- یا دو یوم تنخواہ)',
+      onTemplate: true,
+    },
+    {
+      key: 'deductionMonth',
+      label: 'ماہِ کٹوتی',
+      onTemplate: true,
+      hint: 'مثلاً: اگست 2026',
     },
   ],
   SHOW_CAUSE: [
@@ -416,6 +455,7 @@ const DISCIPLINARY_TYPES: LetterType[] = [
   'SUSPENSION',
   'TERMINATION',
   'DISCIPLINARY',
+  'EXPLANATION_FINE',
 ]
 
 const POSITIVE_TYPES: LetterType[] = [
@@ -462,6 +502,7 @@ export const URDU_LETTER_SUBJECT: Partial<Record<LetterType, string>> = {
   ADVICE: 'ایڈوائس لیٹر',
   DISCIPLINARY: 'لیٹر آف ڈسپلیژر',
   EXPLANATION: 'تحریری وضاحت طلب',
+  EXPLANATION_FINE: 'تحریری وضاحت طلب و جرمانہ نوٹس',
   SHOW_CAUSE: 'شو کاز نوٹس',
   FINE: 'فائن / جرمانہ نوٹس',
   INQUIRY: 'انکوائری نوٹس',
