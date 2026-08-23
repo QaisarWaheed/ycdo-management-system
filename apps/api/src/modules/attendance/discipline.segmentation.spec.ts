@@ -54,6 +54,7 @@ type FakeDisciplineEvent = {
   employeeId: string;
   category: string;
   incidentDate: string;
+  occurrence: number;
 };
 
 function makeSegmentFakeTx(seed: {
@@ -61,8 +62,8 @@ function makeSegmentFakeTx(seed: {
   payrollEntries?: FakePayrollEntry[];
   deductions?: FakeDeduction[];
   /** Dates (YYYY-MM-DD) attendanceLog.findMany should report as prior
-   * LATE/UNINFORMED_ABSENT/open-checkout days this month, for occurrence
-   * counting. */
+   * LATE/UNINFORMED_ABSENT days this month, for late occurrence counting.
+   * Also seeds MISSING_CHECKOUT DisciplineEvents for MC chronological rank. */
   priorDates?: string[];
   approvedLeaveCoversDate?: boolean;
 }) {
@@ -79,8 +80,14 @@ function makeSegmentFakeTx(seed: {
       netStipend: r.basicStipend,
     }));
   let deductions = seed.deductions ?? [];
-  let disciplineEvents: FakeDisciplineEvent[] = [];
   const priorDates = seed.priorDates ?? [];
+  let disciplineEvents: FakeDisciplineEvent[] = priorDates.map((d, i) => ({
+    id: `de-prior-${i + 1}`,
+    employeeId: EMP_ID,
+    category: 'MISSING_CHECKOUT',
+    incidentDate: d,
+    occurrence: i + 1,
+  }));
 
   const tx = {
     employee: {
@@ -231,6 +238,76 @@ function makeSegmentFakeTx(seed: {
       }),
     },
     disciplineEvent: {
+      count: jest.fn(
+        (args: {
+          where: {
+            employeeId: string;
+            category: string;
+            incidentDate: { gte: Date; lt: Date };
+          };
+        }) => {
+          const gte = args.where.incidentDate.gte.toISOString().slice(0, 10);
+          const lt = args.where.incidentDate.lt.toISOString().slice(0, 10);
+          return disciplineEvents.filter(
+            (e) =>
+              e.employeeId === args.where.employeeId &&
+              e.category === args.where.category &&
+              e.incidentDate >= gte &&
+              e.incidentDate < lt,
+          ).length;
+        },
+      ),
+      findMany: jest.fn(
+        (args: {
+          where: {
+            employeeId: string;
+            category: string;
+            incidentDate: { gte: Date; lte: Date };
+          };
+        }) => {
+          const gte = args.where.incidentDate.gte.toISOString().slice(0, 10);
+          const lte = args.where.incidentDate.lte.toISOString().slice(0, 10);
+          return disciplineEvents
+            .filter(
+              (e) =>
+                e.employeeId === args.where.employeeId &&
+                e.category === args.where.category &&
+                e.incidentDate >= gte &&
+                e.incidentDate <= lte,
+            )
+            .sort((a, b) => a.incidentDate.localeCompare(b.incidentDate))
+            .map((e) => ({ id: e.id, occurrence: e.occurrence }));
+        },
+      ),
+      findUnique: jest.fn(
+        (args: {
+          where: {
+            employeeId_category_incidentDate: {
+              employeeId: string;
+              category: string;
+              incidentDate: Date;
+            };
+          };
+        }) => {
+          const key = args.where.employeeId_category_incidentDate;
+          const incidentDate = key.incidentDate.toISOString().slice(0, 10);
+          const e = disciplineEvents.find(
+            (row) =>
+              row.employeeId === key.employeeId &&
+              row.category === key.category &&
+              row.incidentDate === incidentDate,
+          );
+          return e ? { occurrence: e.occurrence } : null;
+        },
+      ),
+      update: jest.fn(
+        (args: { where: { id: string }; data: { occurrence: number } }) => {
+          const e = disciplineEvents.find((row) => row.id === args.where.id);
+          if (!e) throw new Error('discipline event not found');
+          e.occurrence = args.data.occurrence;
+          return e;
+        },
+      ),
       create: jest.fn(
         (args: {
           data: {
@@ -261,6 +338,7 @@ function makeSegmentFakeTx(seed: {
             employeeId: args.data.employeeId,
             category: args.data.category,
             incidentDate,
+            occurrence: args.data.occurrence,
           };
           disciplineEvents.push(e);
           return e;

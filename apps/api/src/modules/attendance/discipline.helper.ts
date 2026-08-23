@@ -1076,7 +1076,12 @@ async function hasLetterForMonthlyOccurrence(
     const vars = letter.variables as {
       monthlyLateOccurrence?: number;
       incidentDate?: string;
+      reversedDueToShortLeave?: boolean;
+      reversed?: boolean;
     } | null;
+    // Soft-voided letters must not block a fresh claim after Short Leave /
+    // status reversal released the DisciplineEvent for this date.
+    if (vars?.reversedDueToShortLeave || vars?.reversed) return false;
     if (vars?.monthlyLateOccurrence !== lateCount) return false;
     if (vars?.incidentDate != null) {
       return vars.incidentDate === dateLabel;
@@ -1142,7 +1147,11 @@ async function issueLateLetterIfNotAlready(
   await issueAutoTemplatedLetter(tx, {
     employeeId,
     letterType,
-    extraFields: { ...extraFields, monthlyLateOccurrence: lateCount },
+    extraFields: {
+      ...extraFields,
+      monthlyLateOccurrence: lateCount,
+      disciplineCategory: 'LATE',
+    },
     requiresAcknowledgement: true,
     replyDeadline:
       letterType === LetterType.SUSPENSION
@@ -1161,15 +1170,85 @@ export type MissingCheckoutOptions = {
 };
 
 /**
+ * Chronological Missing Checkout occurrence for one incident date within
+ * the Pakistan calendar month of that date.
+ *
+ * Counts existing DisciplineEvent(MISSING_CHECKOUT) rows with an earlier
+ * incidentDate in the same month, then +1 for this date. Does NOT count
+ * currently-open AttendanceLog rows (checkOut IS NULL) — that old approach
+ * reset the sequence whenever earlier days later received a checkout
+ * (HR edit, temp auto-checkout, backfill), which is the production bug
+ * behind repeating "occurrence 1" mid-month.
+ *
+ * Kept claims after reverseMissingCheckoutDisciplineForDate still count,
+ * so a reversed historical incident does not free its slot for a later day
+ * to be renumbered downward.
+ */
+export async function resolveMissingCheckoutOccurrenceForDate(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  incidentDate: Date,
+): Promise<number> {
+  const dayStart = new Date(incidentDate);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const { startOfMonth } = pakistanMonthWindowFromDate(dayStart);
+
+  const priorCount = await tx.disciplineEvent.count({
+    where: {
+      employeeId,
+      category: DisciplineCategory.MISSING_CHECKOUT,
+      incidentDate: { gte: startOfMonth, lt: dayStart },
+    },
+  });
+
+  return priorCount + 1;
+}
+
+/**
+ * Re-assign occurrence = chronological rank (1..n) for all
+ * MISSING_CHECKOUT DisciplineEvents in the employee+month window.
+ * Idempotent. Does not create/delete events or touch letters — audit field
+ * repair only so out-of-order claims still end with stable ranks.
+ */
+export async function renumberMissingCheckoutOccurrencesForMonth(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  monthDate: Date,
+): Promise<{ updated: number }> {
+  const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(monthDate);
+  const events = await tx.disciplineEvent.findMany({
+    where: {
+      employeeId,
+      category: DisciplineCategory.MISSING_CHECKOUT,
+      incidentDate: { gte: startOfMonth, lte: endOfMonth },
+    },
+    orderBy: { incidentDate: 'asc' },
+    select: { id: true, occurrence: true },
+  });
+
+  let updated = 0;
+  for (let i = 0; i < events.length; i++) {
+    const expected = i + 1;
+    if (events[i].occurrence !== expected) {
+      await tx.disciplineEvent.update({
+        where: { id: events[i].id },
+        data: { occurrence: expected },
+      });
+      updated++;
+    }
+  }
+  return { updated };
+}
+
+/**
  * Monthly missing-checkout cycle: 1/4/7 -> Advice, 2/5/8 -> Warning,
  * 3/6/9 -> Fine + 1-day deduction. No suspension step ever — the 3-step
- * cycle just keeps repeating. Counted entirely separately from lateness:
- * this only looks at AttendanceLog rows with checkIn set and checkOut still
- * null (never LATE/HALF_DAY/UNINFORMED_ABSENT status), and dedupes via a
- * distinct Letter.variables key (monthlyMissingCheckoutOccurrence) so it
- * cannot collide with applyLateDiscipline's monthlyLateOccurrence even
- * though both cycles reuse the same LetterType values (ADVICE/WARNING/FINE)
- * and may issue letters for the same employee in the same month.
+ * cycle just keeps repeating. Counted entirely separately from lateness
+ * via DisciplineEvent(MISSING_CHECKOUT) chronological rank (see
+ * resolveMissingCheckoutOccurrenceForDate). Dedupes via a distinct
+ * Letter.variables key (monthlyMissingCheckoutOccurrence) so it cannot
+ * collide with applyLateDiscipline's monthlyLateOccurrence even though
+ * both cycles reuse the same LetterType values (ADVICE/WARNING/FINE).
  */
 export async function applyMissingCheckoutDiscipline(
   tx: Prisma.TransactionClient,
@@ -1186,50 +1265,47 @@ export async function applyMissingCheckoutDiscipline(
 
   const basicStipend = await getBasicStipend(tx, employeeId, date);
 
-  const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(date);
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dayKey = dayStart.toISOString().slice(0, 10);
 
-  // Missing-checkout days this month, derived fresh from AttendanceLog every
-  // run (no in-memory/stored counter). A day whose checkout later gets
-  // filled in (HR edit / recalculation) naturally drops out of this count
-  // on the next evaluation — mirrors the same derived-count approach used
-  // by applyLateDiscipline/applyUninformedAbsentDeduction above.
-  const openDays = await tx.attendanceLog.findMany({
-    where: {
-      employeeId,
-      type: AttendanceLogType.REGULAR,
-      date: { gte: startOfMonth, lte: endOfMonth },
-      checkIn: { not: null },
-      checkOut: null,
-    },
-    select: { date: true },
-  });
-
-  const uniqueDays = new Set(
-    openDays.map((row) => row.date.toISOString().slice(0, 10)),
+  // Provisional rank among already-claimed earlier incidents (+ this day).
+  // Final letter/deduction use the post-renumber value for this date so
+  // out-of-order repair claims still escalate on chronological position.
+  const provisionalCount = await resolveMissingCheckoutOccurrenceForDate(
+    tx,
+    employeeId,
+    dayStart,
   );
-  uniqueDays.add(dayKey);
-  const missingCount = uniqueDays.size;
 
-  // Atomic idempotency gate — see claimDisciplineEvent's doc comment. Also
-  // replaces the informal "safe to call every tick" idempotency this
-  // function used to rely on solely via hasLetterForMonthlyMissingCheckout
-  // Occurrence's SELECT-based check, which had the same concurrent-tick
-  // race as the LATE path.
+  // Atomic idempotency gate — see claimDisciplineEvent's doc comment.
   const claimed = await claimDisciplineEvent(
     tx,
     employeeId,
     DisciplineCategory.MISSING_CHECKOUT,
     dayStart,
-    missingCount,
+    provisionalCount,
   );
   if (!claimed) return; // already processed for this open day — true no-op
 
+  await renumberMissingCheckoutOccurrencesForMonth(tx, employeeId, dayStart);
+
+  const claimedEvent = await tx.disciplineEvent.findUnique({
+    where: {
+      employeeId_category_incidentDate: {
+        employeeId,
+        category: DisciplineCategory.MISSING_CHECKOUT,
+        incidentDate: dayStart,
+      },
+    },
+    select: { occurrence: true },
+  });
+  const missingCount = claimedEvent?.occurrence ?? provisionalCount;
+
   // Belt-and-suspenders: if a letter (including reversed) already exists for
-  // this incident date, never issue another — even if the DisciplineEvent
-  // was deleted by an older reverse path before we started keeping claims.
+  // this incident date on the missing-checkout track, never issue another —
+  // even if an older reverse path deleted the DisciplineEvent claim.
   const priorForDay = await tx.letter.findMany({
     where: {
       employeeId,
@@ -1270,6 +1346,7 @@ export async function applyMissingCheckoutDiscipline(
       {
         violations: `اس ماہ چیک آؤٹ نہ کرنے کی ${missingCount} ویں خلاف ورزی۔ ${baseDetail} آئندہ ڈیوٹی مکمل ہونے پر چیک آؤٹ یقینی بنائیں۔`,
         incidentDate: dayKey,
+        disciplineCategory: 'MISSING_CHECKOUT',
       },
     );
     return;
@@ -1285,6 +1362,7 @@ export async function applyMissingCheckoutDiscipline(
       {
         violations: `اس ماہ چیک آؤٹ نہ کرنے کی ${missingCount} ویں خلاف ورزی (اس ماہ کی دوسری تنبیہ)۔ ${baseDetail}`,
         incidentDate: dayKey,
+        disciplineCategory: 'MISSING_CHECKOUT',
       },
     );
     return;
@@ -1361,6 +1439,7 @@ export async function applyMissingCheckoutDiscipline(
       // exact letter/deduction later. Previously omitted here (ADVICE/WARNING
       // already carried it); no reversal existed to need it until now.
       incidentDate: dayKey,
+      disciplineCategory: 'MISSING_CHECKOUT',
     },
   );
 }

@@ -59,6 +59,7 @@ type FakeDisciplineEvent = {
   employeeId: string;
   category: string;
   incidentDate: string;
+  occurrence: number;
 };
 type FakeLetter = {
   id: string;
@@ -72,8 +73,11 @@ function makeFreezeFakeTx(seed: {
   stipendRecords: FakeStipend[];
   payrollEntries?: FakePayrollEntry[];
   deductions?: FakeDeduction[];
-  /** Dates (YYYY-MM-DD) attendanceLog.findMany should report as prior
-   * open (missing-checkout) days this month, for occurrence counting. */
+  /**
+   * Prior MISSING_CHECKOUT incident dates (YYYY-MM-DD) already claimed this
+   * month. Used to seed DisciplineEvent rows for chronological occurrence
+   * counting (replaces the old open-AttendanceLog count).
+   */
   priorOpenDates?: string[];
   letters?: FakeLetter[];
 }) {
@@ -90,8 +94,14 @@ function makeFreezeFakeTx(seed: {
       netStipend: r.basicStipend,
     }));
   let deductions = seed.deductions ?? [];
-  let disciplineEvents: FakeDisciplineEvent[] = [];
   const priorOpenDates = seed.priorOpenDates ?? [];
+  let disciplineEvents: FakeDisciplineEvent[] = priorOpenDates.map((d, i) => ({
+    id: `de-prior-${i + 1}`,
+    employeeId: EMP_ID,
+    category: 'MISSING_CHECKOUT',
+    incidentDate: d,
+    occurrence: i + 1,
+  }));
   const letters = seed.letters ?? [];
 
   const tx = {
@@ -231,6 +241,79 @@ function makeFreezeFakeTx(seed: {
       }),
     },
     disciplineEvent: {
+      count: jest.fn(
+        (args: {
+          where: {
+            employeeId: string;
+            category: string;
+            incidentDate: { gte: Date; lt: Date };
+          };
+        }) => {
+          const gte = args.where.incidentDate.gte.toISOString().slice(0, 10);
+          const lt = args.where.incidentDate.lt.toISOString().slice(0, 10);
+          return disciplineEvents.filter(
+            (e) =>
+              e.employeeId === args.where.employeeId &&
+              e.category === args.where.category &&
+              e.incidentDate >= gte &&
+              e.incidentDate < lt,
+          ).length;
+        },
+      ),
+      findMany: jest.fn(
+        (args: {
+          where: {
+            employeeId: string;
+            category: string;
+            incidentDate: { gte: Date; lte: Date };
+          };
+          orderBy?: { incidentDate: 'asc' };
+          select?: { id: true; occurrence: true };
+        }) => {
+          const gte = args.where.incidentDate.gte.toISOString().slice(0, 10);
+          const lte = args.where.incidentDate.lte.toISOString().slice(0, 10);
+          const rows = disciplineEvents
+            .filter(
+              (e) =>
+                e.employeeId === args.where.employeeId &&
+                e.category === args.where.category &&
+                e.incidentDate >= gte &&
+                e.incidentDate <= lte,
+            )
+            .sort((a, b) => a.incidentDate.localeCompare(b.incidentDate));
+          return rows.map((e) => ({ id: e.id, occurrence: e.occurrence }));
+        },
+      ),
+      findUnique: jest.fn(
+        (args: {
+          where: {
+            employeeId_category_incidentDate: {
+              employeeId: string;
+              category: string;
+              incidentDate: Date;
+            };
+          };
+          select?: { occurrence: true };
+        }) => {
+          const key = args.where.employeeId_category_incidentDate;
+          const incidentDate = key.incidentDate.toISOString().slice(0, 10);
+          const e = disciplineEvents.find(
+            (row) =>
+              row.employeeId === key.employeeId &&
+              row.category === key.category &&
+              row.incidentDate === incidentDate,
+          );
+          return e ? { occurrence: e.occurrence } : null;
+        },
+      ),
+      update: jest.fn(
+        (args: { where: { id: string }; data: { occurrence: number } }) => {
+          const e = disciplineEvents.find((row) => row.id === args.where.id);
+          if (!e) throw new Error('discipline event not found');
+          e.occurrence = args.data.occurrence;
+          return e;
+        },
+      ),
       create: jest.fn(
         (args: {
           data: {
@@ -261,6 +344,7 @@ function makeFreezeFakeTx(seed: {
             employeeId: args.data.employeeId,
             category: args.data.category,
             incidentDate,
+            occurrence: args.data.occurrence,
           };
           disciplineEvents.push(e);
           return e;
@@ -693,7 +777,9 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
       CHECKOUT_OPTIONS,
     );
 
-    expect(getDisciplineEvents()).toHaveLength(1); // incident still tracked
+    expect(
+      getDisciplineEvents().filter((e) => e.incidentDate === '2026-08-05'),
+    ).toHaveLength(1); // incident still tracked
     expect(issueAutoTemplatedLetterMock).toHaveBeenCalledTimes(1); // FINE letter still issued
     const call = issueAutoTemplatedLetterMock.mock.calls[0][1];
     expect(call.letterType).toBe(LetterType.FINE);
@@ -706,7 +792,9 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
       FINE_INCIDENT_DATE,
       CHECKOUT_OPTIONS,
     );
-    expect(getDisciplineEvents()).toHaveLength(1);
+    expect(
+      getDisciplineEvents().filter((e) => e.incidentDate === '2026-08-05'),
+    ).toHaveLength(1);
     expect(issueAutoTemplatedLetterMock).toHaveBeenCalledTimes(1);
   });
 });

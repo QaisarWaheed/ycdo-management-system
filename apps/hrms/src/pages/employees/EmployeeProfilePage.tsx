@@ -127,11 +127,79 @@ function resolveFileUrl(path: string) {
 }
 
 function letterReference(letter: Letter) {
+  if (letter.letterNo) return letter.letterNo.replace(/\//g, '-')
   if (letter.fileUrl) {
     const name = letter.fileUrl.split('/').pop() ?? ''
     return name.replace(/\.pdf$/i, '').replace(/_/g, '/')
   }
   return letter.id.slice(0, 8).toUpperCase()
+}
+
+function letterVars(letter: Letter): Record<string, unknown> {
+  return (letter.variables ?? {}) as Record<string, unknown>
+}
+
+function letterDisciplineReason(letter: Letter): string {
+  const v = letterVars(letter)
+  const category = String(v.disciplineCategory ?? '')
+  if (category === 'LATE' || v.monthlyLateOccurrence != null) {
+    return 'Late Arrival'
+  }
+  if (
+    category === 'MISSING_CHECKOUT' ||
+    v.monthlyMissingCheckoutOccurrence != null
+  ) {
+    return 'Missing Checkout'
+  }
+  if (category === 'UNINFORMED_ABSENT') return 'Uninformed Absence'
+  if (v.warningNumber != null) return 'Manual Disciplinary Action'
+  return 'Manual / Other'
+}
+
+function letterOccurrence(letter: Letter): string {
+  const v = letterVars(letter)
+  const n =
+    v.monthlyLateOccurrence ??
+    v.monthlyMissingCheckoutOccurrence ??
+    v.warningNumber
+  return n != null ? String(n) : '—'
+}
+
+function letterIncidentDate(letter: Letter): string {
+  const raw = letterVars(letter).incidentDate
+  if (typeof raw !== 'string' || !raw) return '—'
+  try {
+    return format(new Date(`${raw}T00:00:00.000Z`), 'dd/MM/yyyy')
+  } catch {
+    return raw
+  }
+}
+
+function letterStatus(letter: Letter): {
+  label: string
+  className: string
+} {
+  const v = letterVars(letter)
+  if (v.reversedDueToShortLeave === true || v.reversed === true) {
+    return {
+      label: 'Reversed',
+      className: 'border-amber-200 bg-amber-50 text-amber-900',
+    }
+  }
+  const hasTrackMeta =
+    v.monthlyLateOccurrence != null ||
+    v.monthlyMissingCheckoutOccurrence != null ||
+    v.disciplineCategory != null
+  if (!hasTrackMeta && !v.incidentDate) {
+    return {
+      label: 'Legacy',
+      className: 'border-slate-200 bg-slate-50 text-slate-700',
+    }
+  }
+  return {
+    label: 'Active',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  }
 }
 
 function leaveStatusBadge(status: string) {
@@ -1924,56 +1992,92 @@ export function EmployeeProfilePage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Type</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Incident</TableHead>
+                      <TableHead>Occ.</TableHead>
+                      <TableHead>Generated</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Reference</TableHead>
-                      <TableHead>Date</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {letters.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-text-secondary">
+                        <TableCell colSpan={8} className="text-text-secondary">
                           No letters generated
                         </TableCell>
                       </TableRow>
                     ) : (
-                      letters.map((letter) => (
-                        <TableRow key={letter.id}>
-                          <TableCell>
-                            {letter.letterType.replace(/_/g, ' ')}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {letterReference(letter)}
-                          </TableCell>
-                          <TableCell>
-                            {format(new Date(letter.generatedAt), 'dd/MM/yyyy')}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button
+                      letters.map((letter) => {
+                        const status = letterStatus(letter)
+                        return (
+                          <TableRow
+                            key={letter.id}
+                            className={
+                              status.label === 'Reversed'
+                                ? 'opacity-70'
+                                : undefined
+                            }
+                          >
+                            <TableCell>
+                              {letter.letterType.replace(/_/g, ' ')}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {letterDisciplineReason(letter)}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {letterIncidentDate(letter)}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {letterOccurrence(letter)}
+                            </TableCell>
+                            <TableCell>
+                              {format(
+                                new Date(letter.generatedAt),
+                                'dd/MM/yyyy',
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
                                 variant="outline"
-                                size="sm"
-                                onClick={() => downloadPdf(letter.id)}
+                                className={status.className}
                               >
-                                Download PDF
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={
-                                  !!letter.printedAt ||
-                                  markPrintedMutation.isPending
-                                }
-                                onClick={() =>
-                                  markPrintedMutation.mutate(letter.id)
-                                }
-                              >
-                                {letter.printedAt ? 'Printed' : 'Mark Printed'}
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                                {status.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {letterReference(letter)}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => downloadPdf(letter.id)}
+                                >
+                                  Download PDF
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={
+                                    !!letter.printedAt ||
+                                    markPrintedMutation.isPending
+                                  }
+                                  onClick={() =>
+                                    markPrintedMutation.mutate(letter.id)
+                                  }
+                                >
+                                  {letter.printedAt
+                                    ? 'Printed'
+                                    : 'Mark Printed'}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
                     )}
                   </TableBody>
                 </Table>
