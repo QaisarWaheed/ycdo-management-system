@@ -259,6 +259,38 @@ function makeReconcileFakeTx(seed: {
           return { count: before - disciplineEvents.length };
         },
       ),
+      findMany: jest.fn(
+        (args: {
+          where: {
+            employeeId: string;
+            category: string;
+            incidentDate: { gte: Date; lte: Date };
+          };
+          orderBy?: { incidentDate: 'asc' };
+          select?: { id: true; occurrence: true };
+        }) => {
+          const gte = args.where.incidentDate.gte.toISOString().slice(0, 10);
+          const lte = args.where.incidentDate.lte.toISOString().slice(0, 10);
+          return disciplineEvents
+            .filter(
+              (e) =>
+                e.employeeId === args.where.employeeId &&
+                e.category === args.where.category &&
+                e.incidentDate >= gte &&
+                e.incidentDate <= lte,
+            )
+            .sort((a, b) => a.incidentDate.localeCompare(b.incidentDate))
+            .map((e) => ({ id: e.id, occurrence: e.occurrence }));
+        },
+      ),
+      update: jest.fn(
+        (args: { where: { id: string }; data: { occurrence: number } }) => {
+          const e = disciplineEvents.find((row) => row.id === args.where.id);
+          if (!e) throw new Error('discipline event not found');
+          e.occurrence = args.data.occurrence;
+          return e;
+        },
+      ),
     },
     letter: {
       findMany: jest.fn((args: { where: { employeeId: string } }) =>
@@ -408,7 +440,7 @@ describe('reverseMissingCheckoutDisciplineForDate', () => {
     };
   }
 
-  it('PENDING payroll — deduction reversed, totals restored, letter annotated, DisciplineEvent kept', async () => {
+  it('PENDING payroll — deduction reversed, totals restored, letter annotated, DisciplineEvent removed and month renumbered', async () => {
     const { tx, getState } = makeReconcileFakeTx({
       payrollEntry: pendingEntry(),
       deductions: [mcDeduction()],
@@ -433,19 +465,19 @@ describe('reverseMissingCheckoutDisciplineForDate', () => {
     expect(result.reversed).toBe(true);
     expect(result.deductionReversed).toBe(true);
     expect(result.deductionAmount).toBe(968.75);
-    expect(result.disciplineEventRemoved).toBe(false);
+    expect(result.disciplineEventRemoved).toBe(true);
 
     const state = getState();
     expect(state.deductions).toHaveLength(0);
     expect(state.payrollEntry?.totalDeductions).toBeCloseTo(5000 - 968.75);
     expect(state.payrollEntry?.netStipend).toBeCloseTo(25000 + 968.75);
-    // Claim retained so TEMPORARY_AUTO_CHECKOUT=false cannot re-issue.
-    expect(state.disciplineEvents).toHaveLength(1);
+    expect(state.disciplineEvents).toHaveLength(0);
     expect(state.letters[0].requiresAcknowledgement).toBe(false);
     expect(state.letters[0].variables.reversed).toBe(true);
+    expect(state.letters[0].variables.reversalTrigger).toBe('CHECKOUT_PROVIDED');
   });
 
-  it('PROCESSED payroll — deduction/totals untouched, letter reversed, DisciplineEvent kept', async () => {
+  it('PROCESSED payroll — deduction/totals untouched, letter reversed, DisciplineEvent removed', async () => {
     const { tx, getState } = makeReconcileFakeTx({
       payrollEntry: pendingEntry('PROCESSED'),
       deductions: [mcDeduction()],
@@ -472,7 +504,7 @@ describe('reverseMissingCheckoutDisciplineForDate', () => {
     const state = getState();
     expect(state.deductions).toHaveLength(1);
     expect(state.payrollEntry?.totalDeductions).toBe(5000);
-    expect(state.disciplineEvents).toHaveLength(1);
+    expect(state.disciplineEvents).toHaveLength(0);
   });
 
   it('PAID payroll behaves the same as PROCESSED', async () => {
@@ -568,6 +600,194 @@ describe('reverseMissingCheckoutDisciplineForDate', () => {
 
     expect(result.reversed).toBe(false);
     expect(getState().deductions).toHaveLength(1);
+  });
+
+  it('occurrences 1,2,3 — resolving #2 renumbers remaining events to 1,2', async () => {
+    const { tx, getState } = makeReconcileFakeTx({
+      letters: [
+        {
+          id: 'letter-mc-1',
+          letterType: LetterType.ADVICE,
+          generatedAt: new Date('2026-08-01T00:00:00.000Z'),
+          variables: {
+            incidentDate: '2026-08-05',
+            monthlyMissingCheckoutOccurrence: 1,
+          },
+          requiresAcknowledgement: true,
+        },
+        {
+          id: 'letter-mc-2',
+          letterType: LetterType.WARNING,
+          generatedAt: new Date('2026-08-01T00:00:00.000Z'),
+          variables: {
+            incidentDate: '2026-08-10',
+            monthlyMissingCheckoutOccurrence: 2,
+          },
+          requiresAcknowledgement: true,
+        },
+        {
+          id: 'letter-mc-3',
+          letterType: LetterType.FINE,
+          generatedAt: new Date('2026-08-01T00:00:00.000Z'),
+          variables: {
+            incidentDate: '2026-08-15',
+            monthlyMissingCheckoutOccurrence: 3,
+          },
+          requiresAcknowledgement: true,
+        },
+      ],
+      disciplineEvents: [
+        {
+          id: 'de-1',
+          employeeId: EMPLOYEE_ID,
+          category: 'MISSING_CHECKOUT',
+          incidentDate: '2026-08-05',
+          occurrence: 1,
+        },
+        {
+          id: 'de-2',
+          employeeId: EMPLOYEE_ID,
+          category: 'MISSING_CHECKOUT',
+          incidentDate: '2026-08-10',
+          occurrence: 2,
+        },
+        {
+          id: 'de-3',
+          employeeId: EMPLOYEE_ID,
+          category: 'MISSING_CHECKOUT',
+          incidentDate: '2026-08-15',
+          occurrence: 3,
+        },
+      ],
+    });
+
+    const result = await reverseMissingCheckoutDisciplineForDate(
+      tx,
+      EMPLOYEE_ID,
+      new Date('2026-08-10T00:00:00.000Z'),
+    );
+
+    expect(result.reversed).toBe(true);
+    expect(result.disciplineEventRemoved).toBe(true);
+    const remaining = [...getState().disciplineEvents].sort((a, b) =>
+      a.incidentDate.localeCompare(b.incidentDate),
+    );
+    expect(remaining.map((e) => [e.incidentDate, e.occurrence])).toEqual([
+      ['2026-08-05', 1],
+      ['2026-08-15', 2],
+    ]);
+  });
+
+  it('resolving occurrence 1 shifts later event down to 1', async () => {
+    const { tx, getState } = makeReconcileFakeTx({
+      letters: [
+        {
+          id: 'letter-mc-1',
+          letterType: LetterType.ADVICE,
+          generatedAt: new Date('2026-08-01T00:00:00.000Z'),
+          variables: {
+            incidentDate: '2026-08-05',
+            monthlyMissingCheckoutOccurrence: 1,
+          },
+          requiresAcknowledgement: true,
+        },
+        {
+          id: 'letter-mc-2',
+          letterType: LetterType.WARNING,
+          generatedAt: new Date('2026-08-01T00:00:00.000Z'),
+          variables: {
+            incidentDate: '2026-08-12',
+            monthlyMissingCheckoutOccurrence: 2,
+          },
+          requiresAcknowledgement: true,
+        },
+      ],
+      disciplineEvents: [
+        {
+          id: 'de-1',
+          employeeId: EMPLOYEE_ID,
+          category: 'MISSING_CHECKOUT',
+          incidentDate: '2026-08-05',
+          occurrence: 1,
+        },
+        {
+          id: 'de-2',
+          employeeId: EMPLOYEE_ID,
+          category: 'MISSING_CHECKOUT',
+          incidentDate: '2026-08-12',
+          occurrence: 2,
+        },
+      ],
+    });
+
+    await reverseMissingCheckoutDisciplineForDate(
+      tx,
+      EMPLOYEE_ID,
+      new Date('2026-08-05T00:00:00.000Z'),
+    );
+
+    expect(getState().disciplineEvents).toEqual([
+      expect.objectContaining({ incidentDate: '2026-08-12', occurrence: 1 }),
+    ]);
+  });
+
+  it('idempotent replay heals orphan DisciplineEvent when letter already reversed', async () => {
+    const { tx, getState } = makeReconcileFakeTx({
+      letters: [
+        {
+          id: 'letter-mc-2',
+          letterType: LetterType.WARNING,
+          generatedAt: new Date('2026-08-01T00:00:00.000Z'),
+          variables: {
+            incidentDate: '2026-08-10',
+            monthlyMissingCheckoutOccurrence: 2,
+            reversed: true,
+            reversedAt: '2026-08-11T00:00:00.000Z',
+            reversalTrigger: 'CHECKOUT_PROVIDED',
+          },
+          requiresAcknowledgement: false,
+        },
+      ],
+      disciplineEvents: [
+        {
+          id: 'de-1',
+          employeeId: EMPLOYEE_ID,
+          category: 'MISSING_CHECKOUT',
+          incidentDate: '2026-08-05',
+          occurrence: 1,
+        },
+        {
+          id: 'de-2',
+          employeeId: EMPLOYEE_ID,
+          category: 'MISSING_CHECKOUT',
+          incidentDate: '2026-08-10',
+          occurrence: 2,
+        },
+        {
+          id: 'de-3',
+          employeeId: EMPLOYEE_ID,
+          category: 'MISSING_CHECKOUT',
+          incidentDate: '2026-08-15',
+          occurrence: 3,
+        },
+      ],
+    });
+
+    const result = await reverseMissingCheckoutDisciplineForDate(
+      tx,
+      EMPLOYEE_ID,
+      new Date('2026-08-10T00:00:00.000Z'),
+    );
+
+    expect(result.reversed).toBe(false);
+    expect(result.disciplineEventRemoved).toBe(true);
+    const remaining = [...getState().disciplineEvents].sort((a, b) =>
+      a.incidentDate.localeCompare(b.incidentDate),
+    );
+    expect(remaining.map((e) => [e.incidentDate, e.occurrence])).toEqual([
+      ['2026-08-05', 1],
+      ['2026-08-15', 2],
+    ]);
   });
 });
 
@@ -1061,8 +1281,9 @@ describe('reconcileAttendanceFinancialConsequences', () => {
       });
 
       expect(result.missingCheckoutReversal?.deductionReversed).toBe(true);
+      expect(result.missingCheckoutReversal?.disciplineEventRemoved).toBe(true);
       expect(getState().deductions).toHaveLength(0);
-      expect(getState().disciplineEvents).toHaveLength(1);
+      expect(getState().disciplineEvents).toHaveLength(0);
     });
 
     it('PROCESSED payroll — missing-checkout deduction stays frozen, blockedByPayrollStatus reported', async () => {

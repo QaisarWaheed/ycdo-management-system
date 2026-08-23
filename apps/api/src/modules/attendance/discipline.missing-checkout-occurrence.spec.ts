@@ -16,6 +16,7 @@ import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
 import {
   applyMissingCheckoutDiscipline,
   renumberMissingCheckoutOccurrencesForMonth,
+  reverseMissingCheckoutDisciplineForDate,
 } from './discipline.helper';
 
 const issueMock = issueAutoTemplatedLetter as jest.MockedFunction<
@@ -37,6 +38,7 @@ type FakeLetter = {
   letterType: LetterType;
   generatedAt: Date;
   variables: Record<string, unknown>;
+  requiresAcknowledgement?: boolean;
 };
 
 function makeTx(seed?: { letters?: FakeLetter[] }) {
@@ -80,6 +82,23 @@ function makeTx(seed?: { letters?: FakeLetter[] }) {
     },
     letter: {
       findMany: jest.fn(async () => letters),
+      update: jest.fn(
+        async (args: {
+          where: { id: string };
+          data: {
+            variables: Record<string, unknown>;
+            requiresAcknowledgement?: boolean;
+          };
+        }) => {
+          const letter = letters.find((l) => l.id === args.where.id);
+          if (!letter) throw new Error('letter not found');
+          letter.variables = args.data.variables;
+          if (args.data.requiresAcknowledgement !== undefined) {
+            letter.requiresAcknowledgement = args.data.requiresAcknowledgement;
+          }
+          return letter;
+        },
+      ),
     },
     disciplineEvent: {
       count: jest.fn(
@@ -185,6 +204,29 @@ function makeTx(seed?: { letters?: FakeLetter[] }) {
           };
           events.push(e);
           return e;
+        },
+      ),
+      deleteMany: jest.fn(
+        async (args: {
+          where: {
+            employeeId: string;
+            category: string;
+            incidentDate: Date;
+          };
+        }) => {
+          const incidentDate = args.where.incidentDate
+            .toISOString()
+            .slice(0, 10);
+          const before = events.length;
+          events = events.filter(
+            (e) =>
+              !(
+                e.employeeId === args.where.employeeId &&
+                e.category === args.where.category &&
+                e.incidentDate === incidentDate
+              ),
+          );
+          return { count: before - events.length };
         },
       ),
     },
@@ -336,5 +378,123 @@ describe('missing-checkout chronological occurrence', () => {
     expect(first.updated).toBe(0);
     expect(second.updated).toBe(0);
     expect(getEvents().map((e) => e.occurrence)).toEqual([1, 2]);
+  });
+});
+
+describe('reverseMissingCheckoutDisciplineForDate occurrence renumbering', () => {
+  it('occurrences 1,2,3 — resolving #2 leaves remaining events as 1,2', async () => {
+    const { tx, getEvents, getLetters } = makeTx();
+
+    for (const day of ['2026-08-05', '2026-08-10', '2026-08-15']) {
+      await applyMissingCheckoutDiscipline(
+        tx,
+        EMP_ID,
+        new Date(`${day}T00:00:00.000Z`),
+        opts(day),
+      );
+    }
+    expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
+      ['2026-08-05', 1],
+      ['2026-08-10', 2],
+      ['2026-08-15', 3],
+    ]);
+
+    const result = await reverseMissingCheckoutDisciplineForDate(
+      tx,
+      EMP_ID,
+      new Date('2026-08-10T00:00:00.000Z'),
+    );
+
+    expect(result.reversed).toBe(true);
+    expect(result.disciplineEventRemoved).toBe(true);
+    expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
+      ['2026-08-05', 1],
+      ['2026-08-15', 2],
+    ]);
+    const reversed = getLetters().find(
+      (l) => (l.variables as { incidentDate?: string }).incidentDate === '2026-08-10',
+    );
+    expect(reversed?.variables.reversed).toBe(true);
+    expect(reversed?.variables.reversalTrigger).toBe('CHECKOUT_PROVIDED');
+    expect(reversed?.requiresAcknowledgement).toBe(false);
+  });
+
+  it('resolving occurrence 1 shifts the later event down to 1', async () => {
+    const { tx, getEvents } = makeTx();
+
+    for (const day of ['2026-08-05', '2026-08-12']) {
+      await applyMissingCheckoutDiscipline(
+        tx,
+        EMP_ID,
+        new Date(`${day}T00:00:00.000Z`),
+        opts(day),
+      );
+    }
+
+    await reverseMissingCheckoutDisciplineForDate(
+      tx,
+      EMP_ID,
+      new Date('2026-08-05T00:00:00.000Z'),
+    );
+
+    expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
+      ['2026-08-12', 1],
+    ]);
+  });
+
+  it('reversed incident no longer affects the next Missing Checkout occurrence', async () => {
+    const { tx, getEvents } = makeTx();
+
+    await applyMissingCheckoutDiscipline(
+      tx,
+      EMP_ID,
+      new Date('2026-08-05T00:00:00.000Z'),
+      opts('2026-08-05'),
+    );
+    await reverseMissingCheckoutDisciplineForDate(
+      tx,
+      EMP_ID,
+      new Date('2026-08-05T00:00:00.000Z'),
+    );
+    await applyMissingCheckoutDiscipline(
+      tx,
+      EMP_ID,
+      new Date('2026-08-12T00:00:00.000Z'),
+      opts('2026-08-12'),
+    );
+
+    expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
+      ['2026-08-12', 1],
+    ]);
+    const lastCall = issueMock.mock.calls[issueMock.mock.calls.length - 1];
+    expect(lastCall?.[1].letterType).toBe(LetterType.ADVICE);
+    expect(lastCall?.[1].extraFields?.monthlyMissingCheckoutOccurrence).toBe(1);
+  });
+
+  it('repeated reversal is a no-op after the first successful run', async () => {
+    const { tx, getEvents } = makeTx();
+    await applyMissingCheckoutDiscipline(
+      tx,
+      EMP_ID,
+      new Date('2026-08-05T00:00:00.000Z'),
+      opts('2026-08-05'),
+    );
+
+    const first = await reverseMissingCheckoutDisciplineForDate(
+      tx,
+      EMP_ID,
+      new Date('2026-08-05T00:00:00.000Z'),
+    );
+    const second = await reverseMissingCheckoutDisciplineForDate(
+      tx,
+      EMP_ID,
+      new Date('2026-08-05T00:00:00.000Z'),
+    );
+
+    expect(first.reversed).toBe(true);
+    expect(first.disciplineEventRemoved).toBe(true);
+    expect(second.reversed).toBe(false);
+    expect(second.disciplineEventRemoved).toBe(false);
+    expect(getEvents()).toHaveLength(0);
   });
 });

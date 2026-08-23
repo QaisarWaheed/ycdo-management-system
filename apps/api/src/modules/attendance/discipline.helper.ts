@@ -1180,9 +1180,9 @@ export type MissingCheckoutOptions = {
  * (HR edit, temp auto-checkout, backfill), which is the production bug
  * behind repeating "occurrence 1" mid-month.
  *
- * Kept claims after reverseMissingCheckoutDisciplineForDate still count,
- * so a reversed historical incident does not free its slot for a later day
- * to be renumbered downward.
+ * Resolved incidents (checkout provided) delete their claim via
+ * reverseMissingCheckoutDisciplineForDate, so they no longer occupy a slot
+ * in the monthly sequence.
  */
 export async function resolveMissingCheckoutOccurrenceForDate(
   tx: Prisma.TransactionClient,
@@ -1303,9 +1303,8 @@ export async function applyMissingCheckoutDiscipline(
   });
   const missingCount = claimedEvent?.occurrence ?? provisionalCount;
 
-  // Belt-and-suspenders: if a letter (including reversed) already exists for
-  // this incident date on the missing-checkout track, never issue another —
-  // even if an older reverse path deleted the DisciplineEvent claim.
+  // Belt-and-suspenders: if an active (non-reversed) letter already exists
+  // for this incident date on the missing-checkout track, never issue another.
   const priorForDay = await tx.letter.findMany({
     where: {
       employeeId,
@@ -1320,7 +1319,9 @@ export async function applyMissingCheckoutDiscipline(
     const vars = letter.variables as {
       monthlyMissingCheckoutOccurrence?: number;
       incidentDate?: string;
+      reversed?: boolean;
     } | null;
+    if (vars?.reversed) return false;
     return (
       vars?.monthlyMissingCheckoutOccurrence != null &&
       vars.incidentDate === dayKey
@@ -1477,10 +1478,9 @@ async function hasLetterForMonthlyMissingCheckoutOccurrence(
       reversedDueToShortLeave?: boolean;
       reversed?: boolean;
     } | null;
-    // Soft-voided late-style flag — ignore. MC uses `reversed`; those rows
-    // still block re-issue for the same occurrence+incidentDate so turning
-    // TEMPORARY_AUTO_CHECKOUT off cannot recreate the same letter.
+    // Soft-voided / checkout-resolved letters no longer block re-issue.
     if (vars?.reversedDueToShortLeave) return false;
+    if (vars?.reversed) return false;
     if (vars?.monthlyMissingCheckoutOccurrence !== missingCount) return false;
     if (!vars.incidentDate) return true;
     return vars.incidentDate === dateLabel;
@@ -2006,8 +2006,8 @@ export type MissingCheckoutReversalResult = {
   deductionAmount: number | null;
   /** True when a matching deduction existed but its PayrollEntry is no
    * longer PENDING — the deduction/totals were deliberately left untouched
-   * (financial freeze preserved) even though the letter/DisciplineEvent
-   * were still reversed. */
+   * (financial freeze preserved) even though the letter was still reversed
+   * and the DisciplineEvent claim removed. */
   blockedByPayrollStatus: boolean;
   payrollStatus: string | null;
   disciplineEventRemoved: boolean;
@@ -2031,10 +2031,9 @@ export type MissingCheckoutReversalResult = {
  * DISCIPLINARY_FINE deduction and restores PayrollEntry.totalDeductions/
  * netStipend, but ONLY when that entry is still PENDING. Any type: the
  * letter is kept but annotated reversed and requiresAcknowledgement is
- * cleared. The date's DisciplineEvent(MISSING_CHECKOUT) claim is KEPT so
- * turning TEMPORARY_AUTO_CHECKOUT off (or a later cron tick) cannot
- * re-issue a letter for the same incident date after checkout was
- * provided / auto-punched.
+ * cleared. The date's DisciplineEvent(MISSING_CHECKOUT) claim is DELETED
+ * and remaining events in the month are renumbered so a resolved incident
+ * no longer counts toward the monthly occurrence sequence.
  *
  * Fully idempotent: a second call for the same date finds no active letter
  * (already annotated reversed) and returns a no-op result.
@@ -2084,7 +2083,36 @@ export async function reverseMissingCheckoutDisciplineForDate(
     return vars.incidentDate === dateLabel && !vars.reversed;
   });
 
-  if (!letter) return noOpResult; // no structured link to this exact date — nothing safely reversible, or already reversed
+  if (!letter) {
+    // Idempotent heal: letter already reversed on a prior call but an older
+    // reverse path may have left the DisciplineEvent claim behind.
+    const reversedForDate = candidates.find((l) => {
+      const vars = l.variables as {
+        monthlyMissingCheckoutOccurrence?: number;
+        incidentDate?: string;
+        reversed?: boolean;
+      } | null;
+      if (vars?.monthlyMissingCheckoutOccurrence == null) return false;
+      return vars.incidentDate === dateLabel && vars.reversed === true;
+    });
+    if (reversedForDate) {
+      const deletedEvents = await tx.disciplineEvent.deleteMany({
+        where: {
+          employeeId,
+          category: DisciplineCategory.MISSING_CHECKOUT,
+          incidentDate: dayStart,
+        },
+      });
+      if (deletedEvents.count > 0) {
+        await renumberMissingCheckoutOccurrencesForMonth(tx, employeeId, date);
+      }
+      return {
+        ...noOpResult,
+        disciplineEventRemoved: deletedEvents.count > 0,
+      };
+    }
+    return noOpResult; // no structured link to this exact date — nothing safely reversible
+  }
 
   const vars = letter.variables as {
     monthlyMissingCheckoutOccurrence?: number;
@@ -2161,23 +2189,15 @@ export async function reverseMissingCheckoutDisciplineForDate(
     },
   });
 
-  // Keep DisciplineEvent so this incidentDate can never be claimed again
-  // after TEMPORARY_AUTO_CHECKOUT is turned off (or checkOut is cleared).
-  // Ensure a claim exists even if an older reverse path had deleted it.
-  if (occurrence != null) {
-    try {
-      await tx.disciplineEvent.create({
-        data: {
-          employeeId,
-          category: DisciplineCategory.MISSING_CHECKOUT,
-          incidentDate: dayStart,
-          occurrence,
-        },
-      });
-    } catch (err: unknown) {
-      if (!isUniqueConstraintViolation(err)) throw err;
-    }
-  }
+  const deletedEvents = await tx.disciplineEvent.deleteMany({
+    where: {
+      employeeId,
+      category: DisciplineCategory.MISSING_CHECKOUT,
+      incidentDate: dayStart,
+    },
+  });
+
+  await renumberMissingCheckoutOccurrencesForMonth(tx, employeeId, date);
 
   return {
     reversed: true,
@@ -2187,7 +2207,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
     deductionAmount,
     blockedByPayrollStatus,
     payrollStatus,
-    disciplineEventRemoved: false,
+    disciplineEventRemoved: deletedEvents.count > 0,
   };
 }
 
