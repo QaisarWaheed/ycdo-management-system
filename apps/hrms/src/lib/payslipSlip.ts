@@ -77,7 +77,7 @@ export function buildPayslipSlipFromEntry(data: {
   year: number
   basicStipend: number | string
   netStipend: number | string
-  deductions?: Array<{ reason: string; amount: number | string }>
+  deductions?: Array<{ reason: string; amount: number | string; description?: string | null }>
   allowances?: Array<{ type: string; amount: number | string }>
   stipendRecord?: {
     allowances?: number | string | null
