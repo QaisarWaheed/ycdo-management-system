@@ -18,7 +18,13 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { AccessScopeService } from '../permissions/access-scope.service';
-import { GenerateLetterDto, LetterQueryDto, PreviewLetterDto } from './letters.dto';
+import {
+  GenerateLetterDto,
+  LetterQueryDto,
+  PreviewLetterDto,
+  ReverseLetterDto,
+  UpdateLetterDto,
+} from './letters.dto';
 import {
   CreateLetterTemplateDto,
   PreviewLetterTemplateDto,
@@ -105,6 +111,9 @@ export class LettersController {
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
@@ -113,6 +122,51 @@ export class LettersController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.lettersService.generate(dto, user.id, user.role);
+  }
+
+  @Patch(':id')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  updateLetter(
+    @Param('id') id: string,
+    @Body() dto: UpdateLetterDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.lettersService.updateLetter(id, dto, user.id, user.role);
+  }
+
+  @Post(':id/send')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  sendLetter(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.lettersService.sendLetter(id, user.id, user.role);
+  }
+
+  @Post(':id/reverse')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
+  reverseLetter(
+    @Param('id') id: string,
+    @Body() dto: ReverseLetterDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.lettersService.reverseLetter(id, dto, user.id);
   }
 
   @Get()
@@ -150,7 +204,7 @@ export class LettersController {
           ...query,
           employeeId: user.employeeId,
         },
-        user,
+        { ...user, portalOnly: true },
       );
     }
     return this.lettersService.findAll(query, user);

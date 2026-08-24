@@ -1,4 +1,4 @@
-import { LetterType, Prisma, PrismaClient } from '@prisma/client';
+import { LetterStatus, LetterType, Prisma, PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -119,6 +119,7 @@ export async function issueAutoTemplatedLetter(
     data: {
       employeeId: input.employeeId,
       letterType: input.letterType,
+      status: LetterStatus.SENT,
       content: input.extraFields as Prisma.InputJsonValue,
       letterNo,
       variables: variables as Prisma.InputJsonValue,

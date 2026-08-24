@@ -435,6 +435,7 @@ export interface Letter {
   id: string
   employeeId?: string
   letterType: string
+  status?: 'DRAFT' | 'SENT' | 'REVERSED'
   fileUrl?: string | null
   letterNo?: string | null
   variables?: Record<string, unknown> | null
@@ -448,6 +449,8 @@ export interface Letter {
   isReplied?: boolean
   autoEscalated?: boolean
   requiresAcknowledgement?: boolean
+  reversedAt?: string | null
+  reversalReason?: string | null
   acknowledgement?: AllegationAcknowledgement | null
   employee?: {
     id?: string

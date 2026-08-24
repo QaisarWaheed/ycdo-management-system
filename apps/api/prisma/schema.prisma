@@ -676,6 +676,7 @@ model Letter {
   id            String     @id @default(uuid())
   employeeId    String
   letterType    LetterType
+  status        LetterStatus @default(SENT)
   content       Json
   generatedAt   DateTime   @default(now())
   printedAt     DateTime?
@@ -690,11 +691,18 @@ model Letter {
   requiresAcknowledgement Boolean @default(false)
   whatsappSharedAt        DateTime?
   whatsappShareChannel    String?
+  reversedAt              DateTime?
+  reversedById            String?
+  reversalReason          String?
 
   employee        Employee                   @relation(fields: [employeeId], references: [id])
+  reversedBy      User?                      @relation("LetterReversedBy", fields: [reversedById], references: [id])
   replies         LetterReply[]
   acknowledgement AllegationAcknowledgement?
   whatsappSend    WhatsAppLetterSend?
+
+  @@index([status])
+  @@index([employeeId, status])
 }
 
 model WhatsAppLetterSend {
@@ -754,6 +762,12 @@ enum LetterType {
   EXPERIENCE
   EXPLANATION_FINE
   CUSTOM
+}
+
+enum LetterStatus {
+  DRAFT
+  SENT
+  REVERSED
 }
 
 // ─── LEAVE ────────────────────────────────────────────────
@@ -948,6 +962,7 @@ model User {
   reviewedOnboardingApprovals  EmployeeOnboardingApproval[] @relation("ReviewedOnboardingApprovals")
   mutualSwapsCreated           MutualSwap[]
   loginOtpChallenges           LoginOtpChallenge[]
+  lettersReversed              Letter[] @relation("LetterReversedBy")
 }
 
 model LoginOtpChallenge {

@@ -1,7 +1,7 @@
 # Discipline letters UX (phase 2)
 
 Date: 2026-08-25  
-Status: pending user review of this document (design sections approved in chat)  
+Status: approved for implementation (phase 2)  
 Depends on: `docs/superpowers/specs/2026-08-24-suspension-watchlist-design.md` (phase 1)
 
 ## Goal

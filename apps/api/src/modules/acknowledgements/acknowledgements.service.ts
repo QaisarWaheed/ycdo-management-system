@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { LetterStatus, UserRole } from '@prisma/client';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AcknowledgeDto } from './acknowledgements.dto';
@@ -35,6 +35,10 @@ export class AcknowledgementsService {
 
     if (letter.employeeId !== employeeId) {
       throw new ForbiddenException('You can only acknowledge your own letters');
+    }
+
+    if (letter.status !== LetterStatus.SENT) {
+      throw new BadRequestException('Only sent letters can be acknowledged');
     }
 
     if (!letter.requiresAcknowledgement) {
@@ -145,6 +149,7 @@ export class AcknowledgementsService {
     return this.prisma.letter.findMany({
       where: {
         employeeId,
+        status: LetterStatus.SENT,
         requiresAcknowledgement: true,
         acknowledgement: null,
       },

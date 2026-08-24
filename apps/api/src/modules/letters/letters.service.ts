@@ -1,11 +1,15 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  DeductionType,
   Gender,
+  LetterStatus,
   LetterType,
+  PayrollStatus,
   Permission,
   Prisma,
   UserRole,
@@ -30,6 +34,8 @@ import {
   GenerateLetterDto,
   LetterQueryDto,
   PreviewLetterDto,
+  ReverseLetterDto,
+  UpdateLetterDto,
 } from './letters.dto';
 import {
   CreateLetterTemplateDto,
@@ -61,7 +67,16 @@ import {
 
 const SELECTION_TEMPLATE_CODE = 'SELECTION_LETTER';
 
+/** Discipline letters that stay DRAFT until HR explicitly sends to portal. */
+const DRAFT_UNTIL_SEND_TYPES: LetterType[] = [
+  LetterType.ADVICE,
+  LetterType.WARNING,
+  LetterType.FINE,
+  LetterType.SUSPENSION,
+];
+
 const ACKNOWLEDGEMENT_TYPES: LetterType[] = [
+  LetterType.ADVICE,
   LetterType.WARNING,
   LetterType.SHOW_CAUSE,
   LetterType.SUSPENSION,
@@ -351,6 +366,7 @@ export class LettersService {
         data: {
           employeeId: dto.employeeId,
           letterType: LetterType.APPOINTMENT,
+          status: LetterStatus.SENT,
           templateCode: SELECTION_TEMPLATE_CODE,
           content: (dto.extraFields ?? {}) as Prisma.InputJsonValue,
           fileUrl,
@@ -430,21 +446,25 @@ export class LettersService {
         ? new Date(Date.now() + 48 * 60 * 60 * 1000)
         : undefined;
 
+    const deferPortal = DRAFT_UNTIL_SEND_TYPES.includes(dto.letterType);
+    const status = deferPortal ? LetterStatus.DRAFT : LetterStatus.SENT;
+
     const letter = await this.prisma.$transaction(async (tx) => {
       const record = await tx.letter.create({
         data: {
           employeeId: dto.employeeId,
           letterType: dto.letterType,
+          status,
           templateCode: built.templateCode,
           content: (dto.extraFields ?? {}) as Prisma.InputJsonValue,
           fileUrl,
           letterNo,
           variables: built.variables as Prisma.InputJsonValue,
           templateVersion: built.templateVersion,
-          replyDeadline,
-          requiresAcknowledgement: ACKNOWLEDGEMENT_TYPES.includes(
-            dto.letterType,
-          ),
+          replyDeadline: deferPortal ? undefined : replyDeadline,
+          requiresAcknowledgement: deferPortal
+            ? false
+            : ACKNOWLEDGEMENT_TYPES.includes(dto.letterType),
         },
       });
 
@@ -458,37 +478,42 @@ export class LettersService {
             changes: {
               letterType: dto.letterType,
               letterNo,
+              status,
             },
           },
         });
       }
 
-      const letterLabel =
-        dto.letterType === LetterType.CUSTOM
-          ? built.templateName
-          : dto.letterType.replace(/_/g, ' ');
+      if (!deferPortal) {
+        const letterLabel =
+          dto.letterType === LetterType.CUSTOM
+            ? built.templateName
+            : dto.letterType.replace(/_/g, ' ');
 
-      await tx.notification.create({
-        data: {
-          employeeId: dto.employeeId,
-          type: 'LETTER_ISSUED',
-          message: `A ${letterLabel} letter (${letterNo}) has been issued to you.`,
-        },
-      });
+        await tx.notification.create({
+          data: {
+            employeeId: dto.employeeId,
+            type: 'LETTER_ISSUED',
+            message: `A ${letterLabel} letter (${letterNo}) has been issued to you.`,
+          },
+        });
+      }
 
       return record;
     });
 
-    await this.whatsappService.deliverAfterLetterGenerated({
-      letterId: letter.id,
-      employeeId: dto.employeeId,
-      employeeName: String(built.variables.employeeName ?? ''),
-      letterType: dto.letterType,
-      phone: built.phone,
-      fileUrl,
-      pdfBuffer,
-      filename: `${sanitizeRefForFilename(letterNo)}.pdf`,
-    });
+    if (!deferPortal) {
+      await this.whatsappService.deliverAfterLetterGenerated({
+        letterId: letter.id,
+        employeeId: dto.employeeId,
+        employeeName: String(built.variables.employeeName ?? ''),
+        letterType: dto.letterType,
+        phone: built.phone,
+        fileUrl,
+        pdfBuffer,
+        filename: `${sanitizeRefForFilename(letterNo)}.pdf`,
+      });
+    }
 
     return { letter, previewHtml: built.htmlContent };
   }
@@ -802,9 +827,362 @@ export class LettersService {
     return `/uploads/letters/${employeeId}/${fileName}`;
   }
 
+  async updateLetter(
+    letterId: string,
+    dto: UpdateLetterDto,
+    actingUserId: string,
+    actingRole: UserRole,
+  ) {
+    const letter = await this.findOne(letterId);
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUserId,
+      actingRole,
+      Permission.LETTERS_GENERATE,
+      letter.employeeId,
+    );
+
+    if (letter.status === LetterStatus.REVERSED) {
+      throw new BadRequestException('Cannot edit a reversed letter');
+    }
+    if (letter.status === LetterStatus.SENT && letter.acknowledgement) {
+      throw new BadRequestException(
+        'Cannot edit a letter after the employee has acknowledged it',
+      );
+    }
+    if (letter.letterType === LetterType.APPOINTMENT) {
+      throw new BadRequestException(
+        'Appointment letters cannot be edited; delete the draft and regenerate',
+      );
+    }
+
+    const extraFields = {
+      ...((letter.content as Record<string, unknown>) ?? {}),
+      ...(dto.extraFields ?? {}),
+    };
+
+    const letterNo = letter.letterNo ?? (await this.nextLetterNo());
+    const built = await this.buildTemplatedLetterHtml(
+      letter.employeeId,
+      letter.letterType,
+      extraFields,
+      letterNo,
+      dto.templateCode ?? letter.templateCode ?? undefined,
+    );
+    const pdfBuffer = await generatePdf(built.htmlContent);
+    const fileUrl = await this.persistPdf(
+      pdfBuffer,
+      letterNo,
+      letter.employeeId,
+    );
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const record = await tx.letter.update({
+        where: { id: letterId },
+        data: {
+          content: extraFields as Prisma.InputJsonValue,
+          variables: built.variables as Prisma.InputJsonValue,
+          templateCode: built.templateCode,
+          templateVersion: built.templateVersion,
+          fileUrl,
+          letterNo,
+        },
+        include: {
+          employee: { select: { fullName: true, employeeCode: true } },
+          acknowledgement: true,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'LETTER_UPDATED',
+          entity: 'Letter',
+          entityId: letterId,
+          changes: { letterNo, status: letter.status },
+        },
+      });
+
+      return record;
+    });
+
+    return { letter: updated, previewHtml: built.htmlContent };
+  }
+
+  async sendLetter(
+    letterId: string,
+    actingUserId: string,
+    actingRole: UserRole,
+  ) {
+    const letter = await this.findOne(letterId);
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUserId,
+      actingRole,
+      Permission.LETTERS_GENERATE,
+      letter.employeeId,
+    );
+
+    if (letter.status === LetterStatus.REVERSED) {
+      throw new BadRequestException('Cannot send a reversed letter');
+    }
+    if (letter.status === LetterStatus.SENT) {
+      return {
+        letter,
+        alreadySent: true,
+        message: 'Letter already sent to portal',
+      };
+    }
+
+    const requiresAck = ACKNOWLEDGEMENT_TYPES.includes(letter.letterType);
+    const replyDeadline =
+      letter.letterType === LetterType.SHOW_CAUSE
+        ? new Date(Date.now() + 48 * 60 * 60 * 1000)
+        : letter.replyDeadline;
+
+    const letterLabel =
+      letter.letterType === LetterType.CUSTOM
+        ? String(
+            (letter.variables as Record<string, unknown> | null)?.templateName ??
+              'Custom',
+          )
+        : letter.letterType.replace(/_/g, ' ');
+    const letterNo = letter.letterNo ?? letterId.slice(0, 8);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const record = await tx.letter.update({
+        where: { id: letterId },
+        data: {
+          status: LetterStatus.SENT,
+          requiresAcknowledgement: requiresAck,
+          replyDeadline: replyDeadline ?? undefined,
+        },
+        include: {
+          employee: {
+            select: {
+              id: true,
+              fullName: true,
+              employeeCode: true,
+              phone: true,
+            },
+          },
+          acknowledgement: true,
+        },
+      });
+
+      await tx.notification.create({
+        data: {
+          employeeId: letter.employeeId,
+          type: 'LETTER_ISSUED',
+          message: `A ${letterLabel} letter (${letterNo}) has been issued to you.`,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'LETTER_SENT',
+          entity: 'Letter',
+          entityId: letterId,
+          changes: { letterNo, letterType: letter.letterType },
+        },
+      });
+
+      return record;
+    });
+
+    // Best-effort WhatsApp after portal publish
+    try {
+      const { buffer, filename } = await this.getPdf(letterId);
+      const phone = updated.employee?.phone ?? null;
+      await this.whatsappService.deliverAfterLetterGenerated({
+        letterId,
+        employeeId: letter.employeeId,
+        employeeName: updated.employee?.fullName ?? '',
+        letterType: letter.letterType,
+        phone,
+        fileUrl: updated.fileUrl,
+        pdfBuffer: buffer,
+        filename,
+      });
+    } catch (err) {
+      console.error(`WhatsApp deliver after send failed for ${letterId}:`, err);
+    }
+
+    return { letter: updated, alreadySent: false };
+  }
+
+  async reverseLetter(
+    letterId: string,
+    dto: ReverseLetterDto,
+    actingUserId: string,
+  ) {
+    const letter = await this.findOne(letterId);
+
+    if (letter.status === LetterStatus.DRAFT) {
+      throw new BadRequestException(
+        'Draft letters should be deleted, not reversed',
+      );
+    }
+    if (letter.status === LetterStatus.REVERSED) {
+      throw new ConflictException('Letter is already reversed');
+    }
+
+    const vars = (letter.variables ?? {}) as Record<string, unknown>;
+    let fineUndone = false;
+    let fineSkippedReason: string | null = null;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.letter.update({
+        where: { id: letterId },
+        data: {
+          status: LetterStatus.REVERSED,
+          requiresAcknowledgement: false,
+          reversedAt: new Date(),
+          reversedById: actingUserId,
+          reversalReason: dto.reason.trim(),
+          variables: {
+            ...vars,
+            reversed: true,
+            reversedAt: new Date().toISOString(),
+            reversalReason: dto.reason.trim(),
+          } as Prisma.InputJsonValue,
+        },
+        include: {
+          employee: { select: { fullName: true, employeeCode: true } },
+          acknowledgement: true,
+        },
+      });
+
+      // Unwind pending fine deduction linked by incident date / occurrence
+      if (
+        letter.letterType === LetterType.FINE ||
+        letter.letterType === LetterType.EXPLANATION_FINE
+      ) {
+        const unwind = await this.tryUnwindFineDeduction(tx, letter);
+        fineUndone = unwind.undone;
+        fineSkippedReason = unwind.skippedReason;
+      }
+
+      // Soft-mark linked DisciplineEvent for the incident date when present
+      const incidentDateRaw =
+        (typeof vars.incidentDate === 'string' && vars.incidentDate) ||
+        (typeof vars.suspensionStartDate === 'string' &&
+          vars.suspensionStartDate) ||
+        null;
+      if (incidentDateRaw) {
+        const day = new Date(`${incidentDateRaw.slice(0, 10)}T00:00:00.000Z`);
+        if (!Number.isNaN(day.getTime())) {
+          await tx.disciplineEvent.deleteMany({
+            where: {
+              employeeId: letter.employeeId,
+              incidentDate: day,
+            },
+          });
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'LETTER_REVERSED',
+          entity: 'Letter',
+          entityId: letterId,
+          changes: {
+            reason: dto.reason.trim(),
+            fineUndone,
+            fineSkippedReason,
+          },
+        },
+      });
+
+      return updated;
+    });
+
+    return {
+      letter: result,
+      fineUndone,
+      fineSkippedReason,
+      message: fineSkippedReason
+        ? `Letter reversed; ${fineSkippedReason}`
+        : fineUndone
+          ? 'Letter reversed; pending fine undone'
+          : 'Letter reversed',
+    };
+  }
+
+  private async tryUnwindFineDeduction(
+    tx: Prisma.TransactionClient,
+    letter: {
+      employeeId: string;
+      letterType: LetterType;
+      variables: unknown;
+      generatedAt: Date;
+    },
+  ): Promise<{ undone: boolean; skippedReason: string | null }> {
+    const vars = (letter.variables ?? {}) as Record<string, unknown>;
+    const incidentDate =
+      typeof vars.incidentDate === 'string'
+        ? vars.incidentDate.slice(0, 10)
+        : null;
+
+    const deductions = await tx.payrollDeduction.findMany({
+      where: {
+        payrollEntry: {
+          stipendRecord: { employeeId: letter.employeeId },
+        },
+        reason: {
+          in: [DeductionType.DISCIPLINARY_FINE, DeductionType.LATE_ARRIVAL],
+        },
+        ...(incidentDate
+          ? { description: { contains: incidentDate } }
+          : {}),
+      },
+      include: {
+        payrollEntry: {
+          select: {
+            id: true,
+            status: true,
+            totalDeductions: true,
+            netStipend: true,
+          },
+        },
+      },
+      take: 10,
+    });
+
+    if (deductions.length === 0) {
+      return { undone: false, skippedReason: null };
+    }
+
+    const pending = deductions.find(
+      (d) => d.payrollEntry.status === PayrollStatus.PENDING,
+    );
+    if (!pending) {
+      return {
+        undone: false,
+        skippedReason: 'fine not undone (payroll finalized)',
+      };
+    }
+
+    const amount = Number(pending.amount);
+    await tx.payrollDeduction.delete({ where: { id: pending.id } });
+    await tx.payrollEntry.update({
+      where: { id: pending.payrollEntry.id },
+      data: {
+        totalDeductions: {
+          decrement: amount,
+        },
+        netStipend: {
+          increment: amount,
+        },
+      },
+    });
+
+    return { undone: true, skippedReason: null };
+  }
+
   async findAll(
     query: LetterQueryDto,
-    actingUser?: { id: string; role: UserRole },
+    actingUser?: { id: string; role: UserRole; portalOnly?: boolean },
   ) {
     const where: Prisma.LetterWhereInput = {};
 
@@ -816,6 +1194,12 @@ export class LettersService {
       where.letterType = query.letterType;
     }
 
+    if (query.status) {
+      where.status = query.status;
+    } else if (actingUser?.portalOnly) {
+      where.status = LetterStatus.SENT;
+    }
+
     if (query.startDate && query.endDate) {
       where.generatedAt = {
         gte: new Date(query.startDate),
@@ -823,7 +1207,7 @@ export class LettersService {
       };
     }
 
-    if (actingUser?.id) {
+    if (actingUser?.id && !actingUser.portalOnly) {
       where.employee =
         await this.accessScopeService.narrowEmployeeWhereForActor(
           actingUser.id,
@@ -855,6 +1239,7 @@ export class LettersService {
     actingUser?: { id: string; role: UserRole },
   ) {
     const where: Prisma.LetterWhereInput = {
+      status: LetterStatus.SENT,
       whatsappSharedAt: null,
       OR: [
         { whatsappSend: null },
@@ -1183,6 +1568,12 @@ export class LettersService {
 
   async deleteLetterr(letterId: string) {
     const letter = await this.findOne(letterId);
+
+    if (letter.status !== LetterStatus.DRAFT) {
+      throw new BadRequestException(
+        'Only draft letters can be deleted. Ask IT to reverse a sent letter.',
+      );
+    }
 
     if (letter.fileUrl && !letter.fileUrl.startsWith('http')) {
       const fullPath = path.join(

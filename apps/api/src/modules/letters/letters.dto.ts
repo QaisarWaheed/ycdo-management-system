@@ -1,4 +1,4 @@
-import { LetterType } from '@prisma/client';
+import { LetterStatus, LetterType } from '@prisma/client';
 import {
   IsEnum,
   IsNotEmpty,
@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MinLength,
 } from 'class-validator';
 
 export class GenerateLetterDto {
@@ -46,6 +47,24 @@ export class PreviewLetterDto {
   extraFields?: Record<string, unknown>;
 }
 
+export class UpdateLetterDto {
+  @IsOptional()
+  @IsObject()
+  extraFields?: Record<string, unknown>;
+
+  /** Required when letterType is CUSTOM — identifies which LetterTemplate to use. */
+  @IsOptional()
+  @IsString()
+  templateCode?: string;
+}
+
+export class ReverseLetterDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(3)
+  reason: string;
+}
+
 export class LetterQueryDto {
   @IsOptional()
   @IsUUID()
@@ -54,6 +73,10 @@ export class LetterQueryDto {
   @IsOptional()
   @IsEnum(LetterType)
   letterType?: LetterType;
+
+  @IsOptional()
+  @IsEnum(LetterStatus)
+  status?: LetterStatus;
 
   @IsOptional()
   startDate?: string;

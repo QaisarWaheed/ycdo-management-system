@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { differenceInHours, format, parseISO } from 'date-fns'
 import {
@@ -68,6 +69,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import { usePagination } from '@/hooks/usePagination'
 import {
   getLetterExtraFields,
@@ -339,15 +341,25 @@ const LETTER_ICONS: Record<LetterType, React.ElementType> = {
 function GenerateLetterWizard({
   open,
   onOpenChange,
+  initialEmployeeId,
+  initialLetterType,
+  initialFields,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  initialEmployeeId?: string
+  initialLetterType?: LetterType
+  initialFields?: Record<string, string>
 }) {
   const queryClient = useQueryClient()
   const [step, setStep] = useState(1)
-  const [employeeId, setEmployeeId] = useState('')
-  const [letterType, setLetterType] = useState<LetterType>('WARNING')
-  const [fields, setFields] = useState<Record<string, string>>({})
+  const [employeeId, setEmployeeId] = useState(initialEmployeeId ?? '')
+  const [letterType, setLetterType] = useState<LetterType>(
+    initialLetterType ?? 'WARNING',
+  )
+  const [fields, setFields] = useState<Record<string, string>>(
+    initialFields ?? {},
+  )
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [downloadPrompt, setDownloadPrompt] = useState<{
     id: string
@@ -356,11 +368,18 @@ function GenerateLetterWizard({
 
   const reset = () => {
     setStep(1)
-    setEmployeeId('')
-    setLetterType('WARNING')
-    setFields({})
+    setEmployeeId(initialEmployeeId ?? '')
+    setLetterType(initialLetterType ?? 'WARNING')
+    setFields(initialFields ?? {})
     setPreviewHtml(null)
   }
+
+  useEffect(() => {
+    if (!open) return
+    if (initialEmployeeId) setEmployeeId(initialEmployeeId)
+    if (initialLetterType) setLetterType(initialLetterType)
+    if (initialFields) setFields(initialFields)
+  }, [open, initialEmployeeId, initialLetterType, initialFields])
 
   const extraFields = getLetterExtraFields(letterType)
   const requiredFields = getLetterRequiredFields(letterType)
@@ -433,9 +452,12 @@ function GenerateLetterWizard({
       }),
     onSuccess: (data) => {
       const ref = letterReference(data.letter)
+      const isDraft = data.letter.status === 'DRAFT'
       toast({
-        title: 'Letter generated',
-        description: `Reference: ${ref}`,
+        title: isDraft ? 'Draft letter created' : 'Letter generated',
+        description: isDraft
+          ? `${ref} — send to portal when ready`
+          : `Reference: ${ref}`,
       })
       queryClient.invalidateQueries({ queryKey: ['letters'] })
       queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
@@ -948,16 +970,30 @@ function PendingLetterShareDialog({
 
 export function LettersPage() {
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<'all' | 'pending'>('all')
-  const [employeeId, setEmployeeId] = useState('')
+  const { hasRole } = useAuth()
+  const canReverse = hasRole(['SUPER_ADMIN', 'IT_ADMIN'])
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<'draft' | 'sent' | 'reversed' | 'pending'>(
+    'draft',
+  )
+  const [employeeId, setEmployeeId] = useState(
+    () => searchParams.get('employeeId') ?? '',
+  )
   const [letterType, setLetterType] = useState(ALL)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [generateOpen, setGenerateOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(
+    () => searchParams.get('issue') === '1',
+  )
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [reverseLetter, setReverseLetter] = useState<Letter | null>(null)
+  const [reverseReason, setReverseReason] = useState('')
   const [repliesLetter, setRepliesLetter] = useState<Letter | null>(null)
   const [ackLetter, setAckLetter] = useState<Letter | null>(null)
   const [shareLetter, setShareLetter] = useState<Letter | null>(null)
+
+  const prefillType = (searchParams.get('letterType') as LetterType | null) ?? undefined
+  const prefillViolations = searchParams.get('violations') ?? undefined
 
   const filters = useMemo(
     () => ({
@@ -965,8 +1001,12 @@ export function LettersPage() {
       letterType: letterType !== ALL ? letterType : undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
+      status:
+        tab === 'draft' || tab === 'sent' || tab === 'reversed'
+          ? tab.toUpperCase()
+          : undefined,
     }),
-    [employeeId, letterType, startDate, endDate],
+    [employeeId, letterType, startDate, endDate, tab],
   )
 
   const { data: letters = [], isLoading } = useQuery({
@@ -975,7 +1015,7 @@ export function LettersPage() {
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchInterval: 30000,
-    enabled: tab === 'all',
+    enabled: tab !== 'pending',
   })
 
   const { data: pendingLetters = [], isLoading: pendingLoading } = useQuery({
@@ -1021,8 +1061,52 @@ export function LettersPage() {
       queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
       setDeleteId(null)
     },
-    onError: () => {
-      toast({ title: 'Failed to delete letter', variant: 'destructive' })
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to delete letter',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const sendMutation = useMutation({
+    mutationFn: (id: string) => lettersApi.send(id),
+    onSuccess: (data) => {
+      toast({
+        title: data.alreadySent ? 'Already on portal' : 'Sent to portal',
+        description: data.message,
+      })
+      queryClient.invalidateQueries({ queryKey: ['letters'] })
+      queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Send failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const reverseMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      lettersApi.reverse(id, reason),
+    onSuccess: (data) => {
+      toast({ title: 'Letter reversed', description: data.message })
+      queryClient.invalidateQueries({ queryKey: ['letters'] })
+      setReverseLetter(null)
+      setReverseReason('')
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Reverse failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
     },
   })
 
@@ -1067,12 +1151,16 @@ export function LettersPage() {
 
       <Tabs
         value={tab}
-        onValueChange={(v) => setTab(v as 'all' | 'pending')}
+        onValueChange={(v) =>
+          setTab(v as 'draft' | 'sent' | 'reversed' | 'pending')
+        }
       >
         <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="draft">Draft</TabsTrigger>
+          <TabsTrigger value="sent">Sent</TabsTrigger>
+          <TabsTrigger value="reversed">Reversed</TabsTrigger>
           <TabsTrigger value="pending" className="gap-2">
-            Pending
+            WhatsApp pending
             {pendingTotal > 0 ? (
               <Badge
                 variant="secondary"
@@ -1084,7 +1172,8 @@ export function LettersPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="all" className="space-y-4">
+        {(tab === 'draft' || tab === 'sent' || tab === 'reversed') && (
+          <div className="mt-4 space-y-4">
           <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-white p-4">
             <div className="min-w-[220px] flex-1">
               <EmployeeSearchSelect
@@ -1204,6 +1293,14 @@ export function LettersPage() {
                         >
                           {letter.letterType.replace(/_/g, ' ')}
                         </Badge>
+                        {letter.status ? (
+                          <Badge
+                            variant="secondary"
+                            className="ml-2 font-normal"
+                          >
+                            {letter.status}
+                          </Badge>
+                        ) : null}
                       </TableCell>
                       <TableCell>
                         {format(
@@ -1237,6 +1334,13 @@ export function LettersPage() {
                             >
                               Download PDF
                             </DropdownMenuItem>
+                            {letter.status === 'DRAFT' && (
+                              <DropdownMenuItem
+                                onClick={() => sendMutation.mutate(letter.id)}
+                              >
+                                Send to portal
+                              </DropdownMenuItem>
+                            )}
                             {letter.letterType === 'SHOW_CAUSE' && (
                               <DropdownMenuItem
                                 onClick={() => setRepliesLetter(letter)}
@@ -1251,20 +1355,32 @@ export function LettersPage() {
                                 View Acknowledgement
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem
-                              disabled={!!letter.printedAt}
-                              onClick={() =>
-                                markPrintedMutation.mutate(letter.id)
-                              }
-                            >
-                              Mark as Printed
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-red-600"
-                              onClick={() => setDeleteId(letter.id)}
-                            >
-                              Delete
-                            </DropdownMenuItem>
+                            {letter.status === 'SENT' && (
+                              <DropdownMenuItem
+                                disabled={!!letter.printedAt}
+                                onClick={() =>
+                                  markPrintedMutation.mutate(letter.id)
+                                }
+                              >
+                                Mark as Printed
+                              </DropdownMenuItem>
+                            )}
+                            {canReverse && letter.status === 'SENT' && (
+                              <DropdownMenuItem
+                                className="text-red-600"
+                                onClick={() => setReverseLetter(letter)}
+                              >
+                                Reverse (IT)
+                              </DropdownMenuItem>
+                            )}
+                            {letter.status === 'DRAFT' && (
+                              <DropdownMenuItem
+                                className="text-red-600"
+                                onClick={() => setDeleteId(letter.id)}
+                              >
+                                Delete draft
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -1281,13 +1397,13 @@ export function LettersPage() {
               onPageChange={setPage}
             />
           </div>
-        </TabsContent>
+          </div>
+        )}
 
         <TabsContent value="pending" className="space-y-4">
           <p className="text-sm text-text-secondary">
-            Letters waiting to be sent via WhatsApp Web (including auto late /
-            warning letters). Preview the PDF, then send — attach the downloaded
-            file in WhatsApp.
+            Letters waiting to be sent via WhatsApp Web. Preview the PDF, then
+            send — attach the downloaded file in WhatsApp.
           </p>
 
           <TableRecordCount count={pendingTotal} label="pending letter" />
@@ -1416,6 +1532,11 @@ export function LettersPage() {
       <GenerateLetterWizard
         open={generateOpen}
         onOpenChange={setGenerateOpen}
+        initialEmployeeId={employeeId || undefined}
+        initialLetterType={prefillType}
+        initialFields={
+          prefillViolations ? { violations: prefillViolations } : undefined
+        }
       />
 
       <LetterRepliesDialog
@@ -1436,10 +1557,64 @@ export function LettersPage() {
         onOpenChange={(v) => !v && setShareLetter(null)}
       />
 
+      <Dialog
+        open={!!reverseLetter}
+        onOpenChange={(v) => {
+          if (!v) {
+            setReverseLetter(null)
+            setReverseReason('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reverse letter (IT)</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-text-secondary">
+            This voids the letter on the portal and unwinds linked pending fines
+            where safe.
+          </p>
+          <div className="space-y-2">
+            <Label>Reason</Label>
+            <Textarea
+              value={reverseReason}
+              onChange={(e) => setReverseReason(e.target.value)}
+              placeholder="Why is this letter being reversed?"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReverseLetter(null)
+                setReverseReason('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700"
+              disabled={
+                reverseReason.trim().length < 3 || reverseMutation.isPending
+              }
+              onClick={() => {
+                if (!reverseLetter) return
+                reverseMutation.mutate({
+                  id: reverseLetter.id,
+                  reason: reverseReason.trim(),
+                })
+              }}
+            >
+              Reverse letter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={!!deleteId}
-        title="Delete Letter"
-        description="Are you sure you want to delete this letter? This action cannot be undone."
+        title="Delete draft letter"
+        description="Are you sure you want to delete this draft? This action cannot be undone."
         confirmLabel="Delete"
         confirmVariant="destructive"
         loading={deleteMutation.isPending}

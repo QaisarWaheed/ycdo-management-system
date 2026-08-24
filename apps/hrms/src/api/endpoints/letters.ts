@@ -20,6 +20,23 @@ export const lettersApi = {
     ),
   generate: (data: Record<string, unknown>) =>
     api.post<unknown, GenerateLetterResponse>('/letters', data),
+  update: (id: string, data: Record<string, unknown>) =>
+    api.patch<unknown, GenerateLetterResponse>(`/letters/${id}`, data),
+  send: (id: string) =>
+    api.post<
+      unknown,
+      { letter: Letter; alreadySent?: boolean; message?: string }
+    >(`/letters/${id}/send`),
+  reverse: (id: string, reason: string) =>
+    api.post<
+      unknown,
+      {
+        letter: Letter
+        fineUndone?: boolean
+        fineSkippedReason?: string | null
+        message?: string
+      }
+    >(`/letters/${id}/reverse`, { reason }),
   getPdf: (id: string) =>
     api.get<unknown, Blob>(`/letters/${id}/pdf`, { responseType: 'blob' }),
   getWhatsAppShare: (id: string) =>

@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -66,10 +67,12 @@ function WatchlistTable({
   rows,
   loading,
   emptyLabel,
+  bucket,
 }: {
   rows: WatchEntry[]
   loading: boolean
   emptyLabel: string
+  bucket: 'near' | 'due'
 }) {
   if (loading) {
     return (
@@ -96,10 +99,29 @@ function WatchlistTable({
           <TableHead className="text-right">Late days</TableHead>
           <TableHead className="text-right">UA days</TableHead>
           <TableHead>Reasons</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row) => (
+        {rows.map((row) => {
+          const suggestedType =
+            bucket === 'due'
+              ? 'SUSPENSION'
+              : row.lateDays >= 8 || row.uninformedAbsentDays === 2
+                ? 'WARNING'
+                : 'ADVICE'
+          const violations = [
+            row.lateDays > 0 ? `Late days this month: ${row.lateDays}` : null,
+            row.uninformedAbsentDays > 0
+              ? `Uninformed absent days: ${row.uninformedAbsentDays}`
+              : null,
+            `Watchlist: ${bucket === 'due' ? 'Due for suspension' : 'Near suspension'}`,
+          ]
+            .filter(Boolean)
+            .join('\n')
+          const issueTo = `/letters?issue=1&employeeId=${encodeURIComponent(row.employeeId)}&letterType=${suggestedType}&violations=${encodeURIComponent(violations)}`
+
+          return (
           <TableRow key={row.employeeId}>
             <TableCell>
               <div className="flex flex-col gap-0.5">
@@ -138,8 +160,14 @@ function WatchlistTable({
                 ))}
               </div>
             </TableCell>
+            <TableCell className="text-right">
+              <Button asChild size="sm" variant="outline">
+                <Link to={issueTo}>Issue letter</Link>
+              </Button>
+            </TableCell>
           </TableRow>
-        ))}
+          )
+        })}
       </TableBody>
     </Table>
   )
@@ -206,6 +234,7 @@ export function SuspensionWatchlistPage() {
             rows={due}
             loading={isLoading}
             emptyLabel="No employees due for suspension this month."
+            bucket="due"
           />
         </TabsContent>
         <TabsContent value="near" className="rounded-lg border bg-white">
@@ -213,6 +242,7 @@ export function SuspensionWatchlistPage() {
             rows={near}
             loading={isLoading}
             emptyLabel="No employees near suspension this month."
+            bucket="near"
           />
         </TabsContent>
       </Tabs>
