@@ -372,37 +372,43 @@ export class AttendanceService {
     }
 
     // Hard guards — never silently convert an explicit punch type.
-    // Duplicate-CHECKIN detection is scoped to TODAY only. It must never
-    // consult yesterday's record: an unclosed prior-day session (missed
-    // checkout, or a still-open overnight session) is not a duplicate of a
-    // fresh check-in today, and must not block it.
     if (punchType === 'CHECKIN') {
-      const openRegularToday = await this.findOpenRegularLogForDate(
-        employee.id,
-        dateOnly,
-      );
-      if (openRegularToday?.checkIn) {
-        if (openRegularToday.status === AttendanceStatus.UNMARKED) {
+      const openRegular = twentyFourHour
+        ? await this.findOpenRegularLogForDate(employee.id, dateOnly, false, db)
+        : await this.findOpenRegularSessionBlockingCheckIn(
+            employee,
+            dateOnly,
+            db,
+          );
+
+      if (openRegular?.checkIn) {
+        const sameDay = openRegular.date.getTime() === dateOnly.getTime();
+        if (
+          sameDay &&
+          openRegular.status === AttendanceStatus.UNMARKED
+        ) {
           // checkIn is set but status was never finalized — fix it and
           // report success instead of rejecting as a duplicate.
           const swapExempt = await this.isLateExemptForSwap(
             db,
             employee.id,
             dateOnly,
-            openRegularToday.status,
+            openRegular.status,
           );
           const log = await this.reconcileUnmarkedCheckIn(
             db,
             employee.id,
             employee,
-            openRegularToday,
+            openRegular,
             twentyFourHour,
             swapExempt,
           );
           return { type: 'CHECKIN' as const, log, reconciled: true };
         }
         throw new ConflictException(
-          'Employee already checked in. Duplicate CHECKIN rejected.',
+          sameDay
+            ? 'Employee already checked in. Duplicate CHECKIN rejected.'
+            : 'Previous shift session is still open. Check out before checking in again.',
         );
       }
     }
@@ -3002,7 +3008,12 @@ export class AttendanceService {
   async getActiveTimer(employeeId: string) {
     const dateOnly = this.toDateOnly(new Date());
 
-    const attendanceLog = await this.prisma.attendanceLog.findUnique({
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { dutyStartTime: true, dutyEndTime: true },
+    });
+
+    let attendanceLog = await this.prisma.attendanceLog.findUnique({
       where: {
         employeeId_date_type: {
           employeeId,
@@ -3011,6 +3022,26 @@ export class AttendanceService {
         },
       },
     });
+
+    const todaySessionOpen =
+      !!attendanceLog?.checkIn && !attendanceLog?.checkOut;
+    if (
+      !todaySessionOpen &&
+      employee &&
+      isOvernightShift(
+        employee.dutyStartTime ?? null,
+        employee.dutyEndTime ?? null,
+      )
+    ) {
+      const priorOpen = await this.findOpenRegularLogForDate(
+        employeeId,
+        this.pakistanYesterday(dateOnly),
+        true,
+      );
+      if (priorOpen) {
+        attendanceLog = priorOpen;
+      }
+    }
 
     const overtimeLog = await this.prisma.attendanceLog.findUnique({
       where: {
@@ -3116,8 +3147,19 @@ export class AttendanceService {
       },
     });
 
-    if (existing?.checkIn) {
-      throw new BadRequestException('Already checked in today');
+    const openSession = is24HourShift(employee)
+      ? existing?.checkIn
+        ? existing
+        : null
+      : await this.findOpenRegularSessionBlockingCheckIn(employee, dateOnly);
+
+    if (openSession?.checkIn) {
+      const sameDay = openSession.date.getTime() === dateOnly.getTime();
+      throw new BadRequestException(
+        sameDay
+          ? 'Already checked in today'
+          : 'Previous shift session is still open. Check out before checking in again.',
+      );
     }
 
     let status: AttendanceStatus;
@@ -3249,15 +3291,7 @@ export class AttendanceService {
     const checkTime = new Date();
     const dateOnly = this.toDateOnly(checkTime);
 
-    const existing = await this.prisma.attendanceLog.findUnique({
-      where: {
-        employeeId_date_type: {
-          employeeId,
-          date: dateOnly,
-          type: AttendanceLogType.REGULAR,
-        },
-      },
-    });
+    const existing = await this.findOpenRegularLog(employeeId, dateOnly);
 
     if (!existing?.checkIn) {
       throw new BadRequestException('Must check in before checking out');
@@ -3292,7 +3326,7 @@ export class AttendanceService {
       // flagged this session before this (late) checkout arrived.
       await reconcileAttendanceFinancialConsequences(tx, {
         employeeId,
-        date: dateOnly,
+        date: existing.date,
         before: existing,
         after: updated,
       });
@@ -3302,7 +3336,7 @@ export class AttendanceService {
     // PayrollService.recomputePendingPayrollForAttendanceDate.
     await this.payrollService.recomputePendingPayrollForAttendanceDate(
       employeeId,
-      dateOnly,
+      existing.date,
     );
 
     const hoursWorked =
@@ -3415,8 +3449,8 @@ export class AttendanceService {
    * process (Phase 4B). Callers resolving CHECKOUT or AUTO punches against a
    * *prior* session must pass true, so a session already disciplined as a
    * missing checkout is never mistaken for still-open backend state.
-   * Duplicate-CHECKIN detection for *today* deliberately keeps the default
-   * (false): a same-day row must still be found and rejected as a duplicate
+   * Same-day duplicate-CHECKIN detection deliberately keeps excludeClosed
+   * false: a same-day row must still be found and rejected as a duplicate
    * regardless of closure, since a second check-in would otherwise silently
    * overwrite an already-disciplined row via the upsert.
    */
@@ -3424,8 +3458,9 @@ export class AttendanceService {
     employeeId: string,
     dateOnly: Date,
     excludeClosed = false,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
-    return this.prisma.attendanceLog.findFirst({
+    return db.attendanceLog.findFirst({
       where: {
         employeeId,
         date: dateOnly,
@@ -3440,8 +3475,7 @@ export class AttendanceService {
   /**
    * Open-session lookup for CHECKOUT: today, falling back to yesterday so an
    * overnight shift's checkout after midnight can still find its check-in.
-   * Not for duplicate-CHECKIN detection — see findOpenRegularLogForDate and
-   * findOpenRegularLogForAuto for that.
+   * Duplicate-CHECKIN detection uses findOpenRegularSessionBlockingCheckIn.
    *
    * Includes internally-closed missing-checkout sessions so a later biometric
    * checkout can still complete the day and reverse that discipline.
@@ -3498,6 +3532,46 @@ export class AttendanceService {
       employee.id,
       this.pakistanYesterday(dateOnly),
       true,
+    );
+  }
+
+  /**
+   * Blocks a new CHECKIN when any still-open REGULAR session exists for today,
+   * or — for overnight duty — when yesterday's session is still open
+   * (checkIn set, checkOut null, not internally closed by missing-checkout).
+   */
+  private async findOpenRegularSessionBlockingCheckIn(
+    employee: {
+      id: string;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+    },
+    dateOnly: Date,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
+  ) {
+    const todayOpen = await this.findOpenRegularLogForDate(
+      employee.id,
+      dateOnly,
+      false,
+      db,
+    );
+    if (todayOpen?.checkIn) {
+      return todayOpen;
+    }
+
+    const overnight = isOvernightShift(
+      employee.dutyStartTime ?? null,
+      employee.dutyEndTime ?? null,
+    );
+    if (!overnight) {
+      return null;
+    }
+
+    return this.findOpenRegularLogForDate(
+      employee.id,
+      this.pakistanYesterday(dateOnly),
+      true,
+      db,
     );
   }
 

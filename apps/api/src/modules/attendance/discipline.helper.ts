@@ -685,10 +685,6 @@ async function applyLateDiscipline(
       where: { id: employeeId },
       data: { status: EmployeeStatus.SUSPENDED },
     });
-    await tx.user.updateMany({
-      where: { employeeId },
-      data: { isActive: false },
-    });
     return;
   }
 
@@ -851,10 +847,6 @@ async function applyUninformedAbsenceDisciplineTracking(
       await tx.employee.update({
         where: { id: employeeId },
         data: { status: EmployeeStatus.SUSPENDED },
-      });
-      await tx.user.updateMany({
-        where: { employeeId },
-        data: { isActive: false },
       });
 
       const reason = `اس ماہ ${uninformedCount} دن بغیر اطلاع غیر حاضری (2 دن سے زیادہ) — خودکار معطلی۔`;

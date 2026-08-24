@@ -1654,7 +1654,7 @@ describe('Bug B fix — ABSENT <-> UNINFORMED_ABSENT subtype transitions', () =>
     expect(state.disciplineEvents[0].category).toBe('UNINFORMED_ABSENT');
     expect(state.disciplineEvents[0].incidentDate).toBe(DATE_LABEL);
     expect(state.employeeStatus).toBe('SUSPENDED');
-    expect(state.userIsActive).toBe(false);
+    expect(state.userIsActive).toBe(true);
 
     // Repeated identical promotion (e.g. HR re-saves the same edit) — must
     // not create a second DisciplineEvent or re-fire the suspension side

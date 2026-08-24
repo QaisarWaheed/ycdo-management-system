@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { User, UserRole } from '@prisma/client';
+import { EmployeeStatus, User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -51,14 +51,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (!user.isActive) {
-      throw new UnauthorizedException('Account is inactive');
-    }
-
     const passwordValid = await bcrypt.compare(dto.password, user.password);
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    await this.assertLoginAllowed(user, dto.client);
 
     const roles = buildEffectiveRoles(user.role, user.additionalRoles);
 
@@ -244,6 +242,28 @@ export class AuthService {
         permissions,
       },
     };
+  }
+
+  /** Suspended employees keep portal access; legacy rows may have isActive=false. */
+  private async assertLoginAllowed(user: User, client?: string) {
+    if (user.isActive) return;
+
+    if (client === 'portal' && user.employeeId) {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: user.employeeId },
+        select: { status: true },
+      });
+      if (employee?.status === EmployeeStatus.SUSPENDED) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { isActive: true },
+        });
+        user.isActive = true;
+        return;
+      }
+    }
+
+    throw new UnauthorizedException('Account is inactive');
   }
 
   private maskEmail(email: string): string {

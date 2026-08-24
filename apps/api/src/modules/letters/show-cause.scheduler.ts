@@ -48,11 +48,6 @@ export class ShowCauseScheduler {
           data: { status: 'SUSPENDED' },
         });
 
-        await tx.user.updateMany({
-          where: { employeeId: letter.employeeId },
-          data: { isActive: false },
-        });
-
         const hrManagers = await tx.user.findMany({
           where: { role: UserRole.HR_MANAGER, isActive: true },
         });

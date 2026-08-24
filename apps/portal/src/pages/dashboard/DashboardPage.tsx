@@ -170,8 +170,25 @@ function EmployeePortalDashboard() {
     { to: '/letters', label: 'My Letters', icon: FileText },
   ]
 
+  const isSuspended = employee?.status === 'SUSPENDED'
+
   return (
     <div className="space-y-6">
+      {isSuspended && (
+        <div
+          role="alert"
+          className="rounded-xl border-2 border-red-600 bg-red-600 px-5 py-6 text-center text-white shadow-md"
+        >
+          <AlertTriangle className="mx-auto mb-3 h-10 w-10" />
+          <p className="text-lg font-bold sm:text-xl">
+            You are suspended
+          </p>
+          <p className="mt-2 text-sm text-red-50 sm:text-base">
+            Please contact HR for further information.
+          </p>
+        </div>
+      )}
+
       <div>
         <h1 className="text-2xl font-bold text-text-primary">
           {getGreeting()}, {displayName}!
