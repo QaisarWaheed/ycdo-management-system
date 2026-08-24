@@ -11,6 +11,7 @@ jest.mock('./../letters/auto-letter.helper', () => ({
 import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
 import {
   applyDisciplineRules,
+  AUTO_DISCIPLINE,
   reverseLateDisciplineForDate,
 } from './discipline.helper';
 
@@ -358,7 +359,12 @@ const FINE_INCIDENT_DATE = new Date('2026-08-05T00:00:00.000Z');
 const FINE_PRIOR_DATES = ['2026-08-03', '2026-08-04'];
 
 beforeEach(() => {
+  AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
   issueAutoTemplatedLetterMock.mockClear();
+});
+
+afterEach(() => {
+  AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
 });
 
 describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () => {

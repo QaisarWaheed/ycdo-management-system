@@ -18,6 +18,7 @@ const pageTitles: Record<string, string> = {
   '/letters': 'Letters',
   '/failed-whatsapp': 'Failed WhatsApp',
   '/disciplinary': 'Disciplinary',
+  '/disciplinary/suspension-watchlist': 'Suspension Watchlist',
   '/recruitment': 'Recruitment',
   '/broadcasts': 'Broadcasts',
   '/rule-book': 'Rule Book & Flow',

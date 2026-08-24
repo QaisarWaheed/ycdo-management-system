@@ -1,5 +1,5 @@
 import { AttendanceStatus, LetterType, Prisma } from '@prisma/client';
-import { applyDisciplineRules } from './discipline.helper';
+import { applyDisciplineRules, AUTO_DISCIPLINE } from './discipline.helper';
 
 // issueAutoTemplatedLetter does PDF generation / filesystem writes / letter
 // numbering — irrelevant to what this suite proves (idempotency of the
@@ -144,7 +144,12 @@ function makeFakeTx(priorLateDaysByCall: () => { date: Date }[]): FakeTx {
 
 describe('discipline idempotency gate (DisciplineEvent)', () => {
   beforeEach(() => {
+    AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
     issueAutoTemplatedLetter.mockClear();
+  });
+
+  afterEach(() => {
+    AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
   });
 
   it('10 concurrent executions of the SAME incident (occurrence 3, Fine) produce exactly ONE DisciplineEvent, ONE letter, and at most ONE deduction', async () => {

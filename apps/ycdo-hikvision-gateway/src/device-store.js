@@ -2,6 +2,13 @@
 
 const crypto = require("crypto");
 
+function ensureColumn(db, table, column, typeSql) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeSql}`);
+  }
+}
+
 function rowToDevice(row) {
   return {
     id: row.id,
@@ -11,6 +18,12 @@ function rowToDevice(row) {
     hikvisionDeviceIds: JSON.parse(row.hikvision_device_ids || "[]"),
     allowedPublicIps: JSON.parse(row.allowed_public_ips || "[]"),
     enabled: row.enabled === 1,
+    agentToken: row.agent_token || null,
+    agentLastSeenAt: row.agent_last_seen_at || null,
+    agentVersion: row.agent_version || null,
+    agentLastSyncAt: row.agent_last_sync_at || null,
+    agentLastSyncStatus: row.agent_last_sync_status || null,
+    agentLastSyncError: row.agent_last_sync_error || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -54,6 +67,19 @@ CREATE TABLE IF NOT EXISTS gateway_devices (
   updated_at TEXT NOT NULL
 );
 `);
+  ensureColumn(db, "gateway_devices", "agent_token", "TEXT");
+  ensureColumn(db, "gateway_devices", "agent_last_seen_at", "TEXT");
+  ensureColumn(db, "gateway_devices", "agent_version", "TEXT");
+  ensureColumn(db, "gateway_devices", "agent_last_sync_at", "TEXT");
+  ensureColumn(db, "gateway_devices", "agent_last_sync_status", "TEXT");
+  ensureColumn(db, "gateway_devices", "agent_last_sync_error", "TEXT");
+  try {
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_gateway_devices_agent_token ON gateway_devices(agent_token) WHERE agent_token IS NOT NULL",
+    );
+  } catch {
+    // SQLite versions without partial indexes: ignore; uniqueness still checked in app
+  }
 
   let cache = [];
 
@@ -197,6 +223,89 @@ CREATE TABLE IF NOT EXISTS gateway_devices (
     return update(id, { token: generateToken() });
   }
 
+  function getByAgentToken(token) {
+    if (!token) return null;
+    const row = db
+      .prepare("SELECT * FROM gateway_devices WHERE agent_token = ?")
+      .get(String(token));
+    return row ? rowToDevice(row) : null;
+  }
+
+  function regenerateAgentToken(id) {
+    const existing = getById(id);
+    if (!existing) return null;
+    const token = generateToken();
+    const now = new Date().toISOString();
+    db.prepare(
+      `
+      UPDATE gateway_devices SET
+        agent_token = @agent_token,
+        updated_at = @updated_at
+      WHERE id = @id
+    `,
+    ).run({ id, agent_token: token, updated_at: now });
+    reloadCache();
+    return getById(id);
+  }
+
+  function clearAgentToken(id) {
+    const existing = getById(id);
+    if (!existing) return null;
+    const now = new Date().toISOString();
+    db.prepare(
+      `
+      UPDATE gateway_devices SET
+        agent_token = NULL,
+        updated_at = @updated_at
+      WHERE id = @id
+    `,
+    ).run({ id, updated_at: now });
+    reloadCache();
+    return getById(id);
+  }
+
+  function touchAgentHeartbeat(id, version) {
+    const now = new Date().toISOString();
+    db.prepare(
+      `
+      UPDATE gateway_devices SET
+        agent_last_seen_at = @agent_last_seen_at,
+        agent_version = COALESCE(@agent_version, agent_version),
+        updated_at = @updated_at
+      WHERE id = @id
+    `,
+    ).run({
+      id,
+      agent_last_seen_at: now,
+      agent_version: version ? String(version).slice(0, 64) : null,
+      updated_at: now,
+    });
+    reloadCache();
+    return getById(id);
+  }
+
+  function recordAgentSyncResult(id, status, error) {
+    const now = new Date().toISOString();
+    db.prepare(
+      `
+      UPDATE gateway_devices SET
+        agent_last_sync_at = @agent_last_sync_at,
+        agent_last_sync_status = @agent_last_sync_status,
+        agent_last_sync_error = @agent_last_sync_error,
+        updated_at = @updated_at
+      WHERE id = @id
+    `,
+    ).run({
+      id,
+      agent_last_sync_at: now,
+      agent_last_sync_status: status ? String(status).slice(0, 32) : null,
+      agent_last_sync_error: error ? String(error).slice(0, 500) : null,
+      updated_at: now,
+    });
+    reloadCache();
+    return getById(id);
+  }
+
   reloadCache();
 
   return {
@@ -210,6 +319,11 @@ CREATE TABLE IF NOT EXISTS gateway_devices (
     remove,
     regenerateToken,
     generateToken,
+    getByAgentToken,
+    regenerateAgentToken,
+    clearAgentToken,
+    touchAgentHeartbeat,
+    recordAgentSyncResult,
   };
 }
 

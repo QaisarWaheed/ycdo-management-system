@@ -16,6 +16,7 @@ import { ReportsPage } from '@/pages/reports/ReportsPage'
 import { LettersPage } from '@/pages/letters/LettersPage'
 import { FailedWhatsAppPage } from '@/pages/whatsapp/FailedWhatsAppPage'
 import { DisciplinaryPage } from '@/pages/disciplinary/DisciplinaryPage'
+import { SuspensionWatchlistPage } from '@/pages/disciplinary/SuspensionWatchlistPage'
 import { RecruitmentPage } from '@/pages/recruitment/RecruitmentPage'
 import { BranchesPage } from '@/pages/branches/BranchesPage'
 import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
@@ -157,6 +158,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DisciplinaryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/disciplinary/suspension-watchlist"
+        element={
+          <ProtectedRoute>
+            <SuspensionWatchlistPage />
           </ProtectedRoute>
         }
       />

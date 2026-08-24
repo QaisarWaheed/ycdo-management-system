@@ -70,6 +70,7 @@ import {
   MONTH_CALENDAR_UNMARKED_NOTE,
   pakistanMonthDateRange,
   pakistanVisibleAttendanceEnd,
+  pakistanYearMonthFromDate,
   PRE_JOIN_UNMARKED_NOTE,
 } from './attendance-calendar.util';
 import {
@@ -98,6 +99,7 @@ import {
   isOnDutyAt,
   resolveAttendanceDutyTimes,
 } from '../../common/duty.util';
+import { buildSuspensionWatchlist } from './suspension-watchlist';
 
 const OVERTIME_GRACE_MINUTES = 60;
 const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
@@ -3675,5 +3677,16 @@ export class AttendanceService {
     }
 
     return log;
+  }
+
+  async getSuspensionWatchlist(year?: number, month?: number) {
+    const now = pakistanYearMonthFromDate(new Date());
+    const y =
+      year != null && Number.isFinite(year) && year > 0 ? year : now.year;
+    const m =
+      month != null && Number.isFinite(month) && month >= 1 && month <= 12
+        ? month
+        : now.month;
+    return buildSuspensionWatchlist(this.prisma, y, m);
   }
 }

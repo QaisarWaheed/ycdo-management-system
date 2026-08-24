@@ -49,6 +49,9 @@ function hikvisionUrl(deviceToken) {
 async function loadDashboard() {
   const stats = await api("/api/stats");
   $("#stat-devices").textContent = stats.devices.total;
+  $("#stat-online").textContent = stats.devices.online ?? 0;
+  $("#stat-offline").textContent =
+    (stats.devices.offline ?? 0) + (stats.devices.neverSeen ?? 0);
   $("#stat-enabled").textContent = stats.devices.enabled;
   $("#stat-pending").textContent = stats.events.pending;
   $("#stat-delivered").textContent = stats.events.delivered;
@@ -58,6 +61,30 @@ async function loadDashboard() {
   if (stats.storage) {
     $("#storage-db-path").textContent = stats.storage.dbPath;
   }
+}
+
+function connectionBadge(status) {
+  if (status === "ONLINE") return '<span class="badge ok">ONLINE</span>';
+  if (status === "OFFLINE") return '<span class="badge bad">OFFLINE</span>';
+  return '<span class="badge off">NEVER SEEN</span>';
+}
+
+function formatRelative(iso) {
+  if (!iso) return "—";
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return escapeHtml(iso);
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function agentBadge(status) {
+  if (status === "ONLINE") return '<span class="badge ok">AGENT ONLINE</span>';
+  if (status === "OFFLINE") return '<span class="badge bad">AGENT OFFLINE</span>';
+  if (status === "NO_TOKEN") return '<span class="badge off">NO AGENT TOKEN</span>';
+  return '<span class="badge off">AGENT NEVER SEEN</span>';
 }
 
 function renderDevices(devices) {
@@ -72,21 +99,39 @@ function renderDevices(devices) {
   filterDevice.value = current;
 
   if (!devices.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="muted">No devices yet. Click Add device.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="muted">No devices yet. Click Add device.</td></tr>';
     return;
   }
 
   for (const d of devices) {
+    const lastSeenTitle = d.lastSeenAt
+      ? `${formatTime(d.lastSeenAt)}${d.lastSourceIp ? ` from ${d.lastSourceIp}` : ""}`
+      : "No events received yet";
+    const agentTitle = [
+      d.agentLastSeenAt ? `Heartbeat ${formatTime(d.agentLastSeenAt)}` : "No heartbeat",
+      d.agentLastSyncAt
+        ? `Last sync ${formatTime(d.agentLastSyncAt)} (${d.agentLastSyncStatus || "?"})`
+        : "No sync yet",
+      d.agentVersion ? `v${d.agentVersion}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(d.name || "—")}</td>
       <td class="mono">${escapeHtml(d.hrmsDeviceId)}</td>
       <td><span class="badge ${d.enabled ? "ok" : "off"}">${d.enabled ? "Enabled" : "Disabled"}</span></td>
+      <td>${connectionBadge(d.connectionStatus)}</td>
+      <td title="${escapeHtml(agentTitle)}">${agentBadge(d.agentStatus)}</td>
+      <td title="${escapeHtml(lastSeenTitle)}">${escapeHtml(formatRelative(d.lastSeenAt))}</td>
+      <td class="mono">${d.events24h ?? 0}</td>
       <td class="url-cell mono">${escapeHtml(hikvisionUrl(d.token))}</td>
       <td class="actions">
         <button type="button" class="btn-small" data-copy="${escapeHtml(d.token)}">Copy URL</button>
+        <button type="button" class="btn-small" data-copy-agent="${d.id}" ${d.agentToken ? "" : "disabled"}>Copy agent token</button>
         <button type="button" class="btn-small" data-edit="${d.id}">Edit</button>
         <button type="button" class="btn-small" data-regen="${d.id}">New token</button>
+        <button type="button" class="btn-small" data-regen-agent="${d.id}">New agent token</button>
         <button type="button" class="btn-danger btn-small" data-delete="${d.id}">Delete</button>
       </td>`;
     tbody.appendChild(tr);
@@ -252,6 +297,18 @@ $("#devices-body").addEventListener("click", async (ev) => {
     setTimeout(() => { btn.textContent = "Copy URL"; }, 1200);
     return;
   }
+  if (btn.dataset.copyAgent) {
+    const { devices } = await api("/api/devices");
+    const device = devices.find((d) => String(d.id) === btn.dataset.copyAgent);
+    if (!device?.agentToken) {
+      alert("Generate an agent token first (New agent token).");
+      return;
+    }
+    await navigator.clipboard.writeText(device.agentToken);
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = "Copy agent token"; }, 1200);
+    return;
+  }
   if (btn.dataset.edit) {
     const { devices } = await api("/api/devices");
     const device = devices.find((d) => String(d.id) === btn.dataset.edit);
@@ -263,6 +320,23 @@ $("#devices-body").addEventListener("click", async (ev) => {
     try {
       await api(`/api/devices/${btn.dataset.regen}/regenerate-token`, { method: "POST", body: "{}" });
       await loadDevices();
+    } catch (err) {
+      alertError(err);
+    }
+    return;
+  }
+  if (btn.dataset.regenAgent) {
+    if (!confirm("Generate a new face-agent token? Update face_agent.py AGENT_TOKEN afterward.")) return;
+    try {
+      const { device } = await api(`/api/devices/${btn.dataset.regenAgent}/regenerate-agent-token`, {
+        method: "POST",
+        body: "{}",
+      });
+      await loadDevices();
+      if (device?.agentToken) {
+        await navigator.clipboard.writeText(device.agentToken);
+        alert("New agent token copied to clipboard. Paste into face_agent.py as AGENT_TOKEN.");
+      }
     } catch (err) {
       alertError(err);
     }

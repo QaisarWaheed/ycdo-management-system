@@ -37,6 +37,8 @@
       <section id="tab-dashboard" class="panel active">
         <div class="stats-grid">
           <div class="stat-card"><span id="stat-devices">0</span><label>Devices</label></div>
+          <div class="stat-card ok"><span id="stat-online">0</span><label>Online (24h)</label></div>
+          <div class="stat-card bad"><span id="stat-offline">0</span><label>Offline / never seen</label></div>
           <div class="stat-card"><span id="stat-enabled">0</span><label>Enabled</label></div>
           <div class="stat-card warn"><span id="stat-pending">0</span><label>Pending delivery</label></div>
           <div class="stat-card ok"><span id="stat-delivered">0</span><label>Delivered (all time)</label></div>
@@ -57,13 +59,20 @@
           <h2>Connected terminals</h2>
           <button id="add-device-btn" type="button" class="btn-primary">Add device</button>
         </div>
+        <p class="muted device-hint">
+          Link = punches in the last 24h. Face agent = thin LAN enroll process heartbeating to this gateway (not the old attendance agent).
+        </p>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Name</th>
                 <th>HRMS device ID</th>
-                <th>Status</th>
+                <th>Enabled</th>
+                <th>Link</th>
+                <th>Face agent</th>
+                <th>Last seen</th>
+                <th>Events (24h)</th>
                 <th>Hikvision URL</th>
                 <th></th>
               </tr>

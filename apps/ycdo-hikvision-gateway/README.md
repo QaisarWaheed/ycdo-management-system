@@ -152,7 +152,16 @@ Protect `/admin/` behind HTTPS. Do not expose it without a strong `ADMIN_TOKEN`.
 
 ## Face/fingerprint management
 
-This gateway is intentionally the **attendance ingest** service. Central face/fingerprint enrollment should be implemented over a server-to-device management channel (for example ISUP/SDK, or server-to-branch VPN + ISAPI). HTTP Listening is outbound event delivery and by itself does not create a reverse management channel.
+Attendance is HTTP Listening → this gateway. **Face enrollment** uses a thin on-site agent:
+
+1. Gateway `/admin/` → Devices → **New agent token** (copy into agent config)
+2. On a PC on the same LAN as the terminal, run `biometric_script/face_agent.py`
+3. Set CapRover env `BIOMETRIC_DEVICE_KEY` to the same value HRMS uses for `x-device-key` (falls back to `DEVICE_API_KEY` if unset)
+4. Trigger sync from HRMS IT Admin → Face Sync (or employee profile)
+
+Agent endpoints (Bearer agent token): `POST /agent/heartbeat`, `GET /agent/face-sync/pending`, `POST /agent/face-sync/result`.
+
+See `docs/superpowers/specs/2026-08-23-gateway-face-agent-design.md`.
 
 ## 6. Deploy on CapRover
 

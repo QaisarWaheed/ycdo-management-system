@@ -11,6 +11,7 @@ jest.mock('./../letters/auto-letter.helper', () => ({
 import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
 import {
   applyMissingCheckoutDiscipline,
+  AUTO_DISCIPLINE,
   reverseMissingCheckoutDisciplineForDate,
 } from './discipline.helper';
 
@@ -436,7 +437,12 @@ const CHECKOUT_OPTIONS = {
 };
 
 beforeEach(() => {
+  AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
   issueAutoTemplatedLetterMock.mockClear();
+});
+
+afterEach(() => {
+  AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
 });
 
 describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial freeze', () => {

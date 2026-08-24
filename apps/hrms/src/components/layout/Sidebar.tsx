@@ -44,6 +44,11 @@ const allNavItems = [
   { to: '/letters', label: 'Letters', icon: FileText },
   { to: '/failed-whatsapp', label: 'Failed WhatsApp', icon: MessageCircleWarning },
   { to: '/disciplinary', label: 'Disciplinary', icon: AlertTriangle },
+  {
+    to: '/disciplinary/suspension-watchlist',
+    label: 'Suspension Watchlist',
+    icon: AlertTriangle,
+  },
   { to: '/recruitment', label: 'Recruitment', icon: UserPlus },
   { to: '/broadcasts', label: 'Broadcasts', icon: Bell },
   { to: '/branches', label: 'Branches & Projects', icon: Building2 },
@@ -125,6 +130,7 @@ function navItemsForRole(role?: string) {
         '/letters',
         '/failed-whatsapp',
         '/disciplinary',
+        '/disciplinary/suspension-watchlist',
       ].includes(item.to),
     )
   }

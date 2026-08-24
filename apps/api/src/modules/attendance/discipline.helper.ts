@@ -25,6 +25,17 @@ import {
 } from './attendance-late.util';
 import { isTemporaryAutoCheckoutEnabled } from './temporary-auto-checkout';
 
+/**
+ * Phase 1 suspension-watchlist policy: attendance still claims
+ * DisciplineEvents and may apply payroll fines, but never auto-issues
+ * Advice/Warning/Fine/Suspension letters and never flips status to
+ * SUSPENDED. HR uses the watchlist + manual flows instead.
+ * Mutable object so unit tests can opt back into the legacy auto path.
+ */
+export const AUTO_DISCIPLINE = {
+  lettersAndSuspendEnabled: false,
+};
+
 export type DisciplineOptions = {
   lateMinutes?: number;
   /**
@@ -601,10 +612,12 @@ async function applyLateDiscipline(
   const baseDetail = `تاریخ: ${dateLabel}، ڈیوٹی کا مقررہ وقت: ${dutyStartLabel}، حاضری کا اصل وقت: ${checkInLabel}، تاخیر: ${todayLateMinutes} منٹ۔`;
 
   const positionInCycle = ((lateCount - 1) % 3) + 1; // 1, 2, or 3
+  const shouldIssueLetters =
+    AUTO_DISCIPLINE.lettersAndSuspendEnabled && !skipLetters;
 
   if (positionInCycle === 1) {
     // 1st / 4th / 7th this month -> Advice, no deduction.
-    if (!skipLetters) {
+    if (shouldIssueLetters) {
       await issueLateLetterIfNotAlready(
         tx,
         employeeId,
@@ -622,7 +635,7 @@ async function applyLateDiscipline(
 
   if (positionInCycle === 2) {
     // 2nd / 5th / 8th this month -> Warning, no deduction.
-    if (!skipLetters) {
+    if (shouldIssueLetters) {
       await issueLateLetterIfNotAlready(
         tx,
         employeeId,
@@ -641,13 +654,10 @@ async function applyLateDiscipline(
   // positionInCycle === 3 -> 3rd / 6th / 9th this month.
   if (lateCount === 9) {
     // Suspension only — no additional one-day deduction at the 9th.
-    // Idempotency check comes first and gates BOTH the letter and the
-    // employee-status/login side effects together, so a replay that finds
-    // this exact occurrence already handled changes nothing (does not
-    // silently re-suspend an employee HR may have since reinstated).
-    // Payroll repair (skipLetters) claims the event only — never auto-
-    // suspends from a historical backfill.
-    if (skipLetters) return;
+    // When AUTO_DISCIPLINE.lettersAndSuspendEnabled is false, claim the event only
+    // (HR suspends manually via the watchlist). Payroll repair
+    // (skipLetters) likewise claims without suspending.
+    if (skipLetters || !AUTO_DISCIPLINE.lettersAndSuspendEnabled) return;
 
     const alreadyHandled = await hasLetterForMonthlyOccurrence(
       tx,
@@ -736,7 +746,7 @@ async function applyLateDiscipline(
     }
   }
 
-  if (!skipLetters) {
+  if (shouldIssueLetters) {
     await issueLateLetterIfNotAlready(
       tx,
       employeeId,
@@ -828,9 +838,10 @@ async function applyUninformedAbsenceDisciplineTracking(
     };
   }
 
-  // More than 2 uninformed-absent days in a month → automatic suspension.
+  // More than 2 uninformed-absent days in a month → automatic suspension
+  // (only when AUTO_DISCIPLINE.lettersAndSuspendEnabled; otherwise HR uses watchlist).
   let suspensionTriggered = false;
-  if (uninformedCount > 2) {
+  if (AUTO_DISCIPLINE.lettersAndSuspendEnabled && uninformedCount > 2) {
     const employee = await tx.employee.findUnique({
       where: { id: employeeId },
       select: { status: true },
@@ -1338,34 +1349,38 @@ export async function applyMissingCheckoutDiscipline(
   const positionInCycle = ((missingCount - 1) % 3) + 1; // 1, 2, or 3
 
   if (positionInCycle === 1) {
-    await issueMissingCheckoutLetterIfNotAlready(
-      tx,
-      employeeId,
-      LetterType.ADVICE,
-      missingCount,
-      date,
-      {
-        violations: `اس ماہ چیک آؤٹ نہ کرنے کی ${missingCount} ویں خلاف ورزی۔ ${baseDetail} آئندہ ڈیوٹی مکمل ہونے پر چیک آؤٹ یقینی بنائیں۔`,
-        incidentDate: dayKey,
-        disciplineCategory: 'MISSING_CHECKOUT',
-      },
-    );
+    if (AUTO_DISCIPLINE.lettersAndSuspendEnabled) {
+      await issueMissingCheckoutLetterIfNotAlready(
+        tx,
+        employeeId,
+        LetterType.ADVICE,
+        missingCount,
+        date,
+        {
+          violations: `اس ماہ چیک آؤٹ نہ کرنے کی ${missingCount} ویں خلاف ورزی۔ ${baseDetail} آئندہ ڈیوٹی مکمل ہونے پر چیک آؤٹ یقینی بنائیں۔`,
+          incidentDate: dayKey,
+          disciplineCategory: 'MISSING_CHECKOUT',
+        },
+      );
+    }
     return;
   }
 
   if (positionInCycle === 2) {
-    await issueMissingCheckoutLetterIfNotAlready(
-      tx,
-      employeeId,
-      LetterType.WARNING,
-      missingCount,
-      date,
-      {
-        violations: `اس ماہ چیک آؤٹ نہ کرنے کی ${missingCount} ویں خلاف ورزی (اس ماہ کی دوسری تنبیہ)۔ ${baseDetail}`,
-        incidentDate: dayKey,
-        disciplineCategory: 'MISSING_CHECKOUT',
-      },
-    );
+    if (AUTO_DISCIPLINE.lettersAndSuspendEnabled) {
+      await issueMissingCheckoutLetterIfNotAlready(
+        tx,
+        employeeId,
+        LetterType.WARNING,
+        missingCount,
+        date,
+        {
+          violations: `اس ماہ چیک آؤٹ نہ کرنے کی ${missingCount} ویں خلاف ورزی (اس ماہ کی دوسری تنبیہ)۔ ${baseDetail}`,
+          incidentDate: dayKey,
+          disciplineCategory: 'MISSING_CHECKOUT',
+        },
+      );
+    }
     return;
   }
 
@@ -1425,24 +1440,26 @@ export async function applyMissingCheckoutDiscipline(
     }
   }
 
-  await issueMissingCheckoutLetterIfNotAlready(
-    tx,
-    employeeId,
-    LetterType.FINE,
-    missingCount,
-    date,
-    {
-      fineReason: `اس ماہ چیک آؤٹ نہ کرنے کی ${missingCount} ویں خلاف ورزی کی بنا پر یک روزہ تنخواہ کی کٹوتی۔ ${baseDetail}`,
-      fineAmount: `Rs. ${deductionAmount.toFixed(2)}`,
-      deductionMonth: monthLabel,
-      // Structured date link, matching applyLateDiscipline's FINE letter —
-      // lets reverseMissingCheckoutDisciplineForDate find and reverse this
-      // exact letter/deduction later. Previously omitted here (ADVICE/WARNING
-      // already carried it); no reversal existed to need it until now.
-      incidentDate: dayKey,
-      disciplineCategory: 'MISSING_CHECKOUT',
-    },
-  );
+  if (AUTO_DISCIPLINE.lettersAndSuspendEnabled) {
+    await issueMissingCheckoutLetterIfNotAlready(
+      tx,
+      employeeId,
+      LetterType.FINE,
+      missingCount,
+      date,
+      {
+        fineReason: `اس ماہ چیک آؤٹ نہ کرنے کی ${missingCount} ویں خلاف ورزی کی بنا پر یک روزہ تنخواہ کی کٹوتی۔ ${baseDetail}`,
+        fineAmount: `Rs. ${deductionAmount.toFixed(2)}`,
+        deductionMonth: monthLabel,
+        // Structured date link, matching applyLateDiscipline's FINE letter —
+        // lets reverseMissingCheckoutDisciplineForDate find and reverse this
+        // exact letter/deduction later. Previously omitted here (ADVICE/WARNING
+        // already carried it); no reversal existed to need it until now.
+        incidentDate: dayKey,
+        disciplineCategory: 'MISSING_CHECKOUT',
+      },
+    );
+  }
 }
 
 /**

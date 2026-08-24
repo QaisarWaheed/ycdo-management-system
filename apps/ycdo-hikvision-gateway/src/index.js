@@ -8,6 +8,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { createDeviceStore } = require("./device-store");
 const { createAdminRouter } = require("./admin-api");
+const { createAgentRouter } = require("./agent-api");
 const { deliveryOutcome } = require("./hrms-response");
 
 const app = express();
@@ -38,6 +39,7 @@ const cfg = {
   saveImages: process.env.SAVE_IMAGES === "1" || process.env.SAVE_IMAGES === "true",
   captureDir: process.env.CAPTURE_DIR || path.join(__dirname, "..", "data", "captures"),
   adminToken: process.env.ADMIN_TOKEN || "",
+  biometricDeviceKey: process.env.BIOMETRIC_DEVICE_KEY || "",
   sendAuthMethod: process.env.SEND_AUTH_METHOD === "1" || process.env.SEND_AUTH_METHOD === "true",
 };
 
@@ -447,6 +449,8 @@ if (cfg.adminToken) {
 } else {
   log("warn", "ADMIN_TOKEN not set — admin UI disabled");
 }
+
+app.use("/agent", createAgentRouter({ express, deviceStore, cfg, log }));
 
 function nextRetryIso(attempts) {
   const delay = Math.min(cfg.retryBaseMs * Math.pow(2, Math.max(0, attempts - 1)), cfg.retryMaxMs);

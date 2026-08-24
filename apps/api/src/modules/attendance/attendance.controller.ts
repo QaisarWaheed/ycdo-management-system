@@ -268,6 +268,26 @@ export class AttendanceController {
     );
   }
 
+  @Get('suspension-watchlist')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.IT_ADMIN,
+  )
+  getSuspensionWatchlist(
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    return this.attendanceService.getSuspensionWatchlist(
+      year != null && year !== '' ? Number(year) : undefined,
+      month != null && month !== '' ? Number(month) : undefined,
+    );
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(

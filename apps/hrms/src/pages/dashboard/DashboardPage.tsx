@@ -274,6 +274,15 @@ function AdminDashboard() {
   })
 
   const {
+    data: suspensionWatchlist,
+    isLoading: loadingWatchlist,
+    isError: errorWatchlist,
+  } = useQuery({
+    queryKey: ['attendance', 'suspension-watchlist'],
+    queryFn: () => attendanceApi.getSuspensionWatchlist(),
+  })
+
+  const {
     data: applications,
     isLoading: loadingApplications,
     isError: errorApplications,
@@ -452,6 +461,20 @@ function AdminDashboard() {
           iconBg="bg-orange-100 text-orange-600"
           subtitle="Requires action"
           to="/disciplinary?status=OPEN"
+        />
+        <StatCard
+          label="Due for Suspension"
+          value={suspensionWatchlist?.counts.due ?? 0}
+          icon={AlertTriangle}
+          loading={loadingWatchlist}
+          error={errorWatchlist}
+          iconBg="bg-red-100 text-red-700"
+          subtitle={
+            suspensionWatchlist
+              ? `${suspensionWatchlist.counts.near} near · ${suspensionWatchlist.month}`
+              : 'Monthly late / UA threshold'
+          }
+          to="/disciplinary/suspension-watchlist"
         />
         <StatCard
           label="Pending Job Applications"

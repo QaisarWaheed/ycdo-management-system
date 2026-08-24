@@ -9,6 +9,7 @@ jest.mock('./../letters/auto-letter.helper', () => ({
 }));
 
 import {
+  AUTO_DISCIPLINE,
   isAbsentFamilyEligibleForDiscipline,
   isMissingCheckoutEligibleForDiscipline,
   reconcileAttendanceFinancialConsequences,
@@ -1617,6 +1618,12 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
 });
 
 describe('Bug B fix — ABSENT <-> UNINFORMED_ABSENT subtype transitions', () => {
+  beforeEach(() => {
+    AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
+  });
+  afterEach(() => {
+    AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
+  });
   it('E. ABSENT -> UNINFORMED_ABSENT: no second deduction, UA DisciplineEvent created, counts toward suspension threshold, idempotent', async () => {
     const { tx, getState } = makeReconcileFakeTx({
       payrollEntry: pendingEntry(),

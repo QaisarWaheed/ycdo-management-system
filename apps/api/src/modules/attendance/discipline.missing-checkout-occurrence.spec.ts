@@ -15,6 +15,7 @@ import { LetterType, Prisma } from '@prisma/client';
 import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
 import {
   applyMissingCheckoutDiscipline,
+  AUTO_DISCIPLINE,
   renumberMissingCheckoutOccurrencesForMonth,
   reverseMissingCheckoutDisciplineForDate,
 } from './discipline.helper';
@@ -259,7 +260,12 @@ const opts = (day: string) => ({
 });
 
 beforeEach(() => {
+  AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
   issueMock.mockClear();
+});
+
+afterEach(() => {
+  AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
 });
 
 describe('missing-checkout chronological occurrence', () => {

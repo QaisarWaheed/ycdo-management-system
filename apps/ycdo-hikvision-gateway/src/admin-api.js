@@ -25,11 +25,41 @@ function createAdminRouter({ db, deviceStore, cfg, requireAdmin, log }) {
       .prepare("SELECT COUNT(*) AS c FROM events WHERE created_at >= ?")
       .get(`${today}T00:00:00`).c;
     const devices = deviceStore.listAll();
+    // Reuse device activity for dashboard online counts
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const lastByDevice = db
+      .prepare(
+        `
+      SELECT device_id, MAX(created_at) AS last_seen_at
+      FROM events
+      GROUP BY device_id
+    `,
+      )
+      .all();
+    const lastMap = new Map(lastByDevice.map((r) => [r.device_id, r.last_seen_at]));
+    const onlineWithinMs = Math.max(
+      Number(process.env.DEVICE_ONLINE_WITHIN_MS || 24 * 60 * 60 * 1000),
+      60_000,
+    );
+    const now = Date.now();
+    let online = 0;
+    let offline = 0;
+    let neverSeen = 0;
+    for (const d of devices) {
+      const last = lastMap.get(d.hrmsDeviceId);
+      const ms = last ? Date.parse(last) : NaN;
+      if (Number.isFinite(ms) && now - ms <= onlineWithinMs) online += 1;
+      else if (last) offline += 1;
+      else neverSeen += 1;
+    }
     res.json({
       ok: true,
       devices: {
         total: devices.length,
         enabled: devices.filter((d) => d.enabled).length,
+        online,
+        offline,
+        neverSeen,
       },
       events: { pending, delivered, rejected, today: todayEvents },
       storage: {
@@ -38,11 +68,68 @@ function createAdminRouter({ db, deviceStore, cfg, requireAdmin, log }) {
         capRoverVolume: "/app/data",
       },
       hrmsApi: cfg.hrmsApi,
+      since24h,
     });
   });
 
   router.get("/api/devices", requireAdmin, (_req, res) => {
-    res.json({ devices: deviceStore.listAll() });
+    const onlineWithinMs = Math.max(
+      Number(process.env.DEVICE_ONLINE_WITHIN_MS || 24 * 60 * 60 * 1000),
+      60_000,
+    );
+    const agentOnlineWithinMs = Math.max(
+      Number(process.env.AGENT_ONLINE_WITHIN_MS || 90_000),
+      30_000,
+    );
+    const now = Date.now();
+    const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    const activity = db
+      .prepare(
+        `
+      SELECT device_id,
+             MAX(created_at) AS last_seen_at,
+             MAX(source_ip) AS last_source_ip,
+             COUNT(*) AS event_count,
+             SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS events_24h
+      FROM events
+      GROUP BY device_id
+    `,
+      )
+      .all(since24h);
+    const byDeviceId = new Map(activity.map((row) => [row.device_id, row]));
+
+    function agentConnectionStatus(device, nowMs, withinMs) {
+      if (!device.agentToken) return "NO_TOKEN";
+      const ms = device.agentLastSeenAt ? Date.parse(device.agentLastSeenAt) : NaN;
+      if (Number.isFinite(ms) && nowMs - ms <= withinMs) return "ONLINE";
+      if (device.agentLastSeenAt) return "OFFLINE";
+      return "NEVER_SEEN";
+    }
+
+    const devices = deviceStore.listAll().map((device) => {
+      const row = byDeviceId.get(device.hrmsDeviceId);
+      const lastSeenAt = row?.last_seen_at || null;
+      const lastSeenMs = lastSeenAt ? Date.parse(lastSeenAt) : NaN;
+      const heardRecently =
+        Number.isFinite(lastSeenMs) && now - lastSeenMs <= onlineWithinMs;
+      let connectionStatus = "NEVER_SEEN";
+      if (heardRecently) connectionStatus = "ONLINE";
+      else if (lastSeenAt) connectionStatus = "OFFLINE";
+
+      return {
+        ...device,
+        lastSeenAt,
+        lastSourceIp: row?.last_source_ip || null,
+        eventCount: Number(row?.event_count || 0),
+        events24h: Number(row?.events_24h || 0),
+        connectionStatus,
+        onlineWithinMs,
+        agentOnlineWithinMs,
+        agentStatus: agentConnectionStatus(device, now, agentOnlineWithinMs),
+      };
+    });
+
+    res.json({ devices, onlineWithinMs, agentOnlineWithinMs });
   });
 
   router.post("/api/devices", requireAdmin, (req, res) => {
@@ -79,6 +166,28 @@ function createAdminRouter({ db, deviceStore, cfg, requireAdmin, log }) {
     const device = deviceStore.regenerateToken(id);
     if (!device) return res.status(404).json({ error: "Device not found" });
     log("info", "Device token regenerated via admin UI", { id, hrmsDeviceId: device.hrmsDeviceId });
+    res.json({ device });
+  });
+
+  router.post("/api/devices/:id/regenerate-agent-token", requireAdmin, (req, res) => {
+    const id = Number(req.params.id);
+    const device = deviceStore.regenerateAgentToken(id);
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    log("info", "Face agent token regenerated via admin UI", {
+      id,
+      hrmsDeviceId: device.hrmsDeviceId,
+    });
+    res.json({ device });
+  });
+
+  router.post("/api/devices/:id/clear-agent-token", requireAdmin, (req, res) => {
+    const id = Number(req.params.id);
+    const device = deviceStore.clearAgentToken(id);
+    if (!device) return res.status(404).json({ error: "Device not found" });
+    log("info", "Face agent token cleared via admin UI", {
+      id,
+      hrmsDeviceId: device.hrmsDeviceId,
+    });
     res.json({ device });
   });
 

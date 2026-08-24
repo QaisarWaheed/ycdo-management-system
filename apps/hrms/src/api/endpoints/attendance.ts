@@ -28,6 +28,38 @@ export const attendanceApi = {
       unknown,
       { sessions: unknown[]; totalMinutes: number; totalHours: number }
     >(`/attendance/reliever/${employeeId}`, { params }),
+  getSuspensionWatchlist: (params?: { month?: number; year?: number }) =>
+    api.get<
+      unknown,
+      {
+        month: string
+        year: number
+        monthNumber: number
+        near: Array<{
+          employeeId: string
+          fullName: string
+          employeeCode: string | null
+          biometricId: string | null
+          branchId: string | null
+          branchName: string | null
+          lateDays: number
+          uninformedAbsentDays: number
+          reasons: Array<'LATE_NEAR' | 'LATE_DUE' | 'UA_NEAR' | 'UA_DUE'>
+        }>
+        due: Array<{
+          employeeId: string
+          fullName: string
+          employeeCode: string | null
+          biometricId: string | null
+          branchId: string | null
+          branchName: string | null
+          lateDays: number
+          uninformedAbsentDays: number
+          reasons: Array<'LATE_NEAR' | 'LATE_DUE' | 'UA_NEAR' | 'UA_DUE'>
+        }>
+        counts: { near: number; due: number }
+      }
+    >('/attendance/suspension-watchlist', { params }),
   listRelieverSessions: (params?: {
     startDate?: string
     endDate?: string
