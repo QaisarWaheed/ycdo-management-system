@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -134,6 +135,8 @@ const ACTIVE_LEAVE_STATUSES: LeaveStatus[] = [
 
 @Injectable()
 export class AttendanceService {
+  private readonly logger = new Logger(AttendanceService.name);
+
   constructor(
     private prisma: PrismaService,
     private permissionsService: PermissionsService,
@@ -203,8 +206,14 @@ export class AttendanceService {
     const branchId = employee.currentBranchId ?? device?.branchId ?? null;
     // Always use API/server time in Pakistan — ignore device/agent clock (often wrong TZ).
     const checkTime = new Date();
-    const dateOnly = toPakistanDateOnly(checkTime);
     const twentyFourHour = is24HourShift(employee);
+    // Night shifts: a punch after midnight still belongs to yesterday's
+    // duty day (e.g. 01:00 against 20:00–08:00 → prior calendar date).
+    const dateOnly = this.resolvePunchAttendanceDate(
+      checkTime,
+      employee,
+      twentyFourHour,
+    );
 
     const result = await this.processResolvedPunch(
       employee,
@@ -213,6 +222,12 @@ export class AttendanceService {
       checkTime,
       dateOnly,
       twentyFourHour,
+    );
+    await this.maybeReconcilePunchConsequences(
+      employee.id,
+      dateOnly,
+      result,
+      employee.dutyStartTime,
     );
     await this.maybeRecomputePayrollForPunchResult(employee.id, dateOnly, result);
     return result;
@@ -237,7 +252,12 @@ export class AttendanceService {
       },
     });
     if (existingEvent) {
-      return { idempotent: true as const };
+      return {
+        ok: true as const,
+        accepted: false as const,
+        idempotent: true as const,
+        reason: 'DEVICE_EVENT_ALREADY_PROCESSED',
+      };
     }
 
     const employee = await this.prisma.employee.findUnique({
@@ -263,8 +283,12 @@ export class AttendanceService {
     });
     const branchId = employee.currentBranchId ?? device?.branchId ?? null;
     const checkTime = new Date();
-    const dateOnly = toPakistanDateOnly(checkTime);
     const twentyFourHour = is24HourShift(employee);
+    const dateOnly = this.resolvePunchAttendanceDate(
+      checkTime,
+      employee,
+      twentyFourHour,
+    );
 
     // Devices are in T&A Manual mode and already report CHECKIN/CHECKOUT —
     // use that. AUTO is only a fallback for a status we can't map.
@@ -299,28 +323,75 @@ export class AttendanceService {
           (err as { code: string }).code === 'P2002'
         ) {
           // Lost a race to a concurrent delivery of the identical event.
-          return { idempotent: true as const };
+          return {
+            ok: true as const,
+            accepted: false as const,
+            idempotent: true as const,
+            reason: 'DEVICE_EVENT_ALREADY_PROCESSED',
+          };
         }
         throw err;
       }
 
-      const result = await this.processResolvedPunch(
-        employee,
-        branchId,
-        punchType,
-        checkTime,
-        dateOnly,
-        twentyFourHour,
-        tx,
-      );
+      try {
+        const result = await this.processResolvedPunch(
+          employee,
+          branchId,
+          punchType,
+          checkTime,
+          dateOnly,
+          twentyFourHour,
+          tx,
+        );
 
-      return { idempotent: false as const, ...result };
+        return {
+          ok: true as const,
+          accepted: true as const,
+          idempotent: false as const,
+          reason: 'ACCEPTED',
+          ...result,
+        };
+      } catch (err: unknown) {
+        // Business-rule rejects: keep the device-event claim (no infinite
+        // retries) and return 200-shaped soft reject so the gateway marks
+        // REJECTED_BY_HRMS with a clear reason instead of a transport error.
+        if (
+          err instanceof ConflictException ||
+          err instanceof BadRequestException
+        ) {
+          const response = err.getResponse();
+          const message =
+            typeof response === 'string'
+              ? response
+              : Array.isArray(
+                    (response as { message?: string | string[] }).message,
+                  )
+                ? (response as { message: string[] }).message.join(', ')
+                : String(
+                    (response as { message?: string }).message ??
+                      err.message ??
+                      'HRMS_REJECTED',
+                  );
+          return {
+            ok: true as const,
+            accepted: false as const,
+            idempotent: false as const,
+            reason: message,
+          };
+        }
+        throw err;
+      }
     });
 
     // Fires only after the transaction above has fully committed — never
-    // from inside it — and only for a genuinely new (non-idempotent-replay)
-    // write. See maybeRecomputePayrollForPunchResult.
-    if (txResult.idempotent === false) {
+    // from inside it — and only for a genuinely accepted attendance write.
+    if (txResult.accepted === true && txResult.idempotent === false) {
+      await this.maybeReconcilePunchConsequences(
+        employee.id,
+        dateOnly,
+        txResult,
+        employee.dutyStartTime,
+      );
       await this.maybeRecomputePayrollForPunchResult(
         employee.id,
         dateOnly,
@@ -367,7 +438,7 @@ export class AttendanceService {
     if (punchType === 'AUTO') {
       const openRegular = twentyFourHour
         ? null
-        : await this.findOpenRegularLogForAuto(employee, dateOnly);
+        : await this.findOpenRegularLogForAuto(employee, dateOnly, db);
       punchType = openRegular ? 'CHECKOUT' : 'CHECKIN';
     }
 
@@ -569,40 +640,106 @@ export class AttendanceService {
         ? existing.status === AttendanceStatus.SWAP_COVERED
           ? AttendanceStatus.SWAP_COVERED
           : AttendanceStatus.PRESENT
-        : determineBiometricCheckInStatus(lateMinutes, employee, 0);
+        : this.statusForBiometricCheckIn(lateMinutes, employee);
 
     return this.runInTx(db, async (tx) => {
-      if (!twentyFourHour && !swapExempt) {
-        const effectiveStatus = await applyDisciplineRules(
-          tx,
-          employeeId,
-          status,
-          existing.date,
-          {
-            lateMinutes,
-            dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
-          },
-        );
-        if (effectiveStatus === AttendanceStatus.HALF_DAY) {
-          status = AttendanceStatus.HALF_DAY;
-        }
-      }
-
-      const updated = await tx.attendanceLog.update({
+      return tx.attendanceLog.update({
         where: { id: existing.id },
         data: { status, lateMinutes },
       });
-
-      await reconcileAttendanceFinancialConsequences(tx, {
-        employeeId,
-        date: existing.date,
-        before: existing,
-        after: updated,
-        dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
-      });
-
-      return updated;
     });
+  }
+
+  /**
+   * Biometric/portal check-in status. Late > 60 minutes is HALF_DAY for
+   * display (same rule applyDisciplineRules used to apply before the write).
+   */
+  private statusForBiometricCheckIn(
+    lateMinutes: number,
+    employee: { dutyStartTime?: string | null },
+  ): AttendanceStatus {
+    const status = determineBiometricCheckInStatus(lateMinutes, employee, 0);
+    if (status === AttendanceStatus.LATE && lateMinutes > 60) {
+      return AttendanceStatus.HALF_DAY;
+    }
+    return status;
+  }
+
+  /**
+   * Attendance side-effects (late discipline, UA reversal, etc.) run in a
+   * SEPARATE transaction after the punch has already committed. Failures
+   * here must never undo a stored check-in.
+   */
+  private async runConsequenceReconcile(
+    employeeId: string,
+    date: Date,
+    before: {
+      status: AttendanceStatus;
+      lateMinutes: number;
+      checkIn: Date | null;
+      checkOut?: Date | null;
+      note?: string | null;
+    } | null,
+    after: {
+      status: AttendanceStatus;
+      lateMinutes: number;
+      checkIn: Date | null;
+      checkOut?: Date | null;
+      note?: string | null;
+    },
+    dutyStartTimeSnapshot?: string | null,
+  ): Promise<void> {
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await reconcileAttendanceFinancialConsequences(tx, {
+          employeeId,
+          date,
+          before,
+          after,
+          dutyStartTimeSnapshot: dutyStartTimeSnapshot ?? null,
+        });
+      });
+    } catch (err) {
+      this.logger.error(
+        `Attendance consequence reconcile failed for employee=${employeeId} date=${date.toISOString().slice(0, 10)} — check-in/out kept`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+  }
+
+  private async maybeReconcilePunchConsequences(
+    employeeId: string,
+    dateOnly: Date,
+    result: {
+      type: string;
+      needsConsequenceReconcile?: boolean;
+      before?: {
+        status: AttendanceStatus;
+        lateMinutes: number;
+        checkIn: Date | null;
+        checkOut?: Date | null;
+        note?: string | null;
+      } | null;
+      log?: {
+        date?: Date;
+        status: AttendanceStatus;
+        lateMinutes: number;
+        checkIn: Date | null;
+        checkOut?: Date | null;
+        note?: string | null;
+        dutyStartTimeSnapshot?: string | null;
+      };
+    },
+    dutyStartTimeSnapshot?: string | null,
+  ): Promise<void> {
+    if (!result.needsConsequenceReconcile || !result.log) return;
+    await this.runConsequenceReconcile(
+      employeeId,
+      result.log.date ?? dateOnly,
+      result.before ?? null,
+      result.log,
+      dutyStartTimeSnapshot ?? result.log.dutyStartTimeSnapshot ?? null,
+    );
   }
 
   private async biometricRegularCheckIn(
@@ -639,13 +776,13 @@ export class AttendanceService {
     const preDutyOvertimeMinutes = twentyFourHour
       ? 0
       : computePreDutyOvertimeMinutes(checkTime, employee);
-    let status = twentyFourHour
+    const status = twentyFourHour
       ? AttendanceStatus.PRESENT
       : swapExempt
         ? anyExisting?.status === AttendanceStatus.SWAP_COVERED
           ? AttendanceStatus.SWAP_COVERED
           : AttendanceStatus.PRESENT
-        : determineBiometricCheckInStatus(lateMinutes, employee, 0);
+        : this.statusForBiometricCheckIn(lateMinutes, employee);
 
     if (anyExisting) {
       if (anyExisting.checkIn) {
@@ -661,40 +798,29 @@ export class AttendanceService {
             twentyFourHour,
             swapExempt,
           );
-          return { type: 'CHECKIN' as const, log, reconciled: true };
+          return {
+            type: 'CHECKIN' as const,
+            log,
+            reconciled: true,
+            needsConsequenceReconcile: true as const,
+            before: anyExisting,
+          };
         }
         throw new ConflictException(
           'Employee already checked in. Duplicate CHECKIN rejected.',
         );
       }
 
+      // Write check-in FIRST in this transaction. Late discipline / letters /
+      // payroll side-effects run AFTER commit (see runConsequenceReconcile)
+      // so a LATE-path failure can never roll back the punch — which is why
+      // on-time (PRESENT) punches succeeded while after-grace (LATE) ones
+      // vanished when discipline ran before the write in the same TX.
+      const wasUninformedAbsent =
+        anyExisting.status === AttendanceStatus.UNINFORMED_ABSENT;
+
       const log = await this.runInTx(db, async (tx) => {
-        if (!twentyFourHour && !swapExempt) {
-          const effectiveStatus = await applyDisciplineRules(
-            tx,
-            employee.id,
-            status,
-            dateOnly,
-            { lateMinutes },
-          );
-
-          if (effectiveStatus === AttendanceStatus.HALF_DAY) {
-            status = AttendanceStatus.HALF_DAY;
-          }
-        }
-
-        // If this row was already auto-escalated to UNINFORMED_ABSENT before
-        // this punch arrived, the employee did eventually show up — the
-        // check-in must still be recorded and the status must reflect the
-        // real arrival (handled below via applyDisciplineRules/status). The
-        // existing UNINFORMED_ABSENT deduction/DisciplineEvent is reversed
-        // below via reconcileAttendanceFinancialConsequences (PENDING payroll
-        // only — PROCESSED/PAID stays frozen), so the note no longer needs
-        // to carry a "not reversed" caveat.
-        const wasUninformedAbsent =
-          anyExisting.status === AttendanceStatus.UNINFORMED_ABSENT;
-
-        const updated = await tx.attendanceLog.update({
+        return tx.attendanceLog.update({
           where: { id: anyExisting.id },
           data: {
             checkIn: checkTime,
@@ -710,35 +836,17 @@ export class AttendanceService {
                 : anyExisting.note,
           },
         });
-
-        await reconcileAttendanceFinancialConsequences(tx, {
-          employeeId: employee.id,
-          date: dateOnly,
-          before: anyExisting,
-          after: updated,
-        });
-
-        return updated;
       });
 
-      return { type: 'CHECKIN' as const, log };
+      return {
+        type: 'CHECKIN' as const,
+        log,
+        needsConsequenceReconcile: true as const,
+        before: anyExisting,
+      };
     }
 
     const log = await this.runInTx(db, async (tx) => {
-      if (!twentyFourHour && !swapExempt) {
-        const effectiveStatus = await applyDisciplineRules(
-          tx,
-          employee.id,
-          status,
-          dateOnly,
-          { lateMinutes },
-        );
-
-        if (effectiveStatus === AttendanceStatus.HALF_DAY) {
-          status = AttendanceStatus.HALF_DAY;
-        }
-      }
-
       return tx.attendanceLog.create({
         data: {
           employeeId: employee.id,
@@ -758,7 +866,12 @@ export class AttendanceService {
       });
     });
 
-    return { type: 'CHECKIN' as const, log };
+    return {
+      type: 'CHECKIN' as const,
+      log,
+      needsConsequenceReconcile: true as const,
+      before: null,
+    };
   }
 
   private async biometricRegularCheckout(
@@ -810,7 +923,7 @@ export class AttendanceService {
     }
 
     const log = await this.runInTx(db, async (tx) => {
-      const updated = await tx.attendanceLog.update({
+      return tx.attendanceLog.update({
         where: { id: openRegular.id },
         data: {
           checkOut: checkTime,
@@ -820,16 +933,14 @@ export class AttendanceService {
           sessionClosedAt: null,
         },
       });
-      await reconcileAttendanceFinancialConsequences(tx, {
-        employeeId: employee.id,
-        date: openRegular.date,
-        before: openRegular,
-        after: updated,
-      });
-      return updated;
     });
 
-    return { type: 'CHECKOUT' as const, log };
+    return {
+      type: 'CHECKOUT' as const,
+      log,
+      needsConsequenceReconcile: true as const,
+      before: openRegular,
+    };
   }
 
   private async biometricOvertimeCheckIn(
@@ -948,7 +1059,12 @@ export class AttendanceService {
     }
 
     const checkTime = new Date();
-    const dateOnly = toPakistanDateOnly(checkTime);
+    const twentyFourHour = is24HourShift(employee);
+    const dateOnly = this.resolvePunchAttendanceDate(
+      checkTime,
+      employee,
+      twentyFourHour,
+    );
 
     if (punchType === 'OVERTIME_CHECKIN') {
       return this.biometricOvertimeCheckIn(
@@ -3006,12 +3122,25 @@ export class AttendanceService {
   }
 
   async getActiveTimer(employeeId: string) {
-    const dateOnly = this.toDateOnly(new Date());
-
+    const now = new Date();
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
-      select: { dutyStartTime: true, dutyEndTime: true },
+      select: {
+        dutyStartTime: true,
+        dutyEndTime: true,
+        shift: { select: { startTime: true } },
+      },
     });
+
+    const twentyFourHour = employee
+      ? is24HourShift({
+          dutyStartTime: employee.dutyStartTime,
+          dutyEndTime: employee.dutyEndTime,
+        })
+      : false;
+    const dateOnly = employee
+      ? this.resolvePunchAttendanceDate(now, employee, twentyFourHour)
+      : this.toDateOnly(now);
 
     let attendanceLog = await this.prisma.attendanceLog.findUnique({
       where: {
@@ -3135,7 +3264,12 @@ export class AttendanceService {
     }
 
     const checkTime = new Date();
-    const dateOnly = this.toDateOnly(checkTime);
+    const twentyFourHour = is24HourShift(employee);
+    const dateOnly = this.resolvePunchAttendanceDate(
+      checkTime,
+      employee,
+      twentyFourHour,
+    );
 
     const existing = await this.prisma.attendanceLog.findUnique({
       where: {
@@ -3147,7 +3281,7 @@ export class AttendanceService {
       },
     });
 
-    const openSession = is24HourShift(employee)
+    const openSession = twentyFourHour
       ? existing?.checkIn
         ? existing
         : null
@@ -3172,9 +3306,12 @@ export class AttendanceService {
         checkTime,
         employee.shift,
       ));
+      if (status === AttendanceStatus.LATE && lateMinutes > 60) {
+        status = AttendanceStatus.HALF_DAY;
+      }
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       await tx.portalAttendance.create({
         data: {
           employeeId,
@@ -3186,19 +3323,7 @@ export class AttendanceService {
         },
       });
 
-      const effectiveStatus = await applyDisciplineRules(
-        tx,
-        employeeId,
-        status,
-        dateOnly,
-        { lateMinutes },
-      );
-
-      if (effectiveStatus === AttendanceStatus.HALF_DAY) {
-        status = AttendanceStatus.HALF_DAY;
-      }
-
-      const updated = await tx.attendanceLog.upsert({
+      return tx.attendanceLog.upsert({
         where: {
           employeeId_date_type: {
             employeeId,
@@ -3227,19 +3352,15 @@ export class AttendanceService {
           note: 'Portal check-in',
         },
       });
-
-      // Route still live server-side though the frontend self-check-in UI
-      // was removed — kept behaviorally consistent with biometricRegularCheckIn
-      // rather than left to silently diverge (e.g. an UNINFORMED_ABSENT
-      // employee checking in here would otherwise keep the same stale-
-      // deduction gap that path used to have).
-      await reconcileAttendanceFinancialConsequences(tx, {
-        employeeId,
-        date: dateOnly,
-        before: existing,
-        after: updated,
-      });
     });
+
+    await this.runConsequenceReconcile(
+      employeeId,
+      dateOnly,
+      existing,
+      updated,
+      employee.dutyStartTime,
+    );
 
     // Fires only after the transaction above has committed. See
     // PayrollService.recomputePendingPayrollForAttendanceDate.
@@ -3430,6 +3551,33 @@ export class AttendanceService {
     return toPakistanDateOnly(date);
   }
 
+  /**
+   * Attendance business date for a punch. Overnight duties that start at/after
+   * 18:00 still belong to the prior calendar day when the punch is after
+   * midnight (e.g. 01:00 against 20:00–08:00 → yesterday). Day shifts and
+   * 24-hour staff use the Pakistan calendar date of the punch.
+   */
+  private resolvePunchAttendanceDate(
+    checkTime: Date,
+    employee: {
+      dutyStartTime?: string | null;
+      shift?: { startTime: string } | null;
+    },
+    twentyFourHour: boolean,
+  ): Date {
+    if (twentyFourHour) {
+      return toPakistanDateOnly(checkTime);
+    }
+    const dutyStart =
+      employee.dutyStartTime?.trim() ||
+      employee.shift?.startTime?.trim() ||
+      null;
+    if (!dutyStart) {
+      return toPakistanDateOnly(checkTime);
+    }
+    return getShiftAttendanceDate(checkTime, dutyStart);
+  }
+
   /** Pakistan calendar date one day before `dateOnly` (UTC date parts). */
   private pakistanYesterday(dateOnly: Date): Date {
     const yesterday = new Date(dateOnly);
@@ -3514,11 +3662,13 @@ export class AttendanceService {
       dutyEndTime?: string | null;
     },
     dateOnly: Date,
+    db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
     const todayOpen = await this.findOpenRegularLogForDate(
       employee.id,
       dateOnly,
       true,
+      db,
     );
     if (todayOpen) return todayOpen;
 
@@ -3532,6 +3682,7 @@ export class AttendanceService {
       employee.id,
       this.pakistanYesterday(dateOnly),
       true,
+      db,
     );
   }
 
