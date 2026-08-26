@@ -20,9 +20,11 @@ const BASIC_STIPEND = 30000;
 type FakeTx = {
   disciplineEvent: { create: jest.Mock };
   employee: { findUnique: jest.Mock; update: jest.Mock };
-  user: { updateMany: jest.Mock };
+  user: { updateMany: jest.Mock; findMany: jest.Mock };
   attendanceLog: { findMany: jest.Mock };
-  letter: { findMany: jest.Mock };
+  letter: { findMany: jest.Mock; create: jest.Mock };
+  disciplinaryAction: { create: jest.Mock };
+  notification: { create: jest.Mock };
   stipendRecord: { findFirst: jest.Mock };
   payrollEntry: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
   payrollDeduction: { findFirst: jest.Mock; create: jest.Mock };
@@ -85,11 +87,21 @@ function makeFakeTx(priorLateDaysByCall: () => { date: Date }[]): FakeTx {
       }),
       update: jest.fn().mockResolvedValue(undefined),
     },
-    user: { updateMany: jest.fn().mockResolvedValue(undefined) },
+    user: {
+      updateMany: jest.fn().mockResolvedValue(undefined),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     attendanceLog: {
       findMany: jest.fn(() => Promise.resolve(priorLateDaysByCall())),
     },
-    letter: { findMany: jest.fn().mockResolvedValue([]) },
+    letter: {
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ id: 'letter-draft-1' }),
+    },
+    disciplinaryAction: {
+      create: jest.fn().mockResolvedValue({ id: 'action-1' }),
+    },
+    notification: { create: jest.fn().mockResolvedValue({}) },
     stipendRecord: {
       findFirst: jest.fn().mockResolvedValue({
         id: 'stipend-1',
@@ -247,7 +259,7 @@ describe('discipline idempotency gate (DisciplineEvent)', () => {
     expect(issueAutoTemplatedLetter).toHaveBeenCalledTimes(2);
   });
 
-  it('occurrence 9 produces a SUSPENSION letter and NO LATE_ARRIVAL deduction (regression guard for the pre-76deef6 legacy bug)', async () => {
+  it('occurrence 9 cannot auto-suspend or auto-send a suspension letter even when AUTO_DISCIPLINE is enabled', async () => {
     const incidentDate = new Date('2026-08-30T00:00:00.000Z');
     // 8 distinct prior late days + this one = lateCount 9.
     const priorDays = Array.from({ length: 8 }, (_, i) => ({
@@ -263,13 +275,62 @@ describe('discipline idempotency gate (DisciplineEvent)', () => {
       { lateMinutes: 30 },
     );
 
-    expect(issueAutoTemplatedLetter).toHaveBeenCalledTimes(1);
-    expect(issueAutoTemplatedLetter.mock.calls[0][1]).toMatchObject({
-      letterType: LetterType.SUSPENSION,
-    });
+    expect(issueAutoTemplatedLetter).not.toHaveBeenCalled();
     expect(tx.payrollDeduction.create).not.toHaveBeenCalled();
-    expect(tx.employee.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'SUSPENDED' } }),
+    expect(tx.employee.update).not.toHaveBeenCalled();
+    expect(tx.user.updateMany).not.toHaveBeenCalled();
+    expect(tx.disciplinaryAction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'SUSPENSION',
+          status: 'OPEN',
+        }),
+      }),
+    );
+    expect(tx.letter.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          letterType: LetterType.SUSPENSION,
+          status: 'DRAFT',
+        }),
+      }),
+    );
+  });
+
+  it('uninformed threshold cannot auto-suspend or auto-send a suspension letter even when AUTO_DISCIPLINE is enabled', async () => {
+    const incidentDate = new Date('2026-08-12T00:00:00.000Z');
+    const priorDays = [
+      { date: new Date('2026-08-05T00:00:00.000Z') },
+      { date: new Date('2026-08-11T00:00:00.000Z') },
+    ];
+    const tx = makeFakeTx(() => priorDays);
+    tx.attendanceLog.findMany.mockResolvedValue(priorDays);
+
+    await applyDisciplineRules(
+      asTx(tx),
+      EMPLOYEE_ID,
+      AttendanceStatus.UNINFORMED_ABSENT,
+      incidentDate,
+    );
+
+    expect(issueAutoTemplatedLetter).not.toHaveBeenCalled();
+    expect(tx.employee.update).not.toHaveBeenCalled();
+    expect(tx.user.updateMany).not.toHaveBeenCalled();
+    expect(tx.disciplinaryAction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'SUSPENSION',
+          status: 'OPEN',
+        }),
+      }),
+    );
+    expect(tx.letter.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          letterType: LetterType.SUSPENSION,
+          status: 'DRAFT',
+        }),
+      }),
     );
   });
 

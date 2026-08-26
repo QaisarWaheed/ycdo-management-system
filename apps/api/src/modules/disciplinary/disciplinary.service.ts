@@ -8,6 +8,7 @@ import {
   DisciplinaryType,
   EmployeeStatus,
   InquiryOutcome,
+  LetterStatus,
   LetterType,
   Permission,
   Prisma,
@@ -16,6 +17,10 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { LettersService } from '../letters/letters.service';
+import {
+  expectedFinalLetters,
+  matchFinalLetterStatuses,
+} from './inquiry-final-letters';
 import {
   CreateDisciplinaryDto,
   DisciplinaryQueryDto,
@@ -77,13 +82,6 @@ export class DisciplinaryService {
         },
       });
 
-      if (dto.type === DisciplinaryType.SUSPENSION) {
-        await tx.employee.update({
-          where: { id: dto.employeeId },
-          data: { status: EmployeeStatus.SUSPENDED },
-        });
-      }
-
       await tx.notification.create({
         data: {
           employeeId: dto.employeeId,
@@ -111,6 +109,7 @@ export class DisciplinaryService {
       dto.reason,
       issuedAt,
       actingUserId,
+      action.id,
     );
 
     return action;
@@ -150,16 +149,68 @@ export class DisciplinaryService {
         );
     }
 
-    return this.prisma.disciplinaryAction.findMany({
+    const rows = await this.prisma.disciplinaryAction.findMany({
       where,
       include: {
         employee: {
-          select: { fullName: true, employeeCode: true },
+          select: { fullName: true, employeeCode: true, status: true },
         },
-        inquiry: true,
+        inquiry: {
+          include: {
+            inquiryOfficer: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+            findingRecordedBy: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+            selectedFinalApprover: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+            finalDecidedBy: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+            destinationBranch: {
+              select: { id: true, name: true, abbreviation: true },
+            },
+          },
+        },
+        suspensionRequest: {
+          select: {
+            id: true,
+            status: true,
+            letterId: true,
+            decisionNote: true,
+            suspendedFromBranchId: true,
+            selectedApprover: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+          },
+        },
       },
       orderBy: { issuedAt: 'desc' },
     });
+
+    return this.withFinalLetterStatuses(rows);
   }
 
   async findOne(id: string) {
@@ -175,7 +226,57 @@ export class DisciplinaryService {
             status: true,
           },
         },
-        inquiry: true,
+        inquiry: {
+          include: {
+            inquiryOfficer: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+            findingRecordedBy: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+            selectedFinalApprover: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+            finalDecidedBy: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+            destinationBranch: {
+              select: { id: true, name: true, abbreviation: true },
+            },
+          },
+        },
+        suspensionRequest: {
+          select: {
+            id: true,
+            status: true,
+            letterId: true,
+            decisionNote: true,
+            suspendedFromBranchId: true,
+            selectedApprover: {
+              select: {
+                id: true,
+                email: true,
+                employee: { select: { fullName: true } },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -185,7 +286,73 @@ export class DisciplinaryService {
       );
     }
 
-    return action;
+    const [annotated] = await this.withFinalLetterStatuses([action]);
+    return annotated;
+  }
+
+  private async withFinalLetterStatuses<
+    T extends {
+      employeeId: string;
+      inquiry?: {
+        id: string;
+        finding?: string | null;
+        finalAction?: string | null;
+        closedAt?: Date | string | null;
+        finalDecisionStatus?: string | null;
+      } | null;
+    },
+  >(actions: T[]): Promise<T[]> {
+    const applied = actions.filter(
+      (action) =>
+        action.inquiry &&
+        (action.inquiry.closedAt ||
+          action.inquiry.finalDecisionStatus === 'APPLIED'),
+    );
+    if (!applied.length) {
+      return actions;
+    }
+
+    const employeeIds = [...new Set(applied.map((row) => row.employeeId))];
+    const letters = await this.prisma.letter.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        letterType: {
+          in: [
+            LetterType.REINSTATEMENT,
+            LetterType.TERMINATION,
+            LetterType.FINE,
+          ],
+        },
+        status: { not: LetterStatus.REVERSED },
+      },
+      select: {
+        id: true,
+        employeeId: true,
+        letterType: true,
+        status: true,
+        letterNo: true,
+        content: true,
+      },
+    });
+
+    return actions.map((action) => {
+      if (!action.inquiry) return action;
+      const expected = expectedFinalLetters(
+        action.inquiry.finding,
+        action.inquiry.finalAction,
+      );
+      return {
+        ...action,
+        inquiry: {
+          ...action.inquiry,
+          finalLetters: matchFinalLetterStatuses(
+            expected,
+            letters.filter((letter) => letter.employeeId === action.employeeId),
+            action.inquiry.id,
+          ),
+        },
+      };
+    });
   }
 
   async startInquiry(dto: StartInquiryDto, actingUserId: string) {
@@ -209,6 +376,12 @@ export class DisciplinaryService {
     if (action.inquiry) {
       throw new BadRequestException(
         'An inquiry already exists for this disciplinary action',
+      );
+    }
+
+    if (action.type === DisciplinaryType.SUSPENSION) {
+      throw new BadRequestException(
+        'Suspension inquiries are started automatically after an approved suspension letter is issued.',
       );
     }
 
@@ -299,6 +472,12 @@ export class DisciplinaryService {
     }
 
     const action = inquiry.disciplinaryAction;
+    if (action.type === DisciplinaryType.SUSPENSION) {
+      throw new BadRequestException(
+        'Suspension inquiries must be completed through the finding and final-decision workflow.',
+      );
+    }
+
     const employee = action.employee;
     const today = this.formatDate(new Date());
 
@@ -466,6 +645,7 @@ export class DisciplinaryService {
     reason: string,
     issuedAt: Date,
     actingUserId: string,
+    disciplinaryActionId: string,
   ) {
     const formattedDate = this.formatDate(issuedAt);
     const monthYear = `${issuedAt.getMonth() + 1}/${issuedAt.getFullYear()}`;
@@ -477,6 +657,7 @@ export class DisciplinaryService {
             employeeId,
             letterType: LetterType.SUSPENSION,
             extraFields: {
+              disciplinaryActionId,
               suspensionReason: reason,
               suspensionStartDate: formattedDate,
               suspensionDuration: 'Pending inquiry',

@@ -29,10 +29,18 @@ export class ShowCauseScheduler {
 
     for (const letter of overdueLetters) {
       await this.prisma.$transaction(async (tx) => {
-        await tx.letter.update({
-          where: { id: letter.id },
+        const claimed = await tx.letter.updateMany({
+          where: {
+            id: letter.id,
+            autoEscalated: false,
+            isReplied: false,
+            letterType: LetterType.SHOW_CAUSE,
+          },
           data: { autoEscalated: true },
         });
+        if (claimed.count !== 1) {
+          return;
+        }
 
         await tx.disciplinaryAction.create({
           data: {
@@ -41,11 +49,6 @@ export class ShowCauseScheduler {
             reason: `Auto-escalated: No reply to show cause letter ${letter.fileUrl} within 48 hours`,
             status: 'OPEN',
           },
-        });
-
-        await tx.employee.update({
-          where: { id: letter.employeeId },
-          data: { status: 'SUSPENDED' },
         });
 
         const hrManagers = await tx.user.findMany({
@@ -57,7 +60,7 @@ export class ShowCauseScheduler {
             await tx.notification.create({
               data: {
                 employeeId: hr.employeeId,
-                message: `Show cause auto-escalated for ${letter.employee.fullName}. Employee suspended.`,
+                message: `Show cause auto-escalated for ${letter.employee.fullName}. HR action required.`,
                 type: 'SHOW_CAUSE_ESCALATED',
               },
             });

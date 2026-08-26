@@ -28,6 +28,8 @@ import {
 } from '@/components/ui/table'
 import type { LeaveRecord } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
+import { PendingSuspensionApprovalsCard } from '@/components/disciplinary/PendingSuspensionApprovalsCard'
 
 export function ExecutiveDashboard() {
   const [reviewApproval, setReviewApproval] =
@@ -116,6 +118,9 @@ export function ExecutiveDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <PendingSuspensionApprovalsCard />
+      <PendingInquiryDecisionsCard />
 
       <Card className="border-primary/30">
         <CardHeader>

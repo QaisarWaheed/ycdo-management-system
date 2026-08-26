@@ -64,6 +64,12 @@ export async function issueAutoTemplatedLetter(
     notificationType: string;
   },
 ): Promise<void> {
+  if (input.letterType === LetterType.SUSPENSION) {
+    throw new Error(
+      'Automatic SENT suspension letters are not allowed. Use the approved suspension Issue flow.',
+    );
+  }
+
   const employee = await loadEmployee(db, input.employeeId);
   if (!employee) return;
 

@@ -33,6 +33,7 @@ import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { EditDraftLetterDialog } from '@/components/letters/EditDraftLetterDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -96,6 +97,32 @@ import {
 } from '@/types'
 
 const ALL = 'ALL'
+
+function isLockedSuspensionDraft(letter: Letter) {
+  const status = letter.suspensionRequest?.status
+  return status === 'PENDING_APPROVAL' || status === 'APPROVED'
+}
+
+function canIssueApprovedSuspension(letter: Letter) {
+  return (
+    letter.status === 'DRAFT' &&
+    letter.letterType === 'SUSPENSION' &&
+    letter.suspensionRequest?.status === 'APPROVED'
+  )
+}
+
+function canSendDraftLetter(letter: Letter) {
+  if (letter.status !== 'DRAFT') return false
+  if (letter.letterType === 'SUSPENSION') {
+    return canIssueApprovedSuspension(letter)
+  }
+  return true
+}
+
+function officerLabel(letter: Letter) {
+  const officer = letter.suspensionRequest?.inquiryOfficer
+  return officer?.employee?.fullName || officer?.email || 'inquiry officer'
+}
 
 function AcknowledgementCell({ letter }: { letter: Letter }) {
   const isAcknowledgementRequired = letter.requiresAcknowledgement
@@ -991,6 +1018,8 @@ export function LettersPage() {
   const [repliesLetter, setRepliesLetter] = useState<Letter | null>(null)
   const [ackLetter, setAckLetter] = useState<Letter | null>(null)
   const [shareLetter, setShareLetter] = useState<Letter | null>(null)
+  const [editLetter, setEditLetter] = useState<Letter | null>(null)
+  const [issueLetter, setIssueLetter] = useState<Letter | null>(null)
 
   const prefillType = (searchParams.get('letterType') as LetterType | null) ?? undefined
   const prefillViolations = searchParams.get('violations') ?? undefined
@@ -1075,11 +1104,22 @@ export function LettersPage() {
     mutationFn: (id: string) => lettersApi.send(id),
     onSuccess: (data) => {
       toast({
-        title: data.alreadySent ? 'Already on portal' : 'Sent to portal',
-        description: data.message,
+        title: data.alreadySent
+          ? issueLetter
+            ? 'Already issued'
+            : 'Already on portal'
+          : issueLetter
+            ? 'Suspension issued'
+            : 'Sent to portal',
+        description: issueLetter && !data.alreadySent
+          ? 'The employee is now suspended and the inquiry has been initialized.'
+          : data.message,
       })
       queryClient.invalidateQueries({ queryKey: ['letters'] })
       queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
+      queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      setIssueLetter(null)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -1334,11 +1374,27 @@ export function LettersPage() {
                             >
                               Download PDF
                             </DropdownMenuItem>
-                            {letter.status === 'DRAFT' && (
+                            {letter.status === 'DRAFT' &&
+                              !isLockedSuspensionDraft(letter) && (
                               <DropdownMenuItem
-                                onClick={() => sendMutation.mutate(letter.id)}
+                                onClick={() => setEditLetter(letter)}
                               >
-                                Send to portal
+                                Edit draft
+                              </DropdownMenuItem>
+                            )}
+                            {canSendDraftLetter(letter) && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  if (canIssueApprovedSuspension(letter)) {
+                                    setIssueLetter(letter)
+                                    return
+                                  }
+                                  sendMutation.mutate(letter.id)
+                                }}
+                              >
+                                {canIssueApprovedSuspension(letter)
+                                  ? 'Issue Suspension'
+                                  : 'Send to portal'}
                               </DropdownMenuItem>
                             )}
                             {letter.letterType === 'SHOW_CAUSE' && (
@@ -1557,6 +1613,12 @@ export function LettersPage() {
         onOpenChange={(v) => !v && setShareLetter(null)}
       />
 
+      <EditDraftLetterDialog
+        letter={editLetter}
+        open={!!editLetter}
+        onOpenChange={(v) => !v && setEditLetter(null)}
+      />
+
       <Dialog
         open={!!reverseLetter}
         onOpenChange={(v) => {
@@ -1620,6 +1682,36 @@ export function LettersPage() {
         loading={deleteMutation.isPending}
         onConfirm={() => deleteId && deleteMutation.mutate(deleteId)}
         onCancel={() => setDeleteId(null)}
+      />
+      <ConfirmDialog
+        open={!!issueLetter}
+        title="Issue this suspension?"
+        description={
+          issueLetter
+            ? `${issueLetter.employee?.fullName ?? 'This employee'} will be suspended. Period: ${
+                issueLetter.suspensionRequest?.periodStart
+                  ? format(new Date(issueLetter.suspensionRequest.periodStart), 'dd/MM/yyyy')
+                  : '—'
+              } to ${
+                issueLetter.suspensionRequest?.periodEnd
+                  ? format(new Date(issueLetter.suspensionRequest.periodEnd), 'dd/MM/yyyy')
+                  : '—'
+              }. Inquiry officer: ${officerLabel(issueLetter)}. Deadline: ${
+                issueLetter.suspensionRequest?.inquiryDeadlineAt
+                  ? format(
+                      new Date(issueLetter.suspensionRequest.inquiryDeadlineAt),
+                      'dd/MM/yyyy',
+                    )
+                  : '—'
+              }. Status: approved.`
+            : ''
+        }
+        confirmLabel="Issue Suspension"
+        loading={sendMutation.isPending}
+        onConfirm={() => {
+          if (issueLetter) sendMutation.mutate(issueLetter.id)
+        }}
+        onCancel={() => setIssueLetter(null)}
       />
     </div>
   )

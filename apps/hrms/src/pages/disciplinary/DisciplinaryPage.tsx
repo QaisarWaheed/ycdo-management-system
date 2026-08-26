@@ -1,16 +1,20 @@
 import { Fragment, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { addDays, format, isPast } from 'date-fns'
+import { addDays, format } from 'date-fns'
 import { MoreHorizontal } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
+import { canStartLegacyInquiry } from '@/lib/disciplinaryInquiryUi'
+import { branchesApi } from '@/api/endpoints/branches'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { PrepareSuspensionDialog } from '@/components/disciplinary/PrepareSuspensionDialog'
+import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -55,6 +59,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import { usePagination } from '@/hooks/usePagination'
 import { cn } from '@/lib/utils'
 import {
@@ -67,6 +72,18 @@ import {
 } from '@/types'
 
 const ALL = 'ALL'
+
+function inquiryDeadlineWarning(
+  inquiry: Pick<Inquiry, 'deadlineAt' | 'outcome' | 'closedAt'>,
+  now = new Date(),
+): 'Overdue' | 'Due soon' | null {
+  if (inquiry.closedAt || inquiry.outcome) return null
+  const deadline = new Date(inquiry.deadlineAt).getTime()
+  if (Number.isNaN(deadline)) return null
+  if (deadline <= now.getTime()) return 'Overdue'
+  if (deadline <= now.getTime() + 24 * 60 * 60 * 1000) return 'Due soon'
+  return null
+}
 
 function typeBadgeClass(type: string) {
   const map: Record<string, string> = {
@@ -89,6 +106,168 @@ function statusBadgeClass(status: string) {
   return map[status] ?? ''
 }
 
+function personName(user?: {
+  email?: string
+  employee?: { fullName: string } | null
+} | null) {
+  if (!user) return '—'
+  return user.employee?.fullName || user.email || '—'
+}
+
+function inquiryWorkflowLabel(inquiry: Inquiry) {
+  if (inquiry.finalDecisionStatus === 'APPLIED' && inquiry.outcome) {
+    return inquiry.outcome.replace(/_/g, ' ')
+  }
+  if (inquiry.outcome) {
+    return inquiry.outcome.replace(/_/g, ' ')
+  }
+  if (inquiry.finalDecisionStatus === 'PENDING_APPROVAL') {
+    return 'Final decision pending approval'
+  }
+  if (inquiry.finalDecisionStatus === 'REJECTED') {
+    return 'Final decision rejected'
+  }
+  if (inquiry.finding === 'NOT_GUILTY') {
+    return 'NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT'
+  }
+  if (inquiry.finding === 'GUILTY') {
+    return 'GUILTY — select final action'
+  }
+  return 'Awaiting finding'
+}
+
+function formatWhen(value?: string | null) {
+  if (!value) return '—'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? '—' : format(parsed, 'dd/MM/yyyy HH:mm')
+}
+
+function InquiryFinalState({
+  inquiry,
+  employeeStatus,
+  employeeId,
+  canRecoverLetters,
+}: {
+  inquiry: Inquiry
+  employeeStatus?: string
+  employeeId?: string
+  canRecoverLetters: boolean
+}) {
+  const queryClient = useQueryClient()
+  const applied = inquiry.finalDecisionStatus === 'APPLIED' || !!inquiry.outcome
+  const rejected = inquiry.finalDecisionStatus === 'REJECTED' && !applied
+  const transferRequired =
+    inquiry.finding === 'NOT_GUILTY' ||
+    inquiry.finalAction === 'FINE_AND_REINSTATE'
+  const fineLabel =
+    inquiry.finalAction !== 'FINE_AND_REINSTATE'
+      ? '—'
+      : inquiry.appliedFineDeductionId
+        ? `Applied (${inquiry.appliedFineDeductionId})`
+        : applied
+          ? 'Blocked / not posted'
+          : 'Not applied yet'
+  const missingLetters = (inquiry.finalLetters ?? []).filter(
+    (letter) => letter.status === 'MISSING',
+  )
+
+  const recoverMutation = useMutation({
+    mutationFn: () => disciplinaryApi.generateMissingFinalLetters(inquiry.id),
+    onSuccess: () => {
+      toast({
+        title: 'Missing final letters generated',
+        description: 'Drafts were created. Review and issue them from Letters.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Could not generate missing letters',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <div className="space-y-0.5 text-xs text-text-secondary">
+      <p>Finding: {inquiry.finding?.replace(/_/g, ' ') ?? '—'}</p>
+      <p>Finding recorded by: {personName(inquiry.findingRecordedBy)}</p>
+      <p>Finding recorded at: {formatWhen(inquiry.findingRecordedAt)}</p>
+      <p>
+        Final action:{' '}
+        {inquiry.finding === 'NOT_GUILTY'
+          ? 'Transfer + reinstate'
+          : inquiry.finalAction?.replace(/_/g, ' ') ?? '—'}
+      </p>
+      <p>
+        Final decision:{' '}
+        {inquiry.finalDecisionStatus?.replace(/_/g, ' ') ?? '—'}
+      </p>
+      <p>Selected approver: {personName(inquiry.selectedFinalApprover)}</p>
+      {(inquiry.finalDecisionNote || inquiry.finalDecidedBy) && (
+        <p>
+          {rejected ? 'Rejection' : 'Decision note'}:{' '}
+          {personName(inquiry.finalDecidedBy)}
+          {inquiry.finalDecidedAt ? ` · ${formatWhen(inquiry.finalDecidedAt)}` : ''}
+          {inquiry.finalDecisionNote ? ` — ${inquiry.finalDecisionNote}` : ''}
+        </p>
+      )}
+      <p>Transfer required: {transferRequired ? 'Yes' : 'No'}</p>
+      <p>Destination branch: {inquiry.destinationBranch?.name ?? '—'}</p>
+      <p>
+        Fine amount:{' '}
+        {inquiry.fineAmount != null && inquiry.fineAmount !== ''
+          ? String(inquiry.fineAmount)
+          : '—'}
+      </p>
+      <p>Fine: {fineLabel}</p>
+      <p>Final outcome: {inquiry.outcome?.replace(/_/g, ' ') ?? '—'}</p>
+      <p>Closed at: {formatWhen(inquiry.closedAt)}</p>
+      <p>Employee status: {employeeStatus?.replace(/_/g, ' ') ?? '—'}</p>
+      {applied && (
+        <div className="space-y-1 pt-1">
+          <p className="font-medium text-text-primary">Required final letters</p>
+          {(inquiry.finalLetters ?? []).length === 0 ? (
+            <p>None required</p>
+          ) : (
+            inquiry.finalLetters!.map((letter) => (
+              <div key={letter.inquiryLetterKind} className="flex flex-wrap items-center gap-2">
+                <span>
+                  {letter.inquiryLetterKind.replace(/_/g, ' ')}: {letter.status}
+                  {letter.letterNo ? ` (${letter.letterNo})` : ''}
+                </span>
+                {letter.status === 'DRAFT' && employeeId && (
+                  <a
+                    className="text-primary underline"
+                    href={`/letters?employeeId=${employeeId}`}
+                  >
+                    Review in Letters
+                  </a>
+                )}
+                {letter.status === 'SENT' && (
+                  <span>Issued — read-only</span>
+                )}
+              </div>
+            ))
+          )}
+          {missingLetters.length > 0 && canRecoverLetters && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={recoverMutation.isPending}
+              onClick={() => recoverMutation.mutate()}
+            >
+              Generate Missing Final Letter(s)
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function outcomeBadgeClass(outcome: string | null | undefined) {
   if (!outcome) return 'bg-amber-100 text-amber-800 border-amber-200'
   const map: Record<string, string> = {
@@ -96,6 +275,7 @@ function outcomeBadgeClass(outcome: string | null | undefined) {
     TERMINATED: 'bg-red-100 text-red-800 border-red-200',
     REJOINED: 'bg-blue-100 text-blue-800 border-blue-200',
     DISMISSED: 'bg-gray-100 text-gray-700 border-gray-200',
+    REST: 'bg-slate-100 text-slate-700 border-slate-200',
   }
   return map[outcome] ?? ''
 }
@@ -349,6 +529,7 @@ const RESOLVE_FIELDS: Record<
     { key: 'rejoiningDesignation', label: 'Rejoining Designation' },
   ],
   DISMISSED: [],
+  REST: [],
 }
 
 function ResolveInquiryDialog({
@@ -502,12 +683,23 @@ function ResolveInquiryDialog({
   )
 }
 
+function canPrepareSuspension(action: DisciplinaryAction) {
+  if (action.type !== 'SUSPENSION') return false
+  if (action.status !== 'OPEN' && action.status !== 'UNDER_INQUIRY') return false
+  const status = action.suspensionRequest?.status
+  return !status || status === 'DRAFT' || status === 'REJECTED'
+}
+
 function ActionsTab({
   onStartInquiry,
   onSwitchToInquiries,
+  onPrepareSuspension,
+  canPrepare,
 }: {
   onStartInquiry: (actionId: string) => void
   onSwitchToInquiries: () => void
+  onPrepareSuspension: (action: DisciplinaryAction) => void
+  canPrepare: boolean
 }) {
   const [employeeId, setEmployeeId] = useState('')
   const [typeFilter, setTypeFilter] = useState(ALL)
@@ -634,6 +826,11 @@ function ActionsTab({
                         <p className="font-mono text-xs text-text-secondary">
                           {action.employee?.employeeCode ?? '—'}
                         </p>
+                        {action.employee?.status && (
+                          <p className="text-xs text-text-secondary">
+                            {action.employee.status.replace(/_/g, ' ')}
+                          </p>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -666,7 +863,7 @@ function ActionsTab({
                         >
                           View
                         </Button>
-                      ) : action.status === 'OPEN' ? (
+                      ) : canStartLegacyInquiry(action) ? (
                         <Button
                           variant="outline"
                           size="sm"
@@ -693,11 +890,20 @@ function ActionsTab({
                           >
                             View Details
                           </DropdownMenuItem>
-                          {action.status === 'OPEN' && !action.inquiry && (
+                          {canStartLegacyInquiry(action) && (
                             <DropdownMenuItem
                               onClick={() => onStartInquiry(action.id)}
                             >
                               Start Inquiry
+                            </DropdownMenuItem>
+                          )}
+                          {canPrepare && canPrepareSuspension(action) && (
+                            <DropdownMenuItem
+                              onClick={() => onPrepareSuspension(action)}
+                            >
+                              {action.suspensionRequest?.status === 'REJECTED'
+                                ? 'Revise Suspension'
+                                : 'Prepare Suspension'}
                             </DropdownMenuItem>
                           )}
                           {action.employeeId && (
@@ -718,10 +924,47 @@ function ActionsTab({
                           <span className="font-medium">Full reason: </span>
                           {action.reason}
                         </p>
+                        {action.suspensionRequest && (
+                          <p className="mt-2 text-sm">
+                            <span className="font-medium">
+                              Suspension request:{' '}
+                            </span>
+                            {action.suspensionRequest.status ===
+                            'PENDING_APPROVAL'
+                              ? `Pending approval — ${
+                                  action.suspensionRequest.selectedApprover
+                                    ?.employee?.fullName ??
+                                  action.suspensionRequest.selectedApprover
+                                    ?.email ??
+                                  'selected approver'
+                                }`
+                              : action.suspensionRequest.status === 'APPROVED'
+                                ? 'Approved — issue the suspension from Letters to suspend the employee'
+                                : action.suspensionRequest.status === 'REJECTED'
+                                  ? `Rejected${
+                                      action.suspensionRequest.decisionNote
+                                        ? ` — ${action.suspensionRequest.decisionNote}`
+                                        : ''
+                                    }`
+                                  : action.suspensionRequest.status === 'ISSUED'
+                                    ? 'Issued — employee suspended, inquiry open'
+                                    : action.suspensionRequest.status ===
+                                        'COMPLETED'
+                                      ? 'Completed — inquiry resolved'
+                                      : action.suspensionRequest.status.replace(
+                                          /_/g,
+                                          ' ',
+                                        )}
+                          </p>
+                        )}
                         {action.inquiry && (
                           <p className="mt-2 text-sm text-text-secondary">
                             Inquiry deadline:{' '}
                             {format(new Date(action.inquiry.deadlineAt), 'dd/MM/yyyy')}
+                            {(() => {
+                              const warning = inquiryDeadlineWarning(action.inquiry)
+                              return warning ? ` · ${warning}` : ''
+                            })()}
                             {action.inquiry.outcome &&
                               ` · Outcome: ${action.inquiry.outcome}`}
                           </p>
@@ -751,6 +994,10 @@ function InquiriesTab({
 }: {
   onResolve: (inquiry: Inquiry) => void
 }) {
+  const { user, hasRole } = useAuth()
+  const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
+  const [findingInquiry, setFindingInquiry] = useState<Inquiry | null>(null)
+  const [decisionInquiry, setDecisionInquiry] = useState<Inquiry | null>(null)
   const [employeeId, setEmployeeId] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState(ALL)
 
@@ -787,6 +1034,7 @@ function InquiriesTab({
 
   return (
     <div className="space-y-4">
+      <PendingInquiryDecisionsCard />
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[220px] flex-1">
           <EmployeeSearchSelect
@@ -851,8 +1099,7 @@ function InquiriesTab({
             ) : (
               paginated.map((inquiry) => {
                 const action = inquiry.action
-                const overdue =
-                  !inquiry.outcome && isPast(new Date(inquiry.deadlineAt))
+                const warning = inquiryDeadlineWarning(inquiry)
                 return (
                   <TableRow key={inquiry.id}>
                     <TableCell>
@@ -870,33 +1117,98 @@ function InquiriesTab({
                       {format(new Date(inquiry.startedAt), 'dd/MM/yyyy')}
                     </TableCell>
                     <TableCell
-                      className={cn(overdue && 'font-medium text-red-600')}
+                      className={cn(
+                        warning === 'Overdue' && 'font-medium text-red-600',
+                        warning === 'Due soon' && 'font-medium text-amber-700',
+                      )}
                     >
-                      {format(new Date(inquiry.deadlineAt), 'dd/MM/yyyy')}
+                      <div className="flex flex-col gap-1">
+                        <span>
+                          {format(new Date(inquiry.deadlineAt), 'dd/MM/yyyy')}
+                        </span>
+                        {warning && (
+                          <Badge
+                            variant="outline"
+                            className={
+                              warning === 'Overdue'
+                                ? 'w-fit border-red-200 bg-red-50 text-red-700'
+                                : 'w-fit border-amber-200 bg-amber-50 text-amber-800'
+                            }
+                          >
+                            {warning}
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
-                      {inquiry.outcome ? 'Resolved' : 'Open'}
+                      <div className="flex flex-col gap-2">
+                        <span className="text-sm">
+                          {inquiry.outcome ? 'Closed' : 'Open'}
+                        </span>
+                        <InquiryFinalState
+                          inquiry={inquiry}
+                          employeeStatus={action.employee?.status}
+                          employeeId={action.employeeId}
+                          canRecoverLetters={canPrepare}
+                        />
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge
                         variant="outline"
                         className={outcomeBadgeClass(inquiry.outcome)}
                       >
-                        {inquiry.outcome
-                          ? inquiry.outcome.replace(/_/g, ' ')
-                          : 'Awaiting Resolution'}
+                        {inquiryWorkflowLabel(inquiry)}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {!inquiry.outcome && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onResolve(inquiry)}
-                        >
-                          Resolve Inquiry
-                        </Button>
-                      )}
+                      <div className="flex flex-col gap-2">
+                        {action.type === 'SUSPENSION' &&
+                          !inquiry.finding &&
+                          !inquiry.outcome &&
+                          inquiry.finalDecisionStatus !== 'APPLIED' &&
+                          user?.id === inquiry.inquiryOfficerUserId && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setFindingInquiry(inquiry)}
+                            >
+                              Record finding
+                            </Button>
+                          )}
+                        {action.type === 'SUSPENSION' &&
+                          !!inquiry.finding &&
+                          !inquiry.outcome &&
+                          inquiry.finalDecisionStatus !== 'PENDING_APPROVAL' &&
+                          inquiry.finalDecisionStatus !== 'APPLIED' &&
+                          canPrepare && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setDecisionInquiry(inquiry)}
+                            >
+                              {inquiry.finalDecisionStatus === 'REJECTED'
+                                ? 'Revise final decision'
+                                : inquiry.finding === 'NOT_GUILTY'
+                                  ? 'Select transfer & submit'
+                                  : 'Select final action'}
+                            </Button>
+                          )}
+                        {inquiry.finalDecisionStatus === 'APPLIED' && (
+                          <p className="text-xs text-text-secondary">
+                            Applied — letters stay draft until issued from Letters.
+                          </p>
+                        )}
+                        {action.type !== 'SUSPENSION' && !inquiry.outcome && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onResolve(inquiry)}
+                          >
+                            Resolve Inquiry
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -912,15 +1224,284 @@ function InquiriesTab({
           onPageChange={setPage}
         />
       </div>
+
+      <RecordFindingDialog
+        inquiry={findingInquiry}
+        open={!!findingInquiry}
+        onOpenChange={(v) => !v && setFindingInquiry(null)}
+      />
+      <ProposeFinalDecisionDialog
+        inquiry={decisionInquiry}
+        open={!!decisionInquiry}
+        onOpenChange={(v) => !v && setDecisionInquiry(null)}
+      />
     </div>
   )
 }
 
+function RecordFindingDialog({
+  inquiry,
+  open,
+  onOpenChange,
+}: {
+  inquiry: Inquiry | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const queryClient = useQueryClient()
+  const [finding, setFinding] = useState<'GUILTY' | 'NOT_GUILTY'>('NOT_GUILTY')
+  const [notes, setNotes] = useState('')
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      disciplinaryApi.recordInquiryFinding(inquiry!.id, {
+        finding,
+        notes: notes || undefined,
+      }),
+    onSuccess: () => {
+      toast({ title: 'Finding recorded', description: finding.replace(/_/g, ' ') })
+      queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
+      onOpenChange(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Could not record finding',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Record inquiry finding</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-text-secondary">
+            The finding does not change employment status. A separate approved
+            decision is required.
+          </p>
+          <div className="space-y-1">
+            <Label>Finding</Label>
+            <Select
+              value={finding}
+              onValueChange={(v) => setFinding(v as 'GUILTY' | 'NOT_GUILTY')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NOT_GUILTY">NOT GUILTY</SelectItem>
+                <SelectItem value="GUILTY">GUILTY</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {finding === 'NOT_GUILTY' && (
+            <p className="text-sm font-medium text-amber-800">
+              NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT
+            </p>
+          )}
+          <div className="space-y-1">
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            Submit finding
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ProposeFinalDecisionDialog({
+  inquiry,
+  open,
+  onOpenChange,
+}: {
+  inquiry: Inquiry | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const queryClient = useQueryClient()
+  const [finalAction, setFinalAction] = useState('DISMISS')
+  const [destinationBranchId, setDestinationBranchId] = useState('')
+  const [approverId, setApproverId] = useState('')
+  const [fineAmount, setFineAmount] = useState('')
+  const [notes, setNotes] = useState('')
+
+  const needsTransfer =
+    inquiry?.finding === 'NOT_GUILTY' || finalAction === 'FINE_AND_REINSTATE'
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => branchesApi.getAll(),
+    enabled: open,
+  })
+  const { data: approvers = [] } = useQuery({
+    queryKey: ['disciplinary', 'suspension-approvers'],
+    queryFn: () => disciplinaryApi.listEligibleApprovers(),
+    enabled: open,
+  })
+
+  const forbiddenBranchId = (
+    inquiry as Inquiry & { action?: DisciplinaryAction }
+  )?.action?.suspensionRequest?.suspendedFromBranchId
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      disciplinaryApi.submitInquiryFinalDecision(inquiry!.id, {
+        selectedApproverUserId: approverId,
+        destinationBranchId: needsTransfer ? destinationBranchId : undefined,
+        finalAction:
+          inquiry?.finding === 'GUILTY' ? finalAction : undefined,
+        fineAmount:
+          finalAction === 'FINE_AND_REINSTATE' ? Number(fineAmount) : undefined,
+        notes: notes || undefined,
+      }),
+    onSuccess: () => {
+      toast({
+        title: 'Final decision submitted',
+        description: 'Waiting for the selected approver. Nothing has been applied yet.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
+      onOpenChange(false)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Could not submit decision',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {inquiry?.finding === 'NOT_GUILTY'
+              ? 'Mandatory transfer before reinstatement'
+              : 'Select final inquiry action'}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {inquiry?.finding === 'NOT_GUILTY' && (
+            <p className="text-sm font-medium text-amber-800">
+              NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT
+            </p>
+          )}
+          {inquiry?.finding === 'GUILTY' && (
+            <div className="space-y-1">
+              <Label>Final action</Label>
+              <Select value={finalAction} onValueChange={setFinalAction}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DISMISS">Dismiss</SelectItem>
+                  <SelectItem value="TERMINATE">Terminate</SelectItem>
+                  <SelectItem value="REST">Rest (ON_REST)</SelectItem>
+                  <SelectItem value="FINE_AND_REINSTATE">
+                    Fine and reinstate
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {needsTransfer && (
+            <div className="space-y-1">
+              <Label>Destination branch</Label>
+              <Select
+                value={destinationBranchId}
+                onValueChange={setDestinationBranchId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a different branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches
+                    .filter((b) => b.id !== forbiddenBranchId)
+                    .map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {inquiry?.finding === 'GUILTY' &&
+            finalAction === 'FINE_AND_REINSTATE' && (
+              <div className="space-y-1">
+                <Label>Fine amount</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={fineAmount}
+                  onChange={(e) => setFineAmount(e.target.value)}
+                />
+              </div>
+            )}
+          <div className="space-y-1">
+            <Label>Approver</Label>
+            <Select value={approverId} onValueChange={setApproverId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select approver" />
+              </SelectTrigger>
+              <SelectContent>
+                {approvers.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.displayName} ({a.eligibleRole})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            disabled={mutation.isPending || !approverId}
+            onClick={() => mutation.mutate()}
+          >
+            Submit for approval
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function DisciplinaryPage() {
+  const { hasRole } = useAuth()
+  const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
   const [tab, setTab] = useState('actions')
   const [newActionOpen, setNewActionOpen] = useState(false)
   const [startInquiryId, setStartInquiryId] = useState<string | null>(null)
   const [resolveInquiry, setResolveInquiry] = useState<Inquiry | null>(null)
+  const [prepareAction, setPrepareAction] = useState<DisciplinaryAction | null>(
+    null,
+  )
 
   return (
     <div className="space-y-6">
@@ -943,6 +1524,8 @@ export function DisciplinaryPage() {
           <ActionsTab
             onStartInquiry={setStartInquiryId}
             onSwitchToInquiries={() => setTab('inquiries')}
+            onPrepareSuspension={setPrepareAction}
+            canPrepare={canPrepare}
           />
         </TabsContent>
 
@@ -967,6 +1550,12 @@ export function DisciplinaryPage() {
         inquiry={resolveInquiry}
         open={!!resolveInquiry}
         onOpenChange={(v) => !v && setResolveInquiry(null)}
+      />
+
+      <PrepareSuspensionDialog
+        action={prepareAction}
+        open={!!prepareAction}
+        onOpenChange={(v) => !v && setPrepareAction(null)}
       />
     </div>
   )

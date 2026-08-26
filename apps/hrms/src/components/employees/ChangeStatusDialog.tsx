@@ -39,12 +39,14 @@ export function ChangeStatusDialog({
 
   // ON_LEAVE is managed through leave records, not manual status changes.
   // PENDING_APPROVAL is only cleared by the executive onboarding approver.
+  // SUSPENDED is issued only by sending a Suspension letter.
   const availableStatuses = EMPLOYEE_STATUSES.filter(
     (s) =>
       s !== currentStatus &&
       s !== 'DISMISSED' &&
       s !== 'ON_LEAVE' &&
-      s !== 'PENDING_APPROVAL',
+      s !== 'PENDING_APPROVAL' &&
+      s !== 'SUSPENDED',
   )
 
   const statusOptions = availableStatuses.map(enumValueToLabel)
@@ -60,7 +62,8 @@ export function ChangeStatusDialog({
           s !== currentStatus &&
           s !== 'DISMISSED' &&
           s !== 'ON_LEAVE' &&
-          s !== 'PENDING_APPROVAL',
+          s !== 'PENDING_APPROVAL' &&
+          s !== 'SUSPENDED',
       )
       if (next.length > 0) setStatus(next[0])
     }

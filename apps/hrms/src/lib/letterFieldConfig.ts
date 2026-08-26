@@ -271,7 +271,24 @@ export const LETTER_FIELD_CONFIG: Partial<
       type: 'date',
       onTemplate: true,
     },
+    {
+      key: 'suspensionEndDate',
+      label: 'اختتام تاریخ',
+      type: 'date',
+      onTemplate: true,
+    },
     { key: 'suspensionDuration', label: 'مدت', onTemplate: true },
+    {
+      key: 'inquiryOfficerName',
+      label: 'انکوائری آفیسر',
+      onTemplate: true,
+    },
+    {
+      key: 'inquiryDeadlineDate',
+      label: 'انکوائری کی آخری تاریخ',
+      type: 'date',
+      onTemplate: true,
+    },
   ],
   TERMINATION: [
     ...URDU_IDENTITY_FIELDS,

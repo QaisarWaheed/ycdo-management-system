@@ -239,8 +239,19 @@ export class LettersController {
     UserRole.IT_ADMIN,
     UserRole.EMPLOYEE,
   )
-  async getPdf(@Param('id') id: string, @Res() res: Response) {
-    const { buffer, filename } = await this.lettersService.getPdf(id);
+  async getPdf(
+    @Param('id') id: string,
+    @CurrentUser()
+    user: {
+      id: string;
+      role: UserRole;
+      roles?: UserRole[];
+      employeeId?: string | null;
+    },
+    @Res() res: Response,
+  ) {
+    const actor = await this.resolveLetterActor(user);
+    const { buffer, filename } = await this.lettersService.getPdf(id, actor);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${filename}"`,
@@ -282,8 +293,19 @@ export class LettersController {
     UserRole.IT_ADMIN,
     UserRole.EMPLOYEE,
   )
-  findOne(@Param('id') id: string) {
-    return this.lettersService.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser()
+    user: {
+      id: string;
+      role: UserRole;
+      roles?: UserRole[];
+      employeeId?: string | null;
+    },
+  ) {
+    return this.resolveLetterActor(user).then((actor) =>
+      this.lettersService.findOne(id, actor),
+    );
   }
 
   @Patch(':id/printed')
@@ -296,5 +318,26 @@ export class LettersController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
   deleteLetter(@Param('id') id: string) {
     return this.lettersService.deleteLetterr(id);
+  }
+
+  private async resolveLetterActor(user: {
+    id: string;
+    role: UserRole;
+    roles?: UserRole[];
+    employeeId?: string | null;
+  }) {
+    const effectiveRoles = user.roles?.length ? user.roles : [user.role];
+    const isPortalOnly =
+      effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE;
+    const hasManagerScopes =
+      await this.accessScopeService.userHasManagerScopes(user.id);
+
+    if (isPortalOnly && !hasManagerScopes) {
+      if (!user.employeeId) {
+        throw new ForbiddenException('Employee profile required');
+      }
+      return { ...user, portalOnly: true as const };
+    }
+    return user;
   }
 }

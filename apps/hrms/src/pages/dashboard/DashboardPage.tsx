@@ -20,6 +20,8 @@ import { leaveApi } from '@/api/endpoints/leave'
 import { portalPresenceApi } from '@/api/endpoints/portalPresence'
 import { recruitmentApi } from '@/api/endpoints/recruitment'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
+import { PendingSuspensionApprovalsCard } from '@/components/disciplinary/PendingSuspensionApprovalsCard'
 import type { AttendanceLog, Employee, LeaveRecord } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -328,6 +330,8 @@ function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      <PendingSuspensionApprovalsCard />
+      <PendingInquiryDecisionsCard />
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         <StatCard
           label="Total Employees"

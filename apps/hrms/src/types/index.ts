@@ -458,6 +458,18 @@ export interface Letter {
     employeeCode: string
     phone?: string | null
   }
+  suspensionRequest?: {
+    id: string
+    status: string
+    periodStart?: string
+    periodEnd?: string
+    inquiryDeadlineAt?: string
+    inquiryOfficer?: {
+      id: string
+      email?: string
+      employee?: { fullName: string } | null
+    } | null
+  } | null
   whatsappSend?: {
     status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED'
     error?: string | null
@@ -852,8 +864,21 @@ export interface DisciplinaryAction {
   employee?: {
     fullName: string
     employeeCode: string
+    status?: string
   }
   inquiry?: Inquiry | null
+  suspensionRequest?: {
+    id: string
+    status: string
+    letterId: string
+    decisionNote?: string | null
+    suspendedFromBranchId?: string | null
+    selectedApprover?: {
+      id: string
+      email?: string
+      employee?: { fullName: string } | null
+    } | null
+  } | null
 }
 
 export interface Inquiry {
@@ -864,6 +889,49 @@ export interface Inquiry {
   outcome?: string | null
   notes?: string | null
   closedAt?: string | null
+  inquiryOfficerUserId?: string | null
+  finding?: 'GUILTY' | 'NOT_GUILTY' | null
+  findingRecordedAt?: string | null
+  finalAction?: 'DISMISS' | 'TERMINATE' | 'REST' | 'FINE_AND_REINSTATE' | null
+  finalDecisionStatus?: 'PENDING_APPROVAL' | 'REJECTED' | 'APPLIED' | null
+  destinationBranchId?: string | null
+  fineAmount?: string | number | null
+  appliedFineDeductionId?: string | null
+  finalDecisionNote?: string | null
+  finalDecidedAt?: string | null
+  finalLetters?: Array<{
+    letterType: string
+    inquiryLetterKind: string
+    triggersEmployeeResolution: boolean
+    status: 'DRAFT' | 'SENT' | 'MISSING'
+    letterId: string | null
+    letterNo: string | null
+  }>
+  inquiryOfficer?: {
+    id: string
+    email?: string
+    employee?: { fullName: string } | null
+  } | null
+  findingRecordedBy?: {
+    id: string
+    email?: string
+    employee?: { fullName: string } | null
+  } | null
+  selectedFinalApprover?: {
+    id: string
+    email?: string
+    employee?: { fullName: string } | null
+  } | null
+  finalDecidedBy?: {
+    id: string
+    email?: string
+    employee?: { fullName: string } | null
+  } | null
+  destinationBranch?: {
+    id: string
+    name: string
+    abbreviation?: string | null
+  } | null
   disciplinaryAction?: DisciplinaryAction
 }
 
@@ -885,6 +953,7 @@ export type InquiryOutcome =
   | 'TERMINATED'
   | 'REJOINED'
   | 'DISMISSED'
+  | 'REST'
 
 export const DISCIPLINARY_TYPES: DisciplinaryType[] = [
   'WARNING',
@@ -906,6 +975,7 @@ export const INQUIRY_OUTCOMES: InquiryOutcome[] = [
   'TERMINATED',
   'REJOINED',
   'DISMISSED',
+  'REST',
 ]
 
 export interface JobApplication {

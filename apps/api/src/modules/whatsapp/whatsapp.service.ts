@@ -43,6 +43,13 @@ export class WhatsAppService {
   }
 
   async deliver(input: DeliverInput) {
+    const existingSend = await this.prisma.whatsAppLetterSend.findUnique({
+      where: { letterId: input.letterId },
+    });
+    if (existingSend?.status === WhatsAppSendStatus.SENT) {
+      return existingSend;
+    }
+
     const phoneE164 = normalizePakistanPhone(input.phone) ?? '';
     const filename =
       input.filename ??

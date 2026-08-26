@@ -2,12 +2,16 @@ import {
   AttendanceLogType,
   AttendanceStatus,
   DeductionType,
+  DisciplinaryStatus,
+  DisciplinaryType,
   DisciplineCategory,
   EmployeeStatus,
   LeaveStatus,
+  LetterStatus,
   LetterType,
   PayrollStatus,
   Prisma,
+  UserRole,
 } from '@prisma/client';
 import {
   dailyStipendRate,
@@ -26,11 +30,13 @@ import {
 import { isTemporaryAutoCheckoutEnabled } from './temporary-auto-checkout';
 
 /**
- * Phase 1 suspension-watchlist policy: attendance still claims
- * DisciplineEvents and may apply payroll fines, but never auto-issues
- * Advice/Warning/Fine/Suspension letters and never flips status to
- * SUSPENDED. HR uses the watchlist + manual flows instead.
- * Mutable object so unit tests can opt back into the legacy auto path.
+ * When false (production default): attendance still claims DisciplineEvents
+ * and may apply payroll fines, but does not auto-issue Advice/Warning/Fine
+ * letters. HR uses the watchlist + manual flows instead.
+ * When true: Advice/Warning/Fine auto letters may issue, but late/uninformed
+ * thresholds must NEVER auto-suspend, deactivate portal users, or send a
+ * SENT suspension letter — they only open an HR recommendation (OPEN case +
+ * DRAFT letter). Mutable so unit tests can opt into the auto-letter path.
  */
 export const AUTO_DISCIPLINE = {
   lettersAndSuspendEnabled: false,
@@ -220,9 +226,11 @@ async function getBasicStipend(
   return Number(stipendRecord?.basicStipend ?? 0);
 }
 
-/** Attendance-driven deductions stay live until the month is marked Paid. */
-function isPayrollPaidFrozen(status: PayrollStatus): boolean {
-  return status === PayrollStatus.PAID;
+/** PROCESSED and PAID payroll entries must not be financially mutated. */
+function isPayrollFinanciallyFrozen(status: PayrollStatus): boolean {
+  return (
+    status === PayrollStatus.PROCESSED || status === PayrollStatus.PAID
+  );
 }
 
 function incidentDateLabel(date: Date): string {
@@ -244,7 +252,7 @@ export function isHalfDayPayDeductionEligible(row: {
 export type AbsentApplicationResult = {
   deductionApplied: boolean;
   /** True when a deduction would otherwise have been created but the
-   * target PayrollEntry is PAID — financial mutation was skipped
+   * target PayrollEntry is PROCESSED or PAID — financial mutation was skipped
    * entirely. ABSENT has no non-financial discipline tracking to preserve
    * (no DisciplineEvent category), so this is the only side effect of this
    * function, unlike applyUninformedAbsentDeduction. */
@@ -257,10 +265,9 @@ export type AbsentApplicationResult = {
  * Financial deduction for a plain ABSENT day, gated on PayrollEntry.status
  * the same way every reversal function in this file already is — mirrors
  * the existing pattern in applyExtraLeaveRejectedDeduction, which this
- * function previously did not follow. On PAID: no
+ * function previously did not follow. On PROCESSED or PAID: no
  * PayrollDeduction is created, totalDeductions/netStipend are never
- * touched, blockedByPayrollStatus is reported. PROCESSED (unpaid) still
- * receives the deduction so in-progress months stay in sync with attendance.
+ * touched, blockedByPayrollStatus is reported.
  */
 async function applyAbsentDeduction(
   tx: Prisma.TransactionClient,
@@ -291,7 +298,7 @@ async function applyAbsentDeduction(
   const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
   if (!payrollEntry) return noOp;
 
-  if (isPayrollPaidFrozen(payrollEntry.status)) {
+  if (isPayrollFinanciallyFrozen(payrollEntry.status)) {
     return {
       ...noOp,
       blockedByPayrollStatus: true,
@@ -373,7 +380,7 @@ async function applyHalfDayDeduction(
   const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
   if (!payrollEntry) return noOp;
 
-  if (isPayrollPaidFrozen(payrollEntry.status)) {
+  if (isPayrollFinanciallyFrozen(payrollEntry.status)) {
     return {
       ...noOp,
       blockedByPayrollStatus: true,
@@ -462,7 +469,7 @@ async function reverseHalfDayDeductionForDate(
     return { ...empty, payrollStatus: payrollEntry.status };
   }
 
-  if (isPayrollPaidFrozen(payrollEntry.status)) {
+  if (isPayrollFinanciallyFrozen(payrollEntry.status)) {
     return {
       reversed: true,
       deductionId: deduction.id,
@@ -659,15 +666,6 @@ async function applyLateDiscipline(
     // (skipLetters) likewise claims without suspending.
     if (skipLetters || !AUTO_DISCIPLINE.lettersAndSuspendEnabled) return;
 
-    const alreadyHandled = await hasLetterForMonthlyOccurrence(
-      tx,
-      employeeId,
-      LetterType.SUSPENSION,
-      lateCount,
-      date,
-    );
-    if (alreadyHandled) return;
-
     await issueLateLetterIfNotAlready(
       tx,
       employeeId,
@@ -675,16 +673,12 @@ async function applyLateDiscipline(
       lateCount,
       date,
       {
-        suspensionReason: `اس ماہ ${lateCount} مرتبہ لیٹ آمد کی بنا پر معطلی۔ ${baseDetail}`,
+        suspensionReason: `اس ماہ ${lateCount} مرتبہ لیٹ آمد کی بنا پر معطلی کی سفارش۔ ${baseDetail}`,
         suspensionStartDate: dateLabel,
         suspensionDuration: 'Pending HR review',
+        incidentDate: dateLabel,
       },
     );
-
-    await tx.employee.update({
-      where: { id: employeeId },
-      data: { status: EmployeeStatus.SUSPENDED },
-    });
     return;
   }
 
@@ -712,7 +706,7 @@ async function applyLateDiscipline(
     // elsewhere; it simply skips the financial mutation. The FINE letter
     // below is still issued regardless (discipline tracking is not
     // coupled to financial mutation anywhere else in this file either).
-    if (payrollEntry?.status === PayrollStatus.PENDING) {
+    if (payrollEntry && !isPayrollFinanciallyFrozen(payrollEntry.status)) {
       const alreadyDeducted = await tx.payrollDeduction.findFirst({
         where: {
           payrollEntryId: payrollEntry.id,
@@ -834,8 +828,8 @@ async function applyUninformedAbsenceDisciplineTracking(
     };
   }
 
-  // More than 2 uninformed-absent days in a month → automatic suspension
-  // (only when AUTO_DISCIPLINE.lettersAndSuspendEnabled; otherwise HR uses watchlist).
+  // More than 2 uninformed-absent days in a month → HR suspension
+  // recommendation only (never auto-suspend / never SENT auto letter).
   let suspensionTriggered = false;
   if (AUTO_DISCIPLINE.lettersAndSuspendEnabled && uninformedCount > 2) {
     const employee = await tx.employee.findUnique({
@@ -844,27 +838,22 @@ async function applyUninformedAbsenceDisciplineTracking(
     });
 
     if (employee?.status !== EmployeeStatus.SUSPENDED) {
-      await tx.employee.update({
-        where: { id: employeeId },
-        data: { status: EmployeeStatus.SUSPENDED },
-      });
-
-      const reason = `اس ماہ ${uninformedCount} دن بغیر اطلاع غیر حاضری (2 دن سے زیادہ) — خودکار معطلی۔`;
-      await issueAutoTemplatedLetter(tx, {
+      const reason = `اس ماہ ${uninformedCount} دن بغیر اطلاع غیر حاضری (2 دن سے زیادہ) — معطلی کی سفارش۔`;
+      suspensionTriggered = await recommendHrSuspensionDraft(
+        tx,
         employeeId,
-        letterType: LetterType.SUSPENSION,
-        extraFields: {
+        date,
+        {
           suspensionReason: reason,
           suspensionStartDate: dayKey,
           suspensionDuration: 'Pending HR review',
           violations: reason,
+          monthlyLateOccurrence: uninformedCount,
+          incidentDate: dayKey,
+          disciplineCategory: 'UNINFORMED_ABSENT',
         },
-        requiresAcknowledgement: true,
-        replyDeadline: null,
-        notificationMessage: `You have been suspended due to ${uninformedCount} uninformed absence day(s) this month (more than 2 days). Please contact HR.`,
-        notificationType: 'SUSPENSION_ISSUED',
-      });
-      suspensionTriggered = true;
+        reason,
+      );
     }
   }
 
@@ -941,7 +930,7 @@ async function applyUninformedAbsentDeduction(
     };
   }
 
-  if (isPayrollPaidFrozen(payrollEntry.status)) {
+  if (isPayrollFinanciallyFrozen(payrollEntry.status)) {
     return {
       ...tracking,
       deductionApplied: false,
@@ -1093,6 +1082,84 @@ async function hasLetterForMonthlyOccurrence(
   });
 }
 
+async function hasAnyActiveSuspensionLetterThisMonth(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+): Promise<boolean> {
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
+  const existing = await tx.letter.findMany({
+    where: {
+      employeeId,
+      letterType: LetterType.SUSPENSION,
+      generatedAt: { gte: startOfMonth },
+    },
+    select: { variables: true },
+  });
+  return existing.some((letter) => {
+    const vars = letter.variables as {
+      reversedDueToShortLeave?: boolean;
+      reversed?: boolean;
+    } | null;
+    return !vars?.reversedDueToShortLeave && !vars?.reversed;
+  });
+}
+
+/**
+ * Open an HR-only suspension recommendation: OPEN DisciplinaryAction + DRAFT
+ * letter + HR notification. Never changes Employee.status, never deactivates
+ * User, never creates a SENT suspension letter or SuspensionRequest.
+ */
+async function recommendHrSuspensionDraft(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  extraFields: Record<string, unknown>,
+  reason: string,
+): Promise<boolean> {
+  if (await hasAnyActiveSuspensionLetterThisMonth(tx, employeeId, date)) {
+    return false;
+  }
+
+  await tx.disciplinaryAction.create({
+    data: {
+      employeeId,
+      type: DisciplinaryType.SUSPENSION,
+      reason,
+      status: DisciplinaryStatus.OPEN,
+    },
+  });
+
+  await tx.letter.create({
+    data: {
+      employeeId,
+      letterType: LetterType.SUSPENSION,
+      status: LetterStatus.DRAFT,
+      content: extraFields as Prisma.InputJsonValue,
+      variables: extraFields as Prisma.InputJsonValue,
+      requiresAcknowledgement: false,
+    },
+  });
+
+  const hrManagers = await tx.user.findMany({
+    where: { role: UserRole.HR_MANAGER, isActive: true },
+  });
+  for (const hr of hrManagers) {
+    if (hr.employeeId) {
+      await tx.notification.create({
+        data: {
+          employeeId: hr.employeeId,
+          type: 'SUSPENSION_RECOMMENDED',
+          message:
+            'Attendance threshold recommends suspension. HR must prepare and issue via the approval workflow.',
+        },
+      });
+    }
+  }
+
+  return true;
+}
+
 const LATE_LETTER_NOTIFICATION: Record<
   'ADVICE' | 'WARNING' | 'FINE' | 'SUSPENSION',
   { message: (lateCount: number) => string; type: string }
@@ -1142,6 +1209,25 @@ async function issueLateLetterIfNotAlready(
   );
   if (alreadyIssued) return;
 
+  if (letterType === LetterType.SUSPENSION) {
+    await recommendHrSuspensionDraft(
+      tx,
+      employeeId,
+      date,
+      {
+        ...extraFields,
+        monthlyLateOccurrence: lateCount,
+        disciplineCategory: 'LATE',
+      },
+      String(
+        extraFields.suspensionReason ??
+          extraFields.violations ??
+          `Attendance threshold recommends suspension (${lateCount} late arrivals this month).`,
+      ),
+    );
+    return;
+  }
+
   const notif =
     LATE_LETTER_NOTIFICATION[
       letterType as 'ADVICE' | 'WARNING' | 'FINE' | 'SUSPENSION'
@@ -1156,10 +1242,7 @@ async function issueLateLetterIfNotAlready(
       disciplineCategory: 'LATE',
     },
     requiresAcknowledgement: true,
-    replyDeadline:
-      letterType === LetterType.SUSPENSION
-        ? null
-        : new Date(Date.now() + 48 * 60 * 60 * 1000),
+    replyDeadline: new Date(Date.now() + 48 * 60 * 60 * 1000),
     notificationMessage: notif.message(lateCount),
     notificationType: notif.type,
   });
@@ -1402,7 +1485,7 @@ export async function applyMissingCheckoutDiscipline(
     // skips the financial mutation. The FINE letter below is still issued
     // regardless (discipline tracking is not coupled to financial
     // mutation anywhere else in this file either).
-    if (payrollEntry?.status === PayrollStatus.PENDING) {
+    if (payrollEntry && !isPayrollFinanciallyFrozen(payrollEntry.status)) {
       const alreadyDeducted = await tx.payrollDeduction.findFirst({
         where: {
           payrollEntryId: payrollEntry.id,
@@ -1747,7 +1830,7 @@ export async function reverseLateDisciplineForDate(
         });
 
         if (deduction) {
-          if (payrollEntry.status !== PayrollStatus.PENDING) {
+          if (isPayrollFinanciallyFrozen(payrollEntry.status)) {
             // Financial freeze — never mutate a PROCESSED/PAID entry.
             // The letter/DisciplineEvent below are still reversed; only the
             // money is deliberately left exactly as it was.
@@ -1962,7 +2045,7 @@ export async function reverseAbsenceDeductionForDate(
 
       if (deduction) {
         deductionId = deduction.id;
-        if (isPayrollPaidFrozen(payrollEntry.status)) {
+        if (isPayrollFinanciallyFrozen(payrollEntry.status)) {
           blockedByPayrollStatus = true;
         } else {
           await tx.payrollDeduction.delete({ where: { id: deduction.id } });
@@ -2162,7 +2245,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
         });
 
         if (deduction) {
-          if (payrollEntry.status !== PayrollStatus.PENDING) {
+          if (isPayrollFinanciallyFrozen(payrollEntry.status)) {
             // Financial freeze — never mutate a PROCESSED/PAID entry.
             blockedByPayrollStatus = true;
           } else {
@@ -2502,7 +2585,7 @@ export async function applyExtraLeaveRejectedDeduction(
     return { applied: false, reason: 'no payroll entry' };
   }
 
-  if (payrollEntry.status !== PayrollStatus.PENDING) {
+  if (isPayrollFinanciallyFrozen(payrollEntry.status)) {
     return { applied: false, reason: 'payroll entry is PROCESSED/PAID' };
   }
 

@@ -1,6 +1,8 @@
 import {
   DisciplinaryStatus,
   DisciplinaryType,
+  InquiryFinding,
+  InquiryFinalAction,
   InquiryOutcome,
 } from '@prisma/client';
 import { Type } from 'class-transformer';
@@ -80,6 +82,109 @@ export class ResolveInquiryDto {
   @IsOptional()
   @IsObject()
   extraLetterFields?: Record<string, unknown>;
+}
+
+export class PrepareSuspensionDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  reason: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  periodStart: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  periodEnd: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  inquiryOfficerUserId: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  inquiryDeadlineAt: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  selectedApproverUserId: string;
+}
+
+export class UpdateSuspensionRequestDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  reason?: string;
+
+  @IsOptional()
+  @IsDateString()
+  periodStart?: string;
+
+  @IsOptional()
+  @IsDateString()
+  periodEnd?: string;
+
+  @IsOptional()
+  @IsUUID()
+  inquiryOfficerUserId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  inquiryDeadlineAt?: string;
+
+  @IsOptional()
+  @IsUUID()
+  selectedApproverUserId?: string;
+}
+
+export class RecordInquiryFindingDto {
+  @IsEnum(InquiryFinding)
+  @IsNotEmpty()
+  finding: InquiryFinding;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notes?: string;
+}
+
+export class SubmitInquiryFinalDecisionDto {
+  @IsUUID()
+  @IsNotEmpty()
+  selectedApproverUserId: string;
+
+  @IsOptional()
+  @IsEnum(InquiryFinalAction)
+  finalAction?: InquiryFinalAction;
+
+  @IsOptional()
+  @IsUUID()
+  destinationBranchId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  fineAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notes?: string;
+}
+
+export class DecideSuspensionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+}
+
+export class RejectSuspensionDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  reason: string;
 }
 
 export class DisciplinaryQueryDto {

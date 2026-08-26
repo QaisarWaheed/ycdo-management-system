@@ -44,6 +44,7 @@ model Branch {
   employees              Employee[]
   employmentHistory      EmploymentHistory[]
   suspensionFromRequests SuspensionRequest[]
+  inquiryDestinations    Inquiry[]           @relation("InquiryDestinationBranch")
   attendanceLogs         AttendanceLog[]
   shifts                 Shift[]
   relieverSessions       RelieverSession[]
@@ -635,21 +636,41 @@ enum DisciplinaryStatus {
 }
 
 model Inquiry {
-  id                   String              @id @default(uuid())
-  disciplinaryActionId String              @unique
-  startedAt            DateTime            @default(now())
-  deadlineAt           DateTime
-  outcome              InquiryOutcome?
-  notes                String?
-  closedAt             DateTime?
-  inquiryOfficerUserId String?
-  finding              InquiryFinding?
-  finalAction          InquiryFinalAction?
+  id                            String                       @id @default(uuid())
+  disciplinaryActionId          String                       @unique
+  startedAt                     DateTime                     @default(now())
+  deadlineAt                    DateTime
+  outcome                       InquiryOutcome?
+  notes                         String?
+  closedAt                      DateTime?
+  inquiryOfficerUserId          String?
+  finding                       InquiryFinding?
+  findingRecordedById           String?
+  findingRecordedAt             DateTime?
+  finalAction                   InquiryFinalAction?
+  finalDecisionStatus           InquiryFinalDecisionStatus?
+  selectedFinalApproverUserId   String?
+  finalDecisionSubmittedById    String?
+  finalDecisionSubmittedAt      DateTime?
+  finalDecidedById              String?
+  finalDecidedAt                DateTime?
+  finalDecisionNote             String?
+  destinationBranchId           String?
+  fineAmount                    Decimal?                     @db.Decimal(10, 2)
+  appliedFineDeductionId        String?
+  deadlineReminderSentAt        DateTime?
+  overdueNotificationSentAt     DateTime?
 
-  disciplinaryAction DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
-  inquiryOfficer     User?              @relation("InquiryOfficer", fields: [inquiryOfficerUserId], references: [id])
+  disciplinaryAction      DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
+  inquiryOfficer          User?              @relation("InquiryOfficer", fields: [inquiryOfficerUserId], references: [id])
+  findingRecordedBy       User?              @relation("InquiryFindingRecordedBy", fields: [findingRecordedById], references: [id])
+  selectedFinalApprover   User?              @relation("InquiryFinalApprover", fields: [selectedFinalApproverUserId], references: [id])
+  finalDecisionSubmittedBy User?             @relation("InquiryFinalSubmittedBy", fields: [finalDecisionSubmittedById], references: [id])
+  finalDecidedBy          User?              @relation("InquiryFinalDecidedBy", fields: [finalDecidedById], references: [id])
+  destinationBranch       Branch?            @relation("InquiryDestinationBranch", fields: [destinationBranchId], references: [id])
 
   @@index([inquiryOfficerUserId])
+  @@index([selectedFinalApproverUserId, finalDecisionStatus])
 }
 
 enum InquiryOutcome {
@@ -657,6 +678,7 @@ enum InquiryOutcome {
   TERMINATED
   REJOINED
   DISMISSED
+  REST
 }
 
 enum InquiryFinding {
@@ -671,6 +693,12 @@ enum InquiryFinalAction {
   FINE_AND_REINSTATE
 }
 
+enum InquiryFinalDecisionStatus {
+  PENDING_APPROVAL
+  REJECTED
+  APPLIED
+}
+
 enum SuspensionRequestStatus {
   DRAFT
   PENDING_APPROVAL
@@ -678,6 +706,7 @@ enum SuspensionRequestStatus {
   REJECTED
   ISSUED
   CANCELLED
+  COMPLETED
 }
 
 model SuspensionRequest {
@@ -1037,6 +1066,10 @@ model User {
   submittedSuspensionRequests  SuspensionRequest[]          @relation("SubmittedSuspensionRequests")
   decidedSuspensionRequests    SuspensionRequest[]          @relation("DecidedSuspensionRequests")
   inquiriesAsOfficer           Inquiry[]                    @relation("InquiryOfficer")
+  inquiryFindingsRecorded      Inquiry[]                    @relation("InquiryFindingRecordedBy")
+  inquiryFinalApprovals        Inquiry[]                    @relation("InquiryFinalApprover")
+  inquiryFinalSubmitted        Inquiry[]                    @relation("InquiryFinalSubmittedBy")
+  inquiryFinalDecided          Inquiry[]                    @relation("InquiryFinalDecidedBy")
 }
 
 model LoginOtpChallenge {

@@ -1,17 +1,22 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
   DeductionType,
+  DisciplinaryStatus,
+  DisciplinaryType,
   Gender,
+  EmployeeStatus,
   LetterStatus,
   LetterType,
   PayrollStatus,
   Permission,
   Prisma,
+  SuspensionRequestStatus,
   UserRole,
   WhatsAppSendStatus,
 } from '@prisma/client';
@@ -30,6 +35,11 @@ import {
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { normalizePakistanPhone } from '../whatsapp/phone.util';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import {
+  ensureInquiryResolvedNotification,
+  isResolutionTriggerKind,
+  letterContentStamps,
+} from '../disciplinary/inquiry-final-letters';
 import {
   GenerateLetterDto,
   LetterQueryDto,
@@ -73,7 +83,33 @@ const DRAFT_UNTIL_SEND_TYPES: LetterType[] = [
   LetterType.WARNING,
   LetterType.FINE,
   LetterType.SUSPENSION,
+  LetterType.REINSTATEMENT,
+  LetterType.TERMINATION,
 ];
+
+/** Employment states that must not be overwritten by sending a suspension letter. */
+const TERMINAL_EMPLOYEE_STATUSES: EmployeeStatus[] = [
+  EmployeeStatus.TERMINATED,
+  EmployeeStatus.DISMISSED,
+  EmployeeStatus.RESIGNED,
+];
+
+const SUSPENSION_REQUEST_ON_LETTER = {
+  select: {
+    id: true,
+    status: true,
+    periodStart: true,
+    periodEnd: true,
+    inquiryDeadlineAt: true,
+    inquiryOfficer: {
+      select: {
+        id: true,
+        email: true,
+        employee: { select: { fullName: true } },
+      },
+    },
+  },
+} as const;
 
 const ACKNOWLEDGEMENT_TYPES: LetterType[] = [
   LetterType.ADVICE,
@@ -841,17 +877,34 @@ export class LettersService {
       letter.employeeId,
     );
 
-    if (letter.status === LetterStatus.REVERSED) {
-      throw new BadRequestException('Cannot edit a reversed letter');
-    }
-    if (letter.status === LetterStatus.SENT && letter.acknowledgement) {
+    if (letter.status !== LetterStatus.DRAFT) {
       throw new BadRequestException(
-        'Cannot edit a letter after the employee has acknowledged it',
+        letter.status === LetterStatus.REVERSED
+          ? 'Cannot edit a reversed letter'
+          : 'Only draft letters can be edited',
       );
     }
     if (letter.letterType === LetterType.APPOINTMENT) {
       throw new BadRequestException(
         'Appointment letters cannot be edited; delete the draft and regenerate',
+      );
+    }
+
+    const linkedRequest = await this.prisma.suspensionRequest.findUnique({
+      where: { letterId },
+      select: { status: true },
+    });
+    if (
+      linkedRequest?.status === SuspensionRequestStatus.PENDING_APPROVAL ||
+      linkedRequest?.status === SuspensionRequestStatus.APPROVED
+    ) {
+      throw new BadRequestException(
+        'This suspension letter cannot be edited while the suspension request is pending approval or approved.',
+      );
+    }
+    if (linkedRequest?.status === SuspensionRequestStatus.CANCELLED) {
+      throw new BadRequestException(
+        'This suspension letter cannot be edited because the suspension request was cancelled.',
       );
     }
 
@@ -947,7 +1000,45 @@ export class LettersService {
         : letter.letterType.replace(/_/g, ' ');
     const letterNo = letter.letterNo ?? letterId.slice(0, 8);
 
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const letterEmployeeInclude = {
+      employee: {
+        select: {
+          id: true,
+          fullName: true,
+          employeeCode: true,
+          phone: true,
+        },
+      },
+      acknowledgement: true,
+    } as const;
+
+    const txResult = await this.prisma.$transaction(async (tx) => {
+      const current = await tx.letter.findUnique({
+        where: { id: letterId },
+        include: letterEmployeeInclude,
+      });
+      if (!current) {
+        throw new NotFoundException(`Letter with id ${letterId} not found`);
+      }
+      if (current.status === LetterStatus.REVERSED) {
+        throw new BadRequestException('Cannot send a reversed letter');
+      }
+      if (current.status === LetterStatus.SENT) {
+        return { alreadySent: true as const, letter: current };
+      }
+
+      if (current.letterType === LetterType.SUSPENSION) {
+        return this.issueApprovedSuspensionInTx(tx, {
+          letter: current,
+          actingUserId,
+          letterNo,
+          letterLabel,
+          requiresAck,
+          replyDeadline,
+          letterEmployeeInclude,
+        });
+      }
+
       const record = await tx.letter.update({
         where: { id: letterId },
         data: {
@@ -955,17 +1046,7 @@ export class LettersService {
           requiresAcknowledgement: requiresAck,
           replyDeadline: replyDeadline ?? undefined,
         },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              fullName: true,
-              employeeCode: true,
-              phone: true,
-            },
-          },
-          acknowledgement: true,
-        },
+        include: letterEmployeeInclude,
       });
 
       await tx.notification.create({
@@ -986,8 +1067,20 @@ export class LettersService {
         },
       });
 
-      return record;
+      await this.notifyInquiryResolvedOnFinalLetterSend(tx, current);
+
+      return { alreadySent: false as const, letter: record };
     });
+
+    if (txResult.alreadySent) {
+      return {
+        letter: txResult.letter,
+        alreadySent: true,
+        message: 'Letter already sent to portal',
+      };
+    }
+
+    const updated = txResult.letter;
 
     // Best-effort WhatsApp after portal publish
     try {
@@ -1008,6 +1101,277 @@ export class LettersService {
     }
 
     return { letter: updated, alreadySent: false };
+  }
+
+  private async issueApprovedSuspensionInTx(
+    tx: Prisma.TransactionClient,
+    opts: {
+      letter: {
+        id: string;
+        employeeId: string;
+        letterType: LetterType;
+        status: LetterStatus;
+      };
+      actingUserId: string;
+      letterNo: string;
+      letterLabel: string;
+      requiresAck: boolean;
+      replyDeadline: Date | null | undefined;
+      letterEmployeeInclude: {
+        employee: {
+          select: {
+            id: true;
+            fullName: true;
+            employeeCode: true;
+            phone: true;
+          };
+        };
+        acknowledgement: true;
+      };
+    },
+  ) {
+    const request = await tx.suspensionRequest.findUnique({
+      where: { letterId: opts.letter.id },
+      include: {
+        disciplinaryAction: { include: { inquiry: true } },
+      },
+    });
+
+    if (!request || request.status !== SuspensionRequestStatus.APPROVED) {
+      throw new BadRequestException(
+        'This suspension cannot be issued until the suspension request has been approved.',
+      );
+    }
+    if (request.letterId !== opts.letter.id) {
+      throw new BadRequestException(
+        'Suspension request is not linked to this letter.',
+      );
+    }
+    if (request.employeeId !== opts.letter.employeeId) {
+      throw new BadRequestException(
+        'Suspension request employee does not match this letter.',
+      );
+    }
+
+    const action = request.disciplinaryAction;
+    if (!action || action.type !== DisciplinaryType.SUSPENSION) {
+      throw new BadRequestException(
+        'Suspension request is not linked to a SUSPENSION disciplinary case.',
+      );
+    }
+    if (action.employeeId !== opts.letter.employeeId) {
+      throw new BadRequestException(
+        'Disciplinary action employee does not match this letter.',
+      );
+    }
+    if (
+      action.status === DisciplinaryStatus.RESOLVED ||
+      action.status === DisciplinaryStatus.DISMISSED
+    ) {
+      throw new BadRequestException(
+        'Cannot issue a suspension for a resolved or dismissed disciplinary case.',
+      );
+    }
+    if (!request.decidedById || !request.decidedAt) {
+      throw new BadRequestException(
+        'Suspension request is missing approval decision metadata.',
+      );
+    }
+    if (
+      !request.periodStart ||
+      !request.periodEnd ||
+      !request.inquiryOfficerUserId ||
+      !request.inquiryDeadlineAt
+    ) {
+      throw new BadRequestException(
+        'Suspension request is missing period or inquiry details.',
+      );
+    }
+
+    const officer = await tx.user.findUnique({
+      where: { id: request.inquiryOfficerUserId },
+      select: { id: true },
+    });
+    if (!officer) {
+      throw new BadRequestException('Inquiry officer was not found.');
+    }
+
+    const employee = await tx.employee.findUnique({
+      where: { id: opts.letter.employeeId },
+      select: { status: true, currentBranchId: true },
+    });
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with id ${opts.letter.employeeId} not found`,
+      );
+    }
+    if (TERMINAL_EMPLOYEE_STATUSES.includes(employee.status)) {
+      throw new BadRequestException(
+        `Cannot issue a suspension letter to a ${employee.status} employee.`,
+      );
+    }
+    if (employee.status === EmployeeStatus.PENDING_APPROVAL) {
+      throw new BadRequestException(
+        'An employee pending onboarding approval cannot be suspended.',
+      );
+    }
+
+    const existingInquiry = action.inquiry;
+    if (
+      existingInquiry?.closedAt ||
+      existingInquiry?.outcome ||
+      existingInquiry?.finding ||
+      existingInquiry?.finalAction
+    ) {
+      throw new BadRequestException(
+        'Cannot issue this suspension because the linked inquiry is already closed.',
+      );
+    }
+
+    const letterUpdate = await tx.letter.updateMany({
+      where: { id: opts.letter.id, status: LetterStatus.DRAFT },
+      data: {
+        status: LetterStatus.SENT,
+        requiresAcknowledgement: opts.requiresAck,
+        replyDeadline: opts.replyDeadline ?? undefined,
+      },
+    });
+    if (letterUpdate.count !== 1) {
+      const raced = await tx.letter.findUnique({
+        where: { id: opts.letter.id },
+        include: opts.letterEmployeeInclude,
+      });
+      if (raced?.status === LetterStatus.SENT) {
+        return { alreadySent: true as const, letter: raced };
+      }
+      throw new BadRequestException(
+        'This suspension letter could not be issued because its status changed.',
+      );
+    }
+
+    const issuedAt = new Date();
+    const requestUpdate = await tx.suspensionRequest.updateMany({
+      where: {
+        id: request.id,
+        status: SuspensionRequestStatus.APPROVED,
+        letterId: opts.letter.id,
+      },
+      data: {
+        status: SuspensionRequestStatus.ISSUED,
+        issuedAt,
+        suspendedFromBranchId: employee.currentBranchId,
+      },
+    });
+    if (requestUpdate.count !== 1) {
+      throw new BadRequestException(
+        'This suspension request is no longer approved and cannot be issued.',
+      );
+    }
+
+    if (employee.status !== EmployeeStatus.SUSPENDED) {
+      await tx.employee.update({
+        where: { id: opts.letter.employeeId },
+        data: { status: EmployeeStatus.SUSPENDED },
+      });
+    }
+
+    await tx.disciplinaryAction.update({
+      where: { id: action.id },
+      data: { status: DisciplinaryStatus.UNDER_INQUIRY },
+    });
+
+    if (existingInquiry) {
+      await tx.inquiry.update({
+        where: { id: existingInquiry.id },
+        data: {
+          inquiryOfficerUserId: request.inquiryOfficerUserId,
+          deadlineAt: request.inquiryDeadlineAt,
+        },
+      });
+    } else {
+      const createdInquiry = await tx.inquiry.create({
+        data: {
+          disciplinaryActionId: action.id,
+          inquiryOfficerUserId: request.inquiryOfficerUserId,
+          deadlineAt: request.inquiryDeadlineAt,
+        },
+      });
+      await tx.notification.create({
+        data: {
+          employeeId: opts.letter.employeeId,
+          type: 'INQUIRY_STARTED',
+          message: `An inquiry has been initiated regarding your disciplinary action. Deadline: ${this.formatDate(request.inquiryDeadlineAt)}`,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: opts.actingUserId,
+          action: 'INQUIRY_STARTED',
+          entity: 'Inquiry',
+          entityId: createdInquiry.id,
+          changes: { disciplinaryActionId: action.id },
+        },
+      });
+    }
+
+    const record = await tx.letter.findUnique({
+      where: { id: opts.letter.id },
+      include: opts.letterEmployeeInclude,
+    });
+    if (!record) {
+      throw new NotFoundException(`Letter with id ${opts.letter.id} not found`);
+    }
+
+    await tx.notification.create({
+      data: {
+        employeeId: opts.letter.employeeId,
+        type: 'LETTER_ISSUED',
+        message: `A ${opts.letterLabel} letter (${opts.letterNo}) has been issued to you.`,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: opts.actingUserId,
+        action: 'LETTER_SENT',
+        entity: 'Letter',
+        entityId: opts.letter.id,
+        changes: {
+          letterNo: opts.letterNo,
+          letterType: opts.letter.letterType,
+          suspensionRequestId: request.id,
+          issued: true,
+        },
+      },
+    });
+
+    return { alreadySent: false as const, letter: record };
+  }
+
+  private async notifyInquiryResolvedOnFinalLetterSend(
+    tx: Prisma.TransactionClient,
+    letter: { employeeId: string; content?: unknown },
+  ) {
+    const stamps = letterContentStamps(letter.content);
+    if (
+      !stamps.inquiryId ||
+      !stamps.inquiryLetterKind ||
+      !isResolutionTriggerKind(stamps.inquiryLetterKind)
+    ) {
+      return;
+    }
+    const inquiry = await tx.inquiry.findUnique({
+      where: { id: stamps.inquiryId },
+      select: { id: true, finding: true, closedAt: true },
+    });
+    if (!inquiry?.closedAt || !inquiry.finding) {
+      return;
+    }
+    await ensureInquiryResolvedNotification(tx, {
+      employeeId: letter.employeeId,
+      inquiryId: inquiry.id,
+      finding: inquiry.finding,
+    });
   }
 
   async reverseLetter(
@@ -1226,6 +1590,7 @@ export class LettersService {
         replies: {
           select: { id: true, repliedAt: true },
         },
+        suspensionRequest: SUSPENSION_REQUEST_ON_LETTER,
       },
       orderBy: { generatedAt: 'desc' },
     });
@@ -1363,7 +1728,16 @@ export class LettersService {
     });
   }
 
-  async findOne(letterId: string) {
+  async findOne(
+    letterId: string,
+    actor?: {
+      id: string;
+      role: UserRole;
+      roles?: UserRole[];
+      employeeId?: string | null;
+      portalOnly?: boolean;
+    },
+  ) {
     const letter = await this.prisma.letter.findUnique({
       where: { id: letterId },
       include: {
@@ -1377,6 +1751,7 @@ export class LettersService {
         },
         acknowledgement: true,
         replies: true,
+        suspensionRequest: SUSPENSION_REQUEST_ON_LETTER,
       },
     });
 
@@ -1384,11 +1759,22 @@ export class LettersService {
       throw new NotFoundException(`Letter with id ${letterId} not found`);
     }
 
+    this.assertPortalLetterAccess(letter, letterId, actor);
+
     return letter;
   }
 
-  async getPdf(letterId: string) {
-    const letter = await this.findOne(letterId);
+  async getPdf(
+    letterId: string,
+    actor?: {
+      id: string;
+      role: UserRole;
+      roles?: UserRole[];
+      employeeId?: string | null;
+      portalOnly?: boolean;
+    },
+  ) {
+    const letter = await this.findOne(letterId, actor);
 
     // Always rebuild from the stored letter number so download / WhatsApp
     // attachments cannot serve a PDF that was generated without letterNo.
@@ -1591,6 +1977,41 @@ export class LettersService {
     });
 
     return { message: 'Letter deleted' };
+  }
+
+  private isEmployeePortalActor(actor?: {
+    role: UserRole;
+    roles?: UserRole[];
+    portalOnly?: boolean;
+  }): boolean {
+    if (!actor) return false;
+    if (actor.portalOnly) return true;
+    const roles = actor.roles?.length ? actor.roles : [actor.role];
+    return roles.length === 1 && roles[0] === UserRole.EMPLOYEE;
+  }
+
+  private assertPortalLetterAccess(
+    letter: { employeeId: string; status: LetterStatus },
+    letterId: string,
+    actor?: {
+      id: string;
+      role: UserRole;
+      roles?: UserRole[];
+      employeeId?: string | null;
+      portalOnly?: boolean;
+    },
+  ) {
+    if (!this.isEmployeePortalActor(actor)) {
+      return;
+    }
+    if (!actor?.employeeId || letter.employeeId !== actor.employeeId) {
+      throw new NotFoundException(`Letter with id ${letterId} not found`);
+    }
+    if (letter.status !== LetterStatus.SENT) {
+      throw new ForbiddenException(
+        'Draft and reversed letters are not available in the employee portal',
+      );
+    }
   }
 
   private formatDate(date: Date): string {

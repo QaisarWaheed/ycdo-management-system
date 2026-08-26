@@ -1114,6 +1114,21 @@ export class EmployeesService {
       );
     }
 
+    if (dto.status === EmployeeStatus.SUSPENDED) {
+      throw new BadRequestException(
+        'Employees cannot be manually changed to SUSPENDED. Issue a Suspension letter through the letters workflow.',
+      );
+    }
+
+    if (
+      employee.status === EmployeeStatus.SUSPENDED &&
+      dto.status === EmployeeStatus.ACTIVE
+    ) {
+      throw new BadRequestException(
+        'A suspended employee cannot be set ACTIVE from Change Status. Complete the inquiry finding, approval, and mandatory transfer workflow.',
+      );
+    }
+
     if (
       employee.status === EmployeeStatus.TRAINEE &&
       dto.status === EmployeeStatus.ACTIVE
