@@ -276,6 +276,7 @@ export class AttendanceController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
     UserRole.IT_ADMIN,
   )
   getSuspensionWatchlist(
@@ -296,6 +297,7 @@ export class AttendanceController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
     UserRole.IT_ADMIN,
   )
   sendNearSuspensionReminder(
@@ -321,6 +323,7 @@ export class AttendanceController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
     UserRole.IT_ADMIN,
   )
   startSuspensionCaseFromWatchlist(

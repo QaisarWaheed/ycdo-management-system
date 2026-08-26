@@ -22,6 +22,23 @@ const ROLE_PERMISSION_FALLBACK: Record<string, string[]> = {
     'ADMIN_MANAGER',
     'IT_ADMIN',
   ],
+  DISCIPLINARY_MANAGE: [
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+    'HR_EXECUTIVE',
+    'ADMIN_MANAGER',
+    'IT_ADMIN',
+  ],
+  LETTERS_GENERATE: [
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+    'HR_EXECUTIVE',
+    'ADMIN_MANAGER',
+    'ADMIN_OFFICER',
+    'IT_ADMIN',
+  ],
 }
 
 export function roleAllowsPermission(role: string, permission: string): boolean {

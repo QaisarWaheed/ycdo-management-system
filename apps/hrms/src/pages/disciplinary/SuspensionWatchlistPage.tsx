@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
+import { getApiErrorMessage } from '@/lib/apiErrorMessage'
 import { cn } from '@/lib/utils'
 
 type WatchReason = 'LATE_NEAR' | 'LATE_DUE' | 'UA_NEAR' | 'UA_DUE'
@@ -210,11 +211,10 @@ export function SuspensionWatchlistPage({
       queryClient.invalidateQueries({ queryKey: ['letters'] })
       queryClient.invalidateQueries({ queryKey: ['attendance', 'suspension-watchlist'] })
     },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
+    onError: (err: unknown) => {
       toast({
         title: 'Could not send reminder',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        description: getApiErrorMessage(err, 'Request failed'),
         variant: 'destructive',
       })
     },
@@ -234,11 +234,10 @@ export function SuspensionWatchlistPage({
       queryClient.invalidateQueries({ queryKey: ['attendance', 'suspension-watchlist'] })
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
     },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
+    onError: (err: unknown) => {
       toast({
         title: 'Could not start case',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        description: getApiErrorMessage(err, 'Request failed'),
         variant: 'destructive',
       })
     },
