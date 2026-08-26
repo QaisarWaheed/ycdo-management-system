@@ -33,24 +33,25 @@ model Branch {
   name         String
   abbreviation String?
   address      String?
-  phone     String?
-  isActive  Boolean  @default(true)
-  sortOrder Int      @default(999)
-  createdAt DateTime @default(now())
-  projectId String?
+  phone        String?
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(999)
+  createdAt    DateTime @default(now())
+  projectId    String?
 
-  project           Project?            @relation(fields: [projectId], references: [id])
-  departments       Department[]
-  employees         Employee[]
-  employmentHistory EmploymentHistory[]
-  attendanceLogs    AttendanceLog[]
-  shifts            Shift[]
-  relieverSessions  RelieverSession[]
-  location          BranchLocation?
-  biometricDevices  BiometricDevice[]
-  adminUsers        User[]
-  faceSyncResults   FaceSyncResult[]
-  mutualSwaps       MutualSwap[]
+  project                Project?            @relation(fields: [projectId], references: [id])
+  departments            Department[]
+  employees              Employee[]
+  employmentHistory      EmploymentHistory[]
+  suspensionFromRequests SuspensionRequest[]
+  attendanceLogs         AttendanceLog[]
+  shifts                 Shift[]
+  relieverSessions       RelieverSession[]
+  location               BranchLocation?
+  biometricDevices       BiometricDevice[]
+  adminUsers             User[]
+  faceSyncResults        FaceSyncResult[]
+  mutualSwaps            MutualSwap[]
 }
 
 model BiometricDevice {
@@ -172,38 +173,39 @@ model Employee {
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
-  currentBranch     Branch     @relation(fields: [currentBranchId], references: [id])
+  currentBranch     Branch      @relation(fields: [currentBranchId], references: [id])
   currentDepartment Department? @relation(fields: [currentDepartmentId], references: [id])
-  shift             Shift?     @relation(fields: [shiftId], references: [id])
+  shift             Shift?      @relation(fields: [shiftId], references: [id])
 
-  employmentHistory   EmploymentHistory[]
-  documents           EmployeeDocument[]
-  stipendRecords      StipendRecord[]
-  attendanceLogs      AttendanceLog[]
-  disciplinaryActions DisciplinaryAction[]
-  disciplineEvents    DisciplineEvent[]
-  letters             Letter[]
-  whatsappLetterSends WhatsAppLetterSend[]
-  leaveRecords        LeaveRecord[]
-  notifications       Notification[]
-  relieverSessions    RelieverSession[]
+  employmentHistory          EmploymentHistory[]
+  documents                  EmployeeDocument[]
+  stipendRecords             StipendRecord[]
+  attendanceLogs             AttendanceLog[]
+  disciplinaryActions        DisciplinaryAction[]
+  suspensionRequests         SuspensionRequest[]
+  disciplineEvents           DisciplineEvent[]
+  letters                    Letter[]
+  whatsappLetterSends        WhatsAppLetterSend[]
+  leaveRecords               LeaveRecord[]
+  notifications              Notification[]
+  relieverSessions           RelieverSession[]
   letterReplies              LetterReply[]
   user                       User?
   academicQualifications     AcademicQualification[]
   previousEmployments        PreviousEmployment[]
   branchChangeRequests       BranchChangeRequest[]
   allegationAcknowledgements AllegationAcknowledgement[]
-  relieverRequestsMade       RelieverRequest[] @relation("RelieverRequester")
-  relieverRequestsReceived   RelieverRequest[] @relation("RelieverEmployee")
+  relieverRequestsMade       RelieverRequest[]           @relation("RelieverRequester")
+  relieverRequestsReceived   RelieverRequest[]           @relation("RelieverEmployee")
   stipendReceipts            StipendReceipt[]
   incentives                 Incentive[]
   additionalWorkingDays      AdditionalWorkingDay[]
   portalAttendances          PortalAttendance[]
   advanceLoanRequests        AdvanceLoanRequest[]
   faceSyncJobs               FaceSyncJob[]
-  onboardingApproval       EmployeeOnboardingApproval?
-  coveringSwaps              MutualSwap[] @relation("CoveringSwaps")
-  coveredSwaps               MutualSwap[] @relation("CoveredSwaps")
+  onboardingApproval         EmployeeOnboardingApproval?
+  coveringSwaps              MutualSwap[]                @relation("CoveringSwaps")
+  coveredSwaps               MutualSwap[]                @relation("CoveredSwaps")
 
   // Additional personal info
   fatherStatus           String?
@@ -285,20 +287,20 @@ enum EmployeeOnboardingStatus {
 }
 
 model EmployeeOnboardingApproval {
-  id                     String                   @id @default(uuid())
-  employeeId             String                   @unique
-  submittedById          String
-  approverTarget         EmployeeApproverTarget
-  status                 EmployeeOnboardingStatus @default(PENDING)
-  formSnapshot           Json
-  physicalFormUrl        String?
-  physicalFormMimeType   String?
-  physicalFormFileName   String?
-  reviewNote             String?
-  reviewedById           String?
-  reviewedAt             DateTime?
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
+  id                   String                   @id @default(uuid())
+  employeeId           String                   @unique
+  submittedById        String
+  approverTarget       EmployeeApproverTarget
+  status               EmployeeOnboardingStatus @default(PENDING)
+  formSnapshot         Json
+  physicalFormUrl      String?
+  physicalFormMimeType String?
+  physicalFormFileName String?
+  reviewNote           String?
+  reviewedById         String?
+  reviewedAt           DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
 
   employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   submittedBy User     @relation("SubmittedOnboardingApprovals", fields: [submittedById], references: [id])
@@ -385,27 +387,27 @@ enum DocumentType {
 // ─── ATTENDANCE ───────────────────────────────────────────
 
 model AttendanceLog {
-  id              String           @id @default(uuid())
-  employeeId      String
-  branchId        String
-  date            DateTime         @db.Date
-  type            AttendanceLogType  @default(REGULAR)
-  checkIn         DateTime?
-  checkOut        DateTime?
-  status          AttendanceStatus
-  lateMinutes     Int              @default(0)
-  overtimeMinutes Int              @default(0)
-  overtimePending Boolean          @default(false)
-  overtimeApprovedBy String?
-  overtimeApprovedAt DateTime?
-  source          AttendanceSource @default(BIOMETRIC)
-  note            String?
-  createdAt       DateTime         @default(now())
+  id                    String            @id @default(uuid())
+  employeeId            String
+  branchId              String
+  date                  DateTime          @db.Date
+  type                  AttendanceLogType @default(REGULAR)
+  checkIn               DateTime?
+  checkOut              DateTime?
+  status                AttendanceStatus
+  lateMinutes           Int               @default(0)
+  overtimeMinutes       Int               @default(0)
+  overtimePending       Boolean           @default(false)
+  overtimeApprovedBy    String?
+  overtimeApprovedAt    DateTime?
+  source                AttendanceSource  @default(BIOMETRIC)
+  note                  String?
+  createdAt             DateTime          @default(now())
   /// Set once the backend stops treating this session as open (missing
   /// checkout past grace, or a controlled backfill) — independent of
   /// checkOut, which stays NULL because the employee never actually
   /// checked out. NULL means still open/active.
-  sessionClosedAt DateTime?
+  sessionClosedAt       DateTime?
   /// The employee's dutyStartTime/dutyEndTime AT THE MOMENT this record was
   /// created — a fixed historical snapshot, never touched again after
   /// creation (including on later edits to this same row). Exists so a
@@ -509,7 +511,7 @@ model StipendRecord {
   basicStipend     Decimal   @db.Decimal(10, 2)
   allowances       Decimal?  @db.Decimal(10, 2)
   reward           Decimal?  @db.Decimal(10, 2)
-  progressReward  Decimal?  @db.Decimal(10, 2)
+  progressReward   Decimal?  @db.Decimal(10, 2)
   fuelAllowance    Decimal?  @db.Decimal(10, 2)
   loanDeduction    Decimal?  @db.Decimal(10, 2)
   advanceDeduction Decimal?  @db.Decimal(10, 2)
@@ -530,11 +532,13 @@ model PayrollEntry {
   month           Int
   year            Int
   basicStipend    Decimal       @db.Decimal(10, 2)
-  totalDeductions Decimal       @db.Decimal(10, 2) @default(0)
-  totalAllowances Decimal       @db.Decimal(10, 2) @default(0)
+  totalDeductions Decimal       @default(0) @db.Decimal(10, 2)
+  totalAllowances Decimal       @default(0) @db.Decimal(10, 2)
   netStipend      Decimal       @db.Decimal(10, 2)
   status          PayrollStatus @default(PENDING)
-  /** True when HR force-generated for a non-ACTIVE/ON_REST employee (e.g. approved suspended). */
+  /**
+   * True when HR force-generated for a non-ACTIVE/ON_REST employee (e.g. approved suspended).
+   */
   forcedNonActive Boolean       @default(false)
   processedAt     DateTime?
   createdAt       DateTime      @default(now())
@@ -610,8 +614,9 @@ model DisciplinaryAction {
   resolution String?
   createdAt  DateTime           @default(now())
 
-  employee Employee @relation(fields: [employeeId], references: [id])
-  inquiry  Inquiry?
+  employee          Employee           @relation(fields: [employeeId], references: [id])
+  inquiry           Inquiry?
+  suspensionRequest SuspensionRequest?
 }
 
 enum DisciplinaryType {
@@ -630,15 +635,21 @@ enum DisciplinaryStatus {
 }
 
 model Inquiry {
-  id                   String         @id @default(uuid())
-  disciplinaryActionId String         @unique
-  startedAt            DateTime       @default(now())
+  id                   String              @id @default(uuid())
+  disciplinaryActionId String              @unique
+  startedAt            DateTime            @default(now())
   deadlineAt           DateTime
   outcome              InquiryOutcome?
   notes                String?
   closedAt             DateTime?
+  inquiryOfficerUserId String?
+  finding              InquiryFinding?
+  finalAction          InquiryFinalAction?
 
   disciplinaryAction DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
+  inquiryOfficer     User?              @relation("InquiryOfficer", fields: [inquiryOfficerUserId], references: [id])
+
+  @@index([inquiryOfficerUserId])
 }
 
 enum InquiryOutcome {
@@ -646,6 +657,63 @@ enum InquiryOutcome {
   TERMINATED
   REJOINED
   DISMISSED
+}
+
+enum InquiryFinding {
+  GUILTY
+  NOT_GUILTY
+}
+
+enum InquiryFinalAction {
+  DISMISS
+  TERMINATE
+  REST
+  FINE_AND_REINSTATE
+}
+
+enum SuspensionRequestStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  ISSUED
+  CANCELLED
+}
+
+model SuspensionRequest {
+  id                     String                  @id @default(uuid())
+  disciplinaryActionId   String                  @unique
+  letterId               String                  @unique
+  employeeId             String
+  status                 SuspensionRequestStatus @default(DRAFT)
+  reason                 String
+  periodStart            DateTime
+  periodEnd              DateTime
+  inquiryOfficerUserId   String
+  inquiryDeadlineAt      DateTime
+  selectedApproverUserId String
+  submittedById          String?
+  submittedAt            DateTime?
+  decidedById            String?
+  decidedAt              DateTime?
+  decisionNote           String?
+  issuedAt               DateTime?
+  suspendedFromBranchId  String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  disciplinaryAction  DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
+  letter              Letter             @relation(fields: [letterId], references: [id])
+  employee            Employee           @relation(fields: [employeeId], references: [id])
+  inquiryOfficer      User               @relation("SuspensionInquiryOfficer", fields: [inquiryOfficerUserId], references: [id])
+  selectedApprover    User               @relation("SuspensionSelectedApprover", fields: [selectedApproverUserId], references: [id])
+  submittedBy         User?              @relation("SubmittedSuspensionRequests", fields: [submittedById], references: [id])
+  decidedBy           User?              @relation("DecidedSuspensionRequests", fields: [decidedById], references: [id])
+  suspendedFromBranch Branch?            @relation(fields: [suspendedFromBranchId], references: [id])
+
+  @@index([status])
+  @@index([employeeId])
+  @@index([selectedApproverUserId, status])
 }
 
 // ─── LETTERS ──────────────────────────────────────────────
@@ -673,50 +741,51 @@ model LetterTemplate {
 }
 
 model Letter {
-  id            String     @id @default(uuid())
-  employeeId    String
-  letterType    LetterType
-  status        LetterStatus @default(SENT)
-  content       Json
-  generatedAt   DateTime   @default(now())
-  printedAt     DateTime?
-  fileUrl       String?
-  letterNo      String?    @unique
-  variables     Json?
-  templateVersion Int?
-  templateCode  String?
-  replyDeadline DateTime?
-  isReplied     Boolean    @default(false)
-  autoEscalated           Boolean @default(false)
-  requiresAcknowledgement Boolean @default(false)
+  id                      String       @id @default(uuid())
+  employeeId              String
+  letterType              LetterType
+  status                  LetterStatus @default(SENT)
+  content                 Json
+  generatedAt             DateTime     @default(now())
+  printedAt               DateTime?
+  fileUrl                 String?
+  letterNo                String?      @unique
+  variables               Json?
+  templateVersion         Int?
+  templateCode            String?
+  replyDeadline           DateTime?
+  isReplied               Boolean      @default(false)
+  autoEscalated           Boolean      @default(false)
+  requiresAcknowledgement Boolean      @default(false)
   whatsappSharedAt        DateTime?
   whatsappShareChannel    String?
   reversedAt              DateTime?
   reversedById            String?
   reversalReason          String?
 
-  employee        Employee                   @relation(fields: [employeeId], references: [id])
-  reversedBy      User?                      @relation("LetterReversedBy", fields: [reversedById], references: [id])
-  replies         LetterReply[]
-  acknowledgement AllegationAcknowledgement?
-  whatsappSend    WhatsAppLetterSend?
+  employee          Employee                   @relation(fields: [employeeId], references: [id])
+  reversedBy        User?                      @relation("LetterReversedBy", fields: [reversedById], references: [id])
+  replies           LetterReply[]
+  acknowledgement   AllegationAcknowledgement?
+  whatsappSend      WhatsAppLetterSend?
+  suspensionRequest SuspensionRequest?
 
   @@index([status])
   @@index([employeeId, status])
 }
 
 model WhatsAppLetterSend {
-  id            String              @id @default(uuid())
-  letterId      String              @unique
+  id            String             @id @default(uuid())
+  letterId      String             @unique
   employeeId    String
   phoneE164     String
-  status        WhatsAppSendStatus  @default(PENDING)
+  status        WhatsAppSendStatus @default(PENDING)
   error         String?
-  attempts      Int                 @default(0)
+  attempts      Int                @default(0)
   metaMessageId String?
   lastTriedAt   DateTime?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
   letter   Letter   @relation(fields: [letterId], references: [id], onDelete: Cascade)
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -773,34 +842,34 @@ enum LetterStatus {
 // ─── LEAVE ────────────────────────────────────────────────
 
 model LeaveRecord {
-  id               String               @id @default(uuid())
-  employeeId       String
-  leaveType        LeaveType            @default(REGULAR)
-  startDate        DateTime
-  endDate          DateTime
-  totalDays        Int
-  status           LeaveStatus          @default(PENDING)
-  reason           String?
-  approvedBy       String?
-  currentStage     LeaveApprovalStage?  @default(BRANCH_MANAGER)
-  branchManagerId  String?
-  deptInchargeId   String?
-  createdAt        DateTime             @default(now())
+  id              String              @id @default(uuid())
+  employeeId      String
+  leaveType       LeaveType           @default(REGULAR)
+  startDate       DateTime
+  endDate         DateTime
+  totalDays       Int
+  status          LeaveStatus         @default(PENDING)
+  reason          String?
+  approvedBy      String?
+  currentStage    LeaveApprovalStage? @default(BRANCH_MANAGER)
+  branchManagerId String?
+  deptInchargeId  String?
+  createdAt       DateTime            @default(now())
 
-  employee        Employee        @relation(fields: [employeeId], references: [id])
+  employee        Employee         @relation(fields: [employeeId], references: [id])
   relieverRequest RelieverRequest?
   approvals       LeaveApproval[]
 }
 
 model LeaveApproval {
-  id       String              @id @default(uuid())
-  leaveId  String
-  stage    LeaveApprovalStage
-  action   LeaveApprovalAction
-  actionBy String
-  actionAt DateTime            @default(now())
-  notes    String?
-  createdAt DateTime           @default(now())
+  id        String              @id @default(uuid())
+  leaveId   String
+  stage     LeaveApprovalStage
+  action    LeaveApprovalAction
+  actionBy  String
+  actionAt  DateTime            @default(now())
+  notes     String?
+  createdAt DateTime            @default(now())
 
   leave        LeaveRecord @relation(fields: [leaveId], references: [id])
   actionByUser User        @relation("LeaveApprovals", fields: [actionBy], references: [id])
@@ -935,34 +1004,39 @@ model AdditionalWorkingDay {
 // ─── AUTH & USERS ─────────────────────────────────────────
 
 model User {
-  id         String    @id @default(uuid())
-  employeeId String?   @unique
-  email      String    @unique
-  password   String
-  role       UserRole
-  branchId   String?
-  isActive   Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  lastLogin  DateTime?
+  id              String    @id @default(uuid())
+  employeeId      String?   @unique
+  email           String    @unique
+  password        String
+  role            UserRole
+  branchId        String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  lastLogin       DateTime?
   /// Set only on successful Employee Portal login (not HRMS).
   lastPortalLogin DateTime?
 
-  employee   Employee?               @relation(fields: [employeeId], references: [id])
-  branch     Branch?                 @relation(fields: [branchId], references: [id])
-  auditLogs  AuditLog[]
-  broadcasts NotificationBroadcast[]
-  incentivesAdded Incentive[]
-  additionalWorkingDaysAdded AdditionalWorkingDay[]
-  leaveApprovals LeaveApproval[] @relation("LeaveApprovals")
-  passwordRecord UserPassword?
-  permissions    UserPermission[]
-  additionalRoles UserAdditionalRole[]
-  managerScopes   UserManagerScope[]
+  employee                     Employee?                    @relation(fields: [employeeId], references: [id])
+  branch                       Branch?                      @relation(fields: [branchId], references: [id])
+  auditLogs                    AuditLog[]
+  broadcasts                   NotificationBroadcast[]
+  incentivesAdded              Incentive[]
+  additionalWorkingDaysAdded   AdditionalWorkingDay[]
+  leaveApprovals               LeaveApproval[]              @relation("LeaveApprovals")
+  passwordRecord               UserPassword?
+  permissions                  UserPermission[]
+  additionalRoles              UserAdditionalRole[]
+  managerScopes                UserManagerScope[]
   submittedOnboardingApprovals EmployeeOnboardingApproval[] @relation("SubmittedOnboardingApprovals")
   reviewedOnboardingApprovals  EmployeeOnboardingApproval[] @relation("ReviewedOnboardingApprovals")
   mutualSwapsCreated           MutualSwap[]
   loginOtpChallenges           LoginOtpChallenge[]
-  lettersReversed              Letter[] @relation("LetterReversedBy")
+  lettersReversed              Letter[]                     @relation("LetterReversedBy")
+  selectedAsSuspensionApprover SuspensionRequest[]          @relation("SuspensionSelectedApprover")
+  inquiryOfficerForSuspensions SuspensionRequest[]          @relation("SuspensionInquiryOfficer")
+  submittedSuspensionRequests  SuspensionRequest[]          @relation("SubmittedSuspensionRequests")
+  decidedSuspensionRequests    SuspensionRequest[]          @relation("DecidedSuspensionRequests")
+  inquiriesAsOfficer           Inquiry[]                    @relation("InquiryOfficer")
 }
 
 model LoginOtpChallenge {
@@ -1014,27 +1088,27 @@ model UserManagerScope {
 }
 
 model MutualSwap {
-  id                 String   @id @default(uuid())
-  date               DateTime @db.Date
+  id   String   @id @default(uuid())
+  date DateTime @db.Date
 
   coveringEmployeeId String
   coveringEmployee   Employee @relation("CoveringSwaps", fields: [coveringEmployeeId], references: [id])
 
-  coveredEmployeeId  String
-  coveredEmployee    Employee @relation("CoveredSwaps", fields: [coveredEmployeeId], references: [id])
+  coveredEmployeeId String
+  coveredEmployee   Employee @relation("CoveredSwaps", fields: [coveredEmployeeId], references: [id])
 
-  coveredShiftId     String
-  coveredShift       Shift    @relation(fields: [coveredShiftId], references: [id])
+  coveredShiftId String
+  coveredShift   Shift  @relation(fields: [coveredShiftId], references: [id])
 
-  branchId           String
-  branch             Branch   @relation(fields: [branchId], references: [id])
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
 
-  status             String   @default("ACTIVE")
-  note               String?
-  createdById        String
-  createdBy          User     @relation(fields: [createdById], references: [id])
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  status      String   @default("ACTIVE")
+  note        String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model UserPermission {
