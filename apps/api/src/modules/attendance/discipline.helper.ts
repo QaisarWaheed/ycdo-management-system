@@ -30,16 +30,16 @@ import {
 import { isTemporaryAutoCheckoutEnabled } from './temporary-auto-checkout';
 
 /**
- * When false (production default): attendance still claims DisciplineEvents
- * and may apply payroll fines, but does not auto-issue Advice/Warning/Fine
- * letters. HR uses the watchlist + manual flows instead.
- * When true: Advice/Warning/Fine auto letters may issue, but late/uninformed
- * thresholds must NEVER auto-suspend, deactivate portal users, or send a
+ * When false: attendance still claims DisciplineEvents and may apply payroll
+ * fines, but does not auto-create Advice/Warning/Fine/Explanation drafts.
+ * When true (production default): auto-create those letters as DRAFT for HR
+ * to proofread and Send (portal + WhatsApp). Late/uninformed thresholds
+ * never auto-suspend, never deactivate portal users, and never create a
  * SENT suspension letter — they only open an HR recommendation (OPEN case +
- * DRAFT letter). Mutable so unit tests can opt into the auto-letter path.
+ * DRAFT suspension letter). Mutable so unit tests can disable the path.
  */
 export const AUTO_DISCIPLINE = {
-  lettersAndSuspendEnabled: false,
+  lettersAndSuspendEnabled: true,
 };
 
 export type DisciplineOptions = {
@@ -162,7 +162,7 @@ export async function applyDisciplineRules(
   }
 
   if (status === AttendanceStatus.ABSENT) {
-    await applyAbsentDeduction(tx, employeeId, date);
+    await applyAbsentDeduction(tx, employeeId, date, skipLetters);
     return status;
   }
 
@@ -179,7 +179,7 @@ export async function applyDisciplineRules(
   }
 
   if (status === AttendanceStatus.UNINFORMED_ABSENT) {
-    await applyUninformedAbsentDeduction(tx, employeeId, date);
+    await applyUninformedAbsentDeduction(tx, employeeId, date, skipLetters);
     return status;
   }
 
@@ -233,6 +233,150 @@ function isPayrollFinanciallyFrozen(status: PayrollStatus): boolean {
   );
 }
 
+async function applyLateArrivalFineDeduction(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  lateCount: number,
+): Promise<void> {
+  const basicStipend = await getBasicStipend(tx, employeeId, date);
+  if (basicStipend <= 0) return;
+
+  const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
+  if (!payrollEntry || isPayrollFinanciallyFrozen(payrollEntry.status)) return;
+
+  const deductionAmount = dailyStipendRate(basicStipend, date);
+  const deductionDescription = `Late arrival deduction — monthly occurrence ${lateCount}`;
+
+  const alreadyDeducted = await tx.payrollDeduction.findFirst({
+    where: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.LATE_ARRIVAL,
+      description: deductionDescription,
+    },
+  });
+  if (alreadyDeducted) return;
+
+  await tx.payrollDeduction.create({
+    data: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.LATE_ARRIVAL,
+      amount: deductionAmount,
+      description: deductionDescription,
+    },
+  });
+
+  await tx.payrollEntry.update({
+    where: { id: payrollEntry.id },
+    data: {
+      totalDeductions: { increment: deductionAmount },
+      netStipend: { decrement: deductionAmount },
+    },
+  });
+}
+
+async function applyMissingCheckoutFineDeduction(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  missingCount: number,
+): Promise<void> {
+  const basicStipend = await getBasicStipend(tx, employeeId, date);
+  if (basicStipend <= 0) return;
+
+  const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
+  if (!payrollEntry || isPayrollFinanciallyFrozen(payrollEntry.status)) return;
+
+  const deductionAmount = dailyStipendRate(basicStipend, date);
+  const deductionDescription = `Missing checkout deduction — monthly occurrence ${missingCount}`;
+
+  const alreadyDeducted = await tx.payrollDeduction.findFirst({
+    where: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.DISCIPLINARY_FINE,
+      description: deductionDescription,
+    },
+  });
+  if (alreadyDeducted) return;
+
+  await tx.payrollDeduction.create({
+    data: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.DISCIPLINARY_FINE,
+      amount: deductionAmount,
+      description: deductionDescription,
+    },
+  });
+
+  await tx.payrollEntry.update({
+    where: { id: payrollEntry.id },
+    data: {
+      totalDeductions: { increment: deductionAmount },
+      netStipend: { decrement: deductionAmount },
+    },
+  });
+}
+
+function parseLetterIncidentDate(raw: unknown): Date | null {
+  if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const date = new Date(`${raw}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Apply the payroll deduction that belongs to an auto-generated discipline
+ * letter. Called from Send — draft create must not touch stipend.
+ */
+export async function applyDisciplineDeductionOnLetterSend(
+  tx: Prisma.TransactionClient,
+  letter: {
+    employeeId: string;
+    letterType: LetterType;
+    variables: Prisma.JsonValue | null;
+    content?: Prisma.JsonValue | null;
+  },
+): Promise<void> {
+  const vars = {
+    ...((letter.content as Record<string, unknown> | null) ?? {}),
+    ...((letter.variables as Record<string, unknown> | null) ?? {}),
+  };
+  const category = String(vars.disciplineCategory ?? '');
+  const date = parseLetterIncidentDate(vars.incidentDate);
+  if (!date) return;
+
+  if (letter.letterType === LetterType.FINE && category === 'LATE') {
+    const occurrence = Number(vars.monthlyLateOccurrence);
+    if (occurrence > 0) {
+      await applyLateArrivalFineDeduction(tx, letter.employeeId, date, occurrence);
+    }
+    return;
+  }
+
+  if (letter.letterType === LetterType.FINE && category === 'MISSING_CHECKOUT') {
+    const occurrence = Number(vars.monthlyMissingCheckoutOccurrence);
+    if (occurrence > 0) {
+      await applyMissingCheckoutFineDeduction(
+        tx,
+        letter.employeeId,
+        date,
+        occurrence,
+      );
+    }
+    return;
+  }
+
+  if (letter.letterType !== LetterType.EXPLANATION) return;
+
+  if (category === 'ABSENT') {
+    await applyAbsentDeduction(tx, letter.employeeId, date, true);
+    return;
+  }
+
+  if (category === 'UNINFORMED_ABSENT') {
+    await applyUninformedAbsenceFinancial(tx, letter.employeeId, date);
+  }
+}
+
 function incidentDateLabel(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -273,6 +417,7 @@ async function applyAbsentDeduction(
   tx: Prisma.TransactionClient,
   employeeId: string,
   date: Date,
+  skipLetters = false,
 ): Promise<AbsentApplicationResult> {
   const noOp: AbsentApplicationResult = {
     deductionApplied: false,
@@ -291,6 +436,18 @@ async function applyAbsentDeduction(
   });
 
   if (approvedLeave) return noOp;
+
+  if (AUTO_DISCIPLINE.lettersAndSuspendEnabled && !skipLetters) {
+    await issueAbsenceLetterIfNotAlready(
+      tx,
+      employeeId,
+      date,
+      'ABSENT',
+      `تاریخ ${date.toISOString().slice(0, 10)} کو بغیر منظور شدہ چھٹی غیر حاضری۔`,
+    );
+    // Payroll waits until HR sends the draft explanation letter.
+    return noOp;
+  }
 
   const basicStipend = await getBasicStipend(tx, employeeId, date);
   if (basicStipend <= 0) return noOp;
@@ -682,58 +839,16 @@ async function applyLateDiscipline(
     return;
   }
 
-  // 3rd or 6th this month -> Fine letter + 1-day deduction.
+  // 3rd or 6th this month -> Fine letter. Cash deduction waits until HR
+  // Send, unless this is a letter-less repair path (skipLetters / flag off).
   const deductionAmount = dailyStipendRate(basicStipend, date);
   const monthLabel = date.toLocaleString('en-US', {
     month: 'long',
     year: 'numeric',
   });
-  // Exact-match description, not a `contains` substring check — a fragile
-  // `contains "${lateCount} late"` match could in principle collide across
-  // different occurrence counts; an exact string cannot.
-  const deductionDescription = `Late arrival deduction — monthly occurrence ${lateCount}`;
 
-  if (basicStipend > 0) {
-    const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
-
-    // Financial freeze — mirrors the same PayrollEntry.status guard every
-    // other financial mutation path in this file already has
-    // (applyAbsentDeduction, applyUninformedAbsentDeduction,
-    // reverseLateDisciplineForDate). getOrCreatePayrollEntry already
-    // resolved the segment EFFECTIVE ON the incident date, so this checks
-    // that historical segment's own status, never the currently-active
-    // one — and never creates a replacement entry or moves the fine
-    // elsewhere; it simply skips the financial mutation. The FINE letter
-    // below is still issued regardless (discipline tracking is not
-    // coupled to financial mutation anywhere else in this file either).
-    if (payrollEntry && !isPayrollFinanciallyFrozen(payrollEntry.status)) {
-      const alreadyDeducted = await tx.payrollDeduction.findFirst({
-        where: {
-          payrollEntryId: payrollEntry.id,
-          reason: DeductionType.LATE_ARRIVAL,
-          description: deductionDescription,
-        },
-      });
-
-      if (!alreadyDeducted) {
-        await tx.payrollDeduction.create({
-          data: {
-            payrollEntryId: payrollEntry.id,
-            reason: DeductionType.LATE_ARRIVAL,
-            amount: deductionAmount,
-            description: deductionDescription,
-          },
-        });
-
-        await tx.payrollEntry.update({
-          where: { id: payrollEntry.id },
-          data: {
-            totalDeductions: { increment: deductionAmount },
-            netStipend: { decrement: deductionAmount },
-          },
-        });
-      }
-    }
+  if (!shouldIssueLetters) {
+    await applyLateArrivalFineDeduction(tx, employeeId, date, lateCount);
   }
 
   if (shouldIssueLetters) {
@@ -789,6 +904,7 @@ async function applyUninformedAbsenceDisciplineTracking(
   tx: Prisma.TransactionClient,
   employeeId: string,
   date: Date,
+  skipLetters = false,
 ): Promise<UninformedAbsenceDisciplineTrackingResult> {
   const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(date);
   const dayStart = new Date(date);
@@ -828,10 +944,23 @@ async function applyUninformedAbsenceDisciplineTracking(
     };
   }
 
+  const shouldIssueLetters =
+    AUTO_DISCIPLINE.lettersAndSuspendEnabled && !skipLetters;
+
+  if (shouldIssueLetters) {
+    await issueAbsenceLetterIfNotAlready(
+      tx,
+      employeeId,
+      date,
+      'UNINFORMED_ABSENT',
+      `تاریخ ${dayKey} کو بغیر اطلاع غیر حاضری۔`,
+    );
+  }
+
   // More than 2 uninformed-absent days in a month → HR suspension
   // recommendation only (never auto-suspend / never SENT auto letter).
   let suspensionTriggered = false;
-  if (AUTO_DISCIPLINE.lettersAndSuspendEnabled && uninformedCount > 2) {
+  if (shouldIssueLetters && uninformedCount > 2) {
     const employee = await tx.employee.findUnique({
       where: { id: employeeId },
       select: { status: true },
@@ -883,59 +1012,40 @@ export type UninformedAbsentApplicationResult =
  * discipline tracking (DisciplineEvent claim, monthly count, suspension
  * threshold) still runs unconditionally, since none of that is financial.
  */
-async function applyUninformedAbsentDeduction(
+async function applyUninformedAbsenceFinancial(
   tx: Prisma.TransactionClient,
   employeeId: string,
   date: Date,
-): Promise<UninformedAbsentApplicationResult> {
-  const tracking = await applyUninformedAbsenceDisciplineTracking(
-    tx,
-    employeeId,
-    date,
-  );
-  if (!tracking.disciplineEventCreated) {
-    // Already processed — true no-op, matches the pre-existing early return.
-    return {
-      ...tracking,
-      deductionApplied: false,
-      blockedByPayrollStatus: false,
-      deductionAmount: null,
-      payrollStatus: null,
-    };
-  }
+): Promise<
+  Pick<
+    UninformedAbsentApplicationResult,
+    | 'deductionApplied'
+    | 'blockedByPayrollStatus'
+    | 'deductionAmount'
+    | 'payrollStatus'
+  >
+> {
+  const noOp = {
+    deductionApplied: false,
+    blockedByPayrollStatus: false,
+    deductionAmount: null as number | null,
+    payrollStatus: null as string | null,
+  };
 
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dayKey = dayStart.toISOString().slice(0, 10);
 
   const basicStipend = await getBasicStipend(tx, employeeId, date);
-  if (basicStipend <= 0) {
-    return {
-      ...tracking,
-      deductionApplied: false,
-      blockedByPayrollStatus: false,
-      deductionAmount: null,
-      payrollStatus: null,
-    };
-  }
+  if (basicStipend <= 0) return noOp;
 
   const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
-  if (!payrollEntry) {
-    return {
-      ...tracking,
-      deductionApplied: false,
-      blockedByPayrollStatus: false,
-      deductionAmount: null,
-      payrollStatus: null,
-    };
-  }
+  if (!payrollEntry) return noOp;
 
   if (isPayrollFinanciallyFrozen(payrollEntry.status)) {
     return {
-      ...tracking,
-      deductionApplied: false,
+      ...noOp,
       blockedByPayrollStatus: true,
-      deductionAmount: null,
       payrollStatus: payrollEntry.status,
     };
   }
@@ -952,13 +1062,7 @@ async function applyUninformedAbsentDeduction(
     },
   });
   if (existingFamilyDeduction) {
-    return {
-      ...tracking,
-      deductionApplied: false,
-      blockedByPayrollStatus: false,
-      deductionAmount: null,
-      payrollStatus: payrollEntry.status,
-    };
+    return { ...noOp, payrollStatus: payrollEntry.status };
   }
 
   await tx.payrollDeduction.create({
@@ -966,9 +1070,6 @@ async function applyUninformedAbsentDeduction(
       payrollEntryId: payrollEntry.id,
       reason: DeductionType.UNINFORMED_ABSENCE,
       amount: deductionAmount,
-      // Date suffix lets a later leave approval over this exact day find
-      // and reverse this exact deduction (see reverseAbsenceDeductionForDate)
-      // without risking matching a different day's identically-worded row.
       description: uaDescription,
     },
   });
@@ -982,12 +1083,59 @@ async function applyUninformedAbsentDeduction(
   });
 
   return {
-    ...tracking,
     deductionApplied: true,
     blockedByPayrollStatus: false,
     deductionAmount,
     payrollStatus: payrollEntry.status,
   };
+}
+
+/**
+ * Full UNINFORMED_ABSENT application: discipline tracking (see
+ * applyUninformedAbsenceDisciplineTracking) plus the 2-day financial
+ * deduction, now gated on PayrollEntry.status the same way every reversal
+ * function in this file already is — mirrors the existing pattern in
+ * applyExtraLeaveRejectedDeduction, which this function previously did not.
+ * On PROCESSED/PAID: no PayrollDeduction is created, totalDeductions/
+ * netStipend are never touched, blockedByPayrollStatus is reported — the
+ * discipline tracking (DisciplineEvent claim, monthly count, suspension
+ * threshold) still runs unconditionally, since none of that is financial.
+ */
+async function applyUninformedAbsentDeduction(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  skipLetters = false,
+): Promise<UninformedAbsentApplicationResult> {
+  const tracking = await applyUninformedAbsenceDisciplineTracking(
+    tx,
+    employeeId,
+    date,
+    skipLetters,
+  );
+  if (!tracking.disciplineEventCreated) {
+    // Already processed — true no-op, matches the pre-existing early return.
+    return {
+      ...tracking,
+      deductionApplied: false,
+      blockedByPayrollStatus: false,
+      deductionAmount: null,
+      payrollStatus: null,
+    };
+  }
+
+  if (AUTO_DISCIPLINE.lettersAndSuspendEnabled && !skipLetters) {
+    return {
+      ...tracking,
+      deductionApplied: false,
+      blockedByPayrollStatus: false,
+      deductionAmount: null,
+      payrollStatus: null,
+    };
+  }
+
+  const financial = await applyUninformedAbsenceFinancial(tx, employeeId, date);
+  return { ...tracking, ...financial };
 }
 
 /**
@@ -1102,6 +1250,67 @@ async function hasAnyActiveSuspensionLetterThisMonth(
       reversed?: boolean;
     } | null;
     return !vars?.reversedDueToShortLeave && !vars?.reversed;
+  });
+}
+
+async function hasLetterForAbsenceIncident(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  category: 'ABSENT' | 'UNINFORMED_ABSENT',
+): Promise<boolean> {
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayKey = dayStart.toISOString().slice(0, 10);
+
+  const existing = await tx.letter.findMany({
+    where: {
+      employeeId,
+      letterType: LetterType.EXPLANATION,
+      generatedAt: { gte: startOfMonth },
+    },
+    select: { variables: true },
+  });
+
+  return existing.some((letter) => {
+    const vars = letter.variables as {
+      incidentDate?: string;
+      disciplineCategory?: string;
+      reversed?: boolean;
+    } | null;
+    if (vars?.reversed) return false;
+    return (
+      vars?.disciplineCategory === category && vars?.incidentDate === dayKey
+    );
+  });
+}
+
+async function issueAbsenceLetterIfNotAlready(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  category: 'ABSENT' | 'UNINFORMED_ABSENT',
+  violations: string,
+): Promise<void> {
+  if (await hasLetterForAbsenceIncident(tx, employeeId, date, category)) {
+    return;
+  }
+
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayKey = dayStart.toISOString().slice(0, 10);
+
+  await issueAutoTemplatedLetter(tx, {
+    employeeId,
+    letterType: LetterType.EXPLANATION,
+    extraFields: {
+      violations,
+      incidentDate: dayKey,
+      disciplineCategory: category,
+    },
+    notificationMessage: `Draft explanation letter for ${dayKey} absence is ready for proofread and send.`,
+    notificationType: 'DRAFT_LETTER_READY',
   });
 }
 
@@ -1241,8 +1450,6 @@ async function issueLateLetterIfNotAlready(
       monthlyLateOccurrence: lateCount,
       disciplineCategory: 'LATE',
     },
-    requiresAcknowledgement: true,
-    replyDeadline: new Date(Date.now() + 48 * 60 * 60 * 1000),
     notificationMessage: notif.message(lateCount),
     notificationType: notif.type,
   });
@@ -1466,53 +1673,14 @@ export async function applyMissingCheckoutDiscipline(
     month: 'long',
     year: 'numeric',
   });
-  // Distinct reason (DISCIPLINARY_FINE, unused elsewhere) + exact-match
-  // description — cannot collide with applyLateDiscipline's LATE_ARRIVAL
-  // deduction even for the same employee/month.
-  const deductionDescription = `Missing checkout deduction — monthly occurrence ${missingCount}`;
 
-  if (basicStipend > 0) {
-    const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
-
-    // Financial freeze — mirrors the same PayrollEntry.status guard every
-    // other financial mutation path in this file already has
-    // (applyAbsentDeduction, applyUninformedAbsentDeduction,
-    // applyLateDiscipline's fine branch, reverseMissingCheckoutDisciplineForDate
-    // itself). getOrCreatePayrollEntry already resolved the segment
-    // EFFECTIVE ON the incident date, so this checks that historical
-    // segment's own status, never the currently-active one — and never
-    // creates a replacement entry or moves the fine elsewhere; it simply
-    // skips the financial mutation. The FINE letter below is still issued
-    // regardless (discipline tracking is not coupled to financial
-    // mutation anywhere else in this file either).
-    if (payrollEntry && !isPayrollFinanciallyFrozen(payrollEntry.status)) {
-      const alreadyDeducted = await tx.payrollDeduction.findFirst({
-        where: {
-          payrollEntryId: payrollEntry.id,
-          reason: DeductionType.DISCIPLINARY_FINE,
-          description: deductionDescription,
-        },
-      });
-
-      if (!alreadyDeducted) {
-        await tx.payrollDeduction.create({
-          data: {
-            payrollEntryId: payrollEntry.id,
-            reason: DeductionType.DISCIPLINARY_FINE,
-            amount: deductionAmount,
-            description: deductionDescription,
-          },
-        });
-
-        await tx.payrollEntry.update({
-          where: { id: payrollEntry.id },
-          data: {
-            totalDeductions: { increment: deductionAmount },
-            netStipend: { decrement: deductionAmount },
-          },
-        });
-      }
-    }
+  if (!AUTO_DISCIPLINE.lettersAndSuspendEnabled) {
+    await applyMissingCheckoutFineDeduction(
+      tx,
+      employeeId,
+      date,
+      missingCount,
+    );
   }
 
   if (AUTO_DISCIPLINE.lettersAndSuspendEnabled) {
@@ -1635,8 +1803,6 @@ async function issueMissingCheckoutLetterIfNotAlready(
       ...extraFields,
       monthlyMissingCheckoutOccurrence: missingCount,
     },
-    requiresAcknowledgement: true,
-    replyDeadline: new Date(Date.now() + 48 * 60 * 60 * 1000),
     notificationMessage: notif.message(missingCount),
     notificationType: notif.type,
   });
@@ -2074,6 +2240,46 @@ export async function reverseAbsenceDeductionForDate(
       incidentDate: dayStart,
     },
   });
+
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
+  const absenceLetters = await tx.letter.findMany({
+    where: {
+      employeeId,
+      letterType: LetterType.EXPLANATION,
+      generatedAt: { gte: startOfMonth },
+    },
+  });
+  const absenceLetter = absenceLetters.find((letter) => {
+    const vars = letter.variables as {
+      incidentDate?: string;
+      disciplineCategory?: string;
+      reversed?: boolean;
+    } | null;
+    if (vars?.reversed) return false;
+    if (vars?.incidentDate !== dateLabel) return false;
+    return (
+      vars.disciplineCategory === 'ABSENT' ||
+      vars.disciplineCategory === 'UNINFORMED_ABSENT'
+    );
+  });
+  if (absenceLetter) {
+    await tx.letter.update({
+      where: { id: absenceLetter.id },
+      data: {
+        status:
+          absenceLetter.status === LetterStatus.DRAFT
+            ? LetterStatus.REVERSED
+            : absenceLetter.status,
+        variables: {
+          ...((absenceLetter.variables as object) ?? {}),
+          reversed: true,
+          reversedAt: new Date().toISOString(),
+          reversalTrigger: 'STATUS_NO_LONGER_ABSENT',
+        },
+        requiresAcknowledgement: false,
+      },
+    });
+  }
 
   return {
     reversed:

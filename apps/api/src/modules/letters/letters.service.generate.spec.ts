@@ -122,6 +122,23 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
     expect(tx.notification.create).not.toHaveBeenCalled();
     expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
   });
+
+  it('keeps EXPLANATION as DRAFT and does not WhatsApp or notify', async () => {
+    const { service, tx, whatsappService, created } = build();
+
+    await service.generateSystemLetter(
+      {
+        employeeId,
+        letterType: LetterType.EXPLANATION,
+        extraFields: { violations: 'Absence on 12/08/2026' },
+      },
+      'user-hr',
+    );
+
+    expect(created.status).toBe(LetterStatus.DRAFT);
+    expect(tx.notification.create).not.toHaveBeenCalled();
+    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
+  });
 });
 
 describe('LettersService.findAll portal visibility', () => {

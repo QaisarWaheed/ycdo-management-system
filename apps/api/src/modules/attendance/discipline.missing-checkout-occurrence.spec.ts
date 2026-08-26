@@ -265,7 +265,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
+  AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
 });
 
 describe('missing-checkout chronological occurrence', () => {

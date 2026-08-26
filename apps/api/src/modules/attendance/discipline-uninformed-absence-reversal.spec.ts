@@ -125,6 +125,10 @@ function makeAbsenceFakeTx(seed: {
         },
       ),
     },
+    letter: {
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
+    },
   };
 
   return {

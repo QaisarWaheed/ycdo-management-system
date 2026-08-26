@@ -33,6 +33,7 @@ import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
+import { EmployeeDisciplineTrackRecord } from '@/components/employees/EmployeeDisciplineTrackRecord'
 import {
   ManagerScopeBadges,
 } from '@/components/employees/RoleBadges'
@@ -83,6 +84,7 @@ import { maritalStatusToLabel } from '@/lib/searchableSelectOptions'
 import type {
   AcademicQualification,
   AttendanceLog,
+  DisciplinaryAction,
   DocumentType,
   EmployeeDocument,
   EmploymentHistory,
@@ -1351,6 +1353,12 @@ export function EmployeeProfilePage() {
               </Button>
             )}
           </div>
+          <EmployeeDisciplineTrackRecord
+            letters={letters}
+            actions={disciplinary as DisciplinaryAction[]}
+            isLoading={loadingLetters || loadingDisciplinary}
+            currentStatus={employee.status}
+          />
         </CardContent>
       </Card>
 

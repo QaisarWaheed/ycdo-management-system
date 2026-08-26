@@ -10,6 +10,7 @@ jest.mock('./../letters/auto-letter.helper', () => ({
 
 import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
 import {
+  applyDisciplineDeductionOnLetterSend,
   applyDisciplineRules,
   AUTO_DISCIPLINE,
   reverseLateDisciplineForDate,
@@ -358,13 +359,32 @@ const singleSr: FakeStipend = {
 const FINE_INCIDENT_DATE = new Date('2026-08-05T00:00:00.000Z');
 const FINE_PRIOR_DATES = ['2026-08-03', '2026-08-04'];
 
+async function applyLateFineThenSend(
+  tx: Prisma.TransactionClient,
+  date: Date = FINE_INCIDENT_DATE,
+) {
+  await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, date, {
+    lateMinutes: 30,
+  });
+  await applyDisciplineDeductionOnLetterSend(tx, {
+    employeeId: EMP_ID,
+    letterType: LetterType.FINE,
+    content: null,
+    variables: {
+      disciplineCategory: 'LATE',
+      monthlyLateOccurrence: 3,
+      incidentDate: date.toISOString().slice(0, 10),
+    },
+  });
+}
+
 beforeEach(() => {
   AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
   issueAutoTemplatedLetterMock.mockClear();
 });
 
 afterEach(() => {
-  AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
+  AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
 });
 
 describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () => {
@@ -375,9 +395,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
       priorLateDates: FINE_PRIOR_DATES,
     });
 
-    await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, FINE_INCIDENT_DATE, {
-      lateMinutes: 30,
-    });
+    await applyLateFineThenSend(tx);
 
     const entries = getPayrollEntries();
     expect(entries).toHaveLength(1);
@@ -403,9 +421,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
       priorLateDates: FINE_PRIOR_DATES,
     });
 
-    await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, FINE_INCIDENT_DATE, {
-      lateMinutes: 30,
-    });
+    await applyLateFineThenSend(tx);
 
     expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries();
@@ -431,9 +447,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
       priorLateDates: FINE_PRIOR_DATES,
     });
 
-    await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, FINE_INCIDENT_DATE, {
-      lateMinutes: 30,
-    });
+    await applyLateFineThenSend(tx);
 
     expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries();
@@ -460,9 +474,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
       priorLateDates: FINE_PRIOR_DATES,
     });
 
-    await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, FINE_INCIDENT_DATE, {
-      lateMinutes: 30,
-    });
+    await applyLateFineThenSend(tx);
 
     expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries();
@@ -489,9 +501,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
       priorLateDates: FINE_PRIOR_DATES,
     });
 
-    await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, FINE_INCIDENT_DATE, {
-      lateMinutes: 30,
-    });
+    await applyLateFineThenSend(tx);
 
     expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries();
@@ -508,9 +518,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
       priorLateDates: ['2026-08-13', '2026-08-14'],
     });
 
-    await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, AUG_15, {
-      lateMinutes: 30,
-    });
+    await applyLateFineThenSend(tx, AUG_15);
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
@@ -661,9 +669,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
       priorLateDates: FINE_PRIOR_DATES,
     });
 
-    await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, FINE_INCIDENT_DATE, {
-      lateMinutes: 30,
-    });
+    await applyLateFineThenSend(tx);
 
     expect(getDisciplineEvents()).toHaveLength(1); // incident still tracked
     expect(issueAutoTemplatedLetterMock).toHaveBeenCalledTimes(1); // FINE letter still issued
@@ -672,9 +678,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
 
     // A replay of the exact same incident is still idempotent (no second
     // DisciplineEvent, no second letter call) even though it's frozen.
-    await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, FINE_INCIDENT_DATE, {
-      lateMinutes: 30,
-    });
+    await applyLateFineThenSend(tx);
     expect(getDisciplineEvents()).toHaveLength(1);
     expect(issueAutoTemplatedLetterMock).toHaveBeenCalledTimes(1);
   });

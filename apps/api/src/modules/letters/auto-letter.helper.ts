@@ -1,4 +1,10 @@
-import { LetterStatus, LetterType, Prisma, PrismaClient } from '@prisma/client';
+import {
+  LetterStatus,
+  LetterType,
+  Prisma,
+  PrismaClient,
+  UserRole,
+} from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -49,7 +55,9 @@ async function persistLocalPdf(
 }
 
 /**
- * Issue an auto-generated letter (WARNING / SUSPENSION / FINE) with Urdu PDF.
+ * Create an auto-generated discipline letter as DRAFT with Urdu PDF.
+ * Does not notify the employee or send WhatsApp — HR proofreads in Draft,
+ * then Send publishes to the portal and WhatsApp.
  * Safe to call from discipline transactions; keeps content + fileUrl together.
  */
 export async function issueAutoTemplatedLetter(
@@ -125,22 +133,33 @@ export async function issueAutoTemplatedLetter(
     data: {
       employeeId: input.employeeId,
       letterType: input.letterType,
-      status: LetterStatus.SENT,
+      status: LetterStatus.DRAFT,
       content: input.extraFields as Prisma.InputJsonValue,
       letterNo,
       variables: variables as Prisma.InputJsonValue,
       templateVersion: template?.version ?? null,
       fileUrl,
-      requiresAcknowledgement: input.requiresAcknowledgement ?? true,
-      replyDeadline: input.replyDeadline ?? undefined,
+      // Acknowledgement + reply window start only when HR Send publishes.
+      requiresAcknowledgement: false,
+      replyDeadline: undefined,
     },
   });
 
-  await db.notification.create({
-    data: {
-      employeeId: input.employeeId,
-      message: input.notificationMessage,
-      type: input.notificationType,
-    },
+  const hrManagers = await db.user.findMany({
+    where: { role: UserRole.HR_MANAGER, isActive: true },
   });
+  const letterLabel = input.letterType.replace(/_/g, ' ');
+  const hrMessage =
+    input.notificationMessage ||
+    `Draft ${letterLabel} letter (${letterNo}) is ready for proofread and send.`;
+  for (const hr of hrManagers) {
+    if (!hr.employeeId) continue;
+    await db.notification.create({
+      data: {
+        employeeId: hr.employeeId,
+        type: input.notificationType || 'DRAFT_LETTER_READY',
+        message: `${employee.fullName}: ${hrMessage}`,
+      },
+    });
+  }
 }

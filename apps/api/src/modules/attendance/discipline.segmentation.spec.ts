@@ -1,4 +1,4 @@
-import { AttendanceStatus, Prisma } from '@prisma/client';
+import { AttendanceStatus, LetterType, Prisma } from '@prisma/client';
 
 // discipline.helper.ts imports issueAutoTemplatedLetter at module scope,
 // which transitively pulls in puppeteer (ESM-only, breaks Jest's default
@@ -9,6 +9,7 @@ jest.mock('./../letters/auto-letter.helper', () => ({
 }));
 
 import {
+  applyDisciplineDeductionOnLetterSend,
   applyDisciplineRules,
   applyMissingCheckoutDiscipline,
 } from './discipline.helper';
@@ -207,14 +208,28 @@ function makeSegmentFakeTx(seed: {
     payrollDeduction: {
       findFirst: jest.fn(
         (args: {
-          where: { payrollEntryId: string; reason: string; description: string };
+          where: {
+            payrollEntryId: string;
+            reason: string;
+            description?: string;
+            OR?: Array<{ description: string }>;
+          };
         }) =>
-          deductions.find(
-            (d) =>
-              d.payrollEntryId === args.where.payrollEntryId &&
-              d.reason === args.where.reason &&
-              d.description === args.where.description,
-          ) ?? null,
+          deductions.find((d) => {
+            if (
+              d.payrollEntryId !== args.where.payrollEntryId ||
+              d.reason !== args.where.reason
+            ) {
+              return false;
+            }
+            if (typeof args.where.description === 'string') {
+              return d.description === args.where.description;
+            }
+            if (args.where.OR) {
+              return args.where.OR.some((row) => row.description === d.description);
+            }
+            return true;
+          }) ?? null,
       ),
       create: jest.fn(
         (args: {
@@ -387,6 +402,16 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, incidentDate, {
       lateMinutes: 30,
     });
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMP_ID,
+      letterType: LetterType.FINE,
+      content: null,
+      variables: {
+        disciplineCategory: 'LATE',
+        monthlyLateOccurrence: 3,
+        incidentDate: incidentDate.toISOString().slice(0, 10),
+      },
+    });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
@@ -406,6 +431,16 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
 
     await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, incidentDate, {
       lateMinutes: 30,
+    });
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMP_ID,
+      letterType: LetterType.FINE,
+      content: null,
+      variables: {
+        disciplineCategory: 'LATE',
+        monthlyLateOccurrence: 3,
+        incidentDate: incidentDate.toISOString().slice(0, 10),
+      },
     });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
@@ -429,6 +464,15 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       AttendanceStatus.UNINFORMED_ABSENT,
       incidentDate,
     );
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMP_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'UNINFORMED_ABSENT',
+        incidentDate: incidentDate.toISOString().slice(0, 10),
+      },
+    });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
@@ -449,6 +493,16 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       checkIn: new Date('2026-08-08T04:00:00.000Z'),
       dutyEndTime: '17:00',
     });
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMP_ID,
+      letterType: LetterType.FINE,
+      content: null,
+      variables: {
+        disciplineCategory: 'MISSING_CHECKOUT',
+        monthlyMissingCheckoutOccurrence: 3,
+        incidentDate: incidentDate.toISOString().slice(0, 10),
+      },
+    });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
@@ -464,6 +518,15 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     });
 
     await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.ABSENT, AUG_15);
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMP_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'ABSENT',
+        incidentDate: AUG_15.toISOString().slice(0, 10),
+      },
+    });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
     expect(entries).toHaveLength(1);
@@ -495,6 +558,15 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       AttendanceStatus.UNINFORMED_ABSENT,
       incidentDate,
     );
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMP_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'UNINFORMED_ABSENT',
+        incidentDate: incidentDate.toISOString().slice(0, 10),
+      },
+    });
 
     expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries();
@@ -530,6 +602,16 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     await applyDisciplineRules(tx, EMP_ID, AttendanceStatus.LATE, incidentDate, {
       lateMinutes: 30,
     });
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMP_ID,
+      letterType: LetterType.FINE,
+      content: null,
+      variables: {
+        disciplineCategory: 'LATE',
+        monthlyLateOccurrence: 3,
+        incidentDate: incidentDate.toISOString().slice(0, 10),
+      },
+    });
 
     // Exactly one entry ever existed/was touched — the old, PAID one. No
     // second entry was created against the active (new) segment, and the
@@ -555,6 +637,15 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       AttendanceStatus.UNINFORMED_ABSENT,
       incidentDate,
     );
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMP_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'UNINFORMED_ABSENT',
+        incidentDate: incidentDate.toISOString().slice(0, 10),
+      },
+    });
     const afterFirst = getPayrollEntries().find(
       (e) => e.stipendRecordId === 'sr-old',
     )!.totalDeductions;
@@ -566,6 +657,15 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
       AttendanceStatus.UNINFORMED_ABSENT,
       incidentDate,
     );
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMP_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'UNINFORMED_ABSENT',
+        incidentDate: incidentDate.toISOString().slice(0, 10),
+      },
+    });
 
     // DisciplineEvent's unique claim makes the second call a true no-op —
     // no second deduction row, totals unchanged.

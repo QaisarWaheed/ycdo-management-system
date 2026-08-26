@@ -1,5 +1,5 @@
 import { AttendanceStatus, LetterType, Prisma } from '@prisma/client';
-import { applyDisciplineRules, AUTO_DISCIPLINE } from './discipline.helper';
+import { applyDisciplineDeductionOnLetterSend, applyDisciplineRules, AUTO_DISCIPLINE } from './discipline.helper';
 
 // issueAutoTemplatedLetter does PDF generation / filesystem writes / letter
 // numbering — irrelevant to what this suite proves (idempotency of the
@@ -161,10 +161,10 @@ describe('discipline idempotency gate (DisciplineEvent)', () => {
   });
 
   afterEach(() => {
-    AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
+    AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
   });
 
-  it('10 concurrent executions of the SAME incident (occurrence 3, Fine) produce exactly ONE DisciplineEvent, ONE letter, and at most ONE deduction', async () => {
+    it('10 concurrent executions of the SAME incident (occurrence 3, Fine) produce exactly ONE DisciplineEvent and ONE letter, and no payroll deduction until Send', async () => {
     const incidentDate = new Date('2026-08-17T00:00:00.000Z');
     // Two other distinct prior late days this month + this one = lateCount 3
     // -> positionInCycle 3, lateCount !== 9 -> Fine + 1-day deduction branch.
@@ -201,7 +201,37 @@ describe('discipline idempotency gate (DisciplineEvent)', () => {
       letterType: LetterType.FINE,
     });
 
-    // At most ONE deduction was created.
+    // Deduction waits until HR Send.
+    expect(tx.payrollDeduction.create).not.toHaveBeenCalled();
+  });
+
+  it('applies the late fine only when the FINE letter is sent', async () => {
+    const incidentDate = new Date('2026-08-17T00:00:00.000Z');
+    const priorDays = [
+      { date: new Date('2026-08-03T00:00:00.000Z') },
+      { date: new Date('2026-08-10T00:00:00.000Z') },
+    ];
+    const tx = makeFakeTx(() => priorDays);
+
+    await applyDisciplineRules(
+      asTx(tx),
+      EMPLOYEE_ID,
+      AttendanceStatus.LATE,
+      incidentDate,
+      { lateMinutes: 20 },
+    );
+    expect(tx.payrollDeduction.create).not.toHaveBeenCalled();
+
+    await applyDisciplineDeductionOnLetterSend(asTx(tx), {
+      employeeId: EMPLOYEE_ID,
+      letterType: LetterType.FINE,
+      content: null,
+      variables: {
+        disciplineCategory: 'LATE',
+        monthlyLateOccurrence: 3,
+        incidentDate: '2026-08-17',
+      },
+    });
     expect(tx.payrollDeduction.create).toHaveBeenCalledTimes(1);
   });
 
@@ -313,7 +343,10 @@ describe('discipline idempotency gate (DisciplineEvent)', () => {
       incidentDate,
     );
 
-    expect(issueAutoTemplatedLetter).not.toHaveBeenCalled();
+    expect(issueAutoTemplatedLetter).toHaveBeenCalledTimes(1);
+    expect(issueAutoTemplatedLetter.mock.calls[0][1]).toMatchObject({
+      letterType: LetterType.EXPLANATION,
+    });
     expect(tx.employee.update).not.toHaveBeenCalled();
     expect(tx.user.updateMany).not.toHaveBeenCalled();
     expect(tx.disciplinaryAction.create).toHaveBeenCalledWith(
@@ -354,6 +387,69 @@ describe('discipline idempotency gate (DisciplineEvent)', () => {
       (r) => r.type === 'return',
     );
     expect(successfulClaims).toHaveLength(1);
-    expect(tx.payrollDeduction.create).toHaveBeenCalledTimes(1);
+    expect(tx.payrollDeduction.create).not.toHaveBeenCalled();
+    expect(issueAutoTemplatedLetter).toHaveBeenCalledTimes(1);
+    expect(issueAutoTemplatedLetter.mock.calls[0][1]).toMatchObject({
+      letterType: LetterType.EXPLANATION,
+    });
+  });
+
+  it('creates a draft EXPLANATION letter for a plain ABSENT day', async () => {
+    const incidentDate = new Date('2026-08-12T00:00:00.000Z');
+    const tx = makeFakeTx(() => []);
+
+    await applyDisciplineRules(
+      asTx(tx),
+      EMPLOYEE_ID,
+      AttendanceStatus.ABSENT,
+      incidentDate,
+    );
+
+    expect(issueAutoTemplatedLetter).toHaveBeenCalledTimes(1);
+    expect(issueAutoTemplatedLetter.mock.calls[0][1]).toMatchObject({
+      letterType: LetterType.EXPLANATION,
+      extraFields: expect.objectContaining({
+        disciplineCategory: 'ABSENT',
+        incidentDate: '2026-08-12',
+      }),
+    });
+    expect(tx.payrollDeduction.create).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-create an absence letter when skipLetters is set', async () => {
+    const incidentDate = new Date('2026-08-12T00:00:00.000Z');
+    const tx = makeFakeTx(() => []);
+
+    await applyDisciplineRules(
+      asTx(tx),
+      EMPLOYEE_ID,
+      AttendanceStatus.ABSENT,
+      incidentDate,
+      { skipLetters: true },
+    );
+
+    expect(issueAutoTemplatedLetter).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-create letters when AUTO_DISCIPLINE is disabled', async () => {
+    AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
+    const incidentDate = new Date('2026-08-05T00:00:00.000Z');
+    const tx = makeFakeTx(() => []);
+
+    await applyDisciplineRules(
+      asTx(tx),
+      EMPLOYEE_ID,
+      AttendanceStatus.LATE,
+      incidentDate,
+      { lateMinutes: 10 },
+    );
+    await applyDisciplineRules(
+      asTx(tx),
+      EMPLOYEE_ID,
+      AttendanceStatus.ABSENT,
+      incidentDate,
+    );
+
+    expect(issueAutoTemplatedLetter).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,7 @@ jest.mock('./../letters/auto-letter.helper', () => ({
 
 import {
   AUTO_DISCIPLINE,
+  applyDisciplineDeductionOnLetterSend,
   isAbsentFamilyEligibleForDiscipline,
   isMissingCheckoutEligibleForDiscipline,
   reconcileAttendanceFinancialConsequences,
@@ -165,9 +166,10 @@ function makeReconcileFakeTx(seed: {
             payrollEntryId: string;
             reason: string;
             description?: string | { in: string[] };
+            OR?: Array<{ description: string }>;
           };
         }) => {
-          const { payrollEntryId, reason, description } = args.where;
+          const { payrollEntryId, reason, description, OR } = args.where;
           return (
             deductions.find((d) => {
               if (d.payrollEntryId !== payrollEntryId) return false;
@@ -176,6 +178,7 @@ function makeReconcileFakeTx(seed: {
                 return d.description === description;
               if (description && 'in' in description)
                 return description.in.includes(d.description);
+              if (OR) return OR.some((row) => row.description === d.description);
               return true;
             }) ?? null
           );
@@ -1102,7 +1105,19 @@ describe('reconcileAttendanceFinancialConsequences', () => {
         after: snap(AttendanceStatus.ABSENT),
       });
 
-      expect(result.deductionApplied).toBe(true);
+      expect(result.deductionApplied).toBe(false);
+      expect(getState().deductions).toHaveLength(0);
+
+      await applyDisciplineDeductionOnLetterSend(tx, {
+        employeeId: EMPLOYEE_ID,
+        letterType: LetterType.EXPLANATION,
+        content: null,
+        variables: {
+          disciplineCategory: 'ABSENT',
+          incidentDate: DATE_LABEL,
+        },
+      });
+
       const state = getState();
       expect(state.deductions).toHaveLength(1);
       expect(state.deductions[0].description).toBe(
@@ -1125,7 +1140,20 @@ describe('reconcileAttendanceFinancialConsequences', () => {
         after: snap(AttendanceStatus.UNINFORMED_ABSENT),
       });
 
-      expect(result.deductionApplied).toBe(true);
+      expect(result.deductionApplied).toBe(false);
+      expect(getState().deductions).toHaveLength(0);
+      expect(getState().disciplineEvents).toHaveLength(1);
+
+      await applyDisciplineDeductionOnLetterSend(tx, {
+        employeeId: EMPLOYEE_ID,
+        letterType: LetterType.EXPLANATION,
+        content: null,
+        variables: {
+          disciplineCategory: 'UNINFORMED_ABSENT',
+          incidentDate: DATE_LABEL,
+        },
+      });
+
       const state = getState();
       expect(state.deductions).toHaveLength(1);
       expect(state.deductions[0].description).toBe(
@@ -1147,7 +1175,18 @@ describe('reconcileAttendanceFinancialConsequences', () => {
         after: snap(AttendanceStatus.ABSENT),
       });
 
-      expect(result.deductionApplied).toBe(true);
+      expect(result.deductionApplied).toBe(false);
+      expect(getState().deductions).toHaveLength(0);
+
+      await applyDisciplineDeductionOnLetterSend(tx, {
+        employeeId: EMPLOYEE_ID,
+        letterType: LetterType.EXPLANATION,
+        content: null,
+        variables: {
+          disciplineCategory: 'ABSENT',
+          incidentDate: DATE_LABEL,
+        },
+      });
       expect(getState().deductions).toHaveLength(1);
     });
 
@@ -1180,14 +1219,32 @@ describe('reconcileAttendanceFinancialConsequences', () => {
         before: null,
         after: snap(AttendanceStatus.ABSENT),
       });
-      // Second, independent call with before:null again (e.g. a retried
-      // request) — the belt-and-suspenders exact-match guard inside
-      // applyAbsentDeduction itself must still prevent a duplicate row.
       await reconcileAttendanceFinancialConsequences(tx, {
         employeeId: EMPLOYEE_ID,
         date: DATE,
         before: null,
         after: snap(AttendanceStatus.ABSENT),
+      });
+
+      expect(getState().deductions).toHaveLength(0);
+
+      await applyDisciplineDeductionOnLetterSend(tx, {
+        employeeId: EMPLOYEE_ID,
+        letterType: LetterType.EXPLANATION,
+        content: null,
+        variables: {
+          disciplineCategory: 'ABSENT',
+          incidentDate: DATE_LABEL,
+        },
+      });
+      await applyDisciplineDeductionOnLetterSend(tx, {
+        employeeId: EMPLOYEE_ID,
+        letterType: LetterType.EXPLANATION,
+        content: null,
+        variables: {
+          disciplineCategory: 'ABSENT',
+          incidentDate: DATE_LABEL,
+        },
       });
 
       expect(getState().deductions).toHaveLength(1);
@@ -1544,9 +1601,20 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
       after: snap(AttendanceStatus.ABSENT),
     });
 
-    expect(result.deductionApplied).toBe(true);
+    expect(result.deductionApplied).toBe(false);
     expect(result.blockedByPayrollStatus).toBe(false);
-    expect(result.payrollStatus).toBe('PENDING');
+    expect(getState().deductions).toHaveLength(0);
+
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMPLOYEE_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'ABSENT',
+        incidentDate: DATE_LABEL,
+      },
+    });
+
     expect(getState().deductions).toHaveLength(1);
   });
 
@@ -1564,8 +1632,19 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
     });
 
     expect(result.deductionApplied).toBe(false);
-    expect(result.blockedByPayrollStatus).toBe(true);
-    expect(result.payrollStatus).toBe('PROCESSED');
+    expect(result.blockedByPayrollStatus).toBe(false);
+    expect(getState().deductions).toHaveLength(0);
+
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMPLOYEE_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'ABSENT',
+        incidentDate: DATE_LABEL,
+      },
+    });
+
     expect(getState().deductions).toHaveLength(0);
     expect(getState().payrollEntry?.totalDeductions).toBe(5000);
   });
@@ -1584,8 +1663,19 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
     });
 
     expect(result.deductionApplied).toBe(false);
-    expect(result.blockedByPayrollStatus).toBe(true);
-    expect(result.payrollStatus).toBe('PAID');
+    expect(result.blockedByPayrollStatus).toBe(false);
+    expect(getState().deductions).toHaveLength(0);
+
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMPLOYEE_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'ABSENT',
+        incidentDate: DATE_LABEL,
+      },
+    });
+
     expect(getState().deductions).toHaveLength(0);
   });
 
@@ -1604,13 +1694,22 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
     });
 
     expect(result.deductionApplied).toBe(false);
-    expect(result.blockedByPayrollStatus).toBe(true);
-    expect(result.payrollStatus).toBe('PROCESSED');
+    expect(result.blockedByPayrollStatus).toBe(false);
     expect(result.disciplineEventCreated).toBe(true);
-    const state = getState();
-    expect(state.deductions).toHaveLength(0);
-    expect(state.disciplineEvents).toHaveLength(1);
-    expect(state.disciplineEvents[0].category).toBe('UNINFORMED_ABSENT');
+    expect(getState().deductions).toHaveLength(0);
+    expect(getState().disciplineEvents).toHaveLength(1);
+
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMPLOYEE_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'UNINFORMED_ABSENT',
+        incidentDate: DATE_LABEL,
+      },
+    });
+    expect(getState().deductions).toHaveLength(0);
+    expect(getState().disciplineEvents[0].category).toBe('UNINFORMED_ABSENT');
   });
 
   it('D2. same as D but PAID payroll — identical freeze, identical discipline tracking', async () => {
@@ -1627,8 +1726,19 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
       after: snap(AttendanceStatus.UNINFORMED_ABSENT),
     });
 
-    expect(result.blockedByPayrollStatus).toBe(true);
+    expect(result.blockedByPayrollStatus).toBe(false);
     expect(result.disciplineEventCreated).toBe(true);
+    expect(getState().deductions).toHaveLength(0);
+
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMPLOYEE_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'UNINFORMED_ABSENT',
+        incidentDate: DATE_LABEL,
+      },
+    });
     expect(getState().deductions).toHaveLength(0);
   });
 
@@ -1646,9 +1756,20 @@ describe('Bug A fix — application-side PayrollEntry.status freeze', () => {
       after: snap(AttendanceStatus.UNINFORMED_ABSENT),
     });
 
-    expect(result.deductionApplied).toBe(true);
+    expect(result.deductionApplied).toBe(false);
     expect(result.blockedByPayrollStatus).toBe(false);
     expect(result.disciplineEventCreated).toBe(true);
+    expect(getState().deductions).toHaveLength(0);
+
+    await applyDisciplineDeductionOnLetterSend(tx, {
+      employeeId: EMPLOYEE_ID,
+      letterType: LetterType.EXPLANATION,
+      content: null,
+      variables: {
+        disciplineCategory: 'UNINFORMED_ABSENT',
+        incidentDate: DATE_LABEL,
+      },
+    });
     expect(getState().deductions).toHaveLength(1);
   });
 
@@ -1812,7 +1933,7 @@ describe('Bug B fix — ABSENT <-> UNINFORMED_ABSENT subtype transitions', () =>
     AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
   });
   afterEach(() => {
-    AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
+    AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
   });
   it('E. ABSENT -> UNINFORMED_ABSENT: no second deduction, UA DisciplineEvent created, counts toward suspension threshold, idempotent', async () => {
     const { tx, getState } = makeReconcileFakeTx({

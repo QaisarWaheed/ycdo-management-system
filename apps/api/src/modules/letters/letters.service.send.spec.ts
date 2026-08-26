@@ -19,6 +19,12 @@ jest.mock('../../config/cloudinary.config', () => ({
   uploadPdfToCloudinary: jest.fn(),
 }));
 
+const applyDisciplineDeductionOnLetterSend = jest.fn().mockResolvedValue(undefined);
+jest.mock('../attendance/discipline.helper', () => ({
+  applyDisciplineDeductionOnLetterSend: (...args: unknown[]) =>
+    applyDisciplineDeductionOnLetterSend(...args),
+}));
+
 import { LettersService } from './letters.service';
 
 describe('LettersService.sendLetter', () => {
@@ -343,6 +349,7 @@ describe('LettersService.sendLetter', () => {
       expect(tx.employee.update).not.toHaveBeenCalled();
       expect(tx.inquiry.create).not.toHaveBeenCalled();
       expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalled();
+      expect(applyDisciplineDeductionOnLetterSend).toHaveBeenCalled();
       expect(result.alreadySent).toBe(false);
     },
   );

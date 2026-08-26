@@ -40,6 +40,7 @@ import {
   isResolutionTriggerKind,
   letterContentStamps,
 } from '../disciplinary/inquiry-final-letters';
+import { applyDisciplineDeductionOnLetterSend } from '../attendance/discipline.helper';
 import {
   GenerateLetterDto,
   LetterQueryDto,
@@ -82,6 +83,7 @@ const DRAFT_UNTIL_SEND_TYPES: LetterType[] = [
   LetterType.ADVICE,
   LetterType.WARNING,
   LetterType.FINE,
+  LetterType.EXPLANATION,
   LetterType.SUSPENSION,
   LetterType.REINSTATEMENT,
   LetterType.TERMINATION,
@@ -1047,6 +1049,13 @@ export class LettersService {
           replyDeadline: replyDeadline ?? undefined,
         },
         include: letterEmployeeInclude,
+      });
+
+      await applyDisciplineDeductionOnLetterSend(tx, {
+        employeeId: current.employeeId,
+        letterType: current.letterType,
+        variables: current.variables,
+        content: current.content,
       });
 
       await tx.notification.create({

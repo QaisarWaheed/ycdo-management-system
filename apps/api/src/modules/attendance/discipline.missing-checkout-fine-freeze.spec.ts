@@ -10,6 +10,7 @@ jest.mock('./../letters/auto-letter.helper', () => ({
 
 import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
 import {
+  applyDisciplineDeductionOnLetterSend,
   applyMissingCheckoutDiscipline,
   AUTO_DISCIPLINE,
   reverseMissingCheckoutDisciplineForDate,
@@ -436,13 +437,31 @@ const CHECKOUT_OPTIONS = {
   dutyEndTime: '17:00',
 };
 
+async function applyMcFineThenSend(
+  tx: Prisma.TransactionClient,
+  date: Date = FINE_INCIDENT_DATE,
+  options = CHECKOUT_OPTIONS,
+) {
+  await applyMissingCheckoutDiscipline(tx, EMP_ID, date, options);
+  await applyDisciplineDeductionOnLetterSend(tx, {
+    employeeId: EMP_ID,
+    letterType: LetterType.FINE,
+    content: null,
+    variables: {
+      disciplineCategory: 'MISSING_CHECKOUT',
+      monthlyMissingCheckoutOccurrence: 3,
+      incidentDate: date.toISOString().slice(0, 10),
+    },
+  });
+}
+
 beforeEach(() => {
   AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
   issueAutoTemplatedLetterMock.mockClear();
 });
 
 afterEach(() => {
-  AUTO_DISCIPLINE.lettersAndSuspendEnabled = false;
+  AUTO_DISCIPLINE.lettersAndSuspendEnabled = true;
 });
 
 describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial freeze', () => {
@@ -453,12 +472,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
       priorOpenDates: FINE_PRIOR_DATES,
     });
 
-    await applyMissingCheckoutDiscipline(
-      tx,
-      EMP_ID,
-      FINE_INCIDENT_DATE,
-      CHECKOUT_OPTIONS,
-    );
+    await applyMcFineThenSend(tx);
 
     const entries = getPayrollEntries();
     expect(entries).toHaveLength(1);
@@ -484,12 +498,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
       priorOpenDates: FINE_PRIOR_DATES,
     });
 
-    await applyMissingCheckoutDiscipline(
-      tx,
-      EMP_ID,
-      FINE_INCIDENT_DATE,
-      CHECKOUT_OPTIONS,
-    );
+    await applyMcFineThenSend(tx);
 
     expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries();
@@ -515,12 +524,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
       priorOpenDates: FINE_PRIOR_DATES,
     });
 
-    await applyMissingCheckoutDiscipline(
-      tx,
-      EMP_ID,
-      FINE_INCIDENT_DATE,
-      CHECKOUT_OPTIONS,
-    );
+    await applyMcFineThenSend(tx);
 
     expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries();
@@ -547,12 +551,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
       priorOpenDates: FINE_PRIOR_DATES,
     });
 
-    await applyMissingCheckoutDiscipline(
-      tx,
-      EMP_ID,
-      FINE_INCIDENT_DATE,
-      CHECKOUT_OPTIONS,
-    );
+    await applyMcFineThenSend(tx);
 
     expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries();
@@ -579,12 +578,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
       priorOpenDates: FINE_PRIOR_DATES,
     });
 
-    await applyMissingCheckoutDiscipline(
-      tx,
-      EMP_ID,
-      FINE_INCIDENT_DATE,
-      CHECKOUT_OPTIONS,
-    );
+    await applyMcFineThenSend(tx);
 
     expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries();
@@ -601,7 +595,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
       priorOpenDates: ['2026-08-13', '2026-08-14'],
     });
 
-    await applyMissingCheckoutDiscipline(tx, EMP_ID, AUG_15, {
+    await applyMcFineThenSend(tx, AUG_15, {
       checkIn: new Date('2026-08-15T04:00:00.000Z'),
       dutyEndTime: '17:00',
     });
@@ -776,12 +770,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
       priorOpenDates: FINE_PRIOR_DATES,
     });
 
-    await applyMissingCheckoutDiscipline(
-      tx,
-      EMP_ID,
-      FINE_INCIDENT_DATE,
-      CHECKOUT_OPTIONS,
-    );
+    await applyMcFineThenSend(tx);
 
     expect(
       getDisciplineEvents().filter((e) => e.incidentDate === '2026-08-05'),
@@ -792,12 +781,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
 
     // A replay of the exact same incident is still idempotent (no second
     // DisciplineEvent, no second letter call) even though it's frozen.
-    await applyMissingCheckoutDiscipline(
-      tx,
-      EMP_ID,
-      FINE_INCIDENT_DATE,
-      CHECKOUT_OPTIONS,
-    );
+    await applyMcFineThenSend(tx);
     expect(
       getDisciplineEvents().filter((e) => e.incidentDate === '2026-08-05'),
     ).toHaveLength(1);
