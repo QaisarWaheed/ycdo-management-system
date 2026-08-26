@@ -288,6 +288,56 @@ export class AttendanceController {
     );
   }
 
+  @Post('suspension-watchlist/:employeeId/reminder')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.IT_ADMIN,
+  )
+  sendNearSuspensionReminder(
+    @Param('employeeId') employeeId: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    return this.attendanceService.sendNearSuspensionReminder(
+      employeeId,
+      user.id,
+      user.role,
+      year != null && year !== '' ? Number(year) : undefined,
+      month != null && month !== '' ? Number(month) : undefined,
+    );
+  }
+
+  @Post('suspension-watchlist/:employeeId/start-case')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.IT_ADMIN,
+  )
+  startSuspensionCaseFromWatchlist(
+    @Param('employeeId') employeeId: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    return this.attendanceService.startSuspensionCaseFromWatchlist(
+      employeeId,
+      user.id,
+      user.role,
+      year != null && year !== '' ? Number(year) : undefined,
+      month != null && month !== '' ? Number(month) : undefined,
+    );
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(

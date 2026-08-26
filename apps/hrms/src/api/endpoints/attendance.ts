@@ -40,6 +40,7 @@ export const attendanceApi = {
           fullName: string
           employeeCode: string | null
           biometricId: string | null
+          phone: string | null
           branchId: string | null
           branchName: string | null
           lateDays: number
@@ -51,6 +52,7 @@ export const attendanceApi = {
           fullName: string
           employeeCode: string | null
           biometricId: string | null
+          phone: string | null
           branchId: string | null
           branchName: string | null
           lateDays: number
@@ -60,6 +62,32 @@ export const attendanceApi = {
         counts: { near: number; due: number }
       }
     >('/attendance/suspension-watchlist', { params }),
+  sendNearSuspensionReminder: (
+    employeeId: string,
+    params?: { month?: number; year?: number },
+  ) =>
+    api.post<
+      unknown,
+      {
+        letterId: string
+        letterNo: string | null
+        status: string
+        alreadySent: boolean
+      }
+    >(
+      `/attendance/suspension-watchlist/${employeeId}/reminder`,
+      {},
+      { params },
+    ),
+  startSuspensionCaseFromWatchlist: (
+    employeeId: string,
+    params?: { month?: number; year?: number },
+  ) =>
+    api.post<unknown, { id: string }>(
+      `/attendance/suspension-watchlist/${employeeId}/start-case`,
+      {},
+      { params },
+    ),
   listRelieverSessions: (params?: {
     startDate?: string
     endDate?: string

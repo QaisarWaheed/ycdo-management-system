@@ -10,10 +10,13 @@ import {
   AttendanceLogType,
   AttendanceSource,
   AttendanceStatus,
+  DisciplinaryStatus,
+  DisciplinaryType,
   EmployeeStatus,
   Gender,
   LeaveStatus,
   LeaveType,
+  LetterType,
   Permission,
   Prisma,
   ProjectType,
@@ -24,6 +27,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PayrollService } from '../payroll/payroll.service';
+import { LettersService } from '../letters/letters.service';
+import { DisciplinaryService } from '../disciplinary/disciplinary.service';
 import {
   ApproveOvertimeDto,
   AttendanceQueryDto,
@@ -142,6 +147,8 @@ export class AttendanceService {
     private permissionsService: PermissionsService,
     private accessScopeService: AccessScopeService,
     private payrollService: PayrollService,
+    private lettersService: LettersService,
+    private disciplinaryService: DisciplinaryService,
   ) {}
 
   /**
@@ -3912,6 +3919,139 @@ export class AttendanceService {
       month != null && Number.isFinite(month) && month >= 1 && month <= 12
         ? month
         : now.month;
-    return buildSuspensionWatchlist(this.prisma, y, m);
+    const list = await buildSuspensionWatchlist(this.prisma, y, m);
+    return this.excludeActiveSuspensionCases(list);
+  }
+
+  /**
+   * Near-suspension reminder: ADVICE letter + WhatsApp (send path).
+   */
+  async sendNearSuspensionReminder(
+    employeeId: string,
+    actingUserId: string,
+    actingRole: UserRole,
+    year?: number,
+    month?: number,
+  ) {
+    const list = await this.getSuspensionWatchlist(year, month);
+    const entry = list.near.find((e) => e.employeeId === employeeId);
+    if (!entry) {
+      throw new BadRequestException(
+        'Employee is not on the near-suspension watchlist for this month',
+      );
+    }
+
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUserId,
+      actingRole,
+      Permission.LETTERS_GENERATE,
+      employeeId,
+    );
+
+    const violations = [
+      `You are near suspension for ${list.month}.`,
+      `Late days this month: ${entry.lateDays}.`,
+      `Uninformed absent days this month: ${entry.uninformedAbsentDays}.`,
+      'If you continue violating attendance rules, you will be suspended.',
+    ].join('\n');
+
+    const { letter } = await this.lettersService.generate(
+      {
+        employeeId,
+        letterType: LetterType.ADVICE,
+        extraFields: { violations },
+      },
+      actingUserId,
+      actingRole,
+    );
+
+    const sent = await this.lettersService.sendLetter(
+      letter.id,
+      actingUserId,
+      actingRole,
+    );
+
+    return {
+      letterId: sent.letter.id,
+      letterNo: sent.letter.letterNo,
+      status: sent.letter.status,
+      alreadySent: sent.alreadySent ?? false,
+    };
+  }
+
+  /**
+   * Due-for-suspension: open a SUSPENSION disciplinary case (Disciplinary tab).
+   */
+  async startSuspensionCaseFromWatchlist(
+    employeeId: string,
+    actingUserId: string,
+    actingRole: UserRole,
+    year?: number,
+    month?: number,
+  ) {
+    const list = await this.getSuspensionWatchlist(year, month);
+    const entry = list.due.find((e) => e.employeeId === employeeId);
+    if (!entry) {
+      throw new BadRequestException(
+        'Employee is not on the due-for-suspension watchlist for this month (or already has an open suspension case)',
+      );
+    }
+
+    const reason = [
+      `Due for suspension (${list.month}).`,
+      `Late days: ${entry.lateDays}.`,
+      `Uninformed absent days: ${entry.uninformedAbsentDays}.`,
+      `Watchlist reasons: ${entry.reasons.join(', ')}.`,
+    ].join(' ');
+
+    const action = await this.disciplinaryService.create(
+      {
+        employeeId,
+        type: DisciplinaryType.SUSPENSION,
+        reason,
+      },
+      actingUserId,
+      actingRole,
+    );
+
+    return action;
+  }
+
+  private async excludeActiveSuspensionCases<
+    T extends {
+      near: Array<{ employeeId: string }>;
+      due: Array<{ employeeId: string }>;
+      counts: { near: number; due: number };
+    },
+  >(list: T): Promise<T> {
+    const ids = [
+      ...new Set([
+        ...list.near.map((e) => e.employeeId),
+        ...list.due.map((e) => e.employeeId),
+      ]),
+    ];
+    if (ids.length === 0) return list;
+
+    const active = await this.prisma.disciplinaryAction.findMany({
+      where: {
+        employeeId: { in: ids },
+        type: DisciplinaryType.SUSPENSION,
+        status: {
+          in: [DisciplinaryStatus.OPEN, DisciplinaryStatus.UNDER_INQUIRY],
+        },
+      },
+      select: { employeeId: true },
+    });
+    const blocked = new Set(active.map((row) => row.employeeId));
+    if (blocked.size === 0) return list;
+
+    const near = list.near.filter((e) => !blocked.has(e.employeeId));
+    const due = list.due.filter((e) => !blocked.has(e.employeeId));
+    return {
+      ...list,
+      near,
+      due,
+      counts: { near: near.length, due: due.length },
+    };
   }
 }

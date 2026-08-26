@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { PayrollModule } from '../payroll/payroll.module';
+import { LettersModule } from '../letters/letters.module';
+import { DisciplinaryModule } from '../disciplinary/disciplinary.module';
 import { AttendanceController } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
 import { ShiftAbsentScheduler } from './shift-absent.scheduler';
@@ -10,7 +12,13 @@ import { ShiftMissingCheckoutScheduler } from './shift-missing-checkout.schedule
 import { ProspectiveShortLeaveScheduler } from './prospective-short-leave.scheduler';
 
 @Module({
-  imports: [AuthModule, PermissionsModule, PayrollModule],
+  imports: [
+    AuthModule,
+    PermissionsModule,
+    PayrollModule,
+    LettersModule,
+    DisciplinaryModule,
+  ],
   controllers: [AttendanceController],
   providers: [
     AttendanceService,
