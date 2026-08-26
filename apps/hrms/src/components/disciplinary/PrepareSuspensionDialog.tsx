@@ -42,7 +42,7 @@ export function PrepareSuspensionDialog({
   const [periodStart, setPeriodStart] = useState('')
   const [periodEnd, setPeriodEnd] = useState('')
   const [inquiryDeadlineAt, setInquiryDeadlineAt] = useState('')
-  const [inquiryOfficerUserId, setInquiryOfficerUserId] = useState('')
+  /** Approver and inquiry officer are the same person. */
   const [selectedApproverUserId, setSelectedApproverUserId] = useState('')
 
   useEffect(() => {
@@ -51,7 +51,6 @@ export function PrepareSuspensionDialog({
       setPeriodStart('')
       setPeriodEnd('')
       setInquiryDeadlineAt('')
-      setInquiryOfficerUserId('')
       setSelectedApproverUserId('')
     }
   }, [open, action])
@@ -62,24 +61,21 @@ export function PrepareSuspensionDialog({
     enabled: open,
   })
 
-  const { data: officers = [] } = useQuery({
-    queryKey: ['disciplinary', 'inquiry-officers'],
-    queryFn: () => disciplinaryApi.listInquiryOfficers(),
-    enabled: open,
-  })
-
   const payload = () => ({
     reason,
     periodStart: toIsoDate(periodStart),
     periodEnd: toIsoDate(periodEnd),
     inquiryDeadlineAt: toIsoDate(inquiryDeadlineAt),
-    inquiryOfficerUserId,
+    inquiryOfficerUserId: selectedApproverUserId,
     selectedApproverUserId,
   })
 
   const prepareMutation = useMutation({
     mutationFn: async (submitAfter: boolean) => {
       if (!action) throw new Error('Missing action')
+      if (!selectedApproverUserId) {
+        throw new Error('Select an approver')
+      }
       let requestId = existing?.id
       if (requestId && (existing?.status === 'DRAFT' || existing?.status === 'REJECTED')) {
         await disciplinaryApi.updateSuspensionRequest(requestId, payload())
@@ -106,8 +102,8 @@ export function PrepareSuspensionDialog({
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
       onOpenChange(false)
     },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
+    onError: (err: { response?: { data?: { message?: string | string[] } }; message?: string }) => {
+      const msg = err.response?.data?.message ?? err.message
       toast({
         title: 'Could not save suspension request',
         description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
@@ -149,25 +145,10 @@ export function PrepareSuspensionDialog({
             />
           </div>
           <div>
-            <Label>Inquiry officer</Label>
-            <Select
-              value={inquiryOfficerUserId}
-              onValueChange={setInquiryOfficerUserId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select officer" />
-              </SelectTrigger>
-              <SelectContent>
-                {officers.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.displayName} ({ROLE_LABELS[user.role] ?? user.role})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Approver</Label>
+            <Label>Approver / inquiry officer</Label>
+            <p className="mb-1.5 text-xs text-text-secondary">
+              The selected approver is also assigned as the inquiry officer.
+            </p>
             <Select
               value={selectedApproverUserId}
               onValueChange={setSelectedApproverUserId}
@@ -190,14 +171,14 @@ export function PrepareSuspensionDialog({
           <Button
             type="button"
             variant="outline"
-            disabled={prepareMutation.isPending}
+            disabled={prepareMutation.isPending || !selectedApproverUserId}
             onClick={() => prepareMutation.mutate(false)}
           >
             Save draft
           </Button>
           <Button
             type="button"
-            disabled={prepareMutation.isPending}
+            disabled={prepareMutation.isPending || !selectedApproverUserId}
             onClick={() => prepareMutation.mutate(true)}
           >
             Submit for approval

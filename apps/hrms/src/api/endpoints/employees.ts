@@ -35,6 +35,7 @@ export interface GenerateBiometricIdsResult {
 }
 
 export interface BiometricIdReference {
+  id: string
   employeeCode: string
   fullName: string
   biometricId: string

@@ -14,9 +14,6 @@ import { IncentivesPage } from '@/pages/incentives/IncentivesPage'
 import { PayrollPage } from '@/pages/payroll/PayrollPage'
 import { ReportsPage } from '@/pages/reports/ReportsPage'
 import { LettersPage } from '@/pages/letters/LettersPage'
-import { FailedWhatsAppPage } from '@/pages/whatsapp/FailedWhatsAppPage'
-import { DisciplinaryPage } from '@/pages/disciplinary/DisciplinaryPage'
-import { SuspensionWatchlistPage } from '@/pages/disciplinary/SuspensionWatchlistPage'
 import { RecruitmentPage } from '@/pages/recruitment/RecruitmentPage'
 import { BranchesPage } from '@/pages/branches/BranchesPage'
 import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
@@ -147,27 +144,15 @@ export default function App() {
       />
       <Route
         path="/failed-whatsapp"
-        element={
-          <ProtectedRoute>
-            <FailedWhatsAppPage />
-          </ProtectedRoute>
-        }
+        element={<Navigate to="/letters?section=failed-whatsapp" replace />}
       />
       <Route
         path="/disciplinary"
-        element={
-          <ProtectedRoute>
-            <DisciplinaryPage />
-          </ProtectedRoute>
-        }
+        element={<Navigate to="/letters?section=disciplinary" replace />}
       />
       <Route
         path="/disciplinary/suspension-watchlist"
-        element={
-          <ProtectedRoute>
-            <SuspensionWatchlistPage />
-          </ProtectedRoute>
-        }
+        element={<Navigate to="/letters?section=watchlist" replace />}
       />
       <Route
         path="/recruitment"

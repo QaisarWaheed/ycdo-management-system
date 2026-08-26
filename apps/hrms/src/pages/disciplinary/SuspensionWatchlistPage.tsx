@@ -5,7 +5,6 @@ import { Link } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -30,15 +29,6 @@ type WatchEntry = {
   lateDays: number
   uninformedAbsentDays: number
   reasons: WatchReason[]
-}
-
-type WatchlistResponse = {
-  month: string
-  year: number
-  monthNumber: number
-  near: WatchEntry[]
-  due: WatchEntry[]
-  counts: { near: number; due: number }
 }
 
 function reasonLabel(reason: WatchReason) {
@@ -67,12 +57,10 @@ function WatchlistTable({
   rows,
   loading,
   emptyLabel,
-  bucket,
 }: {
   rows: WatchEntry[]
   loading: boolean
   emptyLabel: string
-  bucket: 'near' | 'due'
 }) {
   if (loading) {
     return (
@@ -99,29 +87,10 @@ function WatchlistTable({
           <TableHead className="text-right">Late days</TableHead>
           <TableHead className="text-right">UA days</TableHead>
           <TableHead>Reasons</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row) => {
-          const suggestedType =
-            bucket === 'due'
-              ? 'SUSPENSION'
-              : row.lateDays >= 8 || row.uninformedAbsentDays === 2
-                ? 'WARNING'
-                : 'ADVICE'
-          const violations = [
-            row.lateDays > 0 ? `Late days this month: ${row.lateDays}` : null,
-            row.uninformedAbsentDays > 0
-              ? `Uninformed absent days: ${row.uninformedAbsentDays}`
-              : null,
-            `Watchlist: ${bucket === 'due' ? 'Due for suspension' : 'Near suspension'}`,
-          ]
-            .filter(Boolean)
-            .join('\n')
-          const issueTo = `/letters?issue=1&employeeId=${encodeURIComponent(row.employeeId)}&letterType=${suggestedType}&violations=${encodeURIComponent(violations)}`
-
-          return (
+        {rows.map((row) => (
           <TableRow key={row.employeeId}>
             <TableCell>
               <div className="flex flex-col gap-0.5">
@@ -160,20 +129,18 @@ function WatchlistTable({
                 ))}
               </div>
             </TableCell>
-            <TableCell className="text-right">
-              <Button asChild size="sm" variant="outline">
-                <Link to={issueTo}>Issue letter</Link>
-              </Button>
-            </TableCell>
           </TableRow>
-          )
-        })}
+        ))}
       </TableBody>
     </Table>
   )
 }
 
-export function SuspensionWatchlistPage() {
+export function SuspensionWatchlistPage({
+  embedded = false,
+}: {
+  embedded?: boolean
+}) {
   const [tab, setTab] = useState<'near' | 'due'>('due')
 
   const { data, isLoading, isError } = useQuery({
@@ -187,20 +154,30 @@ export function SuspensionWatchlistPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-text-primary">
-          Suspension watchlist
-        </h1>
-        <p className="mt-1 text-sm text-text-secondary">
-          Pakistan calendar month {monthLabel}. Auto letters and auto
-          suspension are off — review and act manually.
+      {!embedded ? (
+        <div>
+          <h1 className="text-2xl font-semibold text-text-primary">
+            Suspension watchlist
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            Pakistan calendar month {monthLabel}. Auto letters and auto
+            suspension are off — review and act manually via Disciplinary.
+          </p>
+          <p className="mt-1 text-sm text-text-secondary">
+            <Link
+              to="/letters?section=disciplinary"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Open disciplinary cases
+            </Link>
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-text-secondary">
+          Pakistan calendar month {monthLabel}. Open a disciplinary suspension
+          case to prepare and send a letter after approval.
         </p>
-        <p className="mt-1 text-sm text-text-secondary">
-          <Link to="/disciplinary" className="text-primary underline-offset-2 hover:underline">
-            Open disciplinary cases
-          </Link>
-        </p>
-      </div>
+      )}
 
       {isError ? (
         <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -234,7 +211,6 @@ export function SuspensionWatchlistPage() {
             rows={due}
             loading={isLoading}
             emptyLabel="No employees due for suspension this month."
-            bucket="due"
           />
         </TabsContent>
         <TabsContent value="near" className="rounded-lg border bg-white">
@@ -242,7 +218,6 @@ export function SuspensionWatchlistPage() {
             rows={near}
             loading={isLoading}
             emptyLabel="No employees near suspension this month."
-            bucket="near"
           />
         </TabsContent>
       </Tabs>

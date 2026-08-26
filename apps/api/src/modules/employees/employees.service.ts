@@ -1938,6 +1938,7 @@ export class EmployeesService {
     const employees = await this.prisma.employee.findMany({
       where,
       select: {
+        id: true,
         employeeCode: true,
         fullName: true,
         biometricId: true,

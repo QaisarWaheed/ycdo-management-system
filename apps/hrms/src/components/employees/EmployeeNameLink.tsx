@@ -19,6 +19,7 @@ type EmployeeNameLinkProps = {
   fallback?: string
 }
 
+/** Clickable employee name that supports open-in-new-tab (real href). */
 export function EmployeeNameLink({
   employee,
   employeeId: employeeIdProp,
@@ -27,27 +28,30 @@ export function EmployeeNameLink({
   fallback = '—',
 }: EmployeeNameLinkProps) {
   const location = useLocation()
-  const employeeId = employeeIdProp ?? employee?.id
+  const employeeId = (employeeIdProp ?? employee?.id)?.trim() || null
   const label =
     name?.trim() ||
     getEmployeeDisplayName(employee, '') ||
     fallback
 
-  if (!employeeId || !label || label === fallback) {
+  if (!employeeId) {
     return <span className={className}>{label || fallback}</span>
   }
 
+  const to = `/employees/${employeeId}`
+  const returnTo = `${location.pathname}${location.search}`
+
   return (
     <Link
-      to={`/employees/${employeeId}`}
-      state={withReturnTo(`${location.pathname}${location.search}`).state}
+      to={to}
+      state={withReturnTo(returnTo).state}
       className={cn(
         'font-medium text-primary hover:underline',
         className,
       )}
       onClick={(e) => e.stopPropagation()}
     >
-      {label}
+      {label || fallback}
     </Link>
   )
 }

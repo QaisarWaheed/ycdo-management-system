@@ -16,9 +16,6 @@ const pageTitles: Record<string, string> = {
   '/leave': 'Leave Management',
   '/payroll': 'Payroll',
   '/letters': 'Letters',
-  '/failed-whatsapp': 'Failed WhatsApp',
-  '/disciplinary': 'Disciplinary',
-  '/disciplinary/suspension-watchlist': 'Suspension Watchlist',
   '/recruitment': 'Recruitment',
   '/broadcasts': 'Broadcasts',
   '/rule-book': 'Rule Book & Flow',
@@ -27,16 +24,23 @@ const pageTitles: Record<string, string> = {
   '/settings/profile': 'Profile Settings',
 }
 
-function getPageTitle(pathname: string): string {
+function getPageTitle(pathname: string, search: string): string {
   if (pathname.startsWith('/employees/') && pathname !== '/employees/new') {
     return 'Employee Profile'
+  }
+  if (pathname === '/letters') {
+    const section = new URLSearchParams(search).get('section')
+    if (section === 'disciplinary') return 'Disciplinary'
+    if (section === 'watchlist') return 'Suspension Watchlist'
+    if (section === 'failed-whatsapp') return 'Failed WhatsApp'
+    return 'Letters'
   }
   return pageTitles[pathname] ?? 'YCDO HRMS'
 }
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { pathname } = useLocation()
-  const title = getPageTitle(pathname)
+  const { pathname, search } = useLocation()
+  const title = getPageTitle(pathname, search)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   return (

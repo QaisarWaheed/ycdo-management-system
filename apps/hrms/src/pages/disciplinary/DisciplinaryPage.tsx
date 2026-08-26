@@ -1492,7 +1492,11 @@ function ProposeFinalDecisionDialog({
   )
 }
 
-export function DisciplinaryPage() {
+export function DisciplinaryPage({
+  embedded = false,
+}: {
+  embedded?: boolean
+}) {
   const { hasRole } = useAuth()
   const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
   const [tab, setTab] = useState('actions')
@@ -1506,9 +1510,16 @@ export function DisciplinaryPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-text-primary">
-          Disciplinary Management
-        </h1>
+        {!embedded ? (
+          <h1 className="text-2xl font-bold text-text-primary">
+            Disciplinary Management
+          </h1>
+        ) : (
+          <p className="text-sm text-text-secondary">
+            Manage cases, inquiries, and suspension preparation (approval
+            required before issuing).
+          </p>
+        )}
         <Button variant="destructive" onClick={() => setNewActionOpen(true)}>
           New Action
         </Button>

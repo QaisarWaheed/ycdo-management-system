@@ -187,7 +187,7 @@ function TodayRelieversModal({
                     <TableCell>
                       <div>
                         <EmployeeNameLink
-                          employee={row.employee}
+                          employeeId={row.employee.id}
                           name={row.employee.name}
                         />
                         <p className="font-mono text-xs text-text-secondary">
@@ -200,6 +200,7 @@ function TodayRelieversModal({
                       {row.reliever ? (
                         <div>
                           <EmployeeNameLink
+                            employeeId={row.reliever.id}
                             name={row.reliever.name}
                           />
                           <p className="font-mono text-xs text-text-secondary">

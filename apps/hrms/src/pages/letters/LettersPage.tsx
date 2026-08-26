@@ -27,6 +27,9 @@ import {
 import { lettersApi } from '@/api/endpoints/letters'
 import { letterRepliesApi } from '@/api/endpoints/letterReplies'
 import { notificationsApi } from '@/api/endpoints/notifications'
+import { DisciplinaryPage } from '@/pages/disciplinary/DisciplinaryPage'
+import { SuspensionWatchlistPage } from '@/pages/disciplinary/SuspensionWatchlistPage'
+import { FailedWhatsAppPage } from '@/pages/whatsapp/FailedWhatsAppPage'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
@@ -995,11 +998,28 @@ function PendingLetterShareDialog({
 }
 
 
+const LETTER_SECTIONS = [
+  'letters',
+  'disciplinary',
+  'watchlist',
+  'failed-whatsapp',
+] as const
+
+type LetterSection = (typeof LETTER_SECTIONS)[number]
+
+function parseLetterSection(value: string | null): LetterSection {
+  if (value && (LETTER_SECTIONS as readonly string[]).includes(value)) {
+    return value as LetterSection
+  }
+  return 'letters'
+}
+
 export function LettersPage() {
   const queryClient = useQueryClient()
   const { hasRole } = useAuth()
   const canReverse = hasRole(['SUPER_ADMIN', 'IT_ADMIN'])
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const section = parseLetterSection(searchParams.get('section'))
   const [tab, setTab] = useState<'draft' | 'sent' | 'reversed' | 'pending'>(
     'draft',
   )
@@ -1023,6 +1043,14 @@ export function LettersPage() {
 
   const prefillType = (searchParams.get('letterType') as LetterType | null) ?? undefined
   const prefillViolations = searchParams.get('violations') ?? undefined
+
+  useEffect(() => {
+    if (searchParams.get('issue') === '1' && section !== 'letters') {
+      const next = new URLSearchParams(searchParams)
+      next.delete('section')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, section, setSearchParams])
 
   const filters = useMemo(
     () => ({
@@ -1174,8 +1202,57 @@ export function LettersPage() {
     setPage(0)
   }
 
+  const setSection = (value: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (value === 'letters') {
+      next.delete('section')
+    } else {
+      next.set('section', value)
+      next.delete('issue')
+    }
+    setSearchParams(next, { replace: true })
+  }
+
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-muted/40 p-1">
+        {(
+          [
+            ['letters', 'Letters'],
+            ['disciplinary', 'Disciplinary'],
+            ['watchlist', 'Watchlist'],
+            ['failed-whatsapp', 'Failed WhatsApp'],
+          ] as const
+        ).map(([value, label]) => (
+          <Button
+            key={value}
+            type="button"
+            size="sm"
+            variant={section === value ? 'default' : 'ghost'}
+            className={
+              section === value
+                ? 'bg-primary hover:bg-primary-dark'
+                : 'text-text-secondary'
+            }
+            onClick={() => setSection(value)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+
+      {section === 'disciplinary' ? (
+        <DisciplinaryPage embedded />
+      ) : null}
+      {section === 'watchlist' ? (
+        <SuspensionWatchlistPage embedded />
+      ) : null}
+      {section === 'failed-whatsapp' ? (
+        <FailedWhatsAppPage embedded />
+      ) : null}
+
+      {section === 'letters' ? (
+        <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-text-primary">
           Letter Management
@@ -1713,6 +1790,8 @@ export function LettersPage() {
         }}
         onCancel={() => setIssueLetter(null)}
       />
+        </div>
+      ) : null}
     </div>
   )
 }

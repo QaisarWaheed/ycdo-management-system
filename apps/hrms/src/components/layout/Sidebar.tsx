@@ -1,6 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  AlertTriangle,
   BarChart3,
   Bell,
   BookOpen,
@@ -15,7 +14,6 @@ import {
   LayoutDashboard,
   LogOut,
   MapPin,
-  MessageCircleWarning,
   Monitor,
   Phone,
   Shield,
@@ -42,13 +40,6 @@ const allNavItems = [
   { to: '/incentives', label: 'Incentives', icon: Gift },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/letters', label: 'Letters', icon: FileText },
-  { to: '/failed-whatsapp', label: 'Failed WhatsApp', icon: MessageCircleWarning },
-  { to: '/disciplinary', label: 'Disciplinary', icon: AlertTriangle },
-  {
-    to: '/disciplinary/suspension-watchlist',
-    label: 'Suspension Watchlist',
-    icon: AlertTriangle,
-  },
   { to: '/recruitment', label: 'Recruitment', icon: UserPlus },
   { to: '/broadcasts', label: 'Broadcasts', icon: Bell },
   { to: '/branches', label: 'Branches & Projects', icon: Building2 },
@@ -128,9 +119,6 @@ function navItemsForRole(role?: string) {
         '/leave',
         '/branch-contacts',
         '/letters',
-        '/failed-whatsapp',
-        '/disciplinary',
-        '/disciplinary/suspension-watchlist',
       ].includes(item.to),
     )
   }

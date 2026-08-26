@@ -6,6 +6,7 @@ import { branchesApi } from '@/api/endpoints/branches'
 import { mutualSwapApi, type MutualSwapEmployee, type MutualSwapRecord } from '@/api/endpoints/mutualSwap'
 import { DateInput } from '@/components/common/DateInput'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -496,7 +497,7 @@ export function MutualSwapTab() {
                 <TableRow key={swap.id}>
                   <TableCell>{format(new Date(swap.date), 'dd/MM/yyyy')}</TableCell>
                   <TableCell>
-                    <div className="font-medium">{swap.coveringEmployee.fullName}</div>
+                    <EmployeeNameLink employee={swap.coveringEmployee} />
                     <div className="text-xs text-text-secondary">
                       {swap.coveringEmployee.employeeCode}
                     </div>
@@ -505,7 +506,7 @@ export function MutualSwapTab() {
                     {formatEmployeeShift(swap.coveringEmployee)}
                   </TableCell>
                   <TableCell>
-                    <div className="font-medium">{swap.coveredEmployee.fullName}</div>
+                    <EmployeeNameLink employee={swap.coveredEmployee} />
                     <div className="text-xs text-text-secondary">
                       {swap.coveredEmployee.employeeCode}
                     </div>

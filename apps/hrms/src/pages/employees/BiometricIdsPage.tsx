@@ -6,6 +6,7 @@ import {
   type BiometricIdReference,
 } from '@/api/endpoints/employees'
 import { TablePagination } from '@/components/common/TablePagination'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -281,7 +282,9 @@ export function BiometricIdsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="font-mono">{employee.employeeCode}</TableCell>
-                    <TableCell className="font-medium">{employee.fullName}</TableCell>
+                    <TableCell>
+                      <EmployeeNameLink employee={employee} />
+                    </TableCell>
                     <TableCell>{employee.currentDesignation ?? '—'}</TableCell>
                     <TableCell>{employee.currentBranchName ?? '—'}</TableCell>
                     <TableCell>

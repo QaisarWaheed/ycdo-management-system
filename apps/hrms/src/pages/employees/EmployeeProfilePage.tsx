@@ -620,7 +620,8 @@ function AddPreviousEmploymentDialog({
 }
 
 export function EmployeeProfilePage() {
-  const { id = '' } = useParams()
+  const { id: routeId } = useParams<{ id: string }>()
+  const id = routeId?.trim() ?? ''
   const { user, hasPermission, hasRole } = useAuth()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -646,10 +647,17 @@ export function EmployeeProfilePage() {
     null,
   )
 
-  const { data: employee, isLoading, isError, error } = useQuery({
+  const {
+    data: employee,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ['employee', id],
     queryFn: () => employeesApi.getOne(id),
     enabled: !!id,
+    retry: 1,
   })
 
   const { data: faceSyncStats } = useQuery({
@@ -850,7 +858,7 @@ export function EmployeeProfilePage() {
     }
   }
 
-  if (isLoading) {
+  if (!id || isLoading || (isFetching && !employee && !isError)) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-64 w-full" />
@@ -862,17 +870,31 @@ export function EmployeeProfilePage() {
   if (isError) {
     const status = (error as { response?: { status?: number } })?.response?.status
     return (
-      <p className="text-text-secondary">
-        {status === 403
-          ? 'Access denied. You do not have permission to view this employee.'
-          : 'Employee not found or could not be loaded.'}
-      </p>
+      <div className="space-y-3 rounded-lg border border-border bg-white p-6">
+        <p className="font-medium text-text-primary">
+          {status === 403
+            ? 'Access denied'
+            : status === 404
+              ? 'Employee not found'
+              : 'Could not load employee'}
+        </p>
+        <p className="text-sm text-text-secondary">
+          {status === 403
+            ? 'You do not have permission to view this employee.'
+            : 'Refresh the page or go back and try again. If this keeps happening, check that you are still signed in.'}
+        </p>
+      </div>
     )
   }
 
   if (!employee) {
     return (
-      <p className="text-text-secondary">Employee not found.</p>
+      <div className="space-y-3 rounded-lg border border-border bg-white p-6">
+        <p className="font-medium text-text-primary">Employee not found</p>
+        <p className="text-sm text-text-secondary">
+          No employee matches this profile URL.
+        </p>
+      </div>
     )
   }
 

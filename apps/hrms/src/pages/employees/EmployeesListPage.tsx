@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { MoreHorizontal, Plus, Search, Users } from 'lucide-react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
@@ -306,27 +306,23 @@ export function EmployeesListPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            navigate(
-                              `/employees/${emp.id}`,
-                              withReturnTo(returnTo),
-                            )
-                          }
-                        >
-                          View Profile
+                        <DropdownMenuItem asChild>
+                          <Link
+                            to={`/employees/${emp.id}`}
+                            state={withReturnTo(returnTo).state}
+                          >
+                            View Profile
+                          </Link>
                         </DropdownMenuItem>
                         {canManageEmployee && (
                           <>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                navigate(
-                                  `/employees/${emp.id}`,
-                                  withReturnTo(returnTo),
-                                )
-                              }
-                            >
-                              Edit
+                            <DropdownMenuItem asChild>
+                              <Link
+                                to={`/employees/${emp.id}`}
+                                state={withReturnTo(returnTo).state}
+                              >
+                                Edit
+                              </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { whatsappApi } from '@/api/endpoints/whatsapp'
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -13,7 +14,11 @@ import {
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
 
-export function FailedWhatsAppPage() {
+export function FailedWhatsAppPage({
+  embedded = false,
+}: {
+  embedded?: boolean
+}) {
   const queryClient = useQueryClient()
 
   const { data = [], isLoading } = useQuery({
@@ -46,16 +51,23 @@ export function FailedWhatsAppPage() {
   })
 
   return (
-    <div className="space-y-4 p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-text-primary">
-          Failed WhatsApp
-        </h1>
+    <div className={embedded ? 'space-y-4' : 'space-y-4 p-6'}>
+      {!embedded ? (
+        <div>
+          <h1 className="text-xl font-semibold text-text-primary">
+            Failed WhatsApp
+          </h1>
+          <p className="text-sm text-text-secondary">
+            Letter PDFs that failed Meta WhatsApp delivery. Resend after fixing
+            phone, template, or Meta config.
+          </p>
+        </div>
+      ) : (
         <p className="text-sm text-text-secondary">
           Letter PDFs that failed Meta WhatsApp delivery. Resend after fixing
           phone, template, or Meta config.
         </p>
-      </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-border bg-white">
         <Table>
@@ -91,7 +103,7 @@ export function FailedWhatsAppPage() {
               data.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell>
-                    <p className="font-medium">{row.employee.fullName}</p>
+                    <EmployeeNameLink employee={row.employee} />
                     <p className="font-mono text-xs text-text-secondary">
                       {row.employee.employeeCode}
                     </p>

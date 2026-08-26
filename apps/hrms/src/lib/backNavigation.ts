@@ -11,7 +11,6 @@ const ROOT_PATHS = new Set([
   '/payroll',
   '/reports',
   '/letters',
-  '/disciplinary',
   '/recruitment',
   '/broadcasts',
   '/rule-book',
@@ -46,13 +45,15 @@ export function handleAppBack(
   pathname: string,
   fromState?: string,
 ): void {
-  if (fromState && fromState !== pathname) {
-    navigate(fromState)
+  // Prefer real browser history so Back returns to the previous step,
+  // not a hard-coded root (e.g. always /employees).
+  if (window.history.length > 1) {
+    navigate(-1)
     return
   }
 
-  if (window.history.length > 1) {
-    navigate(-1)
+  if (fromState && fromState !== pathname) {
+    navigate(fromState)
     return
   }
 

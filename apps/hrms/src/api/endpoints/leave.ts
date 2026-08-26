@@ -3,6 +3,7 @@ import type { Employee, LeaveBalance, LeaveRecord } from '@/types'
 
 export interface TodayRelieverRow {
   employee: {
+    id: string
     name: string
     code: string
     designation: string
@@ -11,6 +12,7 @@ export interface TodayRelieverRow {
     department: string | null
   }
   reliever: {
+    id: string
     name: string
     code: string
     branch: string | null
