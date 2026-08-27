@@ -44,6 +44,7 @@ const CODES_TO_REFRESH = [
   'EXPLANATION',
   'APPRECIATION',
   'TRANSFER',
+  'FINE',
 ];
 
 const EN_TITLE_FIXES: Record<string, string> = {
