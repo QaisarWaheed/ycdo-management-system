@@ -12,6 +12,7 @@ export const attendanceStatusStyles: Record<AttendanceStatus, string> = {
   UNINFORMED_ABSENT: 'bg-red-200 text-red-900 border-red-300',
   SWAP_COVERED: 'bg-indigo-100 text-indigo-800 border-indigo-200',
   SHORT_LEAVE: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+  HOLIDAY: 'bg-teal-100 text-teal-800 border-teal-200',
 }
 
 const statusLabels: Partial<Record<AttendanceStatus, string>> = {

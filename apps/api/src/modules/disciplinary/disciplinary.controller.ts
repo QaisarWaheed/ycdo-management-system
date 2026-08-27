@@ -284,7 +284,14 @@ export class DisciplinaryController {
   }
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+  )
   create(
     @Body() dto: CreateDisciplinaryDto,
     @CurrentUser() user: { id: string; role: UserRole },

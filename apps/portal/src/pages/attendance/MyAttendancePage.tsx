@@ -37,6 +37,9 @@ function AttendanceStatusBadge({ status }: { status: string }) {
     HALF_DAY: 'bg-orange-100 text-orange-800 border-orange-200',
     ON_LEAVE: 'bg-blue-100 text-blue-800 border-blue-200',
     UNINFORMED_ABSENT: 'bg-red-100 text-red-800 border-red-200',
+    SHORT_LEAVE: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+    SWAP_COVERED: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    HOLIDAY: 'bg-teal-100 text-teal-800 border-teal-200',
   }
   return (
     <Badge variant="outline" className={styles[status] ?? ''}>
@@ -85,14 +88,14 @@ export function MyAttendancePage() {
   })
 
   const { data: summary, isLoading: loadingSummary } = useQuery({
-    queryKey: ['attendance-summary', employeeId, monthYear.month, monthYear.year],
+    queryKey: ['attendance', 'summary', employeeId, monthYear.month, monthYear.year],
     queryFn: () =>
       attendanceApi.getMySummary(employeeId, monthYear.month, monthYear.year),
     enabled: !!employeeId,
   })
 
   const { data: logs = [], isLoading: loadingLogs } = useQuery({
-    queryKey: ['attendance-logs', monthYear],
+    queryKey: ['attendance', 'logs', monthYear],
     queryFn: () =>
       attendanceApi.getMy({
         month: monthYear.month,
@@ -230,9 +233,18 @@ export function MyAttendancePage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
           <SummaryCard label="Present" value={summary?.present ?? 0} accent="text-accent-dark" />
           <SummaryCard label="Absent" value={summary?.absent ?? 0} accent="text-red-600" />
+          <SummaryCard
+            label="Uninformed Absent"
+            value={summary?.uninformedAbsent ?? 0}
+            accent="text-red-600"
+          />
           <SummaryCard label="Late" value={summary?.late ?? 0} accent="text-amber-600" />
           <SummaryCard label="Half Day" value={summary?.halfDay ?? 0} />
+          <SummaryCard label="Short Leave" value={summary?.shortLeave ?? 0} />
           <SummaryCard label="On Leave" value={summary?.onLeave ?? 0} accent="text-blue-600" />
+          <SummaryCard label="Holiday" value={summary?.holiday ?? 0} />
+          <SummaryCard label="Swap Covered" value={summary?.swapCovered ?? 0} />
+          <SummaryCard label="Unmarked" value={summary?.unmarked ?? 0} />
           <SummaryCard
             label="OT Minutes"
             value={summary?.overtimeMinutes ?? 0}

@@ -81,8 +81,12 @@ export interface AttendanceSummary {
   absent: number
   late: number
   halfDay: number
+  shortLeave: number
   onLeave: number
   uninformedAbsent: number
+  holiday: number
+  swapCovered: number
+  unmarked?: number
   overtimeMinutes: number
   totalLateMinutes: number
 }

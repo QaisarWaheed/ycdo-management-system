@@ -503,6 +503,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
       })
       queryClient.invalidateQueries({ queryKey: ['leave'] })
       queryClient.invalidateQueries({ queryKey: ['leave-balance'] })
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
       form.reset({
         leaveType: 'REGULAR',
         startDate: '',

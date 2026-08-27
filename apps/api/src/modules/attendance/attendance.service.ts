@@ -28,6 +28,7 @@ import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PayrollService } from '../payroll/payroll.service';
 import { LettersService } from '../letters/letters.service';
+import { summarizeAttendanceLogs } from './attendance-summary.util';
 import { DisciplinaryService } from '../disciplinary/disciplinary.service';
 import {
   ApproveOvertimeDto,
@@ -3046,21 +3047,7 @@ export class AttendanceService {
         })
       : [];
 
-    const countByStatus = (status: AttendanceStatus) =>
-      logs.filter((log) => log.status === status).length;
-
-    return {
-      totalDays: logs.length,
-      present: countByStatus(AttendanceStatus.PRESENT),
-      absent: countByStatus(AttendanceStatus.ABSENT),
-      late: countByStatus(AttendanceStatus.LATE),
-      halfDay: countByStatus(AttendanceStatus.HALF_DAY),
-      onLeave: countByStatus(AttendanceStatus.ON_LEAVE),
-      uninformedAbsent: countByStatus(AttendanceStatus.UNINFORMED_ABSENT),
-      unmarked: countByStatus(AttendanceStatus.UNMARKED),
-      overtimeMinutes: logs.reduce((sum, log) => sum + log.overtimeMinutes, 0),
-      totalLateMinutes: logs.reduce((sum, log) => sum + log.lateMinutes, 0),
-    };
+    return summarizeAttendanceLogs(logs);
   }
 
   async markAbsentees(date: string) {

@@ -1116,7 +1116,7 @@ export class EmployeesService {
 
     if (dto.status === EmployeeStatus.SUSPENDED) {
       throw new BadRequestException(
-        'Employees cannot be manually changed to SUSPENDED. Issue a Suspension letter through the letters workflow.',
+        'Status does not become Suspended from this endpoint. Open a Suspension case from Change Status or Disciplinary (New Action). The employee stays Active until the approved suspension letter is sent.',
       );
     }
 

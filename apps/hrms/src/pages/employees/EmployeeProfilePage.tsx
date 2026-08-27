@@ -669,7 +669,7 @@ export function EmployeeProfilePage() {
   })
 
   const { data: attendanceSummary, isLoading: loadingSummary } = useQuery({
-    queryKey: ['attendance-summary', id, month, year],
+    queryKey: ['attendance', 'summary', id, month, year],
     queryFn: () => attendanceApi.getSummary(id, month, year),
     enabled: !!id,
   })
@@ -681,7 +681,7 @@ export function EmployeeProfilePage() {
   })
 
   const { data: attendanceLogs = [], isLoading: loadingLogs } = useQuery({
-    queryKey: ['attendance-logs', id, month, year],
+    queryKey: ['attendance', 'logs', id, month, year],
     queryFn: () => attendanceApi.getAll({ employeeId: id, month, year }),
     enabled: !!id,
   })
@@ -1688,19 +1688,32 @@ export function EmployeeProfilePage() {
           </div>
 
           {loadingSummary ? (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
-              {[...Array(7)].map((_, i) => (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+              {[...Array(11)].map((_, i) => (
                 <Skeleton key={i} className="h-20" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
               {[
                 { label: 'Present', value: attendanceSummary?.present ?? 0 },
                 { label: 'Absent', value: attendanceSummary?.absent ?? 0 },
+                {
+                  label: 'Uninformed Absent',
+                  value: attendanceSummary?.uninformedAbsent ?? 0,
+                },
                 { label: 'Late', value: attendanceSummary?.late ?? 0 },
                 { label: 'Half Day', value: attendanceSummary?.halfDay ?? 0 },
+                {
+                  label: 'Short Leave',
+                  value: attendanceSummary?.shortLeave ?? 0,
+                },
                 { label: 'On Leave', value: attendanceSummary?.onLeave ?? 0 },
+                { label: 'Holiday', value: attendanceSummary?.holiday ?? 0 },
+                {
+                  label: 'Swap Covered',
+                  value: attendanceSummary?.swapCovered ?? 0,
+                },
                 { label: 'Unmarked', value: attendanceSummary?.unmarked ?? 0 },
                 { label: 'Overtime Hrs', value: overtimeHours },
               ].map((item) => (
@@ -2414,10 +2427,10 @@ export function EmployeeProfilePage() {
         }}
         onSuccess={() => {
           queryClient.invalidateQueries({
-            queryKey: ['attendance-logs', id, month, year],
+            queryKey: ['attendance', 'logs', id, month, year],
           })
           queryClient.invalidateQueries({
-            queryKey: ['attendance-summary', id, month, year],
+            queryKey: ['attendance', 'summary', id, month, year],
           })
           queryClient.invalidateQueries({ queryKey: ['working-hours', id] })
           queryClient.invalidateQueries({ queryKey: ['payroll-history', id] })

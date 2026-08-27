@@ -672,6 +672,7 @@ export type AttendanceStatus =
   | 'UNINFORMED_ABSENT'
   | 'SWAP_COVERED'
   | 'SHORT_LEAVE'
+  | 'HOLIDAY'
 
 export type PayrollStatus = 'PENDING' | 'PROCESSED' | 'PAID'
 
@@ -831,6 +832,7 @@ export const ATTENDANCE_STATUSES: AttendanceStatus[] = [
   'UNINFORMED_ABSENT',
   'SWAP_COVERED',
   'SHORT_LEAVE',
+  'HOLIDAY',
 ]
 
 export const DEDUCTION_TYPES: { value: DeductionType; label: string }[] = [
@@ -847,8 +849,11 @@ export interface AttendanceSummary {
   absent: number
   late: number
   halfDay: number
+  shortLeave: number
   onLeave: number
   uninformedAbsent: number
+  holiday: number
+  swapCovered: number
   unmarked?: number
   overtimeMinutes: number
   totalLateMinutes: number

@@ -93,7 +93,7 @@ function EmployeePortalDashboard() {
   })
 
   const { data: summary, isLoading: loadingSummary } = useQuery({
-    queryKey: ['attendance-summary', employeeId, month, year],
+    queryKey: ['attendance', 'summary', employeeId, month, year],
     queryFn: () => attendanceApi.getMySummary(employeeId, month, year),
     enabled: !!employeeId,
   })

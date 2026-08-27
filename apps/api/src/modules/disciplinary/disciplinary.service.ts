@@ -70,6 +70,24 @@ export class DisciplinaryService {
       );
     }
 
+    if (dto.type === DisciplinaryType.SUSPENSION) {
+      const existing = await this.prisma.disciplinaryAction.findFirst({
+        where: {
+          employeeId: dto.employeeId,
+          type: DisciplinaryType.SUSPENSION,
+          status: {
+            in: [DisciplinaryStatus.OPEN, DisciplinaryStatus.UNDER_INQUIRY],
+          },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new BadRequestException(
+          'This employee already has an open suspension case in Disciplinary Actions. Continue that case (Prepare → Approve → Send) instead of opening another.',
+        );
+      }
+    }
+
     const issuedAt = dto.issuedAt ? new Date(dto.issuedAt) : new Date();
 
     const action = await this.prisma.$transaction(async (tx) => {

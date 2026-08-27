@@ -336,7 +336,27 @@ function DailyLogTab({
       (l) => l.status === 'UNINFORMED_ABSENT',
     ).length
     const halfDay = attendanceLogs.filter((l) => l.status === 'HALF_DAY').length
-    return { total, present, absent, unmarked, late, uninformedAbsent, halfDay }
+    const shortLeave = attendanceLogs.filter(
+      (l) => l.status === 'SHORT_LEAVE',
+    ).length
+    const onLeave = attendanceLogs.filter((l) => l.status === 'ON_LEAVE').length
+    const holiday = attendanceLogs.filter((l) => l.status === 'HOLIDAY').length
+    const swapCovered = attendanceLogs.filter(
+      (l) => l.status === 'SWAP_COVERED',
+    ).length
+    return {
+      total,
+      present,
+      absent,
+      unmarked,
+      late,
+      uninformedAbsent,
+      halfDay,
+      shortLeave,
+      onLeave,
+      holiday,
+      swapCovered,
+    }
   }, [attendanceLogs])
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
@@ -432,7 +452,9 @@ function DailyLogTab({
             <p className="text-sm text-text-secondary">
               Present: {summary.present} | Unmarked: {summary.unmarked} | Absent:{' '}
               {summary.absent} | Uninformed Absent: {summary.uninformedAbsent} | Late:{' '}
-              {summary.late} | Half Day: {summary.halfDay}
+              {summary.late} | Half Day: {summary.halfDay} | Short Leave:{' '}
+              {summary.shortLeave} | On Leave: {summary.onLeave} | Holiday:{' '}
+              {summary.holiday} | Swap: {summary.swapCovered}
             </p>
           ) : undefined
         }

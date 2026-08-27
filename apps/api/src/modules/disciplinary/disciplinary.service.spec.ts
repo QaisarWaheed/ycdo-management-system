@@ -43,6 +43,7 @@ describe('DisciplinaryService.create', () => {
       },
       disciplinaryAction: {
         count: jest.fn().mockResolvedValue(1),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) =>
         fn(tx),
@@ -123,6 +124,25 @@ describe('DisciplinaryService.create', () => {
     );
     expect(tx.employee.update).not.toHaveBeenCalled();
     expect(prisma.employee.findUnique).toHaveBeenCalled();
+  });
+
+  it('rejects a second OPEN SUSPENSION case for the same employee', async () => {
+    const { service, prisma, tx } = buildService();
+    prisma.disciplinaryAction.findFirst.mockResolvedValue({ id: 'existing' });
+
+    await expect(
+      service.create(
+        {
+          employeeId,
+          type: DisciplinaryType.SUSPENSION,
+          reason: 'Another reason',
+        },
+        actingUserId,
+        UserRole.HR_MANAGER,
+      ),
+    ).rejects.toThrow(/already has an open suspension case/i);
+
+    expect(tx.disciplinaryAction.create).not.toHaveBeenCalled();
   });
 
   it('creates a WARNING case and letter without updating employee status', async () => {

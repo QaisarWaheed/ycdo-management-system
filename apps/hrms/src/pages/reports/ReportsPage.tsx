@@ -345,8 +345,14 @@ function useReports(): ReportDef[] {
           { key: 'name', label: 'Name' },
           { key: 'present', label: 'Present' },
           { key: 'absent', label: 'Absent' },
+          { key: 'uninformedAbsent', label: 'Uninformed Absent' },
           { key: 'late', label: 'Late' },
+          { key: 'halfDay', label: 'Half Day' },
+          { key: 'shortLeave', label: 'Short Leave' },
           { key: 'onLeave', label: 'On Leave' },
+          { key: 'holiday', label: 'Holiday' },
+          { key: 'swapCovered', label: 'Swap Covered' },
+          { key: 'unmarked', label: 'Unmarked' },
         ],
         fetchFn: async (f) => {
           const month = Number(f.month)
@@ -364,8 +370,14 @@ function useReports(): ReportDef[] {
               name: emp.fullName,
               present: summary.present,
               absent: summary.absent,
+              uninformedAbsent: summary.uninformedAbsent,
               late: summary.late,
+              halfDay: summary.halfDay,
+              shortLeave: summary.shortLeave,
               onLeave: summary.onLeave,
+              holiday: summary.holiday,
+              swapCovered: summary.swapCovered,
+              unmarked: summary.unmarked ?? 0,
             })
           }
           return rows

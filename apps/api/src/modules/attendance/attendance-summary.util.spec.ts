@@ -1,0 +1,67 @@
+import { AttendanceStatus } from '@prisma/client';
+import { summarizeAttendanceLogs } from './attendance-summary.util';
+
+describe('summarizeAttendanceLogs', () => {
+  it('counts every attendance status separately, including short leave', () => {
+    const summary = summarizeAttendanceLogs([
+      { status: AttendanceStatus.PRESENT, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.PRESENT, overtimeMinutes: 30, lateMinutes: 0 },
+      { status: AttendanceStatus.ABSENT, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.UNINFORMED_ABSENT, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.LATE, overtimeMinutes: 0, lateMinutes: 12 },
+      { status: AttendanceStatus.HALF_DAY, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.SHORT_LEAVE, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.SHORT_LEAVE, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.ON_LEAVE, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.HOLIDAY, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.SWAP_COVERED, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.UNMARKED, overtimeMinutes: 0, lateMinutes: 0 },
+    ]);
+
+    expect(summary).toEqual({
+      totalDays: 12,
+      present: 2,
+      absent: 1,
+      late: 1,
+      halfDay: 1,
+      shortLeave: 2,
+      onLeave: 1,
+      uninformedAbsent: 1,
+      holiday: 1,
+      swapCovered: 1,
+      unmarked: 1,
+      overtimeMinutes: 30,
+      totalLateMinutes: 12,
+    });
+  });
+
+  it('does not mix short leave into half day or on leave', () => {
+    const summary = summarizeAttendanceLogs([
+      { status: AttendanceStatus.SHORT_LEAVE, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.HALF_DAY, overtimeMinutes: 0, lateMinutes: 0 },
+      { status: AttendanceStatus.ON_LEAVE, overtimeMinutes: 0, lateMinutes: 0 },
+    ]);
+
+    expect(summary.shortLeave).toBe(1);
+    expect(summary.halfDay).toBe(1);
+    expect(summary.onLeave).toBe(1);
+  });
+
+  it('returns zeros for an empty month', () => {
+    expect(summarizeAttendanceLogs([])).toEqual({
+      totalDays: 0,
+      present: 0,
+      absent: 0,
+      late: 0,
+      halfDay: 0,
+      shortLeave: 0,
+      onLeave: 0,
+      uninformedAbsent: 0,
+      holiday: 0,
+      swapCovered: 0,
+      unmarked: 0,
+      overtimeMinutes: 0,
+      totalLateMinutes: 0,
+    });
+  });
+});
