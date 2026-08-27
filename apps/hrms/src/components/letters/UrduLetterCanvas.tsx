@@ -99,7 +99,7 @@ export function UrduLetterCanvas({
 
       <div className="mb-4 space-y-1 text-[15px]">
         {byKey.senderTitle && (
-          <Row label="مخاطب:">
+          <Row label="منجانب:">
             <FieldInput
               field={byKey.senderTitle}
               value={get('senderTitle')}

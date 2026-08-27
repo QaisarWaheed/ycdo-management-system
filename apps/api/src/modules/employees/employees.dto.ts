@@ -345,6 +345,31 @@ export class TransferDto {
   @IsDateString()
   @IsNotEmpty()
   effectiveDate: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
+  dutyStartTime?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
+  dutyEndTime?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(24)
+  dutyTotalHours?: number;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(31)
+  monthlyAllowedLeaves?: number | null;
 }
 
 export class EmployeeQueryDto {

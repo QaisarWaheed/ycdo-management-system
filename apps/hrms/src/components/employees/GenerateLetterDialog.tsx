@@ -89,6 +89,28 @@ export function GenerateLetterDialog({
   // Prefill identity from profile when opening / switching type.
   useEffect(() => {
     if (!open || !employee) return
+    if (letterType === 'TRANSFER') {
+      setFields((prev) => ({
+        ...prev,
+        fromPosting:
+          prev.fromPosting || employee.currentBranch?.name || '',
+        targetDesignation:
+          prev.targetDesignation || employee.currentDesignation || '',
+        dutyTotalHours:
+          prev.dutyTotalHours ||
+          (employee.dutyTotalHours != null
+            ? String(employee.dutyTotalHours)
+            : ''),
+        dutyStartTime: prev.dutyStartTime || employee.dutyStartTime || '',
+        dutyEndTime: prev.dutyEndTime || employee.dutyEndTime || '',
+        monthlyAllowedLeaves:
+          prev.monthlyAllowedLeaves ||
+          (employee.monthlyAllowedLeaves != null
+            ? String(employee.monthlyAllowedLeaves)
+            : ''),
+      }))
+      return
+    }
     const hasIdentityFields = extraFields.some((f) =>
       ['employeeName', 'designation', 'branch'].includes(f.key),
     )

@@ -110,6 +110,23 @@
 
 <p>This notification shall take effect immediately.</p>
 
+<table class="transfer-table">
+  <thead>
+    <tr>
+      <th>Duty Hours (per day)</th>
+      <th>Working Hours</th>
+      <th>Allowed Leaves / Month</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>{{#if dutyTotalHours}}{{dutyTotalHours}}{{else}}—{{/if}}</td>
+      <td>{{#if dutyStartTime}}{{dutyStartTime}} To {{dutyEndTime}}{{else}}—{{/if}}</td>
+      <td>{{#if monthlyAllowedLeaves}}{{monthlyAllowedLeaves}}{{else}}—{{/if}}</td>
+    </tr>
+  </tbody>
+</table>
+
 <div class="signblock">
   <div>By Order of the Chairman Admin Department, YCDO</div>
   <br/>

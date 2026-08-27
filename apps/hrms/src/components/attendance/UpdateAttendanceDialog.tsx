@@ -21,6 +21,7 @@ import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import {
   calcLateMinutes,
+  combineCheckOutDateTime,
   combineDateAndTime,
   getEmployeeDutyStartTime,
   showsTimeFields,
@@ -130,7 +131,13 @@ export function UpdateAttendanceDialog({
       }
       if (checkOut !== originalCheckOut) {
         payload.checkOut =
-          checkIn && checkOut ? combineDateAndTime(date, checkOut) : null
+          checkIn && checkOut
+            ? combineCheckOutDateTime(
+                date,
+                checkIn ? combineDateAndTime(date, checkIn) : log.checkIn,
+                checkOut,
+              )
+            : null
       }
       if ((note || '') !== originalNote) {
         payload.note = note || undefined

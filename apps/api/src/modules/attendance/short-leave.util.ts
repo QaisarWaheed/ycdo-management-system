@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import {
   getDutyWindow,
+  LATE_GRACE_MINUTES,
   resolveAttendanceDutyTimes,
 } from '../../common/duty.util';
 import { is24HourShift } from './attendance-biometric.util';
@@ -101,11 +102,10 @@ export type ShortLeaveDeviationResult =
  * checkIn/checkOut qualify for a Short Leave right now?" — pure, no DB
  * access, so it's identically testable and usable from any caller.
  *
- * Deviation is measured as the RAW clock gap between the actual punch and
- * the exact scheduled shift start/end (no late-grace subtraction — that is
- * a distinct concept from how much duty time this Short Leave is covering).
- * A row with deviation on BOTH sides (late arrival AND early departure) is
- * never valid — Short Leave is one continuous block on exactly one side.
+ * Late arrival uses the same 15-minute on-time grace as PRESENT/LATE, so a
+ * 10-minute late punch does not count as a "late side". Remaining late
+ * minutes plus early-departure minutes may both be present; Short Leave is
+ * valid when their total is within the duty-length allowance.
  */
 export function evaluateShortLeaveDeviation(
   employee: ShortLeaveEmployee,
@@ -151,36 +151,29 @@ export function evaluateShortLeaveDeviation(
     win.crossesMidnight,
   );
 
-  const lateSideMinutes = Math.max(
+  const rawLateMinutes = Math.max(
     0,
     Math.round((checkIn.getTime() - shiftStart.getTime()) / 60000),
   );
+  const lateSideMinutes = Math.max(0, rawLateMinutes - LATE_GRACE_MINUTES);
   const earlySideMinutes = checkOut
     ? Math.max(0, Math.round((shiftEnd.getTime() - checkOut.getTime()) / 60000))
     : 0;
-
-  if (lateSideMinutes > 0 && earlySideMinutes > 0) {
-    return {
-      valid: false,
-      reason:
-        'Short Leave cannot combine a late arrival and an early departure into one block — it must cover exactly one side',
-    };
-  }
 
   if (lateSideMinutes === 0 && earlySideMinutes === 0) {
     return { valid: true, side: 'NONE', deviationMinutes: 0, allowanceMinutes };
   }
 
-  const side: 'LATE' | 'EARLY' = lateSideMinutes > 0 ? 'LATE' : 'EARLY';
-  const deviationMinutes =
-    lateSideMinutes > 0 ? lateSideMinutes : earlySideMinutes;
-
+  const deviationMinutes = lateSideMinutes + earlySideMinutes;
   if (deviationMinutes > allowanceMinutes) {
     return {
       valid: false,
       reason: `Short Leave exceeds the allowed ${allowanceMinutes}-minute limit for this duty length (actual: ${deviationMinutes} minutes)`,
     };
   }
+
+  const side: 'LATE' | 'EARLY' =
+    lateSideMinutes >= earlySideMinutes ? 'LATE' : 'EARLY';
 
   return { valid: true, side, deviationMinutes, allowanceMinutes };
 }

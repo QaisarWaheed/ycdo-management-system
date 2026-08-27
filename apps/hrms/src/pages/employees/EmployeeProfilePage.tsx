@@ -2472,6 +2472,7 @@ export function EmployeeProfilePage() {
         open={transferOpen}
         onOpenChange={setTransferOpen}
         employeeId={id}
+        employee={employee}
         currentDesignation={employee.currentDesignation}
       />
       <UpdateBranchDutyDialog

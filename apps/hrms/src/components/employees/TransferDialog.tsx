@@ -4,6 +4,7 @@ import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { designationsApi } from '@/api/endpoints/designations'
 import { employeesApi } from '@/api/endpoints/employees'
+import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,6 +16,7 @@ import {
 import { DateInput } from '@/components/common/DateInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
@@ -25,10 +27,21 @@ import {
   labelToChangeType,
 } from '@/lib/searchableSelectOptions'
 
+import type { Employee } from '@/types'
+
 interface TransferDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   employeeId: string
+  employee?: Pick<
+    Employee,
+    | 'currentDesignation'
+    | 'dutyStartTime'
+    | 'dutyEndTime'
+    | 'dutyTotalHours'
+    | 'monthlyAllowedLeaves'
+    | 'relieverOnly'
+  > | null
   currentDesignation?: string | null
 }
 
@@ -36,19 +49,38 @@ export function TransferDialog({
   open,
   onOpenChange,
   employeeId,
+  employee,
   currentDesignation = '',
 }: TransferDialogProps) {
   const queryClient = useQueryClient()
+  const designationDefault =
+    employee?.currentDesignation ?? currentDesignation ?? ''
   const [branchId, setBranchId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
-  const [designation, setDesignation] = useState(currentDesignation ?? '')
+  const [designation, setDesignation] = useState(designationDefault)
   const [changeType, setChangeType] = useState('TRANSFERRED')
   const [changeReason, setChangeReason] = useState('')
   const [effectiveDate, setEffectiveDate] = useState('')
+  const [dutyTotalHours, setDutyTotalHours] = useState<number | ''>(
+    employee?.dutyTotalHours ?? '',
+  )
+  const [dutyStartTime, setDutyStartTime] = useState(
+    employee?.dutyStartTime ?? '',
+  )
+  const [dutyEndTime, setDutyEndTime] = useState(employee?.dutyEndTime ?? '')
+  const [monthlyAllowedLeaves, setMonthlyAllowedLeaves] = useState<
+    number | ''
+  >(employee?.monthlyAllowedLeaves ?? '')
 
   useEffect(() => {
-    if (open) setDesignation(currentDesignation ?? '')
-  }, [open, currentDesignation])
+    if (open) {
+      setDesignation(employee?.currentDesignation ?? currentDesignation ?? '')
+      setDutyTotalHours(employee?.dutyTotalHours ?? '')
+      setDutyStartTime(employee?.dutyStartTime ?? '')
+      setDutyEndTime(employee?.dutyEndTime ?? '')
+      setMonthlyAllowedLeaves(employee?.monthlyAllowedLeaves ?? '')
+    }
+  }, [open, employee, currentDesignation])
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
@@ -95,6 +127,11 @@ export function TransferDialog({
         changeType,
         changeReason,
         effectiveDate,
+        ...(dutyStartTime ? { dutyStartTime } : {}),
+        ...(dutyEndTime ? { dutyEndTime } : {}),
+        ...(dutyTotalHours !== '' ? { dutyTotalHours: Number(dutyTotalHours) } : {}),
+        monthlyAllowedLeaves:
+          monthlyAllowedLeaves === '' ? null : Number(monthlyAllowedLeaves),
       }),
     onSuccess: () => {
       toast({ title: 'Employee transferred successfully' })
@@ -182,6 +219,33 @@ export function TransferDialog({
             <DateInput
               value={effectiveDate}
               onChange={setEffectiveDate}
+            />
+          </div>
+
+          {!employee?.relieverOnly && (
+            <DutyHoursFields
+              totalHours={dutyTotalHours}
+              startTime={dutyStartTime}
+              endTime={dutyEndTime}
+              onTotalHoursChange={setDutyTotalHours}
+              onStartTimeChange={setDutyStartTime}
+              onEndTimeChange={setDutyEndTime}
+            />
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="transferMonthlyLeaves">Allowed Leaves / Month</Label>
+            <Input
+              id="transferMonthlyLeaves"
+              type="number"
+              min={0}
+              max={31}
+              placeholder="Blank = unlimited paid leave"
+              value={monthlyAllowedLeaves}
+              onChange={(e) => {
+                const v = e.target.value
+                setMonthlyAllowedLeaves(v === '' ? '' : Number.parseInt(v, 10))
+              }}
             />
           </div>
         </div>

@@ -149,7 +149,7 @@ const TEMPLATES: TemplateSeed[] = [
       { key: 'employeeName', label: 'نام (بجانب)', required: true },
       { key: 'designation', label: 'عہدہ' },
       { key: 'branch', label: 'برانچ / مقام' },
-      { key: 'senderTitle', label: 'مخاطب' },
+      { key: 'senderTitle', label: 'منجانب' },
       {
         key: 'violations',
         label: 'خلاف ورزیاں (ہر سطر ایک نکتہ)',

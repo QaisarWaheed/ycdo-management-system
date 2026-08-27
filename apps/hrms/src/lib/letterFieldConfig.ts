@@ -35,7 +35,7 @@ const URDU_IDENTITY_FIELDS: LetterFieldDef[] = [
   },
   {
     key: 'senderTitle',
-    label: 'مخاطب',
+    label: 'منجانب',
     onTemplate: true,
     hint: 'مثلاً: چیئرمین ایڈمن ڈیپارٹمنٹ',
   },
@@ -255,6 +255,18 @@ export const LETTER_FIELD_CONFIG: Partial<
     { key: 'toPosting', label: 'To' },
     { key: 'targetDesignation', label: 'Designation' },
     { key: 'effectiveDate', label: 'Effective Date', type: 'date' },
+    {
+      key: 'dutyTotalHours',
+      label: 'Duty Hours (total daily hours)',
+      type: 'number',
+    },
+    { key: 'dutyStartTime', label: 'Working Hours From' },
+    { key: 'dutyEndTime', label: 'Working Hours To' },
+    {
+      key: 'monthlyAllowedLeaves',
+      label: 'Allowed Leaves / Month',
+      type: 'number',
+    },
   ],
   SUSPENSION: [
     ...URDU_IDENTITY_FIELDS,
@@ -416,6 +428,10 @@ export function getLetterRequiredFields(
     'absentDate',
     'fineDate',
     'fromPosting',
+    'dutyTotalHours',
+    'dutyStartTime',
+    'dutyEndTime',
+    'monthlyAllowedLeaves',
     'attendanceRows',
     'incrementReason',
     'totalExperience',

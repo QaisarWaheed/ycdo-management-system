@@ -1045,6 +1045,58 @@ export class EmployeesService {
 
     const effectiveDate = new Date(dto.effectiveDate);
 
+    const dutyStartTime = this.normalizeOptionalDuty(dto.dutyStartTime);
+    const dutyEndTime = this.normalizeOptionalDuty(dto.dutyEndTime);
+    const dutyPayload: Prisma.EmployeeUncheckedUpdateInput = {
+      currentBranchId: dto.currentBranchId,
+      currentDepartmentId: dto.currentDepartmentId,
+      currentDesignation: dto.currentDesignation,
+    };
+    if (dutyStartTime !== undefined) {
+      dutyPayload.dutyStartTime = dutyStartTime;
+    }
+    if (dutyEndTime !== undefined) {
+      dutyPayload.dutyEndTime = dutyEndTime;
+    }
+    if (dto.dutyTotalHours !== undefined) {
+      dutyPayload.dutyTotalHours = dto.dutyTotalHours;
+    }
+    if (dto.monthlyAllowedLeaves !== undefined) {
+      dutyPayload.monthlyAllowedLeaves = dto.monthlyAllowedLeaves;
+    }
+
+    if (
+      !employee.relieverOnly &&
+      (dto.dutyStartTime !== undefined ||
+        dto.dutyEndTime !== undefined ||
+        dto.dutyTotalHours !== undefined)
+    ) {
+      const nextStart = dutyStartTime ?? employee.dutyStartTime;
+      const nextEnd = dutyEndTime ?? employee.dutyEndTime;
+      const nextHours = dto.dutyTotalHours ?? employee.dutyTotalHours;
+      const shiftId = await this.assignShiftFromDuty(
+        nextStart,
+        nextEnd,
+        nextHours,
+      );
+      if (shiftId) {
+        dutyPayload.shiftId = shiftId;
+        const shift = await this.prisma.shift.findUnique({
+          where: { id: shiftId },
+        });
+        if (shift) {
+          dutyPayload.dutyStartTime = nextStart ?? shift.startTime;
+          dutyPayload.dutyEndTime = nextEnd ?? shift.endTime;
+          dutyPayload.dutyTotalHours =
+            nextHours ??
+            this.calculateShiftHours(
+              String(dutyPayload.dutyStartTime),
+              String(dutyPayload.dutyEndTime),
+            );
+        }
+      }
+    }
+
     await this.prisma.$transaction(async (tx) => {
       const openHistory = await tx.employmentHistory.findFirst({
         where: { employeeId: id, endDate: null },
@@ -1060,11 +1112,7 @@ export class EmployeesService {
 
       await tx.employee.update({
         where: { id },
-        data: {
-          currentBranchId: dto.currentBranchId,
-          currentDepartmentId: dto.currentDepartmentId,
-          currentDesignation: dto.currentDesignation,
-        },
+        data: dutyPayload,
       });
 
       await tx.employmentHistory.create({
