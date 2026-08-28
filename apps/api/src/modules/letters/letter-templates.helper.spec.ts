@@ -1,5 +1,6 @@
 import {
   appendComputerGeneratedNotice,
+  applyFineUniformWording,
   buildLetterRef,
   COMPUTER_GENERATED_NOTICE,
   parseAttendanceRows,
@@ -59,5 +60,13 @@ describe('letter template parsers', () => {
         JSON.stringify([{ date: '01/08/2026', checkIn: '8am', checkOut: '5pm' }]),
       ),
     ).toEqual([{ date: '01/08/2026', inTime: '8am', outTime: '5pm' }]);
+  });
+});
+
+describe('applyFineUniformWording', () => {
+  it('removes کی after آپ in the uniform future-duty line', () => {
+    expect(
+      applyFineUniformWording('آئندہ آپ کی ڈیوٹی کے دوران یونیفارم لازمی پہنیں'),
+    ).toBe('آئندہ آپ ڈیوٹی کے دوران یونیفارم لازمی پہنیں');
   });
 });

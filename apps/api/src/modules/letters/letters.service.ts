@@ -57,6 +57,7 @@ import {
   DEFAULT_SENDER_TITLE,
   LETTER_TYPE_EN_HEADER,
   appendComputerGeneratedNotice,
+  applyFineUniformWording,
   buildLetterRef,
   defaultSubjectFor,
   parseAttendanceRows,
@@ -595,6 +596,21 @@ export class LettersService {
       throw new NotFoundException(
         `Letter template ${code} is not seeded. Run prisma db seed.`,
       );
+    }
+
+    if (template.code === 'FINE') {
+      const fixedBody = applyFineUniformWording(template.bodyHtml);
+      if (fixedBody !== template.bodyHtml) {
+        await this.prisma.letterTemplate.update({
+          where: { id: template.id },
+          data: {
+            bodyHtml: fixedBody,
+            version: { increment: 1 },
+          },
+        });
+        template.bodyHtml = fixedBody;
+        template.version += 1;
+      }
     }
 
     const normalized = this.normalizeExtraFields(letterType, extraFields);

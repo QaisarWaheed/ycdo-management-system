@@ -361,13 +361,20 @@ function ensurePartials() {
   partialsRegistered = true;
 }
 
+export function applyFineUniformWording(html: string): string {
+  const from = 'آئندہ آپ کی ڈیوٹی کے دوران';
+  const to = 'آئندہ آپ ڈیوٹی کے دوران';
+  if (!html.includes(from)) return html;
+  return html.split(from).join(to);
+}
+
 export function renderLetterHtml(
   bodyHtml: string,
   variables: Record<string, unknown>,
 ): string {
   ensurePartials();
   return appendComputerGeneratedNotice(
-    renderHandlebarsTemplate(bodyHtml, {
+    renderHandlebarsTemplate(applyFineUniformWording(bodyHtml), {
       letterStyles: URDU_LETTER_STYLES,
       senderTitle: DEFAULT_SENDER_TITLE,
       orgLine: DEFAULT_ORG_LINE,
