@@ -121,4 +121,34 @@ describe('buildSuspensionWatchlist', () => {
       result.due.find((e) => e.employeeId === 'emp-both')?.uninformedAbsentDates,
     ).toHaveLength(3);
   });
+
+  it('omits employees below near/due thresholds from both lists', async () => {
+    const logs = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        employeeId: 'emp-five-late',
+        date: new Date(Date.UTC(2026, 7, i + 1)),
+        status: AttendanceStatus.LATE,
+        note: null,
+        lateMinutes: 10,
+      })),
+      {
+        employeeId: 'emp-one-ua',
+        date: new Date(Date.UTC(2026, 7, 2)),
+        status: AttendanceStatus.UNINFORMED_ABSENT,
+        note: null,
+        lateMinutes: null,
+      },
+    ];
+    const db = {
+      attendanceLog: { findMany: jest.fn().mockResolvedValue(logs) },
+      employee: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+
+    const result = await buildSuspensionWatchlist(db, 2026, 8);
+
+    expect(result.counts).toEqual({ near: 0, due: 0 });
+    expect(result.near).toEqual([]);
+    expect(result.due).toEqual([]);
+    expect(db.employee.findMany).not.toHaveBeenCalled();
+  });
 });

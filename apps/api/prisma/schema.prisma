@@ -894,6 +894,8 @@ enum LetterType {
 
 enum LetterStatus {
   DRAFT
+  PENDING_APPROVAL
+  APPROVED
   SENT
   REVERSED
 }

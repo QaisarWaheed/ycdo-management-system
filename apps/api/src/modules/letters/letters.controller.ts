@@ -25,6 +25,7 @@ import {
   ReverseLetterDto,
   UpdateLetterDto,
   AppointmentPreviewDto,
+  RejectLetterApprovalDto,
 } from './letters.dto';
 import {
   CreateLetterTemplateDto,
@@ -264,6 +265,61 @@ export class LettersController {
     return this.lettersService.sendLetter(id, user.id, user.role);
   }
 
+  @Post(':id/submit-for-approval')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  submitForApproval(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.lettersService.submitAppointmentForApproval(
+      id,
+      user.id,
+      user.role,
+    );
+  }
+
+  @Post(':id/approve')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+  )
+  approveLetter(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.lettersService.approveAppointmentLetter(id, user.id, user.role);
+  }
+
+  @Post(':id/reject')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+  )
+  rejectLetter(
+    @Param('id') id: string,
+    @Body() dto: RejectLetterApprovalDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.lettersService.rejectAppointmentLetter(
+      id,
+      user.id,
+      user.role,
+      dto.reason,
+    );
+  }
+
   @Post(':id/reverse')
   @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   reverseLetter(
@@ -324,7 +380,7 @@ export class LettersController {
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  async findPending(
+  async   findPending(
     @CurrentUser()
     user: {
       id: string;
@@ -332,6 +388,17 @@ export class LettersController {
     },
   ) {
     return this.lettersService.findPending(user);
+  }
+
+  @Get('appointment-approvals/pending')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+  )
+  findPendingAppointmentApprovals() {
+    return this.lettersService.findPendingAppointmentApprovals();
   }
 
   @Get(':id/pdf')

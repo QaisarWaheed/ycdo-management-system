@@ -117,11 +117,27 @@ function canIssueApprovedSuspension(letter: Letter) {
 }
 
 function canSendDraftLetter(letter: Letter) {
+  if (letter.letterType === 'APPOINTMENT') {
+    return letter.status === 'APPROVED'
+  }
   if (letter.status !== 'DRAFT') return false
   if (letter.letterType === 'SUSPENSION') {
     return canIssueApprovedSuspension(letter)
   }
   return true
+}
+
+function canSubmitAppointment(letter: Letter) {
+  return letter.letterType === 'APPOINTMENT' && letter.status === 'DRAFT'
+}
+
+function isAppointmentPrintDraft(letter: Letter) {
+  return (
+    letter.letterType === 'APPOINTMENT' &&
+    (letter.status === 'DRAFT' ||
+      letter.status === 'PENDING_APPROVAL' ||
+      letter.status === 'APPROVED')
+  )
 }
 
 function officerLabel(letter: Letter) {
@@ -378,12 +394,14 @@ function GenerateLetterWizard({
   initialEmployeeId,
   initialLetterType,
   initialFields,
+  onOpenAppointmentDraft,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialEmployeeId?: string
   initialLetterType?: LetterType
   initialFields?: Record<string, string>
+  onOpenAppointmentDraft?: (letter: Letter, previewHtml: string) => void
 }) {
   const queryClient = useQueryClient()
   const [step, setStep] = useState(1)
@@ -486,6 +504,18 @@ function GenerateLetterWizard({
       }),
     onSuccess: (data) => {
       const ref = letterReference(data.letter)
+      if (data.reusedExisting && data.letter.letterType === 'APPOINTMENT') {
+        toast({
+          title: 'Existing appointment draft loaded',
+          description:
+            'New form values were not saved. The last saved draft is open for proofreading.',
+        })
+        queryClient.invalidateQueries({ queryKey: ['letters'] })
+        onOpenChange(false)
+        reset()
+        onOpenAppointmentDraft?.(data.letter, data.previewHtml)
+        return
+      }
       const isDraft = data.letter.status === 'DRAFT'
       toast({
         title: isDraft ? 'Draft letter created' : 'Letter generated',
@@ -497,6 +527,10 @@ function GenerateLetterWizard({
       queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
       onOpenChange(false)
       reset()
+      if (data.letter.letterType === 'APPOINTMENT' && isDraft) {
+        onOpenAppointmentDraft?.(data.letter, data.previewHtml)
+        return
+      }
       setDownloadPrompt({ id: data.letter.id, reference: ref })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -782,7 +816,11 @@ function GenerateLetterWizard({
                   disabled={mutation.isPending || !previewHtml}
                   onClick={() => mutation.mutate()}
                 >
-                  {mutation.isPending ? 'Issuing...' : 'Issue Letter'}
+                  {mutation.isPending
+                    ? 'Saving...'
+                    : letterType === 'APPOINTMENT'
+                      ? 'Save as draft'
+                      : 'Issue Letter'}
                 </Button>
               </>
             )}
@@ -1022,6 +1060,12 @@ export function LettersPage() {
   const queryClient = useQueryClient()
   const { hasRole } = useAuth()
   const canReverse = hasRole(['SUPER_ADMIN', 'IT_ADMIN'])
+  const canApproveAppointment = hasRole([
+    'SUPER_ADMIN',
+    'PRESIDENT',
+    'FOUNDER',
+    'CHAIRMAN',
+  ])
   const [searchParams, setSearchParams] = useSearchParams()
   const section = parseLetterSection(searchParams.get('section'))
   const [tab, setTab] = useState<'draft' | 'sent' | 'reversed' | 'pending'>(
@@ -1043,7 +1087,11 @@ export function LettersPage() {
   const [ackLetter, setAckLetter] = useState<Letter | null>(null)
   const [shareLetter, setShareLetter] = useState<Letter | null>(null)
   const [editLetter, setEditLetter] = useState<Letter | null>(null)
+  const [editPreviewHtml, setEditPreviewHtml] = useState<string | null>(null)
   const [issueLetter, setIssueLetter] = useState<Letter | null>(null)
+  const [submitLetter, setSubmitLetter] = useState<Letter | null>(null)
+  const [approveLetter, setApproveLetter] = useState<Letter | null>(null)
+  const [rejectLetter, setRejectLetter] = useState<Letter | null>(null)
 
   const prefillType = (searchParams.get('letterType') as LetterType | null) ?? undefined
   const prefillViolations = searchParams.get('violations') ?? undefined
@@ -1063,8 +1111,10 @@ export function LettersPage() {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       status:
-        tab === 'draft' || tab === 'sent' || tab === 'reversed'
-          ? tab.toUpperCase()
+        tab === 'sent' || tab === 'reversed' ? tab.toUpperCase() : undefined,
+      statusIn:
+        tab === 'draft'
+          ? 'DRAFT,PENDING_APPROVAL,APPROVED'
           : undefined,
     }),
     [employeeId, letterType, startDate, endDate, tab],
@@ -1151,12 +1201,84 @@ export function LettersPage() {
       queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
       queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({
+        queryKey: ['letters', 'appointment-approvals'],
+      })
       setIssueLetter(null)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
       toast({
         title: 'Send failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const invalidateLetterQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['letters'] })
+    queryClient.invalidateQueries({ queryKey: ['letters-pending'] })
+    queryClient.invalidateQueries({
+      queryKey: ['letters', 'appointment-approvals'],
+    })
+  }
+
+  const submitApprovalMutation = useMutation({
+    mutationFn: (id: string) => lettersApi.submitForApproval(id),
+    onSuccess: () => {
+      toast({
+        title: 'Submitted for approval',
+        description:
+          'The draft stays watermarked. An executive must approve before Send.',
+      })
+      invalidateLetterQueries()
+      setSubmitLetter(null)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Submit failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const approveAppointmentMutation = useMutation({
+    mutationFn: (id: string) => lettersApi.approve(id),
+    onSuccess: () => {
+      toast({
+        title: 'Appointment letter approved',
+        description: 'HR can now send the final letter. Employee is not activated yet.',
+      })
+      invalidateLetterQueries()
+      setApproveLetter(null)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Approve failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const rejectAppointmentMutation = useMutation({
+    mutationFn: (id: string) => lettersApi.reject(id),
+    onSuccess: () => {
+      toast({
+        title: 'Returned for changes',
+        description: 'The letter is a draft again. HR can edit and resubmit.',
+      })
+      invalidateLetterQueries()
+      setRejectLetter(null)
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Return failed',
         description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
         variant: 'destructive',
       })
@@ -1463,8 +1585,22 @@ export function LettersPage() {
                             <DropdownMenuItem
                               onClick={() => downloadPdf(letter)}
                             >
-                              Download PDF
+                              {isAppointmentPrintDraft(letter)
+                                ? 'Print Draft'
+                                : letter.status === 'SENT'
+                                  ? 'Download / Print Final'
+                                  : 'Download PDF'}
                             </DropdownMenuItem>
+                            {letter.letterType === 'APPOINTMENT' && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setEditPreviewHtml(null)
+                                  setEditLetter(letter)
+                                }}
+                              >
+                                Preview
+                              </DropdownMenuItem>
+                            )}
                             {letter.status === 'DRAFT' &&
                               !isLockedSuspensionDraft(letter) && (
                               <DropdownMenuItem
@@ -1473,6 +1609,32 @@ export function LettersPage() {
                                 Edit draft
                               </DropdownMenuItem>
                             )}
+                            {canSubmitAppointment(letter) && (
+                              <DropdownMenuItem
+                                onClick={() => setSubmitLetter(letter)}
+                              >
+                                Submit for Approval
+                              </DropdownMenuItem>
+                            )}
+                            {canApproveAppointment &&
+                              letter.letterType === 'APPOINTMENT' &&
+                              letter.status === 'PENDING_APPROVAL' && (
+                                <DropdownMenuItem
+                                  onClick={() => setApproveLetter(letter)}
+                                >
+                                  Approve
+                                </DropdownMenuItem>
+                              )}
+                            {canApproveAppointment &&
+                              letter.letterType === 'APPOINTMENT' &&
+                              (letter.status === 'PENDING_APPROVAL' ||
+                                letter.status === 'APPROVED') && (
+                                <DropdownMenuItem
+                                  onClick={() => setRejectLetter(letter)}
+                                >
+                                  Return for Changes
+                                </DropdownMenuItem>
+                              )}
                             {canSendDraftLetter(letter) && (
                               <DropdownMenuItem
                                 onClick={() => {
@@ -1686,6 +1848,10 @@ export function LettersPage() {
         initialFields={
           prefillViolations ? { violations: prefillViolations } : undefined
         }
+        onOpenAppointmentDraft={(opened, html) => {
+          setEditPreviewHtml(html)
+          setEditLetter(opened)
+        }}
       />
 
       <LetterRepliesDialog
@@ -1709,7 +1875,17 @@ export function LettersPage() {
       <EditDraftLetterDialog
         letter={editLetter}
         open={!!editLetter}
-        onOpenChange={(v) => !v && setEditLetter(null)}
+        initialPreviewHtml={editPreviewHtml}
+        canApprove={canApproveAppointment}
+        onLetterUpdated={(updated) => {
+          setEditLetter(updated)
+        }}
+        onOpenChange={(v) => {
+          if (!v) {
+            setEditLetter(null)
+            setEditPreviewHtml(null)
+          }
+        }}
       />
 
       <Dialog
@@ -1805,6 +1981,40 @@ export function LettersPage() {
           if (issueLetter) sendMutation.mutate(issueLetter.id)
         }}
         onCancel={() => setIssueLetter(null)}
+      />
+      <ConfirmDialog
+        open={!!submitLetter}
+        title="Submit appointment letter for approval?"
+        description="The draft stays watermarked. This does not send WhatsApp, notify the employee, or activate them. An executive must approve before Send."
+        confirmLabel="Submit for Approval"
+        loading={submitApprovalMutation.isPending}
+        onConfirm={() => {
+          if (submitLetter) submitApprovalMutation.mutate(submitLetter.id)
+        }}
+        onCancel={() => setSubmitLetter(null)}
+      />
+      <ConfirmDialog
+        open={!!approveLetter}
+        title="Approve this appointment letter?"
+        description="HR can then send the final clean letter. This does not notify the employee or activate them."
+        confirmLabel="Approve"
+        loading={approveAppointmentMutation.isPending}
+        onConfirm={() => {
+          if (approveLetter) approveAppointmentMutation.mutate(approveLetter.id)
+        }}
+        onCancel={() => setApproveLetter(null)}
+      />
+      <ConfirmDialog
+        open={!!rejectLetter}
+        title="Return for changes?"
+        description="The letter becomes an editable draft again. HR can edit, preview, print, and resubmit."
+        confirmLabel="Return to Draft"
+        confirmVariant="destructive"
+        loading={rejectAppointmentMutation.isPending}
+        onConfirm={() => {
+          if (rejectLetter) rejectAppointmentMutation.mutate(rejectLetter.id)
+        }}
+        onCancel={() => setRejectLetter(null)}
       />
         </div>
       ) : null}

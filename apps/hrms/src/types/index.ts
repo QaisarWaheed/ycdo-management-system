@@ -435,7 +435,7 @@ export interface Letter {
   id: string
   employeeId?: string
   letterType: string
-  status?: 'DRAFT' | 'SENT' | 'REVERSED'
+  status?: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'SENT' | 'REVERSED'
   fileUrl?: string | null
   letterNo?: string | null
   templateCode?: string | null
@@ -458,6 +458,8 @@ export interface Letter {
     fullName: string
     employeeCode: string
     phone?: string | null
+    currentDesignation?: string | null
+    currentBranch?: { name?: string; abbreviation?: string } | null
   }
   suspensionRequest?: {
     id: string

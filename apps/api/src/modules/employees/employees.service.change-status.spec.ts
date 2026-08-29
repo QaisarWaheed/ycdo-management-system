@@ -126,6 +126,24 @@ describe('EmployeesService.changeStatus', () => {
     );
   });
 
+  it('blocks TRAINEE → ACTIVE when only an APPROVED Appointment exists', async () => {
+    const { service, prisma } = build(EmployeeStatus.TRAINEE);
+    prisma.letter.findFirst.mockResolvedValue(null);
+    await expect(
+      service.changeStatus('emp-1', {
+        status: EmployeeStatus.ACTIVE,
+        reason: 'Completed training',
+      }),
+    ).rejects.toThrow(/A sent Appointment Letter is required/);
+    expect(prisma.letter.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'SENT',
+        }),
+      }),
+    );
+  });
+
   it('allows TRAINEE → ACTIVE when a SENT Appointment letter exists', async () => {
     const { service, prisma } = build(EmployeeStatus.TRAINEE);
     prisma.letter.findFirst.mockResolvedValue({ id: 'letter-sent' });

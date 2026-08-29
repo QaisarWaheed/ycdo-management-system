@@ -13,6 +13,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { leaveApi } from '@/api/endpoints/leave'
 import { EmployeeOnboardingReviewDialog } from '@/components/employees/EmployeeOnboardingReviewDialog'
+import { PendingAppointmentApprovalsCard } from '@/components/letters/PendingAppointmentApprovalsCard'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { StageBadge } from '@/components/leave/StageBadge'
 import { Badge } from '@/components/ui/badge'
@@ -119,6 +120,7 @@ export function ExecutiveDashboard() {
         </Card>
       </div>
 
+      <PendingAppointmentApprovalsCard />
       <PendingSuspensionApprovalsCard />
       <PendingInquiryDecisionsCard />
 

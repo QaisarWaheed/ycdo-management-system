@@ -8,6 +8,7 @@ import {
   IsUUID,
   MinLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class GenerateLetterDto {
   @IsUUID()
@@ -107,6 +108,12 @@ export class ReverseLetterDto {
   reason: string;
 }
 
+export class RejectLetterApprovalDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
 export class LetterQueryDto {
   @IsOptional()
   @IsUUID()
@@ -119,6 +126,14 @@ export class LetterQueryDto {
   @IsOptional()
   @IsEnum(LetterStatus)
   status?: LetterStatus;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value == null || value === '') return undefined;
+    return Array.isArray(value) ? value : String(value).split(',');
+  })
+  @IsEnum(LetterStatus, { each: true })
+  statusIn?: LetterStatus[];
 
   @IsOptional()
   startDate?: string;

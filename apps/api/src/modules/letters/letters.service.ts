@@ -27,6 +27,7 @@ import {
   isCloudinaryEnabled,
   uploadPdfToCloudinary,
 } from '../../config/cloudinary.config';
+import { hasAnyRole } from '../../common/user-roles.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   transliterateName,
@@ -132,6 +133,23 @@ const DRAFT_UNTIL_SEND_TYPES: LetterType[] = [
   LetterType.TERMINATION,
   LetterType.APPOINTMENT,
 ];
+
+/** Pre-send Appointment lifecycle (watermarked; not on the employee portal). */
+const APPOINTMENT_OPEN_STATUSES: LetterStatus[] = [
+  LetterStatus.DRAFT,
+  LetterStatus.PENDING_APPROVAL,
+  LetterStatus.APPROVED,
+];
+
+export const APPOINTMENT_APPROVER_ROLES: UserRole[] = [
+  UserRole.SUPER_ADMIN,
+  UserRole.PRESIDENT,
+  UserRole.FOUNDER,
+  UserRole.CHAIRMAN,
+];
+
+export const APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE =
+  'Appointment letter must be approved before it can be sent.';
 
 /** Employment states that must not be overwritten by sending a suspension letter. */
 const TERMINAL_EMPLOYEE_STATUSES: EmployeeStatus[] = [
@@ -475,7 +493,7 @@ export class LettersService {
       where: {
         employeeId: dto.employeeId,
         letterType: LetterType.APPOINTMENT,
-        status: LetterStatus.DRAFT,
+        status: { in: APPOINTMENT_OPEN_STATUSES },
       },
     });
     if (existingDraft) {
@@ -483,11 +501,14 @@ export class LettersService {
         dto.employeeId,
         {
           ...((existingDraft.content as Record<string, unknown>) ?? {}),
-          ...(dto.extraFields ?? {}),
         },
         { letterNo: existingDraft.letterNo ?? 'PENDING', draft: true },
       );
-      return { letter: existingDraft, previewHtml: prepared.htmlContent };
+      return {
+        letter: existingDraft,
+        previewHtml: prepared.htmlContent,
+        reusedExisting: true,
+      };
     }
 
     const prepared = await this.buildSelectionLetterHtml(
@@ -548,7 +569,7 @@ export class LettersService {
         return record;
       });
 
-      return { letter, previewHtml: htmlContent };
+      return { letter, previewHtml: htmlContent, reusedExisting: false };
     } catch (err) {
       const code =
         err && typeof err === 'object' && 'code' in err
@@ -559,11 +580,11 @@ export class LettersService {
           where: {
             employeeId: dto.employeeId,
             letterType: LetterType.APPOINTMENT,
-            status: LetterStatus.DRAFT,
+            status: { in: APPOINTMENT_OPEN_STATUSES },
           },
         });
         if (raced) {
-          return { letter: raced, previewHtml: htmlContent };
+          return { letter: raced, previewHtml: htmlContent, reusedExisting: true };
         }
       }
       throw err;
@@ -672,7 +693,7 @@ export class LettersService {
       });
     }
 
-    return { letter, previewHtml: built.htmlContent };
+    return { letter, previewHtml: built.htmlContent, reusedExisting: false };
   }
 
   private async buildTemplatedLetterHtml(
@@ -1268,6 +1289,231 @@ export class LettersService {
     return { letter: updated, previewHtml: built.htmlContent };
   }
 
+  async submitAppointmentForApproval(
+    letterId: string,
+    actingUserId: string,
+    actingRole: UserRole,
+  ) {
+    const letter = await this.findOne(letterId);
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUserId,
+      actingRole,
+      Permission.LETTERS_GENERATE,
+      letter.employeeId,
+    );
+    this.assertAppointmentLetter(letter);
+
+    if (letter.status !== LetterStatus.DRAFT) {
+      throw new BadRequestException(
+        letter.status === LetterStatus.PENDING_APPROVAL
+          ? 'This appointment letter is already pending approval'
+          : letter.status === LetterStatus.APPROVED
+            ? 'This appointment letter is already approved'
+            : 'Only a draft appointment letter can be submitted for approval',
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.letter.updateMany({
+        where: { id: letterId, status: LetterStatus.DRAFT },
+        data: { status: LetterStatus.PENDING_APPROVAL },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException(
+          'Only a draft appointment letter can be submitted for approval',
+        );
+      }
+      const record = await tx.letter.findUnique({
+        where: { id: letterId },
+        include: {
+          employee: { select: { fullName: true, employeeCode: true } },
+          acknowledgement: true,
+        },
+      });
+      if (!record) {
+        throw new NotFoundException(`Letter with id ${letterId} not found`);
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'LETTER_SUBMITTED_FOR_APPROVAL',
+          entity: 'Letter',
+          entityId: letterId,
+          changes: {
+            letterNo: letter.letterNo,
+            letterType: LetterType.APPOINTMENT,
+            from: LetterStatus.DRAFT,
+            to: LetterStatus.PENDING_APPROVAL,
+          },
+        },
+      });
+      return record;
+    });
+
+    return { letter: updated };
+  }
+
+  async approveAppointmentLetter(
+    letterId: string,
+    actingUserId: string,
+    actingRole: UserRole,
+  ) {
+    this.assertAppointmentApprover(actingRole);
+    const letter = await this.findOne(letterId);
+    this.assertAppointmentLetter(letter);
+
+    if (letter.status !== LetterStatus.PENDING_APPROVAL) {
+      throw new BadRequestException(
+        'Only a pending appointment letter can be approved',
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.letter.updateMany({
+        where: { id: letterId, status: LetterStatus.PENDING_APPROVAL },
+        data: { status: LetterStatus.APPROVED },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException(
+          'Only a pending appointment letter can be approved',
+        );
+      }
+      const record = await tx.letter.findUnique({
+        where: { id: letterId },
+        include: {
+          employee: { select: { fullName: true, employeeCode: true } },
+          acknowledgement: true,
+        },
+      });
+      if (!record) {
+        throw new NotFoundException(`Letter with id ${letterId} not found`);
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'LETTER_APPROVAL_APPROVED',
+          entity: 'Letter',
+          entityId: letterId,
+          changes: {
+            letterNo: letter.letterNo,
+            letterType: LetterType.APPOINTMENT,
+            from: LetterStatus.PENDING_APPROVAL,
+            to: LetterStatus.APPROVED,
+          },
+        },
+      });
+      return record;
+    });
+
+    return { letter: updated };
+  }
+
+  async rejectAppointmentLetter(
+    letterId: string,
+    actingUserId: string,
+    actingRole: UserRole,
+    reason?: string,
+  ) {
+    this.assertAppointmentApprover(actingRole);
+    const letter = await this.findOne(letterId);
+    this.assertAppointmentLetter(letter);
+
+    if (
+      letter.status !== LetterStatus.PENDING_APPROVAL &&
+      letter.status !== LetterStatus.APPROVED
+    ) {
+      throw new BadRequestException(
+        'Only a pending or approved appointment letter can be returned for changes',
+      );
+    }
+
+    const from = letter.status;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.letter.updateMany({
+        where: {
+          id: letterId,
+          status: {
+            in: [LetterStatus.PENDING_APPROVAL, LetterStatus.APPROVED],
+          },
+        },
+        data: { status: LetterStatus.DRAFT },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException(
+          'Only a pending or approved appointment letter can be returned for changes',
+        );
+      }
+      const record = await tx.letter.findUnique({
+        where: { id: letterId },
+        include: {
+          employee: { select: { fullName: true, employeeCode: true } },
+          acknowledgement: true,
+        },
+      });
+      if (!record) {
+        throw new NotFoundException(`Letter with id ${letterId} not found`);
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'LETTER_APPROVAL_REJECTED',
+          entity: 'Letter',
+          entityId: letterId,
+          changes: {
+            letterNo: letter.letterNo,
+            letterType: LetterType.APPOINTMENT,
+            from,
+            to: LetterStatus.DRAFT,
+            reason: reason?.trim() || null,
+          },
+        },
+      });
+      return record;
+    });
+
+    return { letter: updated };
+  }
+
+  async findPendingAppointmentApprovals() {
+    return this.prisma.letter.findMany({
+      where: {
+        letterType: LetterType.APPOINTMENT,
+        status: LetterStatus.PENDING_APPROVAL,
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            fullName: true,
+            employeeCode: true,
+            currentDesignation: true,
+            currentBranch: { select: { name: true, abbreviation: true } },
+          },
+        },
+      },
+      orderBy: { generatedAt: 'desc' },
+    });
+  }
+
+  private assertAppointmentLetter(letter: {
+    letterType: LetterType;
+    status: LetterStatus;
+  }) {
+    if (letter.letterType !== LetterType.APPOINTMENT) {
+      throw new BadRequestException(
+        'This action is only available for Appointment letters',
+      );
+    }
+  }
+
+  private assertAppointmentApprover(actingRole: UserRole) {
+    if (!hasAnyRole([actingRole], APPOINTMENT_APPROVER_ROLES)) {
+      throw new ForbiddenException(
+        'Only President, Founder, Chairman, or Super Admin can approve appointment letters',
+      );
+    }
+  }
+
   async sendLetter(
     letterId: string,
     actingUserId: string,
@@ -1290,6 +1536,12 @@ export class LettersService {
         alreadySent: true,
         message: 'Letter already sent to portal',
       };
+    }
+    if (
+      letter.letterType === LetterType.APPOINTMENT &&
+      letter.status !== LetterStatus.APPROVED
+    ) {
+      throw new BadRequestException(APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE);
     }
 
     const requiresAck = ACKNOWLEDGEMENT_TYPES.includes(letter.letterType);
@@ -1357,6 +1609,12 @@ export class LettersService {
       if (current.status === LetterStatus.SENT) {
         return { alreadySent: true as const, letter: current };
       }
+      if (
+        current.letterType === LetterType.APPOINTMENT &&
+        current.status !== LetterStatus.APPROVED
+      ) {
+        throw new BadRequestException(APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE);
+      }
 
       if (current.letterType === LetterType.SUSPENSION) {
         return this.issueApprovedSuspensionInTx(tx, {
@@ -1379,6 +1637,61 @@ export class LettersService {
               templateVersion: appointmentSend.templateVersion,
             }
           : {};
+
+      if (current.letterType === LetterType.APPOINTMENT) {
+        const claimed = await tx.letter.updateMany({
+          where: { id: letterId, status: LetterStatus.APPROVED },
+          data: {
+            status: LetterStatus.SENT,
+            requiresAcknowledgement: requiresAck,
+            replyDeadline: replyDeadline ?? undefined,
+            ...appointmentPatch,
+          },
+        });
+        if (claimed.count !== 1) {
+          const raced = await tx.letter.findUnique({
+            where: { id: letterId },
+            include: letterEmployeeInclude,
+          });
+          if (raced?.status === LetterStatus.SENT) {
+            return { alreadySent: true as const, letter: raced };
+          }
+          throw new BadRequestException(
+            APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE,
+          );
+        }
+        const record = await tx.letter.findUnique({
+          where: { id: letterId },
+          include: letterEmployeeInclude,
+        });
+        if (!record) {
+          throw new NotFoundException(`Letter with id ${letterId} not found`);
+        }
+        await applyDisciplineDeductionOnLetterSend(tx, {
+          employeeId: current.employeeId,
+          letterType: current.letterType,
+          variables: current.variables,
+          content: current.content,
+        });
+        await tx.notification.create({
+          data: {
+            employeeId: letter.employeeId,
+            type: 'LETTER_ISSUED',
+            message: `A ${letterLabel} letter (${letterNo}) has been issued to you.`,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: actingUserId,
+            action: 'LETTER_SENT',
+            entity: 'Letter',
+            entityId: letterId,
+            changes: { letterNo, letterType: letter.letterType },
+          },
+        });
+        await this.notifyInquiryResolvedOnFinalLetterSend(tx, current);
+        return { alreadySent: false as const, letter: record };
+      }
 
       const record = await tx.letter.update({
         where: { id: letterId },
@@ -1907,7 +2220,9 @@ export class LettersService {
       where.letterType = query.letterType;
     }
 
-    if (query.status) {
+    if (query.statusIn?.length) {
+      where.status = { in: query.statusIn };
+    } else if (query.status) {
       where.status = query.status;
     } else if (actingUser?.portalOnly) {
       where.status = LetterStatus.SENT;
@@ -2238,7 +2553,7 @@ export class LettersService {
           letterNo: String(letterNo),
           chairmanAdminName: APPOINTMENT_CHAIRMAN_ADMIN_NAME,
         } as SelectionLetterVariables);
-        if (letter.status === LetterStatus.DRAFT) {
+        if (letter.status !== LetterStatus.SENT) {
           htmlContent = applyAppointmentDraftWatermark(htmlContent);
         } else {
           htmlContent = stripAppointmentDraftWatermark(htmlContent);

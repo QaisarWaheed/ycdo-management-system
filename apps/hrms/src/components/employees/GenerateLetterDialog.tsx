@@ -34,18 +34,20 @@ import {
   translateDesignation,
   transliterateName,
 } from '@/lib/urduIdentity'
-import { GENERATE_LETTER_TYPES, type LetterType } from '@/types'
+import { GENERATE_LETTER_TYPES, type Letter, type LetterType } from '@/types'
 
 interface GenerateLetterDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   employeeId: string
+  onOpenAppointmentDraft?: (letter: Letter, previewHtml: string) => void
 }
 
 export function GenerateLetterDialog({
   open,
   onOpenChange,
   employeeId,
+  onOpenAppointmentDraft,
 }: GenerateLetterDialogProps) {
   const queryClient = useQueryClient()
   const [selectedValue, setSelectedValue] = useState<string>('WARNING')
@@ -197,15 +199,31 @@ export function GenerateLetterDialog({
       }),
     onSuccess: async (data) => {
       const ref = letterReference(data.letter)
+      queryClient.invalidateQueries({ queryKey: ['letters', employeeId] })
+      queryClient.invalidateQueries({ queryKey: ['letters'] })
+      if (data.reusedExisting && data.letter.letterType === 'APPOINTMENT') {
+        toast({
+          title: 'Existing appointment draft loaded',
+          description:
+            'New form values were not saved. Opening the last saved draft.',
+        })
+        onOpenChange(false)
+        setFields({})
+        setPreviewHtml(null)
+        onOpenAppointmentDraft?.(data.letter, data.previewHtml)
+        return
+      }
       toast({
         title: 'Letter generated successfully',
         description: `Reference: ${ref}`,
       })
-      queryClient.invalidateQueries({ queryKey: ['letters', employeeId] })
-      queryClient.invalidateQueries({ queryKey: ['letters'] })
       onOpenChange(false)
       setFields({})
       setPreviewHtml(null)
+      if (data.letter.letterType === 'APPOINTMENT' && data.letter.status === 'DRAFT') {
+        onOpenAppointmentDraft?.(data.letter, data.previewHtml)
+        return
+      }
       if (data?.letter?.id) {
         try {
           const { downloadLetterPdf } = await import('@/lib/downloadLetterPdf')

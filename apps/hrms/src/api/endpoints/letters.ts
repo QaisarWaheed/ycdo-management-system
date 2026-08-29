@@ -4,6 +4,7 @@ import type { Letter, LetterTemplate, LetterWhatsAppShare } from '@/types'
 interface GenerateLetterResponse {
   letter: Letter
   previewHtml: string
+  reusedExisting?: boolean
 }
 
 export const lettersApi = {
@@ -40,6 +41,16 @@ export const lettersApi = {
       unknown,
       { letter: Letter; alreadySent?: boolean; message?: string }
     >(`/letters/${id}/send`),
+  submitForApproval: (id: string) =>
+    api.post<unknown, { letter: Letter }>(`/letters/${id}/submit-for-approval`),
+  approve: (id: string) =>
+    api.post<unknown, { letter: Letter }>(`/letters/${id}/approve`),
+  reject: (id: string, reason?: string) =>
+    api.post<unknown, { letter: Letter }>(`/letters/${id}/reject`, {
+      reason,
+    }),
+  getPendingAppointmentApprovals: () =>
+    api.get<unknown, Letter[]>('/letters/appointment-approvals/pending'),
   reverse: (id: string, reason: string) =>
     api.post<
       unknown,

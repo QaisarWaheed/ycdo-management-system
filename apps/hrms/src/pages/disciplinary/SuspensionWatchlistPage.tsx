@@ -18,22 +18,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { getApiErrorMessage } from '@/lib/apiErrorMessage'
+import {
+  partitionSuspensionWatchlist,
+  type WatchEntry,
+  type WatchReason,
+} from '@/lib/suspensionWatchlist'
 import { cn } from '@/lib/utils'
-
-type WatchReason = 'LATE_NEAR' | 'LATE_DUE' | 'UA_NEAR' | 'UA_DUE'
-
-type WatchEntry = {
-  employeeId: string
-  fullName: string
-  employeeCode: string | null
-  biometricId: string | null
-  phone: string | null
-  branchId: string | null
-  branchName: string | null
-  lateDays: number
-  uninformedAbsentDays: number
-  reasons: WatchReason[]
-}
 
 function reasonLabel(reason: WatchReason) {
   switch (reason) {
@@ -194,7 +184,7 @@ export function SuspensionWatchlistPage({
   const [busyEmployeeId, setBusyEmployeeId] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['attendance', 'suspension-watchlist'],
+    queryKey: ['suspension-watchlist'],
     queryFn: () => attendanceApi.getSuspensionWatchlist(),
   })
 
@@ -209,7 +199,7 @@ export function SuspensionWatchlistPage({
         description: 'Advice letter issued and WhatsApp delivery attempted.',
       })
       queryClient.invalidateQueries({ queryKey: ['letters'] })
-      queryClient.invalidateQueries({ queryKey: ['attendance', 'suspension-watchlist'] })
+      queryClient.invalidateQueries({ queryKey: ['suspension-watchlist'] })
     },
     onError: (err: unknown) => {
       toast({
@@ -231,7 +221,7 @@ export function SuspensionWatchlistPage({
         description:
           'Employee moved to Disciplinary. Prepare and submit the suspension letter for approval when ready.',
       })
-      queryClient.invalidateQueries({ queryKey: ['attendance', 'suspension-watchlist'] })
+      queryClient.invalidateQueries({ queryKey: ['suspension-watchlist'] })
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
     },
     onError: (err: unknown) => {
@@ -243,8 +233,10 @@ export function SuspensionWatchlistPage({
     },
   })
 
-  const near = data?.near ?? []
-  const due = data?.due ?? []
+  const { near, due } = useMemo(
+    () => partitionSuspensionWatchlist(data),
+    [data],
+  )
   const monthLabel = useMemo(() => data?.month ?? '—', [data?.month])
 
   return (
@@ -290,19 +282,22 @@ export function SuspensionWatchlistPage({
             <AlertTriangle className="h-4 w-4" />
             Due for suspension
             <Badge variant="secondary" className="ml-1">
-              {data?.counts.due ?? due.length}
+              {due.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="near" className="gap-2">
             <Clock className="h-4 w-4" />
             Near suspension
             <Badge variant="secondary" className="ml-1">
-              {data?.counts.near ?? near.length}
+              {near.length}
             </Badge>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="due" className="rounded-lg border bg-white">
+        <TabsContent
+          value="due"
+          className="rounded-lg border bg-white data-[state=inactive]:hidden"
+        >
           <WatchlistTable
             rows={due}
             loading={isLoading}
@@ -313,7 +308,10 @@ export function SuspensionWatchlistPage({
             onStartCase={(id) => startCaseMutation.mutate(id)}
           />
         </TabsContent>
-        <TabsContent value="near" className="rounded-lg border bg-white">
+        <TabsContent
+          value="near"
+          className="rounded-lg border bg-white data-[state=inactive]:hidden"
+        >
           <WatchlistTable
             rows={near}
             loading={isLoading}

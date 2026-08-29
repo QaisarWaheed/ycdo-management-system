@@ -54,8 +54,31 @@ function isLateDrivenHalfDay(row: {
 
 /**
  * Monthly late / uninformed-absent counts → Near (6–8 late or UA=2) and
- * Due (≥9 late or UA≥3). Due wins if both apply.
+ * Due (≥9 late or UA≥3). Due wins if both apply. Anyone below those
+ * thresholds is omitted from both lists.
  */
+export function classifySuspensionWatchBucket(
+  lateDays: number,
+  uninformedAbsentDays: number,
+): 'near' | 'due' | null {
+  if (lateDays >= 9 || uninformedAbsentDays >= 3) return 'due';
+  if ((lateDays >= 6 && lateDays <= 8) || uninformedAbsentDays === 2) {
+    return 'near';
+  }
+  return null;
+}
+
+export function suspensionWatchReasons(
+  lateDays: number,
+  uninformedAbsentDays: number,
+): SuspensionWatchReason[] {
+  const reasons: SuspensionWatchReason[] = [];
+  if (lateDays >= 9) reasons.push('LATE_DUE');
+  else if (lateDays >= 6 && lateDays <= 8) reasons.push('LATE_NEAR');
+  if (uninformedAbsentDays >= 3) reasons.push('UA_DUE');
+  else if (uninformedAbsentDays === 2) reasons.push('UA_NEAR');
+  return reasons;
+}
 type WatchlistDb = {
   attendanceLog: { findMany: Prisma.TransactionClient['attendanceLog']['findMany'] };
   employee: { findMany: Prisma.TransactionClient['employee']['findMany'] };
@@ -136,21 +159,13 @@ export async function buildSuspensionWatchlist(
   for (const employeeId of candidateIds) {
     const lateDays = lateDaysByEmployee.get(employeeId)?.size ?? 0;
     const uninformedAbsentDays = uaDaysByEmployee.get(employeeId)?.size ?? 0;
-    const reasons: SuspensionWatchReason[] = [];
+    const bucket = classifySuspensionWatchBucket(
+      lateDays,
+      uninformedAbsentDays,
+    );
+    if (!bucket) continue;
 
-    const lateDue = lateDays >= 9;
-    const uaDue = uninformedAbsentDays >= 3;
-    const lateNear = lateDays >= 6 && lateDays <= 8;
-    const uaNear = uninformedAbsentDays === 2;
-
-    if (lateDue) reasons.push('LATE_DUE');
-    if (uaDue) reasons.push('UA_DUE');
-    if (!lateDue && lateNear) reasons.push('LATE_NEAR');
-    if (!uaDue && uaNear) reasons.push('UA_NEAR');
-
-    if (reasons.length === 0) continue;
-
-    const bucket = lateDue || uaDue ? 'due' : 'near';
+    const reasons = suspensionWatchReasons(lateDays, uninformedAbsentDays);
     meta.set(employeeId, {
       lateDays,
       uninformedAbsentDays,

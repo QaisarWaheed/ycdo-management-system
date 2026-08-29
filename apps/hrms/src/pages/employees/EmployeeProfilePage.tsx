@@ -640,6 +640,9 @@ export function EmployeeProfilePage() {
   const [letterOpen, setLetterOpen] = useState(false)
   const [editAppointmentLetter, setEditAppointmentLetter] =
     useState<Letter | null>(null)
+  const [editAppointmentPreviewHtml, setEditAppointmentPreviewHtml] = useState<
+    string | null
+  >(null)
   const [statusOpen, setStatusOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
   const [branchDutyOpen, setBranchDutyOpen] = useState(false)
@@ -881,6 +884,73 @@ export function EmployeeProfilePage() {
     },
   })
 
+  const submitAppointmentMutation = useMutation({
+    mutationFn: (letterId: string) => lettersApi.submitForApproval(letterId),
+    onSuccess: () => {
+      toast({
+        title: 'Submitted for approval',
+        description:
+          'Watermark stays on. An executive must approve before Send.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['letters', id] })
+      queryClient.invalidateQueries({
+        queryKey: ['letters', 'appointment-approvals'],
+      })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Submit failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const approveAppointmentMutation = useMutation({
+    mutationFn: (letterId: string) => lettersApi.approve(letterId),
+    onSuccess: () => {
+      toast({
+        title: 'Appointment letter approved',
+        description: 'HR can send the final letter. Employee is not activated yet.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['letters', id] })
+      queryClient.invalidateQueries({
+        queryKey: ['letters', 'appointment-approvals'],
+      })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Approve failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const rejectAppointmentMutation = useMutation({
+    mutationFn: (letterId: string) => lettersApi.reject(letterId),
+    onSuccess: () => {
+      toast({
+        title: 'Returned for changes',
+        description: 'The letter is a draft again.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['letters', id] })
+      queryClient.invalidateQueries({
+        queryKey: ['letters', 'appointment-approvals'],
+      })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Return failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
   const markPrintedMutation = useMutation({
     mutationFn: (letterId: string) => lettersApi.markPrinted(letterId),
     onSuccess: () => {
@@ -961,6 +1031,12 @@ export function EmployeeProfilePage() {
   const isItTeam = hasRole([...IT_PROFILE_ROLES])
 
   const isHrTeam = hasRole([...HR_JOB_ROLES])
+  const canApproveAppointment = hasRole([
+    'SUPER_ADMIN',
+    'PRESIDENT',
+    'FOUNDER',
+    'CHAIRMAN',
+  ])
 
   const canEditEmployeeProfile = hasPermission('EMPLOYEES_EDIT')
 
@@ -2108,6 +2184,14 @@ export function EmployeeProfilePage() {
                           >
                             <TableCell>
                               {letterTypeLabel(letter.letterType)}
+                            {letter.status && letter.status !== 'SENT' && (
+                              <Badge
+                                variant="secondary"
+                                className="ml-2 font-normal"
+                              >
+                                {letter.status.replace(/_/g, ' ')}
+                              </Badge>
+                            )}
                             {letter.letterType === 'APPOINTMENT' &&
                               letter.templateCode && (
                                 <span className="ml-2 font-mono text-xs text-text-secondary">
@@ -2148,22 +2232,94 @@ export function EmployeeProfilePage() {
                                   size="sm"
                                   onClick={() => downloadPdf(letter.id)}
                                 >
-                                  {letter.status === 'DRAFT'
-                                    ? 'Preview PDF'
-                                    : 'Download PDF'}
+                                  {letter.status === 'SENT'
+                                    ? 'Download PDF'
+                                    : letter.letterType === 'APPOINTMENT'
+                                      ? 'Print Draft'
+                                      : letter.status === 'DRAFT'
+                                        ? 'Preview PDF'
+                                        : 'Download PDF'}
                                 </Button>
+                                {letter.letterType === 'APPOINTMENT' && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditAppointmentPreviewHtml(null)
+                                      setEditAppointmentLetter(letter)
+                                    }}
+                                  >
+                                    Preview
+                                  </Button>
+                                )}
                                 {letter.letterType === 'APPOINTMENT' &&
                                   letter.status === 'DRAFT' && (
+                                    <Button
+                                      size="sm"
+                                      disabled={
+                                        submitAppointmentMutation.isPending
+                                      }
+                                      onClick={() =>
+                                        submitAppointmentMutation.mutate(
+                                          letter.id,
+                                        )
+                                      }
+                                    >
+                                      Submit for Approval
+                                    </Button>
+                                  )}
+                                {letter.letterType === 'APPOINTMENT' &&
+                                  letter.status === 'PENDING_APPROVAL' &&
+                                  canApproveAppointment && (
                                     <>
+                                      <Button
+                                        size="sm"
+                                        disabled={
+                                          approveAppointmentMutation.isPending
+                                        }
+                                        onClick={() =>
+                                          approveAppointmentMutation.mutate(
+                                            letter.id,
+                                          )
+                                        }
+                                      >
+                                        Approve
+                                      </Button>
                                       <Button
                                         variant="outline"
                                         size="sm"
+                                        disabled={
+                                          rejectAppointmentMutation.isPending
+                                        }
                                         onClick={() =>
-                                          setEditAppointmentLetter(letter)
+                                          rejectAppointmentMutation.mutate(
+                                            letter.id,
+                                          )
                                         }
                                       >
-                                        Edit
+                                        Return
                                       </Button>
+                                    </>
+                                  )}
+                                {letter.letterType === 'APPOINTMENT' &&
+                                  letter.status === 'APPROVED' && (
+                                    <>
+                                      {canApproveAppointment && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={
+                                            rejectAppointmentMutation.isPending
+                                          }
+                                          onClick={() =>
+                                            rejectAppointmentMutation.mutate(
+                                              letter.id,
+                                            )
+                                          }
+                                        >
+                                          Return
+                                        </Button>
+                                      )}
                                       <Button
                                         size="sm"
                                         disabled={
@@ -2175,7 +2331,7 @@ export function EmployeeProfilePage() {
                                           )
                                         }
                                       >
-                                        Issue / Send
+                                        Send
                                       </Button>
                                     </>
                                   )}
@@ -2539,12 +2695,22 @@ export function EmployeeProfilePage() {
         open={letterOpen}
         onOpenChange={setLetterOpen}
         employeeId={id}
+        onOpenAppointmentDraft={(opened, html) => {
+          setEditAppointmentPreviewHtml(html)
+          setEditAppointmentLetter(opened)
+        }}
       />
       <EditDraftLetterDialog
         letter={editAppointmentLetter}
         open={!!editAppointmentLetter}
+        initialPreviewHtml={editAppointmentPreviewHtml}
+        canApprove={canApproveAppointment}
+        onLetterUpdated={setEditAppointmentLetter}
         onOpenChange={(open) => {
-          if (!open) setEditAppointmentLetter(null)
+          if (!open) {
+            setEditAppointmentLetter(null)
+            setEditAppointmentPreviewHtml(null)
+          }
         }}
       />
       <ChangeStatusDialog

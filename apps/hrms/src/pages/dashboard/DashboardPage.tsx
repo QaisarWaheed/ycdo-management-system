@@ -22,12 +22,14 @@ import { recruitmentApi } from '@/api/endpoints/recruitment'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
 import { PendingSuspensionApprovalsCard } from '@/components/disciplinary/PendingSuspensionApprovalsCard'
+import { PendingAppointmentApprovalsCard } from '@/components/letters/PendingAppointmentApprovalsCard'
 import type { AttendanceLog, Employee, LeaveRecord } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { partitionSuspensionWatchlist } from '@/lib/suspensionWatchlist'
 import { withReturnTo } from '@/lib/backNavigation'
 import { todayPakistan } from '@/lib/timeFormat'
 import {
@@ -280,9 +282,11 @@ function AdminDashboard() {
     isLoading: loadingWatchlist,
     isError: errorWatchlist,
   } = useQuery({
-    queryKey: ['attendance', 'suspension-watchlist'],
+    queryKey: ['suspension-watchlist'],
     queryFn: () => attendanceApi.getSuspensionWatchlist(),
   })
+
+  const watchBuckets = partitionSuspensionWatchlist(suspensionWatchlist)
 
   const {
     data: applications,
@@ -330,6 +334,7 @@ function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      <PendingAppointmentApprovalsCard />
       <PendingSuspensionApprovalsCard />
       <PendingInquiryDecisionsCard />
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
@@ -468,14 +473,14 @@ function AdminDashboard() {
         />
         <StatCard
           label="Due for Suspension"
-          value={suspensionWatchlist?.counts.due ?? 0}
+          value={watchBuckets.due.length}
           icon={AlertTriangle}
           loading={loadingWatchlist}
           error={errorWatchlist}
           iconBg="bg-red-100 text-red-700"
           subtitle={
             suspensionWatchlist
-              ? `${suspensionWatchlist.counts.near} near · ${suspensionWatchlist.month}`
+              ? `${watchBuckets.near.length} near · ${suspensionWatchlist.month}`
               : 'Monthly late / UA threshold'
           }
           to="/disciplinary/suspension-watchlist"

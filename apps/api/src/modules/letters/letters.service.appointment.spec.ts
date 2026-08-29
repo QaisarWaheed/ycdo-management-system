@@ -45,6 +45,7 @@ describe('LettersService appointment Phase 3A', () => {
 
   function build(opts?: { existingDraft?: boolean; existingSent?: boolean }) {
     const created: { status?: LetterStatus; letterType?: LetterType; templateCode?: string } = {};
+    let claimedStatus: LetterStatus | undefined;
     const tx = {
       letter: {
         create: jest.fn().mockImplementation(async ({ data }: { data: { status: LetterStatus; letterType: LetterType; templateCode?: string } }) => {
@@ -61,7 +62,24 @@ describe('LettersService appointment Phase 3A', () => {
           acknowledgement: null,
           ...data,
         })),
-        findUnique: jest.fn(),
+        updateMany: jest.fn().mockImplementation(async ({ data }: { data: { status?: LetterStatus } }) => {
+          claimedStatus = data.status;
+          return { count: 1 };
+        }),
+        findUnique: jest.fn().mockImplementation(async () => ({
+          id: 'letter-1',
+          employeeId,
+          letterType: LetterType.APPOINTMENT,
+          status: claimedStatus ?? LetterStatus.DRAFT,
+          letterNo: '9/YCDO/2026',
+          employee: {
+            id: employeeId,
+            fullName: 'Test',
+            employeeCode: 'E-1',
+            phone: '0300',
+          },
+          acknowledgement: null,
+        })),
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       notification: { create: jest.fn().mockResolvedValue({}) },
@@ -122,7 +140,7 @@ describe('LettersService appointment Phase 3A', () => {
           name: 'Fixture EN',
           requiredVars: [],
           bodyHtml:
-            '<p>{{employeeName}} {{chairmanAdminName}} {{serviceArea}} leaves {{monthlyAllowedLeaves}} short {{shortLeaveHours}} {{{departmentSpecificSops}}}</p>',
+            '<p>{{employeeName}} {{chairmanAdminName}} stipend {{stipendAmount}} {{serviceArea}} leaves {{monthlyAllowedLeaves}} short {{shortLeaveHours}} {{{departmentSpecificSops}}}</p>',
           bodyHtmlEn: null,
           version: 1,
         }),
@@ -251,7 +269,7 @@ describe('LettersService appointment Phase 3A', () => {
       id: 'letter-1',
       employeeId,
       letterType: LetterType.APPOINTMENT,
-      status: LetterStatus.DRAFT,
+      status: LetterStatus.APPROVED,
       letterNo: '9/YCDO/2026',
       templateCode: 'APPT_MEDICAL_CLINICAL_EN',
       content: { stipendAmount: '1000' },
@@ -270,7 +288,7 @@ describe('LettersService appointment Phase 3A', () => {
       id: 'letter-1',
       employeeId,
       letterType: LetterType.APPOINTMENT,
-      status: LetterStatus.DRAFT,
+      status: LetterStatus.APPROVED,
       letterNo: '9/YCDO/2026',
       templateCode: 'APPT_MEDICAL_CLINICAL_EN',
       content: { stipendAmount: '1000' },
@@ -301,11 +319,10 @@ describe('LettersService appointment Phase 3A', () => {
     const sentHtmlArg = String(pdfCalls[pdfCalls.length - 1]?.[0] ?? '');
     expect(sentHtmlArg).toContain(APPOINTMENT_CHAIRMAN_ADMIN_NAME);
     expect(sentHtmlArg).not.toContain(APPOINTMENT_DRAFT_WATERMARK_TEXT);
-    const sentHtml = String(
-      (tx.letter.update.mock.calls[0][0].data.variables as { chairmanAdminName?: string })
-        ?.chairmanAdminName ?? APPOINTMENT_CHAIRMAN_ADMIN_NAME,
-    );
-    expect(sentHtml).toBe(APPOINTMENT_CHAIRMAN_ADMIN_NAME);
+    const sentVars = tx.letter.updateMany.mock.calls[0][0].data.variables as {
+      chairmanAdminName?: string;
+    };
+    expect(sentVars.chairmanAdminName).toBe(APPOINTMENT_CHAIRMAN_ADMIN_NAME);
 
     prisma.letter.findUnique.mockResolvedValue({
       id: 'letter-1',
@@ -385,5 +402,256 @@ describe('LettersService appointment Phase 3A', () => {
     const html = String(pdfCalls[pdfCalls.length - 1]?.[0] ?? '');
     expect(html).toContain('four Leaves are allowed Legacy');
     expect(html).not.toContain(APPOINTMENT_DRAFT_WATERMARK_TEXT);
+  });
+
+  it('rejects Send on a DRAFT Appointment until it is approved', async () => {
+    const { service, whatsappService, tx } = build();
+    await expect(
+      service.sendLetter('letter-1', 'user-hr', UserRole.HR_MANAGER),
+    ).rejects.toThrow(/must be approved before it can be sent/);
+    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
+    expect(tx.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('submit for approval keeps DRAFT watermark side-effects off', async () => {
+    const { service, tx, whatsappService } = build();
+    const result = await service.submitAppointmentForApproval(
+      'letter-1',
+      'user-hr',
+      UserRole.HR_MANAGER,
+    );
+    expect(result.letter.status).toBe(LetterStatus.PENDING_APPROVAL);
+    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
+    expect(tx.notification.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'LETTER_SUBMITTED_FOR_APPROVAL',
+        }),
+      }),
+    );
+  });
+
+  it('approve moves PENDING_APPROVAL to APPROVED without WhatsApp or employee notify', async () => {
+    const { service, prisma, tx, whatsappService, draftLetter } = build();
+    prisma.letter.findUnique.mockResolvedValue({
+      ...draftLetter,
+      status: LetterStatus.PENDING_APPROVAL,
+    });
+    const result = await service.approveAppointmentLetter(
+      'letter-1',
+      'user-exec',
+      UserRole.PRESIDENT,
+    );
+    expect(result.letter.status).toBe(LetterStatus.APPROVED);
+    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
+    expect(tx.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('reject returns PENDING_APPROVAL to editable DRAFT', async () => {
+    const { service, prisma, draftLetter } = build();
+    prisma.letter.findUnique.mockResolvedValue({
+      ...draftLetter,
+      status: LetterStatus.PENDING_APPROVAL,
+    });
+    const result = await service.rejectAppointmentLetter(
+      'letter-1',
+      'user-exec',
+      UserRole.CHAIRMAN,
+      'Fix stipend amount',
+    );
+    expect(result.letter.status).toBe(LetterStatus.DRAFT);
+  });
+
+  it('blocks HR from approving an appointment letter', async () => {
+    const { service, prisma, draftLetter } = build();
+    prisma.letter.findUnique.mockResolvedValue({
+      ...draftLetter,
+      status: LetterStatus.PENDING_APPROVAL,
+    });
+    await expect(
+      service.approveAppointmentLetter(
+        'letter-1',
+        'user-hr',
+        UserRole.HR_MANAGER,
+      ),
+    ).rejects.toThrow(/Only President, Founder, Chairman/);
+  });
+
+  it('updateLetter preview is the persisted watermarked draft, not unsaved caller state', async () => {
+    const { service } = build();
+    const result = await service.updateLetter(
+      'letter-1',
+      { extraFields: { stipendAmount: '2000' } },
+      'user-hr',
+      UserRole.HR_MANAGER,
+    );
+    expect(result.previewHtml).toContain('stipend 2000');
+    expect(result.previewHtml).toContain(APPOINTMENT_DRAFT_WATERMARK_TEXT);
+    expect(result.previewHtml).toContain('For HR Review Only');
+  });
+
+  it('reusing an open Appointment DRAFT ignores unsaved generate extraFields', async () => {
+    const { service, tx } = build({ existingDraft: true });
+    const result = await service.generateSystemLetter({
+      employeeId,
+      letterType: LetterType.APPOINTMENT,
+      extraFields: { stipendAmount: 'UNSAVED-STIPEND-XYZ' },
+    });
+    expect(result.reusedExisting).toBe(true);
+    expect(tx.letter.create).not.toHaveBeenCalled();
+    expect(result.previewHtml).toContain('stipend 1000');
+    expect(result.previewHtml).not.toContain('UNSAVED-STIPEND-XYZ');
+    expect(result.previewHtml).toContain(APPOINTMENT_DRAFT_WATERMARK_TEXT);
+  });
+
+  it('getPdf watermarks PENDING_APPROVAL and APPROVED, and leaves SENT clean', async () => {
+    const { service, prisma } = build();
+    const base = {
+      id: 'letter-1',
+      employeeId,
+      letterType: LetterType.APPOINTMENT,
+      letterNo: '9/YCDO/2026',
+      templateCode: 'APPT_MEDICAL_CLINICAL_EN',
+      content: { stipendAmount: '1000' },
+      variables: {
+        employeeName: 'Test Employee',
+        stipendAmount: '1000',
+        letterNo: '9/YCDO/2026',
+        chairmanAdminName: APPOINTMENT_CHAIRMAN_ADMIN_NAME,
+      },
+      fileUrl: '/uploads/a.pdf',
+      employee: { id: employeeId, fullName: 'Test', employeeCode: 'E-1' },
+      acknowledgement: null,
+      replies: [],
+    };
+
+    prisma.letter.findUnique.mockResolvedValue({
+      ...base,
+      status: LetterStatus.PENDING_APPROVAL,
+    });
+    await service.getPdf('letter-1', { id: 'hr', role: UserRole.HR_MANAGER });
+    let html = String(
+      (generatePdf as jest.Mock).mock.calls[
+        (generatePdf as jest.Mock).mock.calls.length - 1
+      ]?.[0] ?? '',
+    );
+    expect(html).toContain(APPOINTMENT_DRAFT_WATERMARK_TEXT);
+
+    prisma.letter.findUnique.mockResolvedValue({
+      ...base,
+      status: LetterStatus.APPROVED,
+    });
+    await service.getPdf('letter-1', { id: 'hr', role: UserRole.HR_MANAGER });
+    html = String(
+      (generatePdf as jest.Mock).mock.calls[
+        (generatePdf as jest.Mock).mock.calls.length - 1
+      ]?.[0] ?? '',
+    );
+    expect(html).toContain(APPOINTMENT_DRAFT_WATERMARK_TEXT);
+
+    prisma.letter.findUnique.mockResolvedValue({
+      ...base,
+      status: LetterStatus.SENT,
+    });
+    await service.getPdf('letter-1', { id: 'hr', role: UserRole.HR_MANAGER });
+    html = String(
+      (generatePdf as jest.Mock).mock.calls[
+        (generatePdf as jest.Mock).mock.calls.length - 1
+      ]?.[0] ?? '',
+    );
+    expect(html).not.toContain(APPOINTMENT_DRAFT_WATERMARK_TEXT);
+  });
+
+  it('getPdf does not mark a DRAFT as SENT', async () => {
+    const { service, prisma } = build();
+    await service.getPdf('letter-1', { id: 'hr', role: UserRole.HR_MANAGER });
+    for (const call of prisma.letter.update.mock.calls) {
+      expect(call[0].data.status).toBeUndefined();
+    }
+  });
+
+  it('concurrent Send claims APPROVED once and does not double-notify or WhatsApp', async () => {
+    const { service, tx, whatsappService, prisma } = build();
+    jest
+      .spyOn(service, 'getPdf')
+      .mockResolvedValue({ buffer: Buffer.from('pdf'), filename: 'letter.pdf' });
+    const approved = {
+      id: 'letter-1',
+      employeeId,
+      letterType: LetterType.APPOINTMENT,
+      status: LetterStatus.APPROVED,
+      letterNo: '9/YCDO/2026',
+      templateCode: 'APPT_MEDICAL_CLINICAL_EN',
+      content: { stipendAmount: '1000' },
+      variables: {},
+      fileUrl: '/uploads/a.pdf',
+      employee: {
+        id: employeeId,
+        fullName: 'Test Employee',
+        employeeCode: 'E-1',
+        phone: '03001234567',
+      },
+      acknowledgement: null,
+      replies: [],
+    };
+    const sent = { ...approved, status: LetterStatus.SENT };
+    prisma.letter.findUnique.mockResolvedValue(approved);
+    tx.letter.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    tx.letter.findUnique
+      .mockResolvedValueOnce(approved)
+      .mockResolvedValueOnce(sent)
+      .mockResolvedValueOnce(approved)
+      .mockResolvedValueOnce(sent);
+
+    const first = await service.sendLetter(
+      'letter-1',
+      'user-hr',
+      UserRole.HR_MANAGER,
+    );
+    const second = await service.sendLetter(
+      'letter-1',
+      'user-hr',
+      UserRole.HR_MANAGER,
+    );
+
+    expect(first.alreadySent).toBe(false);
+    expect(second.alreadySent).toBe(true);
+    expect(tx.notification.create).toHaveBeenCalledTimes(1);
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
+  });
+
+  it('stale approve cannot overwrite a newer status', async () => {
+    const { service, prisma, tx, draftLetter } = build();
+    prisma.letter.findUnique.mockResolvedValue({
+      ...draftLetter,
+      status: LetterStatus.PENDING_APPROVAL,
+    });
+    tx.letter.updateMany.mockResolvedValue({ count: 0 });
+    await expect(
+      service.approveAppointmentLetter(
+        'letter-1',
+        'user-exec',
+        UserRole.PRESIDENT,
+      ),
+    ).rejects.toThrow(/Only a pending appointment letter can be approved/);
+  });
+
+  it('stale return cannot overwrite SENT', async () => {
+    const { service, prisma, tx, draftLetter } = build();
+    prisma.letter.findUnique.mockResolvedValue({
+      ...draftLetter,
+      status: LetterStatus.APPROVED,
+    });
+    tx.letter.updateMany.mockResolvedValue({ count: 0 });
+    await expect(
+      service.rejectAppointmentLetter(
+        'letter-1',
+        'user-exec',
+        UserRole.FOUNDER,
+      ),
+    ).rejects.toThrow(/returned for changes/);
   });
 });
