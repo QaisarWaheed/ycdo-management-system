@@ -27,6 +27,7 @@ import { payrollApi } from '@/api/endpoints/payroll'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { incentivesApi } from '@/api/endpoints/incentives'
+import { additionalWorkingDaysApi } from '@/api/endpoints/additionalWorkingDays'
 import { AdditionalWorkingDaysTab } from '@/components/employees/AdditionalWorkingDaysTab'
 import { EmployeePayrollTab } from '@/components/employees/EmployeePayrollTab'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
@@ -756,6 +757,21 @@ export function EmployeeProfilePage() {
     enabled: !!id,
   })
 
+  const { data: additionalWorkingDays = [] } = useQuery({
+    queryKey: ['additional-working-days', id],
+    queryFn: () => additionalWorkingDaysApi.getByEmployee(id),
+    enabled: !!id,
+  })
+
+  const additionalWorkingDaysInMonth = useMemo(
+    () =>
+      additionalWorkingDays.filter((row) => {
+        const d = new Date(row.date)
+        return d.getUTCMonth() + 1 === month && d.getUTCFullYear() === year
+      }).length,
+    [additionalWorkingDays, month, year],
+  )
+
   const canAddIncentive =
     user?.role === 'SUPER_ADMIN' ||
     user?.role === 'HR_MANAGER' ||
@@ -941,7 +957,6 @@ export function EmployeeProfilePage() {
     ? resolveFileUrl(employee.photoUrl)
     : undefined
   const documents = (employee.documents ?? []) as EmployeeDocument[]
-  const overtimeHours = ((attendanceSummary?.overtimeMinutes ?? 0) / 60).toFixed(1)
 
   const isItTeam = hasRole([...IT_PROFILE_ROLES])
 
@@ -956,7 +971,6 @@ export function EmployeeProfilePage() {
   const canAssignRoles = hasRole([...ROLE_ASSIGNER_ROLES])
 
   const canEditPayroll = isHrTeam || isItTeam
-  const canApplyOvertime = isHrTeam
 
   const canHrJobActions = isHrTeam
 
@@ -1742,7 +1756,10 @@ export function EmployeeProfilePage() {
                   value: attendanceSummary?.swapCovered ?? 0,
                 },
                 { label: 'Unmarked', value: attendanceSummary?.unmarked ?? 0 },
-                { label: 'Overtime Hrs', value: overtimeHours },
+                {
+                  label: 'Additional working days',
+                  value: additionalWorkingDaysInMonth,
+                },
               ].map((item) => (
                 <Card key={item.label}>
                   <CardContent className="p-4 text-center">
@@ -1862,7 +1879,6 @@ export function EmployeeProfilePage() {
             joiningDate={employee.joiningDate}
             stipendRecords={(employee.stipendRecords ?? []) as StipendRecord[]}
             canEdit={canEditPayroll}
-            canApplyOvertime={canApplyOvertime}
             onUpdated={() => {
               queryClient.invalidateQueries({ queryKey: ['employee', id] })
               queryClient.invalidateQueries({ queryKey: ['payroll-history', id] })
