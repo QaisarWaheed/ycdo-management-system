@@ -32,6 +32,7 @@ import {
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
 import { formatDateTimeTime, toPakistanTime24 } from '@/lib/timeFormat'
+import { attendanceLockMessage, isEmployeeEligibleForAttendance } from '@/lib/attendanceEligibility'
 import { cn } from '@/lib/utils'
 import { ATTENDANCE_STATUSES, type AttendanceLog, type AttendanceStatus } from '@/types'
 import { attendanceStatusStyles } from '@/components/attendance/AttendanceStatusBadge'
@@ -116,6 +117,12 @@ export function UpdateAttendanceDialog({
   const mutation = useMutation({
     mutationFn: () => {
       if (!log) throw new Error('No attendance record')
+      if (
+        employeeDetail &&
+        !isEmployeeEligibleForAttendance(employeeDetail.status)
+      ) {
+        throw new Error(attendanceLockMessage(employeeDetail.status))
+      }
 
       const payload: Record<string, unknown> = {}
 
@@ -162,8 +169,11 @@ export function UpdateAttendanceDialog({
       onSuccess()
       onOpenChange(false)
     },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
+    onError: (err: {
+      message?: string
+      response?: { data?: { message?: string | string[] } }
+    }) => {
+      const msg = err.response?.data?.message ?? err.message
       toast({
         title: 'Failed to update attendance',
         description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
@@ -192,6 +202,9 @@ export function UpdateAttendanceDialog({
     : calculatedLate
 
   const showOvertime = checkIn || showsTimeFields(displayStatus)
+  const attendanceLocked =
+    !!employeeDetail &&
+    !isEmployeeEligibleForAttendance(employeeDetail.status)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -204,6 +217,11 @@ export function UpdateAttendanceDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {attendanceLocked && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {attendanceLockMessage(employeeDetail.status)}
+            </p>
+          )}
           {employeeDetail && (
             <EmployeeAvatar
               fullName={employeeDetail.fullName}
@@ -420,7 +438,11 @@ export function UpdateAttendanceDialog({
           </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={mutation.isPending || (!checkIn && !statusOverride)}
+            disabled={
+              mutation.isPending ||
+              attendanceLocked ||
+              (!checkIn && !statusOverride)
+            }
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Saving...' : 'Save Changes'}

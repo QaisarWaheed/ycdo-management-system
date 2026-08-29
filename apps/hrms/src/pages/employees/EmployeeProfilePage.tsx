@@ -17,6 +17,10 @@ import {
 } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
+import {
+  attendanceLockMessage,
+  isEmployeeEligibleForAttendance,
+} from '@/lib/attendanceEligibility'
 import { AttendanceStatusBadge } from '@/components/attendance/AttendanceStatusBadge'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
@@ -713,6 +717,8 @@ export function EmployeeProfilePage() {
   )
   const monthPayrollPaid = monthPayroll.some((entry) => entry.status === 'PAID')
   const canEditAttendance = hasRole([...ATTENDANCE_EDIT_ROLES])
+  const attendanceUnlocked = isEmployeeEligibleForAttendance(employee?.status)
+  const canUpdateAttendance = canEditAttendance && attendanceUnlocked
 
   const { data: leaves = [], isLoading: loadingLeaves } = useQuery({
     queryKey: ['leave', id],
@@ -1874,6 +1880,11 @@ export function EmployeeProfilePage() {
               <CardTitle className="text-lg">Attendance Log</CardTitle>
             </CardHeader>
             <CardContent>
+              {!attendanceUnlocked && (
+                <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {attendanceLockMessage(employee.status)}
+                </p>
+              )}
               {loadingLogs ? (
                 <div className="space-y-2">
                   {[...Array(5)].map((_, i) => (
@@ -1890,14 +1901,14 @@ export function EmployeeProfilePage() {
                       <TableHead>Status</TableHead>
                       <TableHead>Late Min</TableHead>
                       <TableHead>Source</TableHead>
-                      {canEditAttendance && <TableHead>Actions</TableHead>}
+                      {canUpdateAttendance && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {attendanceLogs.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={canEditAttendance ? 7 : 6}
+                          colSpan={canUpdateAttendance ? 7 : 6}
                           className="text-text-secondary"
                         >
                           No attendance records
@@ -1927,7 +1938,7 @@ export function EmployeeProfilePage() {
                           </TableCell>
                           <TableCell>{log.lateMinutes ?? 0}</TableCell>
                           <TableCell>{log.source ?? '—'}</TableCell>
-                          {canEditAttendance && (
+                          {canUpdateAttendance && (
                             <TableCell>
                               <Button
                                 variant="outline"

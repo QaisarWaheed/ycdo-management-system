@@ -655,6 +655,7 @@ export interface AttendanceLog {
     dutyStartTime?: string | null
     dutyEndTime?: string | null
     relieverOnly?: boolean
+    status?: string
     shift?: { name?: string; startTime?: string; endTime?: string } | null
     user?: {
       role?: string

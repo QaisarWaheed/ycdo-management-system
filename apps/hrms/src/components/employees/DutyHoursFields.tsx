@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { isValidDutyTotalHours } from '@/lib/dutyHours'
 import { dutyTimeOptions } from '@/lib/dutyTimes'
 
 type DutyHoursFieldsProps = {
@@ -30,6 +32,19 @@ export function DutyHoursFields({
   onStartTimeChange,
   onEndTimeChange,
 }: DutyHoursFieldsProps) {
+  const [hoursDraft, setHoursDraft] = useState(
+    totalHours === '' ? '' : String(totalHours),
+  )
+
+  useEffect(() => {
+    setHoursDraft(totalHours === '' ? '' : String(totalHours))
+  }, [totalHours])
+
+  const hoursInvalid =
+    hoursDraft !== '' &&
+    !hoursDraft.endsWith('.') &&
+    !isValidDutyTotalHours(Number(hoursDraft))
+
   const is24Hours = totalHours === 24
 
   const startTimeLabels = dutyTimeOptions.map((opt) => opt.label)
@@ -43,15 +58,21 @@ export function DutyHoursFields({
         <Label className="text-text-secondary">Total Daily Hours</Label>
         <div className="flex items-center gap-2">
           <Input
-            type="number"
-            min={0.5}
-            max={24}
-            step={0.5}
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
             placeholder="e.g. 6.5"
-            value={totalHours}
+            value={hoursDraft}
             onChange={(e) => {
-              const val = e.target.value
-              const next = val === '' ? '' : Number(val)
+              const raw = e.target.value.replace(',', '.')
+              if (raw !== '' && !/^\d{0,2}(\.\d{0,2})?$/.test(raw)) return
+              setHoursDraft(raw)
+              if (raw === '' || raw.endsWith('.')) {
+                if (raw === '') onTotalHoursChange('')
+                return
+              }
+              const next = Number(raw)
+              if (!Number.isFinite(next)) return
               onTotalHoursChange(next)
               if (next === 24) {
                 onStartTimeChange('00:00')
@@ -63,8 +84,13 @@ export function DutyHoursFields({
           <span className="text-sm text-text-secondary">hours/day</span>
         </div>
         <p className="text-xs text-text-secondary">
-          Use decimals for half hours, e.g. 6.5 for 6 hours 30 minutes.
+          Type 6.5 for 6 hours 30 minutes (half-hour steps only).
         </p>
+        {hoursInvalid ? (
+          <p className="text-xs text-red-600">
+            Enter a value from 0.5 to 24 in half-hour steps (5, 5.5, 6, 6.5).
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-2">

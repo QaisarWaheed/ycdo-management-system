@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
+import { isValidDutyTotalHours } from '@/lib/dutyHours'
 import { formatEmployeeShiftDisplay } from '@/lib/dutyTimes'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
@@ -224,7 +225,22 @@ export function UpdateBranchDutyDialog({
           <Button
             className="bg-primary hover:bg-primary-dark"
             disabled={mutation.isPending}
-            onClick={() => mutation.mutate()}
+            onClick={() => {
+              if (
+                !relieverOnly &&
+                dutyTotalHours !== '' &&
+                !isValidDutyTotalHours(Number(dutyTotalHours))
+              ) {
+                toast({
+                  title: 'Invalid duty hours',
+                  description:
+                    'Use half-hour steps from 0.5 to 24, e.g. 5.5 or 6.5.',
+                  variant: 'destructive',
+                })
+                return
+              }
+              mutation.mutate()
+            }}
           >
             {mutation.isPending ? 'Saving...' : 'Save Changes'}
           </Button>
