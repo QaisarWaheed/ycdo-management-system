@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { AttendanceLogType, EmployeeStatus } from '@prisma/client';
+import { AttendanceLogType } from '@prisma/client';
 import { getDutyWindow } from '../../common/duty.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ATTENDANCE_ELIGIBLE_STATUS_WHERE } from './attendance-eligibility.util';
 import { toPakistanDateOnly } from './attendance-late.util';
 
 const OT_CHECKIN_PROMPT_TYPE = 'OVERTIME_CHECKIN_PROMPT';
@@ -48,7 +49,7 @@ export class ShiftCheckoutScheduler {
 
     const employees = await this.prisma.employee.findMany({
       where: {
-        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.TRAINEE] },
+        ...ATTENDANCE_ELIGIBLE_STATUS_WHERE,
         relieverOnly: false,
         dutyStartTime: { not: null },
         dutyEndTime: { not: null },

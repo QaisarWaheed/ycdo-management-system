@@ -375,7 +375,10 @@ describe('InquiryDecisionService', () => {
     );
     expect(tx.employee.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { status: EmployeeStatus.ACTIVE },
+        data: expect.objectContaining({
+          status: EmployeeStatus.ACTIVE,
+          suspensionWatchBaselineOn: expect.any(Date),
+        }),
       }),
     );
     expect(tx.user.updateMany).toHaveBeenCalledWith(
@@ -434,7 +437,10 @@ describe('InquiryDecisionService', () => {
     );
     expect(tx.employee.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { status: EmployeeStatus.ACTIVE },
+        data: expect.objectContaining({
+          status: EmployeeStatus.ACTIVE,
+          suspensionWatchBaselineOn: expect.any(Date),
+        }),
       }),
     );
   });

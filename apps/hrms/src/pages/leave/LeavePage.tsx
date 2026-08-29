@@ -292,6 +292,7 @@ function HRAssignRelieverDialog({
               setSelectedReliever(emp)
             }}
             excludeIds={leave.employeeId ? [leave.employeeId] : []}
+            statuses="ACTIVE,TRAINEE"
           />
           {selectedReliever?.shift && (
             <p className="text-sm">
@@ -707,6 +708,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
                   setRelieverId('')
                   setSelectedReliever(undefined)
                 }}
+                statuses="ACTIVE,TRAINEE"
               />
               <FormMessage />
             </FormItem>
@@ -831,6 +833,7 @@ function ApplyLeaveTab({ onSuccess }: { onSuccess: () => void }) {
                 setSelectedReliever(emp)
               }}
               excludeIds={selectedEmployeeId ? [selectedEmployeeId] : []}
+              statuses="ACTIVE,TRAINEE"
             />
             <p className="text-xs text-text-secondary">
               Preferred reliever is saved with the leave request and notified after

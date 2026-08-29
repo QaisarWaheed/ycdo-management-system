@@ -16,6 +16,8 @@ interface EmployeeSearchSelectProps {
   placeholder?: string
   className?: string
   excludeIds?: string[]
+  /** Comma-separated employee statuses; omit to search all statuses. */
+  statuses?: string
 }
 
 export function EmployeeSearchSelect({
@@ -25,6 +27,7 @@ export function EmployeeSearchSelect({
   placeholder = 'Search by name or code...',
   className,
   excludeIds,
+  statuses,
 }: EmployeeSearchSelectProps) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
@@ -33,11 +36,12 @@ export function EmployeeSearchSelect({
   const debouncedSearch = useDebounce(search, 400)
 
   const { data: employees = [], isLoading } = useQuery({
-    queryKey: ['employees-search', debouncedSearch],
+    queryKey: ['employees-search', debouncedSearch, statuses],
     queryFn: () =>
-      employeesApi.getAll(
-        debouncedSearch ? { search: debouncedSearch } : {},
-      ),
+      employeesApi.getAll({
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+        ...(statuses ? { statuses } : {}),
+      }),
     enabled: open || !!debouncedSearch,
   })
 

@@ -110,6 +110,11 @@ import {
 import { buildSuspensionWatchlist } from './suspension-watchlist';
 import { issueDueSuspensionEligibilityNotices } from './suspension-eligibility-notice';
 import { issueNearSuspensionWarnings } from './near-suspension-warning';
+import {
+  assertEmployeeEligibleForAttendance,
+  ATTENDANCE_ELIGIBLE_STATUS_WHERE,
+  isEmployeeEligibleForAttendance,
+} from './attendance-eligibility.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
 const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
@@ -192,12 +197,7 @@ export class AttendanceService {
       );
     }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.TRAINEE
-    ) {
-      throw new BadRequestException('Employee is not active');
-    }
+    assertEmployeeEligibleForAttendance(employee);
 
     if (!dto.punchType) {
       throw new BadRequestException(
@@ -283,12 +283,7 @@ export class AttendanceService {
       );
     }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.TRAINEE
-    ) {
-      throw new BadRequestException('Employee is not active');
-    }
+    assertEmployeeEligibleForAttendance(employee);
 
     const device = await this.prisma.biometricDevice.findUnique({
       where: { deviceId: dto.deviceId },
@@ -423,6 +418,7 @@ export class AttendanceService {
   private async processResolvedPunch(
     employee: {
       id: string;
+      status: EmployeeStatus;
       dutyStartTime?: string | null;
       dutyEndTime?: string | null;
       shift: { startTime: string; endTime: string } | null;
@@ -439,6 +435,7 @@ export class AttendanceService {
     twentyFourHour: boolean,
     db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
+    assertEmployeeEligibleForAttendance(employee);
     let punchType = initialPunchType;
 
     // AUTO: no usable status — open REGULAR session → checkout, else check-in.
@@ -1063,12 +1060,7 @@ export class AttendanceService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.TRAINEE
-    ) {
-      throw new BadRequestException('Employee is not active');
-    }
+    assertEmployeeEligibleForAttendance(employee);
 
     const checkTime = new Date();
     const twentyFourHour = is24HourShift(employee);
@@ -1120,12 +1112,7 @@ export class AttendanceService {
       );
     }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.APPOINTED
-    ) {
-      throw new BadRequestException('Employee is not active');
-    }
+    assertEmployeeEligibleForAttendance(employee);
 
     if (isMedicineManagerRole(actingUser.role)) {
       if (!assertEmployeeInMedicineScope(employee)) {
@@ -1389,11 +1376,16 @@ export class AttendanceService {
     dto: ApproveOvertimeDto,
     actingUserId: string,
   ) {
-    const log = await this.prisma.attendanceLog.findUnique({ where: { id } });
+    const log = await this.prisma.attendanceLog.findUnique({
+      where: { id },
+      include: { employee: { select: { status: true } } },
+    });
 
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
+
+    assertEmployeeEligibleForAttendance(log.employee);
 
     return this.prisma.attendanceLog.update({
       where: { id },
@@ -1435,6 +1427,7 @@ export class AttendanceService {
             dutyStartTime: true,
             dutyEndTime: true,
             dutyTotalHours: true,
+            status: true,
             currentDesignation: true,
             currentDepartment: { select: { name: true } },
             shift: { select: { name: true, startTime: true, endTime: true } },
@@ -1447,6 +1440,8 @@ export class AttendanceService {
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
+
+    assertEmployeeEligibleForAttendance(log.employee);
 
     await this.accessScopeService.assertEmployeeAccess(
       actingUser.id,
@@ -1946,7 +1941,7 @@ export class AttendanceService {
 
     const employees = await this.prisma.employee.findMany({
       where: {
-        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        ...ATTENDANCE_ELIGIBLE_STATUS_WHERE,
         relieverOnly: false,
         ...(employeeWhere ?? {}),
       },
@@ -2114,7 +2109,7 @@ export class AttendanceService {
     const employees = await this.prisma.employee.findMany({
       where: {
         shiftId,
-        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        ...ATTENDANCE_ELIGIBLE_STATUS_WHERE,
         ...(employeeWhere ?? {}),
       },
       select: {
@@ -2210,10 +2205,12 @@ export class AttendanceService {
         dutyStartTime: true,
         dutyEndTime: true,
         joiningDate: true,
+        status: true,
         shift: { select: { startTime: true, endTime: true } },
       },
     });
     if (!employee) return;
+    if (!isEmployeeEligibleForAttendance(employee.status)) return;
 
     const dutyStart =
       employee.dutyStartTime?.trim() ||
@@ -2726,13 +2723,7 @@ export class AttendanceService {
     if (!employee) {
       throw new NotFoundException(`Employee with id ${dto.employeeId} not found`);
     }
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.APPOINTED &&
-      employee.status !== EmployeeStatus.TRAINEE
-    ) {
-      throw new BadRequestException('Reliever employee is not active');
-    }
+    assertEmployeeEligibleForAttendance(employee);
 
     const openSession = await this.prisma.relieverSession.findFirst({
       where: {
@@ -2787,10 +2778,12 @@ export class AttendanceService {
   ) {
     const session = await this.prisma.relieverSession.findUnique({
       where: { id: dto.sessionId },
+      include: { employee: { select: { status: true } } },
     });
     if (!session) {
       throw new NotFoundException(`Reliever session ${dto.sessionId} not found`);
     }
+    assertEmployeeEligibleForAttendance(session.employee);
     if (!session.checkIn) {
       throw new BadRequestException('Session has no check-in');
     }
@@ -2867,10 +2860,12 @@ export class AttendanceService {
 
     const session = await this.prisma.relieverSession.findUnique({
       where: { id: sessionId },
+      include: { employee: { select: { status: true } } },
     });
     if (!session) {
       throw new NotFoundException(`Reliever session ${sessionId} not found`);
     }
+    assertEmployeeEligibleForAttendance(session.employee);
 
     const effectiveCheckIn = dto.checkIn
       ? parseAttendanceDateTime(dto.checkIn)
@@ -3074,7 +3069,7 @@ export class AttendanceService {
 
     const activeEmployees = await this.prisma.employee.findMany({
       where: {
-        status: EmployeeStatus.ACTIVE,
+        ...ATTENDANCE_ELIGIBLE_STATUS_WHERE,
         relieverOnly: false,
         shiftId: { not: null },
       },
@@ -3256,6 +3251,8 @@ export class AttendanceService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
+    assertEmployeeEligibleForAttendance(employee);
+
     const branchLocation = employee.currentBranch.location;
     if (!branchLocation) {
       throw new BadRequestException(
@@ -3401,6 +3398,8 @@ export class AttendanceService {
     if (!employee) {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
+
+    assertEmployeeEligibleForAttendance(employee);
 
     const branchLocation = employee.currentBranch.location;
     if (!branchLocation) {
@@ -3826,6 +3825,7 @@ export class AttendanceService {
       where: { id: dto.employeeId },
       select: {
         currentBranchId: true,
+        status: true,
         dutyStartTime: true,
         dutyEndTime: true,
         shift: { select: { startTime: true, endTime: true } },
@@ -3837,6 +3837,8 @@ export class AttendanceService {
         `Employee with id ${dto.employeeId} not found`,
       );
     }
+
+    assertEmployeeEligibleForAttendance(employee);
 
     if (!employee.currentBranchId && !existing) {
       throw new BadRequestException(

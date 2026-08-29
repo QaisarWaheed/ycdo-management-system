@@ -3,8 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EmployeeStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { assertEmployeeEligibleForAttendance } from '../attendance/attendance-eligibility.util';
 import { CreateAdditionalWorkingDayDto } from './additional-working-days.dto';
 
 export const RELIEVER_AWD_NOTE = 'Reliever duty';
@@ -20,15 +20,7 @@ export class AdditionalWorkingDaysService {
     if (!employee) {
       throw new NotFoundException(`Employee with id ${dto.employeeId} not found`);
     }
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.APPOINTED &&
-      employee.status !== EmployeeStatus.TRAINEE
-    ) {
-      throw new BadRequestException(
-        'Additional working days can only be added for active, appointed, or trainee employees',
-      );
-    }
+    assertEmployeeEligibleForAttendance(employee);
 
     const date = this.toDateOnly(dto.date);
 
@@ -87,6 +79,17 @@ export class AdditionalWorkingDaysService {
     if (existing) {
       return existing;
     }
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: params.employeeId },
+      select: { status: true },
+    });
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with id ${params.employeeId} not found`,
+      );
+    }
+    assertEmployeeEligibleForAttendance(employee);
 
     try {
       return await this.prisma.additionalWorkingDay.create({

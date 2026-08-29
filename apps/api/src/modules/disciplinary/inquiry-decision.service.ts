@@ -24,6 +24,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { hasAnyRole } from '../../common/user-roles.util';
 import { LettersService } from '../letters/letters.service';
+import { suspensionInquiryReinstatementData } from '../attendance/suspension-watch-baseline.util';
 import {
   SUSPENSION_PREPARE_ROLES,
   SuspensionRequestService,
@@ -426,7 +427,7 @@ export class InquiryDecisionService {
       result.employeeStatus = EmployeeStatus.ACTIVE;
       await tx.employee.update({
         where: { id: employee.id },
-        data: { status: EmployeeStatus.ACTIVE },
+        data: suspensionInquiryReinstatementData(now),
       });
       await tx.user.updateMany({
         where: { employeeId: employee.id },
@@ -488,7 +489,7 @@ export class InquiryDecisionService {
       result.employeeStatus = EmployeeStatus.ACTIVE;
       await tx.employee.update({
         where: { id: employee.id },
-        data: { status: EmployeeStatus.ACTIVE },
+        data: suspensionInquiryReinstatementData(now),
       });
       await tx.user.updateMany({
         where: { employeeId: employee.id },

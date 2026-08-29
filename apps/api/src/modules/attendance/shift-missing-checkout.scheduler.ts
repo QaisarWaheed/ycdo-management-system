@@ -4,6 +4,7 @@ import { AttendanceLogType } from '@prisma/client';
 import { resolveAttendanceDutyTimes } from '../../common/duty.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollService } from '../payroll/payroll.service';
+import { isEmployeeEligibleForAttendance } from './attendance-eligibility.util';
 import { is24HourShift, isOvernightShift } from './attendance-biometric.util';
 import {
   applyMissingCheckoutDiscipline,
@@ -136,6 +137,7 @@ export class ShiftMissingCheckoutScheduler {
             dutyStartTime: true,
             dutyEndTime: true,
             dutyTotalHours: true,
+            status: true,
             shift: { select: { name: true, startTime: true, endTime: true } },
           },
         },
@@ -146,6 +148,7 @@ export class ShiftMissingCheckoutScheduler {
 
     for (const log of openLogs) {
       const employee = log.employee;
+      if (!isEmployeeEligibleForAttendance(employee.status)) continue;
       const duty = resolveAttendanceDutyTimes(log, employee);
       const evaluation = evaluateMissingCheckoutEligibility(
         employee,

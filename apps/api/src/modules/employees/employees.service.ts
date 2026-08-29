@@ -1879,7 +1879,6 @@ export class EmployeesService {
         status: {
           in: [
             EmployeeStatus.ACTIVE,
-            EmployeeStatus.APPOINTED,
             EmployeeStatus.TRAINEE,
           ],
         },

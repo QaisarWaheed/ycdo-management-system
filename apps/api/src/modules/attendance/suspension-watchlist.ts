@@ -1,6 +1,7 @@
 import { AttendanceStatus, EmployeeStatus, Prisma } from '@prisma/client';
 import { pakistanMonthDateRange } from './attendance-calendar.util';
 import { BRANCH_LABEL_SELECT } from '../../common/branch-select.util';
+import { countsTowardSuspensionWatch } from './suspension-watch-baseline.util';
 
 export type SuspensionWatchReason =
   | 'LATE_NEAR'
@@ -32,10 +33,10 @@ export type SuspensionWatchlistResult = {
   counts: { near: number; due: number };
 };
 
-const EXCLUDED_STATUSES: EmployeeStatus[] = [
-  EmployeeStatus.TERMINATED,
-  EmployeeStatus.RESIGNED,
-  EmployeeStatus.DISMISSED,
+/** Near/Due lists evaluate only working staff who can still be suspended. */
+export const SUSPENSION_WATCHLIST_STATUSES: EmployeeStatus[] = [
+  EmployeeStatus.ACTIVE,
+  EmployeeStatus.SUSPENDED,
 ];
 
 function dayKey(date: Date): string {
@@ -95,7 +96,7 @@ export async function buildSuspensionWatchlist(
   const logs = await db.attendanceLog.findMany({
     where: {
       date: { gte: start, lte: end },
-      employee: { status: { notIn: EXCLUDED_STATUSES } },
+      employee: { status: { in: SUSPENSION_WATCHLIST_STATUSES } },
       OR: [
         { status: AttendanceStatus.LATE },
         {
@@ -116,31 +117,45 @@ export async function buildSuspensionWatchlist(
 
   const lateDaysByEmployee = new Map<string, Set<string>>();
   const uaDaysByEmployee = new Map<string, Set<string>>();
+  const logsByEmployee = new Map<string, typeof logs>();
 
   for (const row of logs) {
-    const key = dayKey(row.date);
-    if (row.status === AttendanceStatus.UNINFORMED_ABSENT) {
-      if (!uaDaysByEmployee.has(row.employeeId)) {
-        uaDaysByEmployee.set(row.employeeId, new Set());
-      }
-      uaDaysByEmployee.get(row.employeeId)!.add(key);
-      continue;
+    if (!logsByEmployee.has(row.employeeId)) {
+      logsByEmployee.set(row.employeeId, []);
     }
-    if (
-      row.status === AttendanceStatus.LATE ||
-      isLateDrivenHalfDay(row)
-    ) {
-      if (!lateDaysByEmployee.has(row.employeeId)) {
-        lateDaysByEmployee.set(row.employeeId, new Set());
-      }
-      lateDaysByEmployee.get(row.employeeId)!.add(key);
-    }
+    logsByEmployee.get(row.employeeId)!.push(row);
   }
 
-  const candidateIds = new Set<string>([
-    ...lateDaysByEmployee.keys(),
-    ...uaDaysByEmployee.keys(),
-  ]);
+  const candidateIds = [...logsByEmployee.keys()];
+  if (candidateIds.length === 0) {
+    return {
+      month: monthLabel,
+      year,
+      monthNumber: month,
+      near: [],
+      due: [],
+      counts: { near: 0, due: 0 },
+    };
+  }
+
+  const employees = await db.employee.findMany({
+    where: {
+      id: { in: candidateIds },
+      status: { in: SUSPENSION_WATCHLIST_STATUSES },
+    },
+    select: {
+      id: true,
+      fullName: true,
+      employeeCode: true,
+      biometricId: true,
+      phone: true,
+      currentBranchId: true,
+      currentBranch: { select: BRANCH_LABEL_SELECT },
+      status: true,
+      suspensionWatchBaselineOn: true,
+    },
+  });
+  const byId = new Map(employees.map((e) => [e.id, e]));
 
   const nearIds: string[] = [];
   const dueIds: string[] = [];
@@ -156,9 +171,31 @@ export async function buildSuspensionWatchlist(
     }
   >();
 
-  for (const employeeId of candidateIds) {
-    const lateDays = lateDaysByEmployee.get(employeeId)?.size ?? 0;
-    const uninformedAbsentDays = uaDaysByEmployee.get(employeeId)?.size ?? 0;
+  for (const emp of employees) {
+    const baseline = emp.suspensionWatchBaselineOn;
+    for (const row of logsByEmployee.get(emp.id) ?? []) {
+      if (!countsTowardSuspensionWatch(row.date, baseline)) continue;
+      const key = dayKey(row.date);
+      if (row.status === AttendanceStatus.UNINFORMED_ABSENT) {
+        if (!uaDaysByEmployee.has(row.employeeId)) {
+          uaDaysByEmployee.set(row.employeeId, new Set());
+        }
+        uaDaysByEmployee.get(row.employeeId)!.add(key);
+        continue;
+      }
+      if (
+        row.status === AttendanceStatus.LATE ||
+        isLateDrivenHalfDay(row)
+      ) {
+        if (!lateDaysByEmployee.has(row.employeeId)) {
+          lateDaysByEmployee.set(row.employeeId, new Set());
+        }
+        lateDaysByEmployee.get(row.employeeId)!.add(key);
+      }
+    }
+
+    const lateDays = lateDaysByEmployee.get(emp.id)?.size ?? 0;
+    const uninformedAbsentDays = uaDaysByEmployee.get(emp.id)?.size ?? 0;
     const bucket = classifySuspensionWatchBucket(
       lateDays,
       uninformedAbsentDays,
@@ -166,22 +203,21 @@ export async function buildSuspensionWatchlist(
     if (!bucket) continue;
 
     const reasons = suspensionWatchReasons(lateDays, uninformedAbsentDays);
-    meta.set(employeeId, {
+    meta.set(emp.id, {
       lateDays,
       uninformedAbsentDays,
-      lateDates: [...(lateDaysByEmployee.get(employeeId) ?? [])].sort(),
+      lateDates: [...(lateDaysByEmployee.get(emp.id) ?? [])].sort(),
       uninformedAbsentDates: [
-        ...(uaDaysByEmployee.get(employeeId) ?? []),
+        ...(uaDaysByEmployee.get(emp.id) ?? []),
       ].sort(),
       reasons,
       bucket,
     });
-    if (bucket === 'due') dueIds.push(employeeId);
-    else nearIds.push(employeeId);
+    if (bucket === 'due') dueIds.push(emp.id);
+    else nearIds.push(emp.id);
   }
 
-  const allIds = [...nearIds, ...dueIds];
-  if (allIds.length === 0) {
+  if (nearIds.length === 0 && dueIds.length === 0) {
     return {
       month: monthLabel,
       year,
@@ -191,20 +227,6 @@ export async function buildSuspensionWatchlist(
       counts: { near: 0, due: 0 },
     };
   }
-
-  const employees = await db.employee.findMany({
-    where: { id: { in: allIds } },
-    select: {
-      id: true,
-      fullName: true,
-      employeeCode: true,
-      biometricId: true,
-      phone: true,
-      currentBranchId: true,
-      currentBranch: { select: BRANCH_LABEL_SELECT },
-    },
-  });
-  const byId = new Map(employees.map((e) => [e.id, e]));
 
   const toEntry = (employeeId: string): SuspensionWatchlistEntry | null => {
     const emp = byId.get(employeeId);

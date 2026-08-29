@@ -196,6 +196,7 @@ function CreateSwapDialog({
             label="Employee Being Covered"
             value={coveredEmployeeId}
             onChange={handleCoveredChange}
+            statuses="ACTIVE,TRAINEE"
           />
           {coveredEmployee && (
             <p className="text-sm text-text-secondary">

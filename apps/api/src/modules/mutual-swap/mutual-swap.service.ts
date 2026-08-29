@@ -10,6 +10,7 @@ import {
   toPakistanDateOnly,
 } from '../attendance/attendance-late.util';
 import { reconcileAttendanceFinancialConsequences } from '../attendance/discipline.helper';
+import { assertEmployeeEligibleForAttendance } from '../attendance/attendance-eligibility.util';
 import { CreateMutualSwapDto } from './mutual-swap.dto';
 
 /** Normalize "09:00:00" / "09:00" → "09:00" for exact string match. */
@@ -56,6 +57,9 @@ export class MutualSwapService {
     if (!coveredEmployee?.shiftId || !coveredEmployee.shift) {
       throw new BadRequestException('Covered employee has no shift assigned');
     }
+
+    assertEmployeeEligibleForAttendance(coveringEmployee);
+    assertEmployeeEligibleForAttendance(coveredEmployee);
 
     if (
       coveringEmployee.currentDepartmentId !==
@@ -281,7 +285,7 @@ export class MutualSwapService {
     const allEmployees = await this.prisma.employee.findMany({
       where: {
         currentBranchId: coveredEmployee.currentBranchId,
-        status: { in: ['ACTIVE', 'APPOINTED'] },
+        status: { in: ['ACTIVE', 'TRAINEE'] },
         id: { not: coveredEmployeeId },
         shiftId: { not: null },
       },

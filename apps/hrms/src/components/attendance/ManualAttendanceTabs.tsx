@@ -330,6 +330,7 @@ export function CheckInManualTab() {
         ...(effectiveDepartmentId
           ? { departmentId: effectiveDepartmentId }
           : {}),
+        statuses: 'ACTIVE,TRAINEE',
       }),
     enabled: !!effectiveBranchId,
   })
@@ -371,7 +372,7 @@ export function CheckInManualTab() {
           ...(effectiveDepartmentId
             ? { departmentId: effectiveDepartmentId }
             : {}),
-          status: 'ACTIVE',
+          statuses: 'ACTIVE,TRAINEE',
         }),
         attendanceApi.getAll({
           startDate: today,
@@ -719,6 +720,7 @@ export function CheckOutManualTab() {
         ...(effectiveDepartmentId
           ? { departmentId: effectiveDepartmentId }
           : {}),
+        statuses: 'ACTIVE,TRAINEE',
       }),
     enabled: !!effectiveBranchId,
   })
@@ -1017,7 +1019,7 @@ export function MarkLeaveManualTab() {
         ...(effectiveDepartmentId
           ? { departmentId: effectiveDepartmentId }
           : {}),
-        status: 'ACTIVE',
+        statuses: 'ACTIVE,TRAINEE',
       }),
     enabled: !!effectiveBranchId,
   })
@@ -1169,6 +1171,7 @@ export function MarkLeaveManualTab() {
               setRelieverId(id)
               setSelectedReliever(emp)
             }}
+            statuses="ACTIVE,TRAINEE"
           />
           <p className="text-xs text-text-secondary">
             Assign a covering employee when marking leave.
