@@ -4,6 +4,7 @@ import { PermissionsModule } from '../permissions/permissions.module';
 import { PayrollModule } from '../payroll/payroll.module';
 import { LettersModule } from '../letters/letters.module';
 import { DisciplinaryModule } from '../disciplinary/disciplinary.module';
+import { AdditionalWorkingDaysModule } from '../additional-working-days/additional-working-days.module';
 import { AttendanceController } from './attendance.controller';
 import { AttendanceService } from './attendance.service';
 import { ShiftAbsentScheduler } from './shift-absent.scheduler';
@@ -19,6 +20,7 @@ import { SuspensionEligibilityNoticeScheduler } from './suspension-eligibility-n
     PayrollModule,
     LettersModule,
     DisciplinaryModule,
+    AdditionalWorkingDaysModule,
   ],
   controllers: [AttendanceController],
   providers: [

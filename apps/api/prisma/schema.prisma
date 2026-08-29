@@ -319,8 +319,9 @@ model RelieverSession {
   totalMinutes Int       @default(0)
   createdAt    DateTime  @default(now())
 
-  employee Employee @relation(fields: [employeeId], references: [id])
-  branch   Branch   @relation(fields: [branchId], references: [id])
+  employee              Employee               @relation(fields: [employeeId], references: [id])
+  branch                Branch                 @relation(fields: [branchId], references: [id])
+  additionalWorkingDay  AdditionalWorkingDay?
 }
 
 // ─── DESIGNATIONS ───────────────────────────────────────────
@@ -1044,16 +1045,19 @@ model Incentive {
 /// Extra full duty-days credited by HR (e.g. covering double duty).
 /// Payroll: days in month × dailyDutyHours × hourlyRate as separate slip line.
 model AdditionalWorkingDay {
-  id         String   @id @default(uuid())
-  employeeId String
-  date       DateTime @db.Date
-  note       String?
-  addedById  String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                String   @id @default(uuid())
+  employeeId        String
+  date              DateTime @db.Date
+  note              String?
+  addedById         String
+  /// Set when auto-created from a completed RelieverSession (profile only; pay via RELIEVER).
+  relieverSessionId String?  @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  addedBy  User     @relation(fields: [addedById], references: [id])
+  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  addedBy         User             @relation(fields: [addedById], references: [id])
+  relieverSession RelieverSession? @relation(fields: [relieverSessionId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, date])
   @@index([employeeId, date])

@@ -1615,6 +1615,7 @@ export class PayrollService {
     const dayRows = await this.prisma.additionalWorkingDay.findMany({
       where: {
         employeeId,
+        relieverSessionId: null,
         date: {
           gte: segmentStart,
           lte: monthEnd,

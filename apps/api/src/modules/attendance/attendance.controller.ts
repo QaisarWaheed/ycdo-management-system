@@ -186,8 +186,11 @@ export class AttendanceController {
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  relieverCheckOut(@Body() dto: RelieverCheckOutDto) {
-    return this.attendanceService.relieverCheckOut(dto);
+  relieverCheckOut(
+    @Body() dto: RelieverCheckOutDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.attendanceService.relieverCheckOut(dto, user.id);
   }
 
   /** HR correction to an existing session's recorded checkIn/checkOut. */

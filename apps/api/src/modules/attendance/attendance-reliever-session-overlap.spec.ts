@@ -83,6 +83,9 @@ function makeService(opts: {
     permissionsService as any,
     accessScopeService as any,
     payrollService as any,
+    {} as any,
+    {} as any,
+    { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
   );
 
   return { service, prisma, tx, findManyCall };
@@ -275,7 +278,15 @@ describe('AttendanceService.updateRelieverSession — overlap validation', () =>
       $transaction: jest.fn(async (cb: any) => cb(tx)),
     };
     const payrollService = { recomputePendingPayrollForAttendanceDate: jest.fn().mockResolvedValue(undefined) };
-    const service = new AttendanceService(prisma as any, {} as any, {} as any, payrollService as any);
+    const service = new AttendanceService(
+      prisma as any,
+      {} as any,
+      {} as any,
+      payrollService as any,
+      {} as any,
+      {} as any,
+      { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
+    );
 
     await service.updateRelieverSession(
       SESSION_ID,

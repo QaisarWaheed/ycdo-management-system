@@ -6,6 +6,7 @@ export type AdditionalWorkingDay = {
   date: string
   note: string | null
   addedById: string
+  relieverSessionId?: string | null
   createdAt: string
   updatedAt: string
   addedBy?: { id: string; email: string }

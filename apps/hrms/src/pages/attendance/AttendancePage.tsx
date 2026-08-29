@@ -836,7 +836,8 @@ function RelieverSessionsTab() {
       queryClient.invalidateQueries({ queryKey: ['reliever-sessions'] })
       toast({
         title: 'Reliever checked out',
-        description: 'Extra Duty recorded as Additional Working Day',
+        description:
+          'Reliever duty recorded. It will appear on the employee profile under Additional working days; pay is via the Reliever allowance.',
       })
       setActionId(null)
     },

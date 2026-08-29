@@ -6,6 +6,7 @@ import {
   additionalWorkingDaysApi,
   type AdditionalWorkingDay,
 } from '@/api/endpoints/additionalWorkingDays'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,10 @@ type Props = {
   canEdit?: boolean
 }
 
+function isRelieverRow(row: AdditionalWorkingDay) {
+  return !!row.relieverSessionId
+}
+
 export function AdditionalWorkingDaysTab({
   employeeId,
   dailyDutyHours,
@@ -44,10 +49,19 @@ export function AdditionalWorkingDaysTab({
 
   const hoursPerDay = dailyDutyHours && dailyDutyHours > 0 ? dailyDutyHours : 8
 
-  const totalDays = data.length
-  const totalHours = useMemo(
-    () => totalDays * hoursPerDay,
-    [totalDays, hoursPerDay],
+  const manualRows = useMemo(
+    () => data.filter((row) => !isRelieverRow(row)),
+    [data],
+  )
+  const relieverRows = useMemo(
+    () => data.filter((row) => isRelieverRow(row)),
+    [data],
+  )
+
+  const payableDays = manualRows.length
+  const payableHours = useMemo(
+    () => payableDays * hoursPerDay,
+    [payableDays, hoursPerDay],
   )
 
   const createMutation = useMutation({
@@ -96,8 +110,10 @@ export function AdditionalWorkingDaysTab({
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">
-        Each day credits {hoursPerDay} duty hours on payroll as a separate
-        “Additional working days” line when payroll is generated for that month.
+        HR-added days credit {hoursPerDay} duty hours on payroll as
+        “Additional working days”. Reliever duty appears here automatically when
+        check-out completes; that pay uses the separate Reliever allowance
+        (actual hours worked).
       </p>
 
       {canEdit && (
@@ -150,7 +166,7 @@ export function AdditionalWorkingDaysTab({
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Hours credited</TableHead>
+                  <TableHead>Payroll</TableHead>
                   <TableHead>Note</TableHead>
                   <TableHead>Added by</TableHead>
                   {canEdit && <TableHead />}
@@ -168,38 +184,65 @@ export function AdditionalWorkingDaysTab({
                   </TableRow>
                 ) : (
                   <>
-                    {data.map((row: AdditionalWorkingDay) => (
-                      <TableRow key={row.id}>
-                        <TableCell>
-                          {format(new Date(row.date), 'dd/MM/yyyy')}
-                        </TableCell>
-                        <TableCell>{hoursPerDay}h</TableCell>
-                        <TableCell className="max-w-[280px] truncate">
-                          {row.note ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-sm text-text-secondary">
-                          {row.addedBy?.email ?? row.addedById.slice(0, 8)}
-                        </TableCell>
-                        {canEdit && (
+                    {data.map((row: AdditionalWorkingDay) => {
+                      const fromReliever = isRelieverRow(row)
+                      return (
+                        <TableRow key={row.id}>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={deleteMutation.isPending}
-                              onClick={() => deleteMutation.mutate(row.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                            {format(new Date(row.date), 'dd/MM/yyyy')}
                           </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
+                          <TableCell>
+                            {fromReliever ? (
+                              <span className="text-sm text-text-secondary">
+                                Reliever allowance
+                              </span>
+                            ) : (
+                              `${hoursPerDay}h (AWD line)`
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[280px]">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {fromReliever && (
+                                <Badge variant="secondary">From reliever</Badge>
+                              )}
+                              <span className="truncate">
+                                {row.note ?? '—'}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-text-secondary">
+                            {row.addedBy?.email ?? row.addedById.slice(0, 8)}
+                          </TableCell>
+                          {canEdit && (
+                            <TableCell>
+                              {!fromReliever && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={deleteMutation.isPending}
+                                  onClick={() => deleteMutation.mutate(row.id)}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              )}
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      )
+                    })}
                     <TableRow className="bg-surface font-semibold">
-                      <TableCell>Total</TableCell>
+                      <TableCell>Payroll total (manual)</TableCell>
                       <TableCell>
-                        {totalDays} day(s) · {totalHours}h
+                        {payableDays} day(s) · {payableHours}h
                       </TableCell>
-                      <TableCell colSpan={canEdit ? 3 : 2} />
+                      <TableCell colSpan={canEdit ? 3 : 2}>
+                        {relieverRows.length > 0 && (
+                          <span className="font-normal text-text-secondary">
+                            + {relieverRows.length} reliever day(s) listed for
+                            reference
+                          </span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   </>
                 )}

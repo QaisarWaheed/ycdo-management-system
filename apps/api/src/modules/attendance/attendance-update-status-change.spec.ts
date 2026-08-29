@@ -253,6 +253,9 @@ function makeLateStatusUpdateService() {
     { userHasPermission: jest.fn() } as any,
     accessScopeService as any,
     payrollService as any,
+    {} as any,
+    {} as any,
+    { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
   );
 
   return {

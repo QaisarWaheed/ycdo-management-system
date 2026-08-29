@@ -157,6 +157,7 @@ async function expectedAdditionalWorkingDaysAllowance(
   const dayRows = await prisma.additionalWorkingDay.findMany({
     where: {
       employeeId,
+      relieverSessionId: null,
       date: { gte: segmentStart, lte: monthEnd, ...(segmentEndExclusive ? { lt: segmentEndExclusive } : {}) },
     },
     select: { note: true },

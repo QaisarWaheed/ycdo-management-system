@@ -30,6 +30,7 @@ import { PayrollService } from '../payroll/payroll.service';
 import { LettersService } from '../letters/letters.service';
 import { summarizeAttendanceLogs } from './attendance-summary.util';
 import { DisciplinaryService } from '../disciplinary/disciplinary.service';
+import { AdditionalWorkingDaysService } from '../additional-working-days/additional-working-days.service';
 import {
   ApproveOvertimeDto,
   AttendanceQueryDto,
@@ -152,6 +153,7 @@ export class AttendanceService {
     private payrollService: PayrollService,
     private lettersService: LettersService,
     private disciplinaryService: DisciplinaryService,
+    private additionalWorkingDaysService: AdditionalWorkingDaysService,
   ) {}
 
   /**
@@ -2779,7 +2781,10 @@ export class AttendanceService {
     return session;
   }
 
-  async relieverCheckOut(dto: RelieverCheckOutDto) {
+  async relieverCheckOut(
+    dto: RelieverCheckOutDto,
+    addedById: string,
+  ) {
     const session = await this.prisma.relieverSession.findUnique({
       where: { id: dto.sessionId },
     });
@@ -2805,12 +2810,8 @@ export class AttendanceService {
       Math.round((checkOut.getTime() - session.checkIn.getTime()) / 60000),
     );
 
-    // Payroll derives reliever extra pay directly from RelieverSession rows
-    // (see PayrollService.upsertRelieverAllowanceRow) — actual non-overlapping
-    // minutes, not a flat AdditionalWorkingDay full-day rate. Recorded here
-    // only as the session's own checkOut/totalMinutes; no separate payroll
-    // side-effect is created at checkout time, so there is exactly one place
-    // (payroll generation/refresh) that ever computes the paid amount.
+    // Option A: show on Additional Working Days tab for HR visibility; pay stays
+    // on RelieverSession → RELIEVER allowance (not AWD full-day rate).
     const updated = await this.prisma.relieverSession.update({
       where: { id: session.id },
       data: { checkOut, totalMinutes },
@@ -2820,6 +2821,13 @@ export class AttendanceService {
         },
         branch: { select: BRANCH_LABEL_SELECT },
       },
+    });
+
+    await this.additionalWorkingDaysService.upsertFromRelieverSession({
+      relieverSessionId: updated.id,
+      employeeId: updated.employeeId,
+      date: updated.date,
+      addedById,
     });
 
     await this.payrollService.recomputePendingPayrollForAttendanceDate(
@@ -3005,6 +3013,15 @@ export class AttendanceService {
 
       return result;
     });
+
+    if (result.checkOut) {
+      await this.additionalWorkingDaysService.upsertFromRelieverSession({
+        relieverSessionId: result.id,
+        employeeId: result.employeeId,
+        date: result.date,
+        addedById: actingUser.id,
+      });
+    }
 
     await this.payrollService.recomputePendingPayrollForAttendanceDate(
       result.employeeId,

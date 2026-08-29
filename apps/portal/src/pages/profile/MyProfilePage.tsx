@@ -418,8 +418,9 @@ export function MyProfilePage() {
                 <div className="border-b border-border px-6 py-4">
                   <h3 className="font-semibold">Additional working days</h3>
                   <p className="text-sm text-text-secondary">
-                    Extra duty days credited by HR. Each day counts as{' '}
-                    {dutyHours} hours on payroll.
+                    Extra duty days credited by HR, plus reliever duty from
+                    attendance. HR-added days count as {dutyHours} hours on
+                    payroll; reliever days are paid via the Reliever allowance.
                   </p>
                 </div>
                 {loadingAdditionalDays ? (
@@ -449,22 +450,56 @@ export function MyProfilePage() {
                         </TableRow>
                       ) : (
                         <>
-                          {additionalDays.map((row) => (
-                            <TableRow key={row.id}>
-                              <TableCell>
-                                {format(new Date(row.date), 'dd/MM/yyyy')}
-                              </TableCell>
-                              <TableCell>{dutyHours}h</TableCell>
-                              <TableCell>{row.note ?? '—'}</TableCell>
-                            </TableRow>
-                          ))}
+                          {additionalDays.map((row) => {
+                            const fromReliever = !!row.relieverSessionId
+                            return (
+                              <TableRow key={row.id}>
+                                <TableCell>
+                                  {format(new Date(row.date), 'dd/MM/yyyy')}
+                                </TableCell>
+                                <TableCell>
+                                  {fromReliever
+                                    ? 'Reliever allowance'
+                                    : `${dutyHours}h`}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {fromReliever && (
+                                      <Badge variant="secondary">
+                                        From reliever
+                                      </Badge>
+                                    )}
+                                    <span>{row.note ?? '—'}</span>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
                           <TableRow className="bg-muted/40 font-semibold">
-                            <TableCell>Total</TableCell>
+                            <TableCell>Payroll total (manual)</TableCell>
                             <TableCell>
-                              {additionalDays.length} day(s) ·{' '}
-                              {additionalDays.length * dutyHours}h
+                              {
+                                additionalDays.filter((r) => !r.relieverSessionId)
+                                  .length
+                              }{' '}
+                              day(s) ·{' '}
+                              {additionalDays.filter((r) => !r.relieverSessionId)
+                                .length * dutyHours}
+                              h
                             </TableCell>
-                            <TableCell />
+                            <TableCell>
+                              {additionalDays.some((r) => r.relieverSessionId) && (
+                                <span className="font-normal text-text-secondary">
+                                  +{' '}
+                                  {
+                                    additionalDays.filter(
+                                      (r) => r.relieverSessionId,
+                                    ).length
+                                  }{' '}
+                                  reliever day(s) for reference
+                                </span>
+                              )}
+                            </TableCell>
                           </TableRow>
                         </>
                       )}

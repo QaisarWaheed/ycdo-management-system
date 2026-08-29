@@ -91,6 +91,9 @@ function makeService(overrides: {
     permissionsService as any,
     accessScopeService as any,
     payrollService as any,
+    {} as any,
+    {} as any,
+    { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
   );
 
   return { service, prisma, tx, payrollService, employee, txAttendanceLog };
@@ -183,6 +186,9 @@ describe('AttendanceService — payroll recompute wiring', () => {
       permissionsService as any,
       accessScopeService as any,
       payrollService as any,
+      {} as any,
+      {} as any,
+      { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
     );
 
     // "Now" (wall clock) is September in this scenario — HR is correcting
@@ -256,6 +262,9 @@ describe('AttendanceService — payroll recompute wiring', () => {
       permissionsService as any,
       accessScopeService as any,
       payrollService as any,
+      {} as any,
+      {} as any,
+      { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
     );
 
     await service.updateAttendance(
@@ -330,6 +339,9 @@ describe('AttendanceService — payroll recompute wiring', () => {
       permissionsService as any,
       accessScopeService as any,
       payrollService as any,
+      {} as any,
+      {} as any,
+      { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
     );
 
     await service.updateAttendance(
