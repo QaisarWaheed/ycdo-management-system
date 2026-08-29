@@ -6,6 +6,8 @@ import { MoreHorizontal, Printer } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
+import { departmentsApi } from '@/api/endpoints/departments'
+import { designationsApi } from '@/api/endpoints/designations'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
 import { payrollApi } from '@/api/endpoints/payroll'
@@ -617,6 +619,8 @@ function MonthlyPayrollTab() {
     year: now.getFullYear(),
   })
   const [branchId, setBranchId] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [designationFilter, setDesignationFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState(ALL)
   const [viewEntry, setViewEntry] = useState<PayrollEntry | null>(null)
   const [addDeductionEntry, setAddDeductionEntry] = useState<PayrollEntry | null>(
@@ -641,15 +645,43 @@ function MonthlyPayrollTab() {
       month: monthYear.month,
       year: monthYear.year,
       branchId: branchId || undefined,
+      departmentId: departmentId || undefined,
+      designation: designationFilter || undefined,
       status: statusFilter !== ALL ? statusFilter : undefined,
     }),
-    [monthYear, branchId, statusFilter],
+    [monthYear, branchId, departmentId, designationFilter, statusFilter],
   )
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
     queryFn: () => branchesApi.getAll(),
   })
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments', branchId || 'all'],
+    queryFn: () =>
+      departmentsApi.getAll(branchId ? { branchId } : undefined),
+  })
+
+  const { data: designations = [] } = useQuery({
+    queryKey: ['designations'],
+    queryFn: () => designationsApi.getAll(),
+  })
+
+  const designationOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const titles: string[] = []
+    for (const d of designations) {
+      if (d.isActive === false) continue
+      const title = d.title?.trim()
+      if (!title) continue
+      const key = title.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      titles.push(title)
+    }
+    return titles.sort((a, b) => a.localeCompare(b))
+  }, [designations])
 
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ['payroll-entries', filters],
@@ -803,7 +835,10 @@ function MonthlyPayrollTab() {
             <Label>Branch</Label>
             <Select
               value={branchId || 'all'}
-              onValueChange={(v) => setBranchId(v === 'all' ? '' : v)}
+              onValueChange={(v) => {
+                setBranchId(v === 'all' ? '' : v)
+                setDepartmentId('')
+              }}
             >
               <SelectTrigger className="w-[160px]">
                 <SelectValue placeholder="All Branches" />
@@ -830,6 +865,46 @@ function MonthlyPayrollTab() {
                 <SelectItem value="PENDING">Pending</SelectItem>
                 <SelectItem value="PROCESSED">Processed</SelectItem>
                 <SelectItem value="PAID">Paid</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label>Department</Label>
+            <Select
+              value={departmentId || 'all'}
+              onValueChange={(v) => setDepartmentId(v === 'all' ? '' : v)}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Departments" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label>Designation</Label>
+            <Select
+              value={designationFilter || 'all'}
+              onValueChange={(v) => setDesignationFilter(v === 'all' ? '' : v)}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="All Designations" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Designations</SelectItem>
+                {designationOptions.map((title) => (
+                  <SelectItem key={title} value={title}>
+                    {title}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

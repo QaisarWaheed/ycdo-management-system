@@ -3554,6 +3554,7 @@ export class PayrollService {
     const departmentDesignationWhere =
       this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
         departmentId: query.departmentId,
+        designation: query.designation,
       });
     if (departmentDesignationWhere) {
       employeeFilter = {

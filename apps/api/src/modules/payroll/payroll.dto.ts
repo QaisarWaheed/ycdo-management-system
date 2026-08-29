@@ -315,6 +315,11 @@ export class PayrollQueryDto {
   @IsUUID()
   departmentId?: string;
 
+  /** Employee.currentDesignation title (case-insensitive). */
+  @IsOptional()
+  @IsString()
+  designation?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
