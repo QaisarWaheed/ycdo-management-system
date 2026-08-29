@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from 'react'
+import { Component, useEffect, useMemo, useRef, useState, type ErrorInfo, type FormEvent, type ReactNode } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
@@ -7,6 +7,7 @@ import {
   FileUp,
   GraduationCap,
   Plus,
+  Printer,
   Trash2,
   Upload,
   UserPlus,
@@ -760,6 +761,7 @@ function EmployeeCreatePageForm() {
     language: string
     match: string
   } | null>(null)
+  const appointmentPreviewFrameRef = useRef<HTMLIFrameElement>(null)
   const [approverTarget, setApproverTarget] =
     useState<EmployeeApproverTarget | null>(null)
   const [approverWhatsAppPhone, setApproverWhatsAppPhone] = useState('')
@@ -1207,6 +1209,22 @@ function EmployeeCreatePageForm() {
       })
     },
   })
+
+  const printAppointmentPreview = () => {
+    const frame = appointmentPreviewFrameRef.current
+    const doc = frame?.contentDocument
+    const win = frame?.contentWindow
+    if (!frame || !doc || !win || !appointmentPreviewHtml) {
+      toast({
+        title: 'Nothing to print',
+        description: 'Preview the appointment letter first.',
+        variant: 'destructive',
+      })
+      return
+    }
+    win.focus()
+    win.print()
+  }
 
   const onStep1Next = (e: FormEvent) => {
     e.preventDefault()
@@ -2420,16 +2438,27 @@ function EmployeeCreatePageForm() {
                     letter.
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={appointmentPreviewMutation.isPending}
-                  onClick={() => appointmentPreviewMutation.mutate()}
-                >
-                  {appointmentPreviewMutation.isPending
-                    ? 'Rendering...'
-                    : 'Preview Appointment Letter'}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={appointmentPreviewMutation.isPending}
+                    onClick={() => appointmentPreviewMutation.mutate()}
+                  >
+                    {appointmentPreviewMutation.isPending
+                      ? 'Rendering...'
+                      : 'Preview Appointment Letter'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!appointmentPreviewHtml}
+                    onClick={printAppointmentPreview}
+                  >
+                    <Printer className="mr-2 h-4 w-4" />
+                    Print
+                  </Button>
+                </div>
               </div>
               {appointmentPreviewMeta && (
                 <p className="text-xs text-text-secondary">
@@ -2440,6 +2469,7 @@ function EmployeeCreatePageForm() {
               )}
               {appointmentPreviewHtml && (
                 <iframe
+                  ref={appointmentPreviewFrameRef}
                   title="Appointment letter draft preview"
                   className="h-[480px] w-full rounded border border-border bg-white"
                   srcDoc={appointmentPreviewHtml}
