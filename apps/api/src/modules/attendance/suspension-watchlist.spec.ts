@@ -114,5 +114,11 @@ describe('buildSuspensionWatchlist', () => {
     expect(result.due.find((e) => e.employeeId === 'emp-both')?.reasons).toEqual(
       expect.arrayContaining(['UA_DUE', 'LATE_NEAR']),
     );
+    expect(result.due.find((e) => e.employeeId === 'emp-due')?.lateDates).toHaveLength(
+      9,
+    );
+    expect(
+      result.due.find((e) => e.employeeId === 'emp-both')?.uninformedAbsentDates,
+    ).toHaveLength(3);
   });
 });

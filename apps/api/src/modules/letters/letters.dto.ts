@@ -47,6 +47,48 @@ export class PreviewLetterDto {
   extraFields?: Record<string, unknown>;
 }
 
+export class AppointmentPreviewDto {
+  @IsString()
+  @IsNotEmpty()
+  fullName: string;
+
+  @IsOptional()
+  @IsString()
+  cnic?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  phone: string;
+
+  @IsOptional()
+  @IsString()
+  gender?: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  currentDepartmentId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  currentDesignation: string;
+
+  @IsOptional()
+  @IsString()
+  branchName?: string;
+
+  @IsOptional()
+  @IsString()
+  dutyStartTime?: string;
+
+  @IsOptional()
+  @IsString()
+  dutyEndTime?: string;
+
+  @IsOptional()
+  @IsObject()
+  extraFields?: Record<string, unknown>;
+}
+
 export class UpdateLetterDto {
   @IsOptional()
   @IsObject()

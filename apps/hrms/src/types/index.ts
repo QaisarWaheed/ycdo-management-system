@@ -438,6 +438,7 @@ export interface Letter {
   status?: 'DRAFT' | 'SENT' | 'REVERSED'
   fileUrl?: string | null
   letterNo?: string | null
+  templateCode?: string | null
   variables?: Record<string, unknown> | null
   templateVersion?: number | null
   generatedAt: string
@@ -1052,6 +1053,8 @@ export type LetterType =
   | 'SALARY_INCREMENT'
   | 'EXPERIENCE'
   | 'EXPLANATION_FINE'
+  | 'SUSPENSION_ELIGIBILITY'
+  | 'NEAR_SUSPENSION_WARNING'
   | 'CUSTOM'
 
 export type DocumentType =
@@ -1074,12 +1077,30 @@ export const LETTER_TYPES: { value: LetterType; label: string }[] = [
   { value: 'APPRECIATION', label: 'Appreciation' },
   { value: 'TRANSFER', label: 'Transfer' },
   { value: 'SUSPENSION', label: 'Suspension' },
+  {
+    value: 'SUSPENSION_ELIGIBILITY',
+    label: 'اہلیت برائے معطلی',
+  },
+  {
+    value: 'NEAR_SUSPENSION_WARNING',
+    label: 'تنبیہی نوٹس برائے ممکنہ معطلی',
+  },
   { value: 'TERMINATION', label: 'Termination' },
   { value: 'REINSTATEMENT', label: 'Reinstatement' },
   { value: 'REJOINING', label: 'Rejoining' },
   { value: 'SALARY_INCREMENT', label: 'Salary Increment' },
   { value: 'EXPERIENCE', label: 'Experience' },
 ]
+
+export const SYSTEM_GENERATED_LETTER_TYPES = new Set<LetterType>([
+  'SUSPENSION_ELIGIBILITY',
+  'NEAR_SUSPENSION_WARNING',
+])
+
+/** Types HR may pick in Generate Letter. Watchlist notices are system-only. */
+export const GENERATE_LETTER_TYPES = LETTER_TYPES.filter(
+  (t) => !SYSTEM_GENERATED_LETTER_TYPES.has(t.value),
+)
 
 export const EMPLOYEE_STATUSES: EmployeeStatus[] = [
   'ACTIVE',

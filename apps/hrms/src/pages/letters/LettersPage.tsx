@@ -82,6 +82,7 @@ import {
   isUrduLetterType,
   letterReference,
   letterTypeBadgeClass,
+  letterTypeLabel,
 } from '@/lib/letterFieldConfig'
 import {
   translateBranch,
@@ -94,6 +95,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { cn } from '@/lib/utils'
 import {
   LETTER_TYPES,
+  GENERATE_LETTER_TYPES,
   type Letter,
   type LetterReply,
   type LetterType,
@@ -360,6 +362,8 @@ const LETTER_ICONS: Record<LetterType, React.ElementType> = {
   APPRECIATION: Award,
   TRANSFER: RefreshCw,
   SUSPENSION: UserMinus,
+  SUSPENSION_ELIGIBILITY: AlertTriangle,
+  NEAR_SUSPENSION_WARNING: AlertTriangle,
   TERMINATION: UserMinus,
   REINSTATEMENT: UserCheck,
   REJOINING: UserPlus,
@@ -535,7 +539,7 @@ function GenerateLetterWizard({
 
           {step === 2 && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {LETTER_TYPES.map((t) => {
+              {GENERATE_LETTER_TYPES.map((t) => {
                 const Icon = LETTER_ICONS[t.value]
                 return (
                   <button
@@ -947,7 +951,7 @@ function PendingLetterShareDialog({
               </p>
               <p>
                 <span className="text-text-secondary">Type: </span>
-                {letter.letterType.replace(/_/g, ' ')}
+                {letterTypeLabel(letter.letterType)}
               </p>
               <p>
                 <span className="text-text-secondary">Phone: </span>
@@ -1408,8 +1412,18 @@ export function LettersPage() {
                           variant="outline"
                           className={letterTypeBadgeClass(letter.letterType)}
                         >
-                          {letter.letterType.replace(/_/g, ' ')}
+                          {letterTypeLabel(letter.letterType)}
                         </Badge>
+                        {letter.letterType === 'APPOINTMENT' &&
+                          letter.templateCode && (
+                          <p className="mt-1 font-mono text-[11px] text-text-secondary">
+                            {letter.templateCode}
+                            {typeof letter.variables?.appointmentLanguage ===
+                            'string'
+                              ? ` · ${letter.variables.appointmentLanguage}`
+                              : ''}
+                          </p>
+                        )}
                         {letter.status ? (
                           <Badge
                             variant="secondary"
@@ -1471,7 +1485,9 @@ export function LettersPage() {
                               >
                                 {canIssueApprovedSuspension(letter)
                                   ? 'Issue Suspension'
-                                  : 'Send to portal'}
+                                  : letter.letterType === 'APPOINTMENT'
+                                    ? 'Issue / Send'
+                                    : 'Send to portal'}
                               </DropdownMenuItem>
                             )}
                             {letter.letterType === 'SHOW_CAUSE' && (
@@ -1605,7 +1621,7 @@ export function LettersPage() {
                             variant="outline"
                             className={letterTypeBadgeClass(letter.letterType)}
                           >
-                            {letter.letterType.replace(/_/g, ' ')}
+                            {letterTypeLabel(letter.letterType)}
                           </Badge>
                         </TableCell>
                         <TableCell>

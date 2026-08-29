@@ -107,6 +107,8 @@ import {
   resolveAttendanceDutyTimes,
 } from '../../common/duty.util';
 import { buildSuspensionWatchlist } from './suspension-watchlist';
+import { issueDueSuspensionEligibilityNotices } from './suspension-eligibility-notice';
+import { issueNearSuspensionWarnings } from './near-suspension-warning';
 
 const OVERTIME_GRACE_MINUTES = 60;
 const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
@@ -3908,6 +3910,48 @@ export class AttendanceService {
         : now.month;
     const list = await buildSuspensionWatchlist(this.prisma, y, m);
     return this.excludeActiveSuspensionCases(list);
+  }
+
+  /**
+   * Raw Due-for-Suspension list (not filtered by open suspension cases).
+   * Eligibility notices must use this path: recommendHrSuspensionDraft may
+   * already have opened a case, which would hide the employee from the
+   * HR watchlist API.
+   */
+  async issueDueSuspensionEligibilityNotices(year?: number, month?: number) {
+    const now = pakistanYearMonthFromDate(new Date());
+    const y =
+      year != null && Number.isFinite(year) && year > 0 ? year : now.year;
+    const m =
+      month != null && Number.isFinite(month) && month >= 1 && month <= 12
+        ? month
+        : now.month;
+    const list = await buildSuspensionWatchlist(this.prisma, y, m);
+    return issueDueSuspensionEligibilityNotices({
+      prisma: this.prisma,
+      lettersService: this.lettersService,
+      due: list.due,
+      year: y,
+      month: m,
+    });
+  }
+
+  async issueNearSuspensionWarnings(year?: number, month?: number) {
+    const now = pakistanYearMonthFromDate(new Date());
+    const y =
+      year != null && Number.isFinite(year) && year > 0 ? year : now.year;
+    const m =
+      month != null && Number.isFinite(month) && month >= 1 && month <= 12
+        ? month
+        : now.month;
+    const list = await buildSuspensionWatchlist(this.prisma, y, m);
+    return issueNearSuspensionWarnings({
+      prisma: this.prisma,
+      lettersService: this.lettersService,
+      near: list.near,
+      year: y,
+      month: m,
+    });
   }
 
   /**

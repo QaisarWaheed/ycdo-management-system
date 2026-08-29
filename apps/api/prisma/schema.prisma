@@ -134,6 +134,7 @@ model Department {
   employmentHistory  EmploymentHistory[]
   projectDepartments ProjectDepartment[]
   managerScopes      UserManagerScope[]
+  appointmentTemplateMappings AppointmentTemplateMapping[]
 }
 
 /// Links a HOSPITAL project to departments that may be assigned as manager scopes.
@@ -334,6 +335,7 @@ model Designation {
   createdAt DateTime @default(now())
 
   managerScopes UserManagerScope[]
+  appointmentTemplateMappings AppointmentTemplateMapping[]
 }
 
 // ─── EMPLOYMENT HISTORY ───────────────────────────────────
@@ -803,6 +805,29 @@ model Letter {
   @@index([employeeId, status])
 }
 
+enum AppointmentLetterLanguage {
+  UR
+  EN
+}
+
+/// Routes Appointment letters: Department + Designation (+ fallbacks) → template + language.
+model AppointmentTemplateMapping {
+  id             String                      @id @default(uuid())
+  departmentId   String?
+  designationId  String?
+  language       AppointmentLetterLanguage
+  templateCode   String
+  active         Boolean                     @default(true)
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+
+  department  Department?  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  designation Designation? @relation(fields: [designationId], references: [id], onDelete: Cascade)
+
+  @@index([departmentId, designationId])
+  @@index([templateCode])
+}
+
 model WhatsAppLetterSend {
   id            String             @id @default(uuid())
   letterId      String             @unique
@@ -859,6 +884,10 @@ enum LetterType {
   SALARY_INCREMENT
   EXPERIENCE
   EXPLANATION_FINE
+  /// Pre-suspension eligibility notice (Due for Suspension). Not a Suspension letter.
+  SUSPENSION_ELIGIBILITY
+  /// Preventive Near-Suspension warning. Not a Suspension or eligibility letter.
+  NEAR_SUSPENSION_WARNING
   CUSTOM
 }
 

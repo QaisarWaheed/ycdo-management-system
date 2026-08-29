@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 20mm 18mm 18mm 18mm; }
+  body {
+    font-family: "Times New Roman", "Liberation Serif", Times, Georgia, serif;
+    font-size: 12.5pt;
+    line-height: 1.5;
+    color: #000;
+    margin: 0;
+  }
+  .letterhead { text-align: center; margin-bottom: 14pt; }
+  .letterhead img { max-height: 70px; }
+  .letterhead .org { font-size: 15pt; font-weight: bold; margin-top: 4pt; }
+  .letterhead .meta { font-size: 9.5pt; }
+  .rule { border-bottom: 1.5px solid #000; margin: 8pt 0 14pt; }
+  h1.title { text-align: center; font-size: 14pt; font-weight: bold; margin: 0 0 16pt; }
+  .refrow { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 18pt; }
+  .recipient { margin-bottom: 14pt; }
+  .recipient div { margin-bottom: 3pt; }
+  .recipient .label { font-weight: bold; }
+  p { margin: 0 0 10pt; text-align: justify; text-indent: 28pt; }
+  p.noindent { text-indent: 0; }
+  .grades { display: flex; justify-content: space-around; margin: 10pt 0 12pt; }
+  h2.section { font-size: 12.5pt; font-weight: bold; margin: 14pt 0 8pt; }
+  ol.terms { margin: 0; padding-left: 18pt; }
+  ol.terms li { margin-bottom: 8pt; text-align: justify; }
+  ol.nested { margin: 6pt 0 0; padding-left: 18pt; }
+  ol.nested li { margin-bottom: 6pt; }
+  .fill { display: inline-block; min-width: 120pt; border-bottom: 1px solid #000; text-align: center; font-weight: bold; }
+  .fill.sm { min-width: 60pt; }
+  .fill.lg { min-width: 200pt; }
+  .duties { margin: 0 0 12pt; text-indent: 0; }
+  .duties div { margin-bottom: 4pt; }
+  .acceptance { margin-top: 26pt; }
+  .siglines { margin-top: 22pt; }
+  .sigline { display: inline-block; min-width: 170pt; border-bottom: 1px solid #000; height: 14pt; }
+  .signblock { margin-top: 40pt; }
+  .signblock .sigimg { height: 60px; display: block; margin-bottom: 2pt; }
+  .signblock .name { font-weight: bold; }
+  .signblock .ruleShort { width: 190pt; border-bottom: 1px solid #000; height: 1px; margin-bottom: 3pt; }
+  .ackbox { margin-top: 18pt; padding: 8pt 10pt; border: 1px solid #000; font-size: 10pt; text-indent: 0; }
+</style>
+</head>
+<body>
+<div class="letterhead">
+  {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
+  <div class="org">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION (YCDO)</div>
+  <div class="meta">{{orgAddress}} &nbsp;|&nbsp; {{orgPhone}} &nbsp;|&nbsp; {{orgEmail}}</div>
+</div>
+<div class="rule"></div>
+
+<h1 class="title">Appointment / Selection Letter</h1>
+
+<div class="refrow">
+  <span>Letter No.: {{letterNo}}</span>
+  <span>Date: {{issueDate}}</span>
+</div>
+
+<div class="recipient">
+  <div><span class="label">{{salutation}}</span> <span class="fill lg">{{employeeName}}</span></div>
+  <div><span class="label">CNIC No.:</span> <span class="fill lg">{{cnic}}</span></div>
+  <div><span class="label">Phone:</span> <span class="fill lg">{{phone}}</span></div>
+</div>
+
+<p class="noindent"><strong>Assalam o Alaikum!</strong></p>
+
+<p>We are pleased to inform you that you have been selected as a Volunteer for {{serviceArea}} with the Youth Community Development Organization (YCDO) for charitable service.</p>
+
+<p>Due to limited organizational resources, YCDO is unable to provide a regular salary; however, for your personal expenses, you will be provided a monthly stipend of Rs. {{stipendAmount}} against {{dutyTotalHours}} duty hours per day for the {{shiftName}} shift.</p>
+
+<p>Incentives, where applicable, will depend on the quality of your services and performance as per YCDO policy.</p>
+
+<div class="grades">
+  <span>Poor</span><span>Satisfactory</span><span>Good</span><span>Excellent</span>
+</div>
+
+<p>Your first three (03) months will be considered a probationary period. During probation, applicable stipend, incentives, deductions, or withholding will be governed by the prevailing YCDO policy. Any pending entitlement will be processed according to applicable organizational rules after successful completion of the probationary period.</p>
+
+<p>You are appointed as {{designation}} in the {{department}} Department at {{branchName}}.</p>
+
+<div class="duties">
+  <div>Duty Hours: {{dutyTotalHours}} Hours per Day</div>
+  <div>Shift: {{shiftName}}</div>
+  <div>Working Schedule: {{scheduleFrom}} to {{scheduleTo}}</div>
+</div>
+
+<h2 class="section">Terms &amp; Conditions</h2>
+
+<ol class="terms">
+  <li>You must follow all applicable YCDO SOPs, policies, rules, official instructions, and lawful directions issued by Head Office, Department Incharge, Branch Management, or authorized representatives.</li>
+  <li>You must perform duties according to Department and Designation responsibilities and SOPs.</li>
+  <li>You must follow approved duty hours, shift timings, attendance, punctuality, and applicable biometric / check-in / check-out procedures.</li>
+  <li>You are entitled to {{monthlyAllowedLeaves}} approved leave(s) per month, subject to the applicable YCDO Leave Policy, approval procedure, attendance record, and other eligibility conditions.</li>
+  <li>Short Leave may be allowed up to one-half of your scheduled daily duty duration, subject to applicable quota, approval, and attendance rules. Maximum Short Leave Duration: {{shortLeaveHours}} hours.</li>
+  <li>You are bound to attend all official meetings, trainings, events, programs, campaigns, emergency duties, and other organizational activities for which you are formally called, assigned, or invited. Unjustified absence or repeated non-compliance may result in disciplinary action, including suspension or termination, in accordance with applicable YCDO SOPs and due disciplinary process.</li>
+  <li>You must use applicable systems, software, registers, equipment, records and reporting procedures correctly. Unauthorized access, change, misuse, or concealment is prohibited.</li>
+  <li>You must maintain confidentiality of employee, patient, financial, administrative, operational, technical and organizational information.</li>
+  <li>You are responsible for YCDO property, equipment, records, credentials, stock and resources entrusted to you.</li>
+  <li>Department and Designation SOPs:
+    <ol class="nested">{{{departmentSpecificSops}}}</ol>
+  </li>
+  <li>You must cooperate with audit, inspection, inquiry, investigation, monitoring and authorized reporting.</li>
+  <li>You are required to provide 30 days&rsquo; written notice in case of resignation or voluntary separation. If you leave your duties suddenly without serving the required notice or obtaining approval from the competent authority, your pending dues may be forfeited or adjusted in accordance with applicable YCDO policy.</li>
+  <li>YCDO reserves the right to take disciplinary action for misconduct, violation of organizational policies or SOPs, unsatisfactory performance, repeated absence, negligence, insubordination, breach of confidentiality, falsification of records, misuse of organizational resources, or other serious or repeated violations. Such action may include advice, warning, fine, suspension, inquiry, termination, or other action according to applicable YCDO rules.</li>
+  <li>YCDO may amend approved SOPs, policies, systems and operational requirements. You must follow the communicated current version.</li>
+</ol>
+
+<div class="acceptance">
+  <h2 class="section">Acceptance</h2>
+  <p>I accept the appointment as <span class="fill lg">{{designation}}</span> with YCDO and agree to abide by all organizational rules, policies, SOPs, and terms of this volunteer appointment.</p>
+  {{#if digitalAcceptance}}
+    <div class="ackbox">
+      Accepted electronically by <strong>{{employeeName}}</strong> on
+      <strong>{{acceptedAt}}</strong> via the YCDO HRMS Employee Portal.<br>
+      Acknowledgement reference: {{acceptanceRef}}
+    </div>
+  {{else}}
+    <div class="siglines">
+      <strong>Name:</strong> <span class="sigline"></span>
+      &nbsp;&nbsp;&nbsp;
+      <strong>Volunteer Signature:</strong> <span class="sigline"></span>
+    </div>
+  {{/if}}
+</div>
+
+<div class="signblock">
+  <div class="ruleShort"></div>
+  <div class="name">{{chairmanAdminName}}</div>
+  <div>Chairman Admin Department</div>
+  <div class="name">Youth Community Development Organization (YCDO)</div>
+</div>
+
+<div class="signblock">
+  {{#if founderSignatureUrl}}
+    <img class="sigimg" src="{{founderSignatureUrl}}" alt="">
+  {{/if}}
+  <div class="name">Founder/Head of Organization</div>
+  <div class="name">YCDO Pakistan</div>
+</div>
+</body>
+</html>

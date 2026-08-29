@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AppointmentLetterLanguage,
   DeductionType,
   DisciplinaryStatus,
   DisciplinaryType,
@@ -47,6 +48,7 @@ import {
   PreviewLetterDto,
   ReverseLetterDto,
   UpdateLetterDto,
+  AppointmentPreviewDto,
 } from './letters.dto';
 import {
   CreateLetterTemplateDto,
@@ -67,6 +69,26 @@ import {
   templateCodeForLetterType,
 } from './letter-templates.helper';
 import { generatePdf } from './pdf.helper';
+import { APPOINTMENT_CHAIRMAN_ADMIN_NAME } from './appointment-signatory';
+import { resolveAppointmentTemplateMapping } from './appointment-template-mapping';
+import { resolveAppointmentServiceArea } from './appointment-families';
+import { appointmentSopHtml } from './appointment-sop';
+import {
+  resolveAppointmentDutyTotalHours,
+  resolveAppointmentMonthlyAllowedLeaves,
+  shortLeaveHoursFromDutyTotalHours,
+} from './appointment-policy';
+import { URDU_LETTER_STYLES } from './urdu-letter-styles';
+import {
+  assertAppointmentSnapshotReady,
+  assertAppointmentVariablesRenderable,
+} from './appointment-validation';
+import { isInvalidAppointmentAssignment } from './appointment-families';
+import { APPOINTMENT_INVALID_ASSIGNMENT_MESSAGE } from './appointment-families';
+import {
+  applyAppointmentDraftWatermark,
+  stripAppointmentDraftWatermark,
+} from './appointment-watermark';
 import {
   buildOrgVariables,
   formatIssueDatePkt,
@@ -79,6 +101,26 @@ import {
 
 const SELECTION_TEMPLATE_CODE = 'SELECTION_LETTER';
 
+/** System watchlist notices: auto SENT; not creatable from Generate Letter. */
+const SYSTEM_GENERATED_LETTER_TYPES: LetterType[] = [
+  LetterType.SUSPENSION_ELIGIBILITY,
+  LetterType.NEAR_SUSPENSION_WARNING,
+];
+
+function isSystemGeneratedLetterType(letterType: LetterType): boolean {
+  return SYSTEM_GENERATED_LETTER_TYPES.includes(letterType);
+}
+
+function letterIssuedAuditAction(letterType: LetterType): string {
+  if (letterType === LetterType.SUSPENSION_ELIGIBILITY) {
+    return 'SUSPENSION_ELIGIBILITY_NOTICE_ISSUED';
+  }
+  if (letterType === LetterType.NEAR_SUSPENSION_WARNING) {
+    return 'NEAR_SUSPENSION_WARNING_ISSUED';
+  }
+  return 'LETTER_GENERATED';
+}
+
 /** Discipline letters that stay DRAFT until HR explicitly sends to portal. */
 const DRAFT_UNTIL_SEND_TYPES: LetterType[] = [
   LetterType.ADVICE,
@@ -88,6 +130,7 @@ const DRAFT_UNTIL_SEND_TYPES: LetterType[] = [
   LetterType.SUSPENSION,
   LetterType.REINSTATEMENT,
   LetterType.TERMINATION,
+  LetterType.APPOINTMENT,
 ];
 
 /** Employment states that must not be overwritten by sending a suspension letter. */
@@ -322,13 +365,20 @@ export class LettersService {
       dto.employeeId,
     );
 
-    if (dto.letterType === LetterType.APPOINTMENT) {
-      const { htmlContent, variables } = await this.buildSelectionLetterHtml(
-        dto.employeeId,
-        dto.extraFields ?? {},
-        { letterNo: 'PREVIEW/YCDO/0000', consumeNumber: false },
+    if (isSystemGeneratedLetterType(dto.letterType)) {
+      throw new BadRequestException(
+        'This letter type is system-generated and cannot be created from Generate Letter',
       );
-      return { previewHtml: htmlContent, variables };
+    }
+
+    if (dto.letterType === LetterType.APPOINTMENT) {
+      const { htmlContent, variables, mapping } =
+        await this.buildSelectionLetterHtml(
+          dto.employeeId,
+          dto.extraFields ?? {},
+          { letterNo: 'PREVIEW/YCDO/0000', draft: true },
+        );
+      return { previewHtml: htmlContent, variables, mapping };
     }
 
     const built = await this.buildTemplatedLetterHtml(
@@ -339,6 +389,43 @@ export class LettersService {
       dto.templateCode,
     );
     return { previewHtml: built.htmlContent, variables: built.variables };
+  }
+
+  async previewAppointment(
+    dto: AppointmentPreviewDto,
+    _actingUserId: string,
+    _actingRole: UserRole,
+  ) {
+    const { htmlContent, variables, mapping } =
+      await this.buildAppointmentHtmlFromSnapshot(
+        {
+          fullName: dto.fullName,
+          cnic: dto.cnic?.trim() || 'N/A',
+          phone: dto.phone,
+          gender: (dto.gender as Gender) ?? Gender.MALE,
+          currentDepartmentId: dto.currentDepartmentId,
+          currentDesignation: dto.currentDesignation,
+          branchName: dto.branchName ?? '',
+          dutyStartTime: dto.dutyStartTime ?? null,
+          dutyEndTime: dto.dutyEndTime ?? null,
+          monthlyAllowedLeaves:
+            typeof dto.extraFields?.monthlyAllowedLeaves === 'number'
+              ? dto.extraFields.monthlyAllowedLeaves
+              : dto.extraFields?.monthlyAllowedLeaves != null
+                ? Number(dto.extraFields.monthlyAllowedLeaves)
+                : null,
+          dutyTotalHours:
+            dto.extraFields?.dutyTotalHours != null
+              ? Number(dto.extraFields.dutyTotalHours)
+              : dto.extraFields?.hoursPerDay != null
+                ? Number(dto.extraFields.hoursPerDay)
+                : null,
+        },
+        dto.extraFields ?? {},
+        { letterNo: 'PREVIEW/YCDO/0000', draft: true },
+      );
+
+    return { previewHtml: htmlContent, variables, mapping };
   }
 
   async generate(
@@ -352,6 +439,12 @@ export class LettersService {
       Permission.LETTERS_GENERATE,
       dto.employeeId,
     );
+
+    if (isSystemGeneratedLetterType(dto.letterType)) {
+      throw new BadRequestException(
+        'This letter type is system-generated and cannot be created from Generate Letter',
+      );
+    }
 
     if (dto.letterType === LetterType.APPOINTMENT) {
       return this.generateSelectionLetter(dto, actingUserId);
@@ -378,10 +471,29 @@ export class LettersService {
     dto: GenerateLetterDto,
     actingUserId: string,
   ) {
+    const existingDraft = await this.prisma.letter.findFirst({
+      where: {
+        employeeId: dto.employeeId,
+        letterType: LetterType.APPOINTMENT,
+        status: LetterStatus.DRAFT,
+      },
+    });
+    if (existingDraft) {
+      const prepared = await this.buildSelectionLetterHtml(
+        dto.employeeId,
+        {
+          ...((existingDraft.content as Record<string, unknown>) ?? {}),
+          ...(dto.extraFields ?? {}),
+        },
+        { letterNo: existingDraft.letterNo ?? 'PENDING', draft: true },
+      );
+      return { letter: existingDraft, previewHtml: prepared.htmlContent };
+    }
+
     const prepared = await this.buildSelectionLetterHtml(
       dto.employeeId,
       dto.extraFields ?? {},
-      { letterNo: 'PENDING', consumeNumber: false },
+      { letterNo: 'PENDING', draft: true },
     );
 
     const letterNo = await this.nextLetterNo();
@@ -389,9 +501,8 @@ export class LettersService {
       ...prepared.variables,
       letterNo,
     };
-    const htmlContent = renderHandlebarsTemplate(
-      prepared.bodyHtml,
-      variables,
+    const htmlContent = applyAppointmentDraftWatermark(
+      renderHandlebarsTemplate(prepared.bodyHtml, variables),
     );
     const pdfBuffer = await generatePdf(htmlContent);
     const fileUrl = await this.persistPdf(
@@ -400,60 +511,63 @@ export class LettersService {
       dto.employeeId,
     );
 
-    const letter = await this.prisma.$transaction(async (tx) => {
-      const record = await tx.letter.create({
-        data: {
-          employeeId: dto.employeeId,
-          letterType: LetterType.APPOINTMENT,
-          status: LetterStatus.SENT,
-          templateCode: SELECTION_TEMPLATE_CODE,
-          content: (dto.extraFields ?? {}) as Prisma.InputJsonValue,
-          fileUrl,
-          letterNo,
-          variables: variables as Prisma.InputJsonValue,
-          templateVersion: prepared.templateVersion,
-          requiresAcknowledgement: true,
-        },
-      });
-
-      if (actingUserId !== 'SYSTEM') {
-        await tx.auditLog.create({
+    try {
+      const letter = await this.prisma.$transaction(async (tx) => {
+        const record = await tx.letter.create({
           data: {
-            userId: actingUserId,
-            action: 'LETTER_GENERATED',
-            entity: 'Letter',
-            entityId: record.id,
-            changes: {
-              letterType: LetterType.APPOINTMENT,
-              letterNo,
-            },
+            employeeId: dto.employeeId,
+            letterType: LetterType.APPOINTMENT,
+            status: LetterStatus.DRAFT,
+            templateCode: prepared.templateCode,
+            content: (dto.extraFields ?? {}) as Prisma.InputJsonValue,
+            fileUrl,
+            letterNo,
+            variables: variables as Prisma.InputJsonValue,
+            templateVersion: prepared.templateVersion,
+            requiresAcknowledgement: false,
           },
         });
-      }
 
-      await tx.notification.create({
-        data: {
-          employeeId: dto.employeeId,
-          type: 'LETTER_ISSUED',
-          message: `An Appointment/Selection Letter (${letterNo}) has been issued to you.`,
-        },
+        if (actingUserId !== 'SYSTEM') {
+          await tx.auditLog.create({
+            data: {
+              userId: actingUserId,
+              action: 'LETTER_GENERATED',
+              entity: 'Letter',
+              entityId: record.id,
+              changes: {
+                letterType: LetterType.APPOINTMENT,
+                letterNo,
+                status: LetterStatus.DRAFT,
+                mappingId: prepared.mapping.mappingId,
+              },
+            },
+          });
+        }
+
+        return record;
       });
 
-      return record;
-    });
-
-    await this.whatsappService.deliverAfterLetterGenerated({
-      letterId: letter.id,
-      employeeId: dto.employeeId,
-      employeeName: String(variables.employeeName),
-      letterType: LetterType.APPOINTMENT,
-      phone: prepared.phone,
-      fileUrl,
-      pdfBuffer,
-      filename: `${sanitizeRefForFilename(letterNo)}.pdf`,
-    });
-
-    return { letter, previewHtml: htmlContent };
+      return { letter, previewHtml: htmlContent };
+    } catch (err) {
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code?: string }).code)
+          : '';
+      if (code === 'P2002') {
+        const raced = await this.prisma.letter.findFirst({
+          where: {
+            employeeId: dto.employeeId,
+            letterType: LetterType.APPOINTMENT,
+            status: LetterStatus.DRAFT,
+          },
+        });
+        if (raced) {
+          return { letter: raced, previewHtml: htmlContent };
+        }
+      }
+      throw err;
+    }
   }
 
   private async generateTemplatedLetter(
@@ -507,11 +621,16 @@ export class LettersService {
         },
       });
 
-      if (actingUserId !== 'SYSTEM') {
+      const auditUserId = await this.resolveLetterAuditUserId(
+        tx,
+        actingUserId,
+        dto.letterType,
+      );
+      if (auditUserId) {
         await tx.auditLog.create({
           data: {
-            userId: actingUserId,
-            action: 'LETTER_GENERATED',
+            userId: auditUserId,
+            action: letterIssuedAuditAction(dto.letterType),
             entity: 'Letter',
             entityId: record.id,
             changes: {
@@ -524,16 +643,15 @@ export class LettersService {
       }
 
       if (!deferPortal) {
-        const letterLabel =
-          dto.letterType === LetterType.CUSTOM
-            ? built.templateName
-            : dto.letterType.replace(/_/g, ' ');
-
         await tx.notification.create({
           data: {
             employeeId: dto.employeeId,
             type: 'LETTER_ISSUED',
-            message: `A ${letterLabel} letter (${letterNo}) has been issued to you.`,
+            message: this.issuedLetterNotificationMessage(
+              dto.letterType,
+              letterNo,
+              built.templateName,
+            ),
           },
         });
       }
@@ -767,16 +885,60 @@ export class LettersService {
     return out;
   }
 
+  private issuedLetterNotificationMessage(
+    letterType: LetterType,
+    letterNo: string,
+    templateName: string,
+  ): string {
+    if (letterType === LetterType.SUSPENSION_ELIGIBILITY) {
+      return `A pre-suspension eligibility notice (اہلیت برائے معطلی, ${letterNo}) has been issued to you. This is not a suspension letter and you have not been suspended.`;
+    }
+    if (letterType === LetterType.NEAR_SUSPENSION_WARNING) {
+      return `A warning notice of approaching suspension (تنبیہی نوٹس برائے ممکنہ معطلی, ${letterNo}) has been issued to you. This is not a suspension letter and you have not been suspended.`;
+    }
+    const letterLabel =
+      letterType === LetterType.CUSTOM
+        ? templateName
+        : letterType.replace(/_/g, ' ');
+    return `A ${letterLabel} letter (${letterNo}) has been issued to you.`;
+  }
+
+  private async resolveLetterAuditUserId(
+    tx: Prisma.TransactionClient,
+    actingUserId: string,
+    letterType: LetterType,
+  ): Promise<string | null> {
+    if (actingUserId !== 'SYSTEM') return actingUserId;
+    if (!isSystemGeneratedLetterType(letterType)) return null;
+
+    const actor = await tx.user.findFirst({
+      where: {
+        isActive: true,
+        role: {
+          in: [
+            UserRole.HR_MANAGER,
+            UserRole.HR_ADMIN_MANAGER,
+            UserRole.SUPER_ADMIN,
+          ],
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    return actor?.id ?? null;
+  }
+
   private async buildSelectionLetterHtml(
     employeeId: string,
     extraFields: Record<string, unknown>,
-    opts: { letterNo: string; consumeNumber: boolean },
+    opts: { letterNo: string; draft: boolean },
   ) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
       include: {
         currentBranch: { select: { name: true } },
-        currentDepartment: { select: { name: true } },
+        currentDepartment: { select: { id: true, name: true } },
+        shift: { select: { name: true } },
       },
     });
 
@@ -800,13 +962,58 @@ export class LettersService {
       );
     }
 
+    return this.buildAppointmentHtmlFromSnapshot(
+      {
+        fullName: employee.fullName,
+        cnic: employee.cnic!,
+        phone: employee.phone!,
+        gender: employee.gender,
+        currentDepartmentId: employee.currentDepartmentId,
+        currentDesignation: employee.currentDesignation!,
+        branchName: employee.currentBranch!.name,
+        dutyStartTime: employee.dutyStartTime,
+        dutyEndTime: employee.dutyEndTime,
+        departmentName: employee.currentDepartment!.name,
+        monthlyAllowedLeaves: employee.monthlyAllowedLeaves,
+        dutyTotalHours: employee.dutyTotalHours,
+        shiftName: employee.shift?.name ?? null,
+      },
+      extraFields,
+      opts,
+    );
+  }
+
+  private async buildAppointmentHtmlFromSnapshot(
+    snapshot: {
+      fullName: string;
+      cnic: string;
+      phone: string;
+      gender: Gender;
+      currentDepartmentId: string;
+      currentDesignation: string;
+      branchName: string;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      departmentName?: string;
+      monthlyAllowedLeaves?: number | null;
+      dutyTotalHours?: number | null;
+      shiftName?: string | null;
+    },
+    extraFields: Record<string, unknown>,
+    opts: { letterNo: string; draft: boolean },
+  ) {
+    const mapping = await resolveAppointmentTemplateMapping(this.prisma, {
+      departmentId: snapshot.currentDepartmentId,
+      designationTitle: snapshot.currentDesignation,
+    });
+
     const template = await this.prisma.letterTemplate.findFirst({
-      where: { code: SELECTION_TEMPLATE_CODE, active: true },
+      where: { code: mapping.templateCode, active: true },
     });
 
     if (!template) {
       throw new NotFoundException(
-        'SELECTION_LETTER template is not seeded. Run prisma db seed.',
+        `Appointment template ${mapping.templateCode} is not seeded.`,
       );
     }
 
@@ -823,37 +1030,117 @@ export class LettersService {
       );
     }
 
-    const schedule = scheduleFromDuty(employee);
+    const departmentName =
+      snapshot.departmentName ??
+      (
+        await this.prisma.department.findUnique({
+          where: { id: snapshot.currentDepartmentId },
+          select: { name: true },
+        })
+      )?.name ??
+      '';
+
+    if (
+      isInvalidAppointmentAssignment(
+        departmentName,
+        snapshot.currentDesignation,
+      )
+    ) {
+      throw new BadRequestException(APPOINTMENT_INVALID_ASSIGNMENT_MESSAGE);
+    }
+
+    const schedule = scheduleFromDuty({
+      dutyStartTime: snapshot.dutyStartTime,
+      dutyEndTime: snapshot.dutyEndTime,
+    });
+
+    const dutyTotalHours = resolveAppointmentDutyTotalHours({
+      employeeDutyTotalHours: snapshot.dutyTotalHours,
+      extraFields,
+    });
+    const monthlyAllowedLeaves = resolveAppointmentMonthlyAllowedLeaves({
+      employeeMonthlyAllowedLeaves: snapshot.monthlyAllowedLeaves,
+      extraFields,
+    });
+    const shortLeaveHours = shortLeaveHoursFromDutyTotalHours(dutyTotalHours);
+    const serviceArea = resolveAppointmentServiceArea(
+      mapping.templateCode,
+      departmentName,
+    );
+    const departmentSpecificSops = appointmentSopHtml(
+      mapping.templateCode,
+      mapping.language,
+    );
+    const shiftName =
+      String(extraFields.shiftName ?? snapshot.shiftName ?? '').trim() ||
+      'General';
+
     const variables: SelectionLetterVariables = {
       ...buildOrgVariables(),
       letterNo: opts.letterNo,
       issueDate: formatIssueDatePkt(),
-      salutation: salutationFromGender(employee.gender as Gender),
-      employeeName: employee.fullName,
-      cnic: employee.cnic!,
-      phone: employee.phone!,
-      designation: employee.currentDesignation!,
-      department: employee.currentDepartment!.name,
-      branchName: employee.currentBranch!.name,
+      salutation: salutationFromGender(snapshot.gender),
+      employeeName: snapshot.fullName,
+      cnic: snapshot.cnic,
+      phone: snapshot.phone,
+      designation: snapshot.currentDesignation,
+      department: departmentName,
+      branchName: snapshot.branchName,
       scheduleFrom: schedule.scheduleFrom,
       scheduleTo: schedule.scheduleTo,
-      stipendAmount: String(extraFields.stipendAmount).trim(),
-      hoursPerDay: String(extraFields.hoursPerDay).trim(),
-      shiftName: String(extraFields.shiftName).trim(),
-      capacity: String(extraFields.capacity).trim(),
+      stipendAmount: String(extraFields.stipendAmount ?? '').trim(),
+      hoursPerDay: String(dutyTotalHours),
+      dutyTotalHours: String(dutyTotalHours),
+      shiftName,
+      capacity: String(extraFields.capacity ?? '').trim(),
+      monthlyAllowedLeaves: String(monthlyAllowedLeaves),
+      shortLeaveHours,
+      serviceArea,
+      departmentSpecificSops,
       digitalAcceptance: false,
+      chairmanAdminName: APPOINTMENT_CHAIRMAN_ADMIN_NAME,
+      appointmentLanguage: mapping.language,
+      mappingMatch: mapping.match,
+      letterStyles:
+        mapping.language === AppointmentLetterLanguage.UR
+          ? URDU_LETTER_STYLES
+          : '',
     };
 
-    const htmlContent = appendComputerGeneratedNotice(
-      renderHandlebarsTemplate(template.bodyHtml, variables),
+    assertAppointmentSnapshotReady({
+      fullName: snapshot.fullName,
+      departmentName,
+      designation: snapshot.currentDesignation,
+      branchName: snapshot.branchName,
+      stipendAmount: String(extraFields.stipendAmount ?? ''),
+      dutyTotalHours,
+      scheduleFrom: schedule.scheduleFrom,
+      scheduleTo: schedule.scheduleTo,
+    });
+    assertAppointmentVariablesRenderable(variables);
+
+    const bodyHtml =
+      mapping.language === AppointmentLetterLanguage.EN && template.bodyHtmlEn
+        ? template.bodyHtmlEn
+        : template.bodyHtml;
+
+    let htmlContent = appendComputerGeneratedNotice(
+      renderHandlebarsTemplate(bodyHtml, variables),
     );
+    if (opts.draft) {
+      htmlContent = applyAppointmentDraftWatermark(htmlContent);
+    } else {
+      htmlContent = stripAppointmentDraftWatermark(htmlContent);
+    }
 
     return {
       htmlContent,
       variables,
-      bodyHtml: template.bodyHtml,
+      bodyHtml,
       templateVersion: template.version,
-      phone: employee.phone,
+      templateCode: template.code,
+      phone: snapshot.phone,
+      mapping,
     };
   }
 
@@ -902,11 +1189,6 @@ export class LettersService {
           : 'Only draft letters can be edited',
       );
     }
-    if (letter.letterType === LetterType.APPOINTMENT) {
-      throw new BadRequestException(
-        'Appointment letters cannot be edited; delete the draft and regenerate',
-      );
-    }
 
     const linkedRequest = await this.prisma.suspensionRequest.findUnique({
       where: { letterId },
@@ -932,13 +1214,20 @@ export class LettersService {
     };
 
     const letterNo = letter.letterNo ?? (await this.nextLetterNo());
-    const built = await this.buildTemplatedLetterHtml(
-      letter.employeeId,
-      letter.letterType,
-      extraFields,
-      letterNo,
-      dto.templateCode ?? letter.templateCode ?? undefined,
-    );
+    const built =
+      letter.letterType === LetterType.APPOINTMENT
+        ? await this.buildSelectionLetterHtml(
+            letter.employeeId,
+            extraFields,
+            { letterNo, draft: true },
+          )
+        : await this.buildTemplatedLetterHtml(
+            letter.employeeId,
+            letter.letterType,
+            extraFields,
+            letterNo,
+            dto.templateCode ?? letter.templateCode ?? undefined,
+          );
     const pdfBuffer = await generatePdf(built.htmlContent);
     const fileUrl = await this.persistPdf(
       pdfBuffer,
@@ -1018,6 +1307,30 @@ export class LettersService {
         : letter.letterType.replace(/_/g, ' ');
     const letterNo = letter.letterNo ?? letterId.slice(0, 8);
 
+    let appointmentSend: {
+      fileUrl: string;
+      variables: SelectionLetterVariables;
+      templateCode: string;
+      templateVersion: number;
+    } | null = null;
+    if (letter.letterType === LetterType.APPOINTMENT) {
+      const extraFields = {
+        ...((letter.content as Record<string, unknown>) ?? {}),
+      };
+      const built = await this.buildSelectionLetterHtml(
+        letter.employeeId,
+        extraFields,
+        { letterNo, draft: false },
+      );
+      const pdfBuffer = await generatePdf(built.htmlContent);
+      appointmentSend = {
+        fileUrl: await this.persistPdf(pdfBuffer, letterNo, letter.employeeId),
+        variables: built.variables,
+        templateCode: built.templateCode,
+        templateVersion: built.templateVersion,
+      };
+    }
+
     const letterEmployeeInclude = {
       employee: {
         select: {
@@ -1057,12 +1370,23 @@ export class LettersService {
         });
       }
 
+      const appointmentPatch =
+        current.letterType === LetterType.APPOINTMENT && appointmentSend
+          ? {
+              fileUrl: appointmentSend.fileUrl,
+              variables: appointmentSend.variables as Prisma.InputJsonValue,
+              templateCode: appointmentSend.templateCode,
+              templateVersion: appointmentSend.templateVersion,
+            }
+          : {};
+
       const record = await tx.letter.update({
         where: { id: letterId },
         data: {
           status: LetterStatus.SENT,
           requiresAcknowledgement: requiresAck,
           replyDeadline: replyDeadline ?? undefined,
+          ...appointmentPatch,
         },
         include: letterEmployeeInclude,
       });
@@ -1871,6 +2195,8 @@ export class LettersService {
     id: string;
     employeeId: string;
     letterType: LetterType;
+    status?: LetterStatus;
+    templateCode?: string | null;
     letterNo: string | null;
     variables: Prisma.JsonValue | null;
     content: Prisma.JsonValue;
@@ -1898,14 +2224,25 @@ export class LettersService {
       let htmlContent: string;
 
       if (letter.letterType === LetterType.APPOINTMENT) {
+        const code = String(letter.templateCode ?? SELECTION_TEMPLATE_CODE);
         const template = await this.prisma.letterTemplate.findFirst({
-          where: { code: SELECTION_TEMPLATE_CODE, active: true },
+          where: { code, active: true },
         });
         if (!template || !storedVars) return null;
-        htmlContent = renderHandlebarsTemplate(template.bodyHtml, {
+        const bodyHtml =
+          storedVars.appointmentLanguage === 'EN' && template.bodyHtmlEn
+            ? template.bodyHtmlEn
+            : template.bodyHtml;
+        htmlContent = renderHandlebarsTemplate(bodyHtml, {
           ...storedVars,
           letterNo: String(letterNo),
+          chairmanAdminName: APPOINTMENT_CHAIRMAN_ADMIN_NAME,
         } as SelectionLetterVariables);
+        if (letter.status === LetterStatus.DRAFT) {
+          htmlContent = applyAppointmentDraftWatermark(htmlContent);
+        } else {
+          htmlContent = stripAppointmentDraftWatermark(htmlContent);
+        }
       } else {
         const code = templateCodeForLetterType(letter.letterType);
         const template = await this.prisma.letterTemplate.findFirst({

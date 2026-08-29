@@ -28,7 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
-import { letterReference, letterTypeBadgeClass } from '@/lib/helpers'
+import { letterReference, letterTypeBadgeClass, letterTypeLabel } from '@/lib/helpers'
 import { cn } from '@/lib/utils'
 import type { Letter } from '@/types'
 
@@ -113,7 +113,7 @@ function LetterSummaryCard({ letter }: { letter: Letter }) {
             variant="outline"
             className={letterTypeBadgeClass(letter.letterType)}
           >
-            {letter.letterType.replace(/_/g, ' ')}
+            {letterTypeLabel(letter.letterType)}
           </Badge>
           <span className="font-mono text-sm">{letterReference(letter)}</span>
         </div>
@@ -173,7 +173,7 @@ function AcknowledgeDialog({
   if (!letter) return null
 
   const refNumber = letterReference(letter)
-  const letterTypeLabel = letter.letterType.replace(/_/g, ' ')
+  const typeLabel = letterTypeLabel(letter.letterType)
 
   return (
     <Dialog
@@ -186,7 +186,7 @@ function AcknowledgeDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            Acknowledge Receipt — {letterTypeLabel} — {refNumber}
+            Acknowledge Receipt — {typeLabel} — {refNumber}
           </DialogTitle>
         </DialogHeader>
 
@@ -463,7 +463,7 @@ export function MyLettersPage() {
                       variant="outline"
                       className={letterTypeBadgeClass(letter.letterType)}
                     >
-                      {letter.letterType.replace(/_/g, ' ')}
+                      {letterTypeLabel(letter.letterType)}
                     </Badge>
                   </TableCell>
                   <TableCell>

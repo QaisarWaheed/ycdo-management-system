@@ -18,6 +18,8 @@ export type SuspensionWatchlistEntry = {
   branchName: string | null;
   lateDays: number;
   uninformedAbsentDays: number;
+  lateDates: string[];
+  uninformedAbsentDates: string[];
   reasons: SuspensionWatchReason[];
 };
 
@@ -124,6 +126,8 @@ export async function buildSuspensionWatchlist(
     {
       lateDays: number;
       uninformedAbsentDays: number;
+      lateDates: string[];
+      uninformedAbsentDates: string[];
       reasons: SuspensionWatchReason[];
       bucket: 'near' | 'due';
     }
@@ -150,6 +154,10 @@ export async function buildSuspensionWatchlist(
     meta.set(employeeId, {
       lateDays,
       uninformedAbsentDays,
+      lateDates: [...(lateDaysByEmployee.get(employeeId) ?? [])].sort(),
+      uninformedAbsentDates: [
+        ...(uaDaysByEmployee.get(employeeId) ?? []),
+      ].sort(),
       reasons,
       bucket,
     });
@@ -197,6 +205,8 @@ export async function buildSuspensionWatchlist(
       branchName: emp.currentBranch?.name ?? null,
       lateDays: m.lateDays,
       uninformedAbsentDays: m.uninformedAbsentDays,
+      lateDates: m.lateDates,
+      uninformedAbsentDates: m.uninformedAbsentDates,
       reasons: m.reasons,
     };
   };

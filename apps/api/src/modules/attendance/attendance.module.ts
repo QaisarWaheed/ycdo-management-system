@@ -10,6 +10,7 @@ import { ShiftAbsentScheduler } from './shift-absent.scheduler';
 import { ShiftCheckoutScheduler } from './shift-checkout.scheduler';
 import { ShiftMissingCheckoutScheduler } from './shift-missing-checkout.scheduler';
 import { ProspectiveShortLeaveScheduler } from './prospective-short-leave.scheduler';
+import { SuspensionEligibilityNoticeScheduler } from './suspension-eligibility-notice.scheduler';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ProspectiveShortLeaveScheduler } from './prospective-short-leave.schedu
     ShiftCheckoutScheduler,
     ShiftMissingCheckoutScheduler,
     ProspectiveShortLeaveScheduler,
+    SuspensionEligibilityNoticeScheduler,
   ],
   exports: [AttendanceService],
 })

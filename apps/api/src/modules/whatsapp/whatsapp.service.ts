@@ -7,6 +7,16 @@ import { normalizePakistanPhone } from './phone.util';
 
 const GRAPH_VERSION = 'v21.0';
 
+function whatsappLetterTypeLabel(letterType: LetterType): string {
+  if (letterType === LetterType.SUSPENSION_ELIGIBILITY) {
+    return 'Eligibility for Suspension notice (not a suspension)';
+  }
+  if (letterType === LetterType.NEAR_SUSPENSION_WARNING) {
+    return 'Warning of approaching suspension (not a suspension)';
+  }
+  return letterType.replace(/_/g, ' ');
+}
+
 type DeliverInput = {
   letterId: string;
   employeeId: string;
@@ -325,7 +335,7 @@ export class WhatsAppService {
                   { type: 'text', text: params.employeeName },
                   {
                     type: 'text',
-                    text: params.letterType.replace(/_/g, ' '),
+                    text: whatsappLetterTypeLabel(params.letterType),
                   },
                 ],
               },

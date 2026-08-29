@@ -34,7 +34,7 @@ import {
   translateDesignation,
   transliterateName,
 } from '@/lib/urduIdentity'
-import { LETTER_TYPES, type LetterType } from '@/types'
+import { GENERATE_LETTER_TYPES, type LetterType } from '@/types'
 
 interface GenerateLetterDialogProps {
   open: boolean
@@ -274,7 +274,7 @@ export function GenerateLetterDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {LETTER_TYPES.map((t) => (
+                {GENERATE_LETTER_TYPES.map((t) => (
                   <SelectItem key={t.value} value={t.value}>
                     {t.label}
                   </SelectItem>

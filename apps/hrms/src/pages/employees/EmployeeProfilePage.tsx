@@ -38,6 +38,7 @@ import {
   ManagerScopeBadges,
 } from '@/components/employees/RoleBadges'
 import { GenerateLetterDialog } from '@/components/employees/GenerateLetterDialog'
+import { EditDraftLetterDialog } from '@/components/letters/EditDraftLetterDialog'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { TransferDialog } from '@/components/employees/TransferDialog'
 import { FaceSyncDialog } from '@/components/employees/FaceSyncDialog'
@@ -79,6 +80,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { formatEmployeeShiftDisplay } from '@/lib/dutyTimes'
 import { formatDateTimeTime } from '@/lib/timeFormat'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { letterTypeLabel } from '@/lib/letterFieldConfig'
 import { openOnboardingWhatsAppShare } from '@/lib/openOnboardingWhatsAppShare'
 import { maritalStatusToLabel } from '@/lib/searchableSelectOptions'
 import type {
@@ -635,6 +637,8 @@ export function EmployeeProfilePage() {
   const [uploadType, setUploadType] = useState<DocumentType>('CNIC')
 
   const [letterOpen, setLetterOpen] = useState(false)
+  const [editAppointmentLetter, setEditAppointmentLetter] =
+    useState<Letter | null>(null)
   const [statusOpen, setStatusOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
   const [branchDutyOpen, setBranchDutyOpen] = useState(false)
@@ -835,6 +839,29 @@ export function EmployeeProfilePage() {
     },
     onError: () => {
       toast({ title: 'Failed to delete document', variant: 'destructive' })
+    },
+  })
+
+  const sendAppointmentMutation = useMutation({
+    mutationFn: (letterId: string) => lettersApi.send(letterId),
+    onSuccess: (data) => {
+      toast({
+        title: data.alreadySent
+          ? 'Appointment letter already issued'
+          : 'Appointment letter issued',
+        description: data.alreadySent
+          ? 'This letter was already sent to the employee portal.'
+          : 'Watermark removed. Employee portal and WhatsApp run from Send only.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['letters', id] })
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Failed to issue appointment letter',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
     },
   })
 
@@ -2064,7 +2091,13 @@ export function EmployeeProfilePage() {
                             }
                           >
                             <TableCell>
-                              {letter.letterType.replace(/_/g, ' ')}
+                              {letterTypeLabel(letter.letterType)}
+                            {letter.letterType === 'APPOINTMENT' &&
+                              letter.templateCode && (
+                                <span className="ml-2 font-mono text-xs text-text-secondary">
+                                  {letter.templateCode}
+                                </span>
+                              )}
                             </TableCell>
                             <TableCell className="text-sm">
                               {letterDisciplineReason(letter)}
@@ -2099,8 +2132,37 @@ export function EmployeeProfilePage() {
                                   size="sm"
                                   onClick={() => downloadPdf(letter.id)}
                                 >
-                                  Download PDF
+                                  {letter.status === 'DRAFT'
+                                    ? 'Preview PDF'
+                                    : 'Download PDF'}
                                 </Button>
+                                {letter.letterType === 'APPOINTMENT' &&
+                                  letter.status === 'DRAFT' && (
+                                    <>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          setEditAppointmentLetter(letter)
+                                        }
+                                      >
+                                        Edit
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        disabled={
+                                          sendAppointmentMutation.isPending
+                                        }
+                                        onClick={() =>
+                                          sendAppointmentMutation.mutate(
+                                            letter.id,
+                                          )
+                                        }
+                                      >
+                                        Issue / Send
+                                      </Button>
+                                    </>
+                                  )}
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -2461,6 +2523,13 @@ export function EmployeeProfilePage() {
         open={letterOpen}
         onOpenChange={setLetterOpen}
         employeeId={id}
+      />
+      <EditDraftLetterDialog
+        letter={editAppointmentLetter}
+        open={!!editAppointmentLetter}
+        onOpenChange={(open) => {
+          if (!open) setEditAppointmentLetter(null)
+        }}
       />
       <ChangeStatusDialog
         open={statusOpen}

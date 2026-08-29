@@ -25,6 +25,9 @@ describe('EmployeesService.changeStatus', () => {
           }),
         ),
       },
+      letter: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     };
     const service = new EmployeesService(
       prisma as never,
@@ -90,6 +93,59 @@ describe('EmployeesService.changeStatus', () => {
       }),
     ).rejects.toThrow(/inquiry finding/i);
 
+    expect(prisma.employee.update).not.toHaveBeenCalled();
+  });
+
+  it('blocks TRAINEE → ACTIVE with no Appointment letter', async () => {
+    const { service, prisma } = build(EmployeeStatus.TRAINEE);
+    prisma.letter.findFirst.mockResolvedValue(null);
+    await expect(
+      service.changeStatus('emp-1', {
+        status: EmployeeStatus.ACTIVE,
+        reason: 'Completed training',
+      }),
+    ).rejects.toThrow(/A sent Appointment Letter is required/);
+    expect(prisma.employee.update).not.toHaveBeenCalled();
+  });
+
+  it('blocks TRAINEE → ACTIVE when only a DRAFT Appointment exists', async () => {
+    const { service, prisma } = build(EmployeeStatus.TRAINEE);
+    prisma.letter.findFirst.mockResolvedValue(null);
+    await expect(
+      service.changeStatus('emp-1', {
+        status: EmployeeStatus.ACTIVE,
+        reason: 'Completed training',
+      }),
+    ).rejects.toThrow(/A sent Appointment Letter is required/);
+    expect(prisma.letter.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'SENT',
+        }),
+      }),
+    );
+  });
+
+  it('allows TRAINEE → ACTIVE when a SENT Appointment letter exists', async () => {
+    const { service, prisma } = build(EmployeeStatus.TRAINEE);
+    prisma.letter.findFirst.mockResolvedValue({ id: 'letter-sent' });
+    const result = await service.changeStatus('emp-1', {
+      status: EmployeeStatus.ACTIVE,
+      reason: 'Completed training',
+    });
+    expect(result.status).toBe(EmployeeStatus.ACTIVE);
+    expect(prisma.employee.update).toHaveBeenCalled();
+  });
+
+  it('blocks TRAINEE → ACTIVE when the only Appointment letter is REVERSED', async () => {
+    const { service, prisma } = build(EmployeeStatus.TRAINEE);
+    prisma.letter.findFirst.mockResolvedValue(null);
+    await expect(
+      service.changeStatus('emp-1', {
+        status: EmployeeStatus.ACTIVE,
+        reason: 'Completed training',
+      }),
+    ).rejects.toThrow(/A sent Appointment Letter is required/);
     expect(prisma.employee.update).not.toHaveBeenCalled();
   });
 });

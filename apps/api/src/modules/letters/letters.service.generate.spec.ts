@@ -34,6 +34,7 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       notification: { create: jest.fn().mockResolvedValue({}) },
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'hr-1' }) },
     };
 
     const prisma = {
@@ -138,6 +139,129 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
     expect(created.status).toBe(LetterStatus.DRAFT);
     expect(tx.notification.create).not.toHaveBeenCalled();
     expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
+  });
+
+  it('auto-sends SUSPENSION_ELIGIBILITY as SENT with eligibility wording', async () => {
+    const { service, tx, whatsappService, created } = build();
+    tx.user = {
+      findFirst: jest.fn().mockResolvedValue({ id: 'hr-1' }),
+    };
+
+    await service.generateSystemLetter(
+      {
+        employeeId,
+        letterType: LetterType.SUSPENSION_ELIGIBILITY,
+        extraFields: {
+          eligibilityPeriod: '2026-08',
+          violationRows: [
+            {
+              serial: 1,
+              nameUr: 'تاخیر از حاضری',
+              count: 9,
+              dates: '01/08/2026',
+              detail: 'ماہ 2026-08 — 9 یوم',
+            },
+          ],
+        },
+      },
+      'SYSTEM',
+    );
+
+    expect(created.status).toBe(LetterStatus.SENT);
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'SUSPENSION_ELIGIBILITY_NOTICE_ISSUED',
+          userId: 'hr-1',
+        }),
+      }),
+    );
+    expect(tx.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'LETTER_ISSUED',
+          message: expect.stringMatching(/pre-suspension eligibility|not been suspended/i),
+        }),
+      }),
+    );
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        letterType: LetterType.SUSPENSION_ELIGIBILITY,
+      }),
+    );
+  });
+
+  it('auto-sends NEAR_SUSPENSION_WARNING as SENT with warning wording', async () => {
+    const { service, tx, whatsappService, created } = build();
+
+    await service.generateSystemLetter(
+      {
+        employeeId,
+        letterType: LetterType.NEAR_SUSPENSION_WARNING,
+        extraFields: {
+          warningPeriod: '2026-08',
+          violationRows: [
+            {
+              serial: 1,
+              nameUr: 'تاخیر از حاضری',
+              count: 7,
+              dates: '01/08/2026',
+              detail: 'ماہ 2026-08 — 7 یوم',
+            },
+          ],
+        },
+      },
+      'SYSTEM',
+    );
+
+    expect(created.status).toBe(LetterStatus.SENT);
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'NEAR_SUSPENSION_WARNING_ISSUED',
+        }),
+      }),
+    );
+    expect(tx.notification.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'LETTER_ISSUED',
+          message: expect.stringMatching(
+            /approaching suspension|not been suspended/i,
+          ),
+        }),
+      }),
+    );
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        letterType: LetterType.NEAR_SUSPENSION_WARNING,
+      }),
+    );
+  });
+
+  it('rejects manual generate of system watchlist letter types', async () => {
+    const { service } = build();
+
+    await expect(
+      service.generate(
+        {
+          employeeId,
+          letterType: LetterType.NEAR_SUSPENSION_WARNING,
+        },
+        'user-hr',
+      ),
+    ).rejects.toThrow(/system-generated/);
+
+    await expect(
+      service.generate(
+        {
+          employeeId,
+          letterType: LetterType.SUSPENSION_ELIGIBILITY,
+        },
+        'user-hr',
+      ),
+    ).rejects.toThrow(/system-generated/);
   });
 });
 

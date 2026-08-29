@@ -24,6 +24,7 @@ import {
   PreviewLetterDto,
   ReverseLetterDto,
   UpdateLetterDto,
+  AppointmentPreviewDto,
 } from './letters.dto';
 import {
   CreateLetterTemplateDto,
@@ -31,12 +32,19 @@ import {
   UpdateLetterTemplateDto,
 } from './letter-templates.dto';
 import { LettersService } from './letters.service';
+import { AppointmentMappingsService } from './appointment-mappings.service';
+import {
+  AppointmentMappingPreviewDto,
+  CreateAppointmentMappingDto,
+  UpdateAppointmentMappingDto,
+} from './appointment-mappings.dto';
 
 @Controller('letters')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class LettersController {
   constructor(
     private lettersService: LettersService,
+    private appointmentMappingsService: AppointmentMappingsService,
     private accessScopeService: AccessScopeService,
   ) {}
 
@@ -105,6 +113,103 @@ export class LettersController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.lettersService.preview(dto, user.id, user.role);
+  }
+
+  @Post('appointment-preview')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  previewAppointment(
+    @Body() dto: AppointmentPreviewDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.lettersService.previewAppointment(dto, user.id, user.role);
+  }
+
+  @Get('appointment-mappings/templates')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_MANAGER,
+  )
+  listAppointmentMappingTemplates() {
+    return this.appointmentMappingsService.listTemplates();
+  }
+
+  @Get('appointment-mappings/coverage')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_MANAGER,
+  )
+  appointmentMappingCoverage() {
+    return this.appointmentMappingsService.coverage();
+  }
+
+  @Get('appointment-mappings')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_MANAGER,
+  )
+  listAppointmentMappings() {
+    return this.appointmentMappingsService.listMappings();
+  }
+
+  @Post('appointment-mappings/preview')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_MANAGER,
+  )
+  previewAppointmentMapping(@Body() dto: AppointmentMappingPreviewDto) {
+    return this.appointmentMappingsService.previewSample(dto);
+  }
+
+  @Post('appointment-mappings')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_MANAGER,
+  )
+  createAppointmentMapping(@Body() dto: CreateAppointmentMappingDto) {
+    return this.appointmentMappingsService.create(dto);
+  }
+
+  @Patch('appointment-mappings/:id')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_MANAGER,
+  )
+  updateAppointmentMapping(
+    @Param('id') id: string,
+    @Body() dto: UpdateAppointmentMappingDto,
+  ) {
+    return this.appointmentMappingsService.update(id, dto);
+  }
+
+  @Delete('appointment-mappings/:id')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.ADMIN_MANAGER,
+  )
+  deleteAppointmentMapping(@Param('id') id: string) {
+    return this.appointmentMappingsService.remove(id);
   }
 
   @Post()

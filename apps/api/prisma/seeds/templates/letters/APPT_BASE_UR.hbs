@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="utf-8">
+<style>{{{letterStyles}}}
+  .appt-meta { direction: ltr; text-align: left; font-family: "Times New Roman", Times, serif; }
+  .duties { margin: 0 0 12pt; }
+  ol.nested { margin: 6pt 0 0; padding-right: 18pt; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="letterhead" style="text-align:center;margin-bottom:12pt;">
+    {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="" style="max-height:70px;">{{/if}}
+    <div style="font-weight:700;font-size:14pt;">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION (YCDO)</div>
+  </div>
+
+  <h1 style="text-align:center;font-size:16pt;">تعیناتی / سلیکشن لیٹر</h1>
+
+  <div class="appt-meta" style="display:flex;justify-content:space-between;font-weight:700;margin-bottom:14pt;">
+    <span>Letter No.: {{letterNo}}</span>
+    <span>Date: {{issueDate}}</span>
+  </div>
+
+  <p>السلام علیکم {{salutation}} {{employeeName}}،</p>
+  <p>شناختی کارڈ نمبر: {{cnic}} &nbsp; فون: {{phone}}</p>
+
+  <p>
+    خوشی سے مطلع کیا جاتا ہے کہ آپ کو Youth Community Development Organization (YCDO)
+    میں خیراتی خدمت کے لیے {{serviceArea}} کے Volunteer کے طور پر منتخب کیا گیا ہے۔
+  </p>
+  <p>
+    محدود وسائل کی وجہ سے YCDO باقاعدہ تنخواہ ادا کرنے سے قاصر ہے؛ تاہم آپ کے ذاتی اخراجات کے لیے
+    ماہانہ وظیفہ روپے {{stipendAmount}}، یومیہ {{dutyTotalHours}} ڈیوٹی گھنٹوں کے عوض،
+    {{shiftName}} شفٹ کے مطابق ادا کیا جائے گا۔
+  </p>
+  <p>
+    ترغیبات، جہاں لاگو ہوں، آپ کی خدمات کے معیار اور کارکردگی پر YCDO پالیسی کے مطابق منحصر ہوں گی۔
+    پیمانہ: کمزور — اطمینان بخش — اچھی — بہترین۔
+  </p>
+  <p>
+    ابتدائی تین (03) ماہ پروبیشنری مدت شمار ہوں گے۔ اس دوران وظیفہ، ترغیبات، کٹوتیاں یا روک
+    رائج YCDO پالیسی کے تابع ہوں گے۔ بقایا حق، پروبیشن کامیابی سے مکمل ہونے کے بعد،
+    لاگو ادارہ جاتی قواعد کے مطابق نمٹایا جائے گا۔
+  </p>
+  <p>
+    آپ کو {{branchName}} پر {{department}} ڈیپارٹمنٹ میں {{designation}} کے عہدے پر تعینات کیا جاتا ہے۔
+  </p>
+  <div class="duties">
+    <div>ڈیوٹی اوقات: یومیہ {{dutyTotalHours}} گھنٹے</div>
+    <div>شفٹ: {{shiftName}}</div>
+    <div>ورکنگ شیڈول: {{scheduleFrom}} تا {{scheduleTo}}</div>
+  </div>
+
+  <h2>شرائط و ضوابط</h2>
+  <ol>
+    <li>آپ تمام لاگو YCDO SOPs، پالیسیوں، قواعد، دفتری ہدایات اور Head Office، ڈیپارٹمنٹ انچارج، برانچ مینجمنٹ یا مجاز نمائندوں کی جائز ہدایات پر عمل کرنے کے پابند ہیں۔</li>
+    <li>آپ ڈیپارٹمنٹ اور عہدے کی ذمہ داریوں / SOPs کے مطابق فرائض انجام دیں گے۔</li>
+    <li>منظور شدہ ڈیوٹی اوقات، شفٹ، حاضری، پابندیِ وقت اور لاگو بائیو میٹرک / چیک اِن / چیک آؤٹ طریقہ کار پر عمل لازم ہے۔</li>
+    <li>آپ کو ماہانہ {{monthlyAllowedLeaves}} منظور شدہ چھٹی(اں) حاصل ہوں گی، بشرطیکہ YCDO Leave Policy، منظوری کا طریقہ، حاضری ریکارڈ اور دیگر اہلیت کی شرائط پوری ہوں۔</li>
+    <li>Short Leave آپ کے یومیہ شیڈول ڈیوٹی کے نصف تک دی جا سکتی ہے، بشرطیکہ کوٹہ، منظوری اور حاضری کے قواعد لاگو ہوں۔ زیادہ سے زیادہ Short Leave: {{shortLeaveHours}} گھنٹے۔</li>
+    <li>آپ ان تمام دفتری اجلاسوں، ٹریننگز، تقریبات، پروگراموں، مہمات، ایمرجنسی ڈیوٹیز اور دیگر ادارہ جاتی سرگرمیوں میں شرکت کے پابند ہیں جن کے لیے آپ کو باضابطہ بلایا، تفویض یا دعوت دی جائے۔ بلا جواز غیر حاضری یا بار بار عدم تعمیل پر YCDO SOPs اور باقاعدہ ڈسپلنری عمل کے مطابق کارروائی ہو سکتی ہے، بشمول Suspension یا Termination۔</li>
+    <li>متعلقہ سسٹمز، سافٹ ویئر، رجسٹرز، آلات، ریکارڈ اور رپورٹنگ طریقہ کار درست استعمال کیے جائیں۔ غیر مجاز رسائی، تبدیلی، غلط استعمال یا چھپانا منع ہے۔</li>
+    <li>ملازم، مریض، مالی، انتظامی، آپریشنل، تکنیکی اور ادارہ جاتی معلومات کی رازداری قائم رکھیں۔</li>
+    <li>YCDO کی جائیداد، آلات، ریکارڈ، اسناد، اسٹاک اور وسائل آپ کی امانت ہیں؛ ان کی حفاظت آپ کی ذمہ داری ہے۔</li>
+    <li>شعبہ / عہدہ کے مخصوص SOP:
+      <ol class="nested">{{{departmentSpecificSops}}}</ol>
+    </li>
+    <li>آڈٹ، معائنہ، انکوائری، تحقیقات، نگرانی اور مجاز رپورٹنگ میں تعاون لازم ہے۔</li>
+    <li>استعفیٰ یا رضاکارانہ علیحدگی کی صورت میں تیس (30) دن کی تحریری نوٹس دینا ہوگی۔ اگر آپ مطلوبہ نوٹس کیے بغیر یا مجاز اتھارٹی کی منظوری کے بغیر اچانک فرائض چھوڑ دیں تو آپ کے بقایا واجبات رائج YCDO پالیسی کے مطابق ضبط یا ایڈجسٹ کیے جا سکتے ہیں۔</li>
+    <li>YCDO کو بدانتظامی، پالیسی یا SOP کی خلاف ورزی، غیر تسلی بخش کارکردگی، بار بار غیر حاضری، غفلت، حکم عدولی، رازداری کی خلاف ورزی، ریکارڈ میں جعل سازی، ادارہ جاتی وسائل کے غلط استعمال یا دیگر سنگین / بار بار خلاف ورزی پر ڈسپلنری کارروائی کا حق حاصل ہے۔ ایسی کارروائی میں مشورہ، وارننگ، جرمانہ، Suspension، انکوائری، Termination یا دیگر اقدام شامل ہو سکتے ہیں جو لاگو YCDO قواعد کے مطابق ہوں۔</li>
+    <li>YCDO منظور شدہ SOPs، پالیسیوں، سسٹمز اور آپریشنل تقاضوں میں ترمیم کر سکتا ہے؛ آپ کو ابلاغ شدہ موجودہ ورژن پر عمل کرنا ہوگا۔</li>
+  </ol>
+
+  <h2>قبولیت</h2>
+  <p>
+    میں {{designation}} کے عہدے پر YCDO کے ساتھ یہ تعیناتی قبول کرتا / کرتی ہوں اور ادارے کے قواعد، پالیسیوں، SOPs اور اس Volunteer تعیناتی کی شرائط کا پابند / پابندہ ہوں۔
+  </p>
+  {{#if digitalAcceptance}}
+    <p>Accepted electronically by {{employeeName}} on {{acceptedAt}}.</p>
+  {{else}}
+    <p>نام: ________________ &nbsp; دستخط: ________________</p>
+  {{/if}}
+
+  <p style="margin-top:28pt;"><strong>{{chairmanAdminName}}</strong><br>
+  Chairman Admin Department<br>
+  Youth Community Development Organization (YCDO)</p>
+
+  {{#if founderSignatureUrl}}
+    <img src="{{founderSignatureUrl}}" alt="" style="height:60px;">
+  {{/if}}
+  <p><strong>Founder/Head of Organization</strong><br>YCDO Pakistan</p>
+</div>
+</body>
+</html>

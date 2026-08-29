@@ -13,6 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
+import { letterTypeLabel } from '@/lib/letterFieldConfig'
 
 export function FailedWhatsAppPage({
   embedded = false,
@@ -109,7 +110,7 @@ export function FailedWhatsAppPage({
                     </p>
                   </TableCell>
                   <TableCell>
-                    <p>{row.letter.letterType.replace(/_/g, ' ')}</p>
+                    <p>{letterTypeLabel(row.letter.letterType)}</p>
                     {row.letter.letterNo && (
                       <p className="text-xs text-text-secondary">
                         {row.letter.letterNo}

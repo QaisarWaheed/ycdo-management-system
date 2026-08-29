@@ -500,6 +500,14 @@ const POSITIVE_TYPES: LetterType[] = [
   'EXPERIENCE',
 ]
 
+export function letterTypeLabel(type: string): string {
+  if (type === 'SUSPENSION_ELIGIBILITY') return 'اہلیت برائے معطلی'
+  if (type === 'NEAR_SUSPENSION_WARNING') {
+    return 'تنبیہی نوٹس برائے ممکنہ معطلی'
+  }
+  return type.replace(/_/g, ' ')
+}
+
 export function letterTypeBadgeClass(type: string): string {
   if (DISCIPLINARY_TYPES.includes(type as LetterType)) {
     return 'bg-red-100 text-red-800 border-red-200'
@@ -542,6 +550,8 @@ export const URDU_LETTER_SUBJECT: Partial<Record<LetterType, string>> = {
   APPRECIATION: 'تعریفی خط',
   TRANSFER: 'ٹرانسفر / پوسٹنگ نوٹیفکیشن',
   SUSPENSION: 'معطلی نوٹس',
+  SUSPENSION_ELIGIBILITY: 'اہلیت برائے معطلی بابت مسلسل خلاف ورزیاں',
+  NEAR_SUSPENSION_WARNING: 'مسلسل خلاف ورزیوں بابت تنبیہی نوٹس',
   TERMINATION: 'ختمِ ملازمت',
   REINSTATEMENT: 'بحالیِ ملازمت',
   REJOINING: 'واپسیِ ملازمت',

@@ -18,6 +18,7 @@ import {
   ChangeType,
   EmployeeOnboardingStatus,
   EmployeeStatus,
+  LetterStatus,
   LetterType,
   LeaveStatus,
   MaritalStatus,
@@ -1185,6 +1186,7 @@ export class EmployeesService {
         where: {
           employeeId: id,
           letterType: LetterType.APPOINTMENT,
+          status: LetterStatus.SENT,
         },
       });
 
@@ -1192,7 +1194,7 @@ export class EmployeesService {
         throw new BadRequestException({
           code: 'APPOINTMENT_LETTER_REQUIRED',
           message:
-            'An appointment letter must be generated before activating a trainee employee.',
+            'A sent Appointment Letter is required before activating this employee.',
         });
       }
     }

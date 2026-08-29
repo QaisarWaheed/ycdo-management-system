@@ -101,6 +101,7 @@ export function scheduleFromDuty(emp: {
 export function appointmentExtraFieldsFromEmployee(
   emp: {
     dutyTotalHours?: number | string | null;
+    monthlyAllowedLeaves?: number | null;
     shift?: { name?: string | null } | null;
   },
   stipendAmount: number | string,
@@ -108,12 +109,16 @@ export function appointmentExtraFieldsFromEmployee(
 ): Record<string, string> {
   const hoursNum = Number(emp.dutyTotalHours);
   const hoursPerDay =
-    Number.isFinite(hoursNum) && hoursNum > 0 ? String(hoursNum) : '8';
+    Number.isFinite(hoursNum) && hoursNum > 0 ? String(hoursNum) : '';
 
   return {
     stipendAmount: String(stipendAmount),
     hoursPerDay,
+    dutyTotalHours: hoursPerDay,
     shiftName: emp.shift?.name?.trim() || 'General',
     capacity,
+    ...(emp.monthlyAllowedLeaves != null
+      ? { monthlyAllowedLeaves: String(emp.monthlyAllowedLeaves) }
+      : {}),
   };
 }

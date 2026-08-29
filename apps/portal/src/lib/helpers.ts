@@ -7,6 +7,16 @@ export function letterReference(letter: Letter): string {
   return name?.replace(/_/g, '/') ?? letter.id.slice(0, 8)
 }
 
+export function letterTypeLabel(type: string): string {
+  if (type === 'SUSPENSION_ELIGIBILITY') {
+    return 'اہلیت برائے معطلی'
+  }
+  if (type === 'NEAR_SUSPENSION_WARNING') {
+    return 'تنبیہی نوٹس برائے ممکنہ معطلی'
+  }
+  return type.replace(/_/g, ' ')
+}
+
 export function letterTypeBadgeClass(type: string): string {
   const disciplinary = ['WARNING', 'DISCIPLINARY', 'SHOW_CAUSE', 'FINE', 'SUSPENSION', 'TERMINATION']
   const positive = ['APPOINTMENT', 'APPRECIATION', 'REINSTATEMENT', 'REJOINING', 'SALARY_INCREMENT', 'EXPERIENCE']

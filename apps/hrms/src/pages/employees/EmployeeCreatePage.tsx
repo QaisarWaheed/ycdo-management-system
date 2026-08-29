@@ -20,6 +20,7 @@ import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
+import { lettersApi } from '@/api/endpoints/letters'
 import {
   APPROVER_OPTIONS,
   employeeOnboardingApi,
@@ -751,6 +752,14 @@ function EmployeeCreatePageForm() {
   const [medicalCerts, setMedicalCerts] = useState<File[]>([])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [physicalFormFile, setPhysicalFormFile] = useState<File | null>(null)
+  const [appointmentPreviewHtml, setAppointmentPreviewHtml] = useState<
+    string | null
+  >(null)
+  const [appointmentPreviewMeta, setAppointmentPreviewMeta] = useState<{
+    templateCode: string
+    language: string
+    match: string
+  } | null>(null)
   const [approverTarget, setApproverTarget] =
     useState<EmployeeApproverTarget | null>(null)
   const [approverWhatsAppPhone, setApproverWhatsAppPhone] = useState('')
@@ -1141,6 +1150,59 @@ function EmployeeCreatePageForm() {
       toast({
         title: 'Failed to create employee',
         description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const appointmentPreviewMutation = useMutation({
+    mutationFn: async () => {
+      if (!step1Data || !step2Data || !step3Data) {
+        throw new Error('Complete previous steps first')
+      }
+      return lettersApi.previewAppointment({
+        fullName: step1Data.fullName,
+        cnic: step1Data.cnic?.trim() || 'N/A',
+        phone: step1Data.phone,
+        gender: step1Data.gender,
+        currentDepartmentId: step2Data.currentDepartmentId,
+        currentDesignation: step2Data.currentDesignation,
+        branchName: branches.find((b) => b.id === step2Data.currentBranchId)
+          ?.name,
+        dutyStartTime: step2Data.dutyStartTime,
+        dutyEndTime: step2Data.dutyEndTime,
+    extraFields: {
+          stipendAmount: String(step3Data.basicStipend),
+          hoursPerDay: String(step2Data.dutyTotalHours ?? 8),
+          dutyTotalHours: String(step2Data.dutyTotalHours ?? 8),
+          monthlyAllowedLeaves:
+            step2Data.monthlyAllowedLeaves == null
+              ? undefined
+              : String(step2Data.monthlyAllowedLeaves),
+          shiftName: 'General',
+          capacity: 'Full Time',
+        },
+      })
+    },
+    onSuccess: (data) => {
+      setAppointmentPreviewHtml(data.previewHtml)
+      setAppointmentPreviewMeta(
+        data.mapping
+          ? {
+              templateCode: data.mapping.templateCode,
+              language: data.mapping.language,
+              match: data.mapping.match,
+            }
+          : null,
+      )
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } }; message?: string }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Appointment preview failed',
+        description: Array.isArray(msg)
+          ? msg.join(', ')
+          : String(msg ?? err.message ?? 'Error'),
         variant: 'destructive',
       })
     },
@@ -2347,6 +2409,42 @@ function EmployeeCreatePageForm() {
                 onChange={setApproverWhatsAppPhone}
                 placeholder="03XXXXXXXXX"
               />
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Appointment letter preview</p>
+                  <p className="text-xs text-text-secondary">
+                    Resolves the mapped template. This does not create or send a
+                    letter.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={appointmentPreviewMutation.isPending}
+                  onClick={() => appointmentPreviewMutation.mutate()}
+                >
+                  {appointmentPreviewMutation.isPending
+                    ? 'Rendering...'
+                    : 'Preview Appointment Letter'}
+                </Button>
+              </div>
+              {appointmentPreviewMeta && (
+                <p className="text-xs text-text-secondary">
+                  Template {appointmentPreviewMeta.templateCode} · language{' '}
+                  {appointmentPreviewMeta.language} · match{' '}
+                  {appointmentPreviewMeta.match}
+                </p>
+              )}
+              {appointmentPreviewHtml && (
+                <iframe
+                  title="Appointment letter draft preview"
+                  className="h-[480px] w-full rounded border border-border bg-white"
+                  srcDoc={appointmentPreviewHtml}
+                />
+              )}
             </div>
 
             <div className="flex justify-between">

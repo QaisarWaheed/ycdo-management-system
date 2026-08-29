@@ -1,6 +1,12 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import {
+  APPOINTMENT_TEMPLATE_CODES,
+  appointmentFamilyMeta,
+  appointmentTemplateFile,
+} from '../../src/modules/letters/appointment-families';
+import { seedAppointmentTemplateMappings } from './appointment-mappings.seed';
 
 type TemplateFieldSeed = {
   key: string;
@@ -32,6 +38,24 @@ const TEMPLATES: TemplateSeed[] = [
     file: 'selection-letter.hbs',
     requiredVars: ['stipendAmount', 'hoursPerDay', 'shiftName', 'capacity'],
   },
+  {
+    code: 'APPOINTMENT_FIXTURE_EN',
+    name: 'Appointment Letter fixture (English)',
+    file: 'letters/APPOINTMENT_FIXTURE_EN.hbs',
+    requiredVars: [],
+  },
+  {
+    code: 'APPOINTMENT_FIXTURE_UR',
+    name: 'Appointment Letter fixture (Urdu)',
+    file: 'letters/APPOINTMENT_FIXTURE_UR.hbs',
+    requiredVars: [],
+  },
+  ...APPOINTMENT_TEMPLATE_CODES.map((code) => ({
+    code,
+    name: appointmentFamilyMeta(code)!.name,
+    file: appointmentTemplateFile(code),
+    requiredVars: ['stipendAmount'],
+  })),
   {
     code: 'WARNING',
     name: 'Warning Letter (Urdu)',
@@ -91,6 +115,24 @@ const TEMPLATES: TemplateSeed[] = [
     name: 'Suspension Notice (Urdu)',
     file: 'letters/SUSPENSION.hbs',
     requiredVars: ['suspensionReason'],
+  },
+  {
+    code: 'SUSPENSION_ELIGIBILITY',
+    name: 'Eligibility for Suspension Notice (Urdu)',
+    file: 'letters/SUSPENSION_ELIGIBILITY.hbs',
+    requiredVars: [],
+    subjectUr: 'اہلیت برائے معطلی بابت مسلسل خلاف ورزیاں',
+    enTitle: 'اہلیت برائے معطلی',
+    letterCode: 'SEL',
+  },
+  {
+    code: 'NEAR_SUSPENSION_WARNING',
+    name: 'Near Suspension Warning Notice (Urdu)',
+    file: 'letters/NEAR_SUSPENSION_WARNING.hbs',
+    requiredVars: [],
+    subjectUr: 'مسلسل خلاف ورزیوں بابت تنبیہی نوٹس',
+    enTitle: 'تنبیہی نوٹس برائے ممکنہ معطلی',
+    letterCode: 'NSW',
   },
   {
     code: 'TERMINATION',
@@ -186,13 +228,28 @@ export async function seedLetterTemplates(prisma: PrismaClient) {
       where: { code: tpl.code },
     });
 
-    // Once a template row exists, the database is the live source of truth —
-    // IT staff can edit its wording via the Letter Templates admin UI, and
-    // re-running the seed must never clobber those edits with the original
-    // .hbs file content.
-    if (existing) continue;
-
+    const isAppointmentFamily = tpl.code.startsWith('APPT_');
     const bodyHtml = readTemplate(tpl.file);
+
+    if (existing && !isAppointmentFamily) {
+      // Once a non-appointment template row exists, the database is the live
+      // source of truth — IT staff can edit wording via Letter Templates.
+      continue;
+    }
+
+    if (existing && isAppointmentFamily) {
+      await prisma.letterTemplate.update({
+        where: { code: tpl.code },
+        data: {
+          name: tpl.name,
+          bodyHtml,
+          requiredVars: tpl.requiredVars,
+          active: true,
+        },
+      });
+      continue;
+    }
+
     await prisma.letterTemplate.create({
       data: {
         code: tpl.code,
@@ -213,4 +270,13 @@ export async function seedLetterTemplates(prisma: PrismaClient) {
       },
     });
   }
+
+  await prisma.letterTemplate.updateMany({
+    where: {
+      code: { in: ['APPOINTMENT_FIXTURE_EN', 'APPOINTMENT_FIXTURE_UR'] },
+    },
+    data: { active: false },
+  });
+
+  await seedAppointmentTemplateMappings(prisma);
 }

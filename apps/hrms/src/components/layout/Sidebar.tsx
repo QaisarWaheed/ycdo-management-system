@@ -76,6 +76,12 @@ const ruleBookNavItem = {
   icon: BookOpen,
 }
 
+const appointmentLettersNavItem = {
+  to: '/admin/appointment-letter-settings',
+  label: 'Appointment Letters',
+  icon: FileText,
+}
+
 function navItemsForRole(role?: string) {
   if (!role) return allNavItems
 
@@ -92,15 +98,19 @@ function navItemsForRole(role?: string) {
       ...(role === 'SUPER_ADMIN' ? [activityTrailNavItem, shiftsNavItem] : []),
     ]
     if (role === 'SUPER_ADMIN') {
-      return [...withActivity, ...itTeamNavItems]
+      return [...withActivity, appointmentLettersNavItem, ...itTeamNavItems]
+    }
+    if (role === 'HR_MANAGER' || role === 'HR_ADMIN_MANAGER') {
+      return [...withActivity, appointmentLettersNavItem]
     }
     return withActivity
   }
 
   if (role === 'ADMIN_MANAGER' || role === 'ADMIN_OFFICER') {
-    return allNavItems.filter((item) =>
+    const items = allNavItems.filter((item) =>
       ['/dashboard', '/employees', '/attendance', '/leave', '/branch-contacts'].includes(item.to),
     )
+    return role === 'ADMIN_MANAGER' ? [...items, appointmentLettersNavItem] : items
   }
 
   if (role === 'MEDICINE_MANAGER') {

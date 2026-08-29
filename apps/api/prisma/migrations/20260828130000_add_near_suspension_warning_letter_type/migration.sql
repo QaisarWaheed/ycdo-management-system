@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "LetterType" ADD VALUE 'NEAR_SUSPENSION_WARNING';

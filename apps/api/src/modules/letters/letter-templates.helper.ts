@@ -44,6 +44,8 @@ export const LETTER_TYPE_SUBJECT: Record<LetterType, string> = {
   SALARY_INCREMENT: 'تنخواہ / الاؤنس اضافہ',
   EXPERIENCE: 'تجربہ سرٹیفکیٹ',
   EXPLANATION_FINE: 'تحریری وضاحت طلب و جرمانہ نوٹس',
+  SUSPENSION_ELIGIBILITY: 'اہلیت برائے معطلی بابت مسلسل خلاف ورزیاں',
+  NEAR_SUSPENSION_WARNING: 'مسلسل خلاف ورزیوں بابت تنبیہی نوٹس',
   CUSTOM: '',
 };
 
@@ -73,6 +75,16 @@ export const LETTER_TYPE_EN_HEADER: Record<
   EXPERIENCE: { title: 'EXPERIENCE CERTIFICATE', prescribed: '', subtitle: '' },
   EXPLANATION_FINE: {
     title: 'LETTER OF EXPLANATION & FINE',
+    prescribed: '',
+    subtitle: '',
+  },
+  SUSPENSION_ELIGIBILITY: {
+    title: 'اہلیت برائے معطلی',
+    prescribed: '',
+    subtitle: '',
+  },
+  NEAR_SUSPENSION_WARNING: {
+    title: 'تنبیہی نوٹس برائے ممکنہ معطلی',
     prescribed: '',
     subtitle: '',
   },
@@ -149,6 +161,14 @@ export const LETTER_TEMPLATE_META: Record<
     name: 'Explanation & Fine Letter (Urdu)',
     requiredVars: ['violations', 'fineAmount', 'deductionMonth'],
   },
+  SUSPENSION_ELIGIBILITY: {
+    name: 'Eligibility for Suspension Notice (Urdu)',
+    requiredVars: [],
+  },
+  NEAR_SUSPENSION_WARNING: {
+    name: 'Near Suspension Warning Notice (Urdu)',
+    requiredVars: [],
+  },
   // Custom templates carry their own name/requiredVars on the LetterTemplate
   // row; this entry is just a safe fallback and is not otherwise read.
   CUSTOM: {
@@ -175,6 +195,8 @@ const LETTER_TYPE_SHORT: Record<LetterType, string> = {
   SALARY_INCREMENT: 'INC',
   EXPERIENCE: 'EXL',
   EXPLANATION_FINE: 'EXF',
+  SUSPENSION_ELIGIBILITY: 'SEL',
+  NEAR_SUSPENSION_WARNING: 'NSW',
   CUSTOM: 'GEN',
 };
 

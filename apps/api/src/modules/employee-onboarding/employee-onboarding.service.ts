@@ -258,7 +258,7 @@ export class EmployeeOnboardingService {
           stipendRecord ?? snapshot.basicStipend ?? 0,
         );
 
-        // Appointment/Selection letter — also creates portal notification + My Letters entry
+        // Appointment letter is created as DRAFT. HR must send explicitly.
         await this.lettersService.generateSystemLetter({
           employeeId: employee.id,
           letterType: LetterType.APPOINTMENT,

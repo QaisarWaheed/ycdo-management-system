@@ -21,6 +21,7 @@ import { ProfilePage } from '@/pages/settings/ProfilePage'
 import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
 import { MasterDataPage } from '@/pages/admin/MasterDataPage'
 import { LetterTemplatesPage } from '@/pages/admin/LetterTemplatesPage'
+import { AppointmentLetterSettingsPage } from '@/pages/admin/AppointmentLetterSettingsPage'
 import { LetterTemplateEditorPage } from '@/pages/admin/LetterTemplateEditorPage'
 import { RolesManagementPage } from '@/pages/admin/RolesManagementPage'
 import { UserPasswordsPage } from '@/pages/admin/UserPasswordsPage'
@@ -247,6 +248,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <LetterTemplatesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/appointment-letter-settings"
+        element={
+          <ProtectedRoute>
+            <AppointmentLetterSettingsPage />
           </ProtectedRoute>
         }
       />
