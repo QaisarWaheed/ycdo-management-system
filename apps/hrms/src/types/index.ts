@@ -704,7 +704,9 @@ export interface HourlyPayrollBreakdown {
   paidLeaveHours: number
   payableMinutes: number
   payableHours: number
+  creditedAttendanceDays?: number
   hourlyBasicEarned: number
+  payrollBasicStipend?: number
   fixedAllowances: number
   fixedPackageDeductions: number
   disciplineDeductions: number

@@ -487,7 +487,7 @@ describe('PayrollService.recomputeMonthAll', () => {
     expect(result.totalEmployeesInScope).toBe(1);
     expect(result.employeesProcessed).toBe(1);
     expect(db.payrollEntries.get(oldEntry.id)).toBeUndefined();
-    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300);
+    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(27900);
   });
 
   it('E: an employee whose only segment is PROCESSED is skipped, never mutated', async () => {
@@ -541,7 +541,7 @@ describe('PayrollService.recomputeMonthAll', () => {
     expect(employeeResult.status).toBe('PARTIAL_RECOMPUTE');
     expect(db.payrollEntries.get(oldEntry.id)).toEqual(frozenBefore);
     expect(db.payrollEntries.get(oldEntry.id)?.status).toBe(PayrollStatus.PROCESSED);
-    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300);
+    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(27900);
   });
 
   // H. Employee with no existing PayrollEntry is never created.

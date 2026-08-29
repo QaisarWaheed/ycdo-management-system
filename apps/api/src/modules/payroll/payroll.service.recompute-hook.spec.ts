@@ -380,8 +380,8 @@ function seedPresentDay(db: FakeDb, day: number, status: AttendanceStatus = Atte
 const AUG_15 = new Date(Date.UTC(2026, 7, 15, 0, 0, 0));
 
 describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
-  // 1. Attendance appearing mid-month must not grow contractual Basic.
-  it('1: PENDING basic stays contractual when a PRESENT log appears', async () => {
+  // 1. Attendance appearing mid-month adds that day's basic.
+  it('1: PENDING basic grows when a PRESENT log appears', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -391,7 +391,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
     const before = [...db.payrollEntries.values()][0];
-    expect(before.basicStipend).toBe(24800);
+    expect(before.basicStipend).toBe(0);
 
     // Now the day is marked PRESENT (simulating markManual's write already
     // having committed) and the hook fires again.
@@ -399,7 +399,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
     const after = [...db.payrollEntries.values()][0];
-    expect(after.basicStipend).toBe(24800);
+    expect(after.basicStipend).toBe(800);
   });
 
   // 2. PRESENT -> ABSENT automatically reconciles PENDING payroll.
@@ -429,7 +429,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     const afterAbsent = [...db.payrollEntries.values()][0].basicStipend;
 
     expect(afterAbsent).toBe(afterPresent);
-    expect(afterAbsent).toBe(24800);
+    expect(afterAbsent).toBe(800);
   });
 
   // 3. Historical August correction made later recomputes August, not the
@@ -449,7 +449,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     // never a wall-clock "now".
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
-    expect(db.payrollEntries.get(augEntry.id)!.basicStipend).toBe(24800);
+    expect(db.payrollEntries.get(augEntry.id)!.basicStipend).toBe(800);
     expect(db.payrollEntries.get(sepEntry.id)!.basicStipend).toBe(12345);
   });
 
@@ -508,12 +508,12 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     const service = makeService(db);
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
-    expect([...db.payrollEntries.values()][0].basicStipend).toBe(24800);
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(800);
 
     db.attendanceLogs.find((l) => l.date.getTime() === augustDate(10).getTime())!.status =
       AttendanceStatus.HALF_DAY;
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
-    expect([...db.payrollEntries.values()][0].basicStipend).toBe(24800);
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(800);
   });
 
   // 7. PAID payroll remains financially unchanged.
@@ -590,7 +590,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     // too (recomputeEmployeeMonth refreshes every overlapping PENDING
     // segment together), but correctly unaffected by the Aug 5 correction
     // since that date falls outside its own window.
-    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300);
+    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(27900);
   });
 
   // Additional: hook never even queries StipendRecord/AttendanceLog beyond

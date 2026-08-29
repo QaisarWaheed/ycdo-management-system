@@ -609,7 +609,7 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
       [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
     ).toBeUndefined();
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(newEntry.basicStipend).toBe(15300);
+    expect(newEntry.basicStipend).toBe(27900);
   });
 
   // R. Regression: headcount/segment count remains correct after applying

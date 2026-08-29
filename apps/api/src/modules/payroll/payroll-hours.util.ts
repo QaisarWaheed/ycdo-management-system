@@ -27,12 +27,13 @@ export interface HourlyPayrollBreakdown {
    */
   policyCreditMinutes: number;
   policyCreditHours: number;
+  creditedAttendanceDays: number;
   payableMinutes: number;
   payableHours: number;
   hourlyBasicEarned: number;
   /**
-   * Persisted Monthly Payroll Basic Stipend: contractual package amount
-   * prorated only by calendar stipend-segment days, never by attendance.
+   * Persisted Monthly Payroll Basic Stipend: contractual daily rate ×
+   * credited attendance days (full day per PRESENT/SHORT_LEAVE/etc.).
    */
   payrollBasicStipend: number;
   fixedAllowances: number;
@@ -265,6 +266,7 @@ export function buildHourlyPayrollBreakdown(input: {
   workedMinutes: number;
   paidLeaveMinutes: number;
   policyCreditMinutes: number;
+  creditedAttendanceDays?: number;
   fixedAllowances: number;
   fixedPackageDeductions: number;
   disciplineDeductions: number;
@@ -319,6 +321,7 @@ export function buildHourlyPayrollBreakdown(input: {
     paidLeaveHours: roundHoursFromMinutes(input.paidLeaveMinutes),
     policyCreditMinutes: input.policyCreditMinutes,
     policyCreditHours: roundHoursFromMinutes(input.policyCreditMinutes),
+    creditedAttendanceDays: Math.max(0, input.creditedAttendanceDays ?? 0),
     payableMinutes,
     payableHours,
     hourlyBasicEarned,

@@ -108,6 +108,31 @@ export function dailyStipendRate(basicStipend: number, date: Date): number {
   return basicStipend / days;
 }
 
+/** Basic Stipend from full credited attendance days (not clocked hours). */
+export function basicStipendFromCreditedDays(
+  contractualBasic: number,
+  creditedDays: number,
+  year: number,
+  month: number,
+): number {
+  const daysInMonth = daysInPayrollMonth(year, month);
+  const contractual = Number(contractualBasic);
+  const days = Number(creditedDays);
+  if (
+    daysInMonth <= 0 ||
+    !Number.isFinite(contractual) ||
+    contractual <= 0 ||
+    !Number.isFinite(days) ||
+    days <= 0
+  ) {
+    return 0;
+  }
+  if (days >= daysInMonth) {
+    return roundStipendMoney(contractual);
+  }
+  return roundStipendMoney((contractual * days) / daysInMonth);
+}
+
 export function stipendRecordToPackage(record: {
   basicStipend: unknown;
   allowances?: unknown;

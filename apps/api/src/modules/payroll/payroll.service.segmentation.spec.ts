@@ -433,7 +433,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
       [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
     ).toBeUndefined();
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(newEntry.basicStipend).toBe(15300); // 17/31 of 27900 calendar segment days
+    expect(newEntry.basicStipend).toBe(27900);
   });
 
   it('C: a later createOrGetEntry still does not recreate the closed-package row', async () => {
@@ -589,7 +589,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     const total = [...db.payrollEntries.values()].reduce((sum, e) => sum + e.basicStipend, 0);
     expect(db.payrollEntries.size).toBe(1);
-    expect(total).toBe(15300);
+    expect(total).toBe(27900);
   });
 
   // M. Step 1 PRESENT/SWAP_COVERED floor still works (through the full orchestration).
@@ -605,8 +605,8 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const service = makeService(db);
 
     const entry = await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    expect(entry.basicStipend).toBe(24800);
-    expect(entry.netStipend).toBe(24800);
+    expect(entry.basicStipend).toBe(800);
+    expect(entry.netStipend).toBe(800);
   });
 
   // N. Step 2 half-open boundary still works (through the full orchestration).
@@ -628,7 +628,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
       [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
     ).toBeUndefined();
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(newEntry.basicStipend).toBe(15300); // Aug 15–31 calendar: 27900 * 17/31
+    expect(newEntry.basicStipend).toBe(1800);
   });
 
   // O. monthly summary unique employee count still correct.

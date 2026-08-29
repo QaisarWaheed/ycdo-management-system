@@ -1,6 +1,7 @@
 import {
   daysInPayrollMonth,
   prorateContractualBasicForPayrollSegment,
+  basicStipendFromCreditedDays,
 } from './stipend.util';
 
 describe('prorateContractualBasicForPayrollSegment', () => {
@@ -58,5 +59,15 @@ describe('prorateContractualBasicForPayrollSegment', () => {
 
   it('uses 31 calendar days for August 2026', () => {
     expect(daysInPayrollMonth(2026, 8)).toBe(31);
+  });
+});
+
+describe('basicStipendFromCreditedDays', () => {
+  it('pays 28/31 of monthly basic when 28 attendance days are credited', () => {
+    expect(basicStipendFromCreditedDays(100000, 28, 2026, 8)).toBe(90322.58);
+  });
+
+  it('pays a full month when credited days cover the calendar month', () => {
+    expect(basicStipendFromCreditedDays(30000, 31, 2026, 8)).toBe(30000);
   });
 });

@@ -365,35 +365,42 @@ function PayrollDetailDialog({
         <div className={detailTab === 'payslip' ? 'hidden' : undefined}>
         {data.hourlyBreakdown && (
           <div className="mb-4 space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm no-print">
-            <p className="font-semibold">Hourly calculation</p>
+            <p className="font-semibold">Basic stipend (attendance days)</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-              <span className="text-text-secondary">Contractual basic</span>
+              <span className="text-text-secondary">Contractual monthly basic</span>
               <span className="text-right">
                 {formatPKR(data.hourlyBreakdown.contractualBasicStipend)}
               </span>
-              <span className="text-text-secondary">Hourly rate</span>
+              <span className="text-text-secondary">Credited days</span>
+              <span className="text-right font-medium">
+                {data.hourlyBreakdown.creditedAttendanceDays ??
+                  Math.round(
+                    (data.hourlyBreakdown.payableHours /
+                      (data.hourlyBreakdown.dailyDutyHours || 8)) *
+                      100,
+                  ) / 100}
+                {' / '}
+                {data.hourlyBreakdown.daysInMonth}
+              </span>
+              <span className="text-text-secondary">Daily basic</span>
+              <span className="text-right">
+                {formatPKR(
+                  data.hourlyBreakdown.daysInMonth
+                    ? data.hourlyBreakdown.contractualBasicStipend /
+                        data.hourlyBreakdown.daysInMonth
+                    : 0,
+                )}
+              </span>
+              <span className="text-text-secondary">Basic stipend</span>
+              <span className="text-right font-medium text-primary">
+                {formatPKR(
+                  data.hourlyBreakdown.payrollBasicStipend ??
+                    data.hourlyBreakdown.hourlyBasicEarned,
+                )}
+              </span>
+              <span className="text-text-secondary">Hourly rate (OT only)</span>
               <span className="text-right">
                 {formatPKR(data.hourlyBreakdown.hourlyRate)}/hr
-              </span>
-              <span className="text-text-secondary">Scheduled hours</span>
-              <span className="text-right">
-                {data.hourlyBreakdown.scheduledHours}h
-              </span>
-              <span className="text-text-secondary">Worked hours</span>
-              <span className="text-right">
-                {data.hourlyBreakdown.workedHours}h
-              </span>
-              <span className="text-text-secondary">Paid leave hours</span>
-              <span className="text-right">
-                {data.hourlyBreakdown.paidLeaveHours}h
-              </span>
-              <span className="text-text-secondary">Payable hours</span>
-              <span className="text-right font-medium">
-                {data.hourlyBreakdown.payableHours}h
-              </span>
-              <span className="text-text-secondary">Hourly basic earned</span>
-              <span className="text-right font-medium text-primary">
-                {formatPKR(data.hourlyBreakdown.hourlyBasicEarned)}
               </span>
               <span className="text-text-secondary">Fixed allowances</span>
               <span className="text-right">

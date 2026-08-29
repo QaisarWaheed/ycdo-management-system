@@ -2,8 +2,8 @@ import {
   calculateLumpsumTotal,
   dailyStipendRate,
   daysInPayrollMonth,
-  prorateContractualBasicForPayrollSegment,
   stipendRecordToPackage,
+  basicStipendFromCreditedDays,
 } from '../../common/stipend.util';
 import {
   getDutyWindow,
@@ -220,13 +220,9 @@ export class PayrollService {
       employee.monthlyAllowedLeaves,
     );
 
-    const oldestStipendId = overlappingStipendRecords[0]?.id;
-    const singleSegmentMonth = overlappingStipendRecords.length === 1;
     const segmentBackfillOptions = {
       backfillFromJoining:
-        !backfillFromAttendance &&
-        singleSegmentMonth &&
-        activeStipendRecord.id === oldestStipendId,
+        !backfillFromAttendance && activeStipendRecord.effectiveTo == null,
       backfillFromAttendance,
     };
     const primaryResult = await this.upsertPayrollEntryForStipendSegment(
@@ -360,9 +356,7 @@ export class PayrollService {
         stipendRecord.id === packageBearingId,
         {
           backfillFromJoining:
-            !backfillFromAttendance &&
-            overlappingStipendRecords.length === 1 &&
-            stipendRecord.id === overlappingStipendRecords[0]?.id,
+            !backfillFromAttendance && stipendRecord.effectiveTo == null,
           backfillFromAttendance,
         },
       );
@@ -1062,12 +1056,16 @@ export class PayrollService {
     ) {
       segmentStart = monthStart;
     }
-    // Oldest stipend in the month: if HR created the package after joining,
-    // still pay from joining/month-start so a late stipend row cannot wipe
-    // the rest of the month.
-    if (opts?.backfillFromJoining && opts.joiningDate) {
-      const join = toPakistanDateOnly(opts.joiningDate);
-      const fromJoinOrMonth = join > monthStart ? join : monthStart;
+    // Active (open) payroll slip: credit from month start / joining, not
+    // stipend effectiveFrom, so generate-on-the-28th includes 1st–28th.
+    if (opts?.backfillFromJoining) {
+      let fromJoinOrMonth = monthStart;
+      if (opts.joiningDate) {
+        const join = toPakistanDateOnly(opts.joiningDate);
+        if (join > fromJoinOrMonth) {
+          fromJoinOrMonth = join;
+        }
+      }
       if (fromJoinOrMonth < segmentStart) {
         segmentStart = fromJoinOrMonth;
       }
@@ -3332,6 +3330,7 @@ export class PayrollService {
     let workedMins = 0;
     let paidLeaveMins = 0;
     let policyCreditMins = 0;
+    let creditedAttendanceDays = 0;
 
     for (const log of logs) {
       if (
@@ -3365,6 +3364,7 @@ export class PayrollService {
         // Zeroing credit here too would double the loss: no credit here
         // AND a full day's deduction there for the same single day.
         policyCreditMins += dayDutyMinutes;
+        creditedAttendanceDays += 1;
         continue;
       }
 
@@ -3376,6 +3376,7 @@ export class PayrollService {
       if (leaveMins > 0) {
         // SHORT leave — does not consume monthly allowance
         paidLeaveMins += leaveMins;
+        creditedAttendanceDays += 1;
         continue;
       }
 
@@ -3388,6 +3389,7 @@ export class PayrollService {
         // these statuses. Also zeroing this day's credit would silently
         // add a 3rd day of loss on top of the approved 2-day policy.
         policyCreditMins += dayDutyMinutes;
+        creditedAttendanceDays += 1;
         continue;
       }
 
@@ -3397,6 +3399,7 @@ export class PayrollService {
         // the 3rd/6th occurrence, Suspension at the 9th) is the sole
         // extra monetary consequence — not a daily pro-rata of the gap.
         policyCreditMins += dayDutyMinutes;
+        creditedAttendanceDays += 1;
         continue;
       }
 
@@ -3405,6 +3408,7 @@ export class PayrollService {
         // reduced policy-credit floor — otherwise the same half-day would
         // be taken twice: once from basic and again on the deductions tab.
         policyCreditMins += dayDutyMinutes;
+        creditedAttendanceDays += 1;
         continue;
       }
 
@@ -3412,6 +3416,7 @@ export class PayrollService {
         // Elapsed unmarked days stay in basic; the 1-day unmarked
         // deduction is the visible penalty. Future days have no log.
         policyCreditMins += dayDutyMinutes;
+        creditedAttendanceDays += 1;
         continue;
       }
 
@@ -3424,6 +3429,7 @@ export class PayrollService {
         // is not a pay deduction, it only consumes the monthly Short Leave
         // quota (enforced at write time in attendance.service.ts).
         policyCreditMins += dayDutyMinutes;
+        creditedAttendanceDays += 1;
         continue;
       }
 
@@ -3445,6 +3451,7 @@ export class PayrollService {
         // concept (see computeRelieverPayableMinutes / extraAllowances)
         // and is untouched by this floor.
         policyCreditMins += dayDutyMinutes;
+        creditedAttendanceDays += 1;
         continue;
       }
 
@@ -3457,6 +3464,7 @@ export class PayrollService {
         // checkOut is absent would both defeat that policy and
         // permanently zero-pay 24-hour staff.
         policyCreditMins += dayDutyMinutes;
+        creditedAttendanceDays += 1;
         continue;
       }
 
@@ -3495,15 +3503,12 @@ export class PayrollService {
       0,
     );
 
-    const payrollBasicStipend = prorateContractualBasicForPayrollSegment({
-      contractualBasic: pkg.basicStipend,
+    const payrollBasicStipend = basicStipendFromCreditedDays(
+      pkg.basicStipend,
+      creditedAttendanceDays,
       year,
       month,
-      segmentStart,
-      segmentEndExclusive,
-      monthEnd,
-      employmentStart: context.employee.joiningDate ?? null,
-    });
+    );
 
     return buildHourlyPayrollBreakdown({
       contractualBasicStipend: pkg.basicStipend,
@@ -3512,6 +3517,7 @@ export class PayrollService {
       workedMinutes: workedMins,
       paidLeaveMinutes: paidLeaveMins,
       policyCreditMinutes: policyCreditMins,
+      creditedAttendanceDays,
       fixedAllowances,
       fixedPackageDeductions,
       disciplineDeductions,
