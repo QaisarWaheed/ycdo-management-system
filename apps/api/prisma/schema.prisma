@@ -234,7 +234,8 @@ model Employee {
   relieverOnly           Boolean        @default(false)
   dutyStartTime          String?
   dutyEndTime            String?
-  dutyTotalHours         Int?
+  /// Daily duty length in hours; half-hour steps (e.g. 6.5).
+  dutyTotalHours         Float?
   /// Monthly paid leave allowance. Null/omitted uses the runtime default of 2 days (not unlimited).
   monthlyAllowedLeaves   Int?
   province               String?

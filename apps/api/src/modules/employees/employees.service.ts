@@ -11,6 +11,7 @@ import {
   DUTY_FILTER_GRACE_MINUTES,
   getDutyWindow,
   isOnDutyAt,
+  hoursBetweenDutyTimes,
   normalizeDutyTimeToHhMm,
   workedMinutes,
 } from '../../common/duty.util';
@@ -1237,12 +1238,12 @@ export class EmployeesService {
     startTime?: string | null,
     endTime?: string | null,
   ): number | undefined {
-    const start = parseInt(startTime?.split(':')[0] ?? '', 10);
-    const end = parseInt(endTime?.split(':')[0] ?? '', 10);
-    if (Number.isNaN(start) || Number.isNaN(end)) return undefined;
-    let hours = end - start;
-    if (hours <= 0) hours += 24; // cross midnight
-    return hours;
+    if (!startTime || !endTime) return undefined;
+    try {
+      return hoursBetweenDutyTimes(startTime, endTime);
+    } catch {
+      return undefined;
+    }
   }
 
   async syncDutyTimesFromShifts() {

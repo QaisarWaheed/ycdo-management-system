@@ -44,9 +44,10 @@ export function DutyHoursFields({
         <div className="flex items-center gap-2">
           <Input
             type="number"
-            min={1}
+            min={0.5}
             max={24}
-            placeholder="e.g. 8"
+            step={0.5}
+            placeholder="e.g. 6.5"
             value={totalHours}
             onChange={(e) => {
               const val = e.target.value
@@ -61,6 +62,9 @@ export function DutyHoursFields({
           />
           <span className="text-sm text-text-secondary">hours/day</span>
         </div>
+        <p className="text-xs text-text-secondary">
+          Use decimals for half hours, e.g. 6.5 for 6 hours 30 minutes.
+        </p>
       </div>
 
       <div className="space-y-2">

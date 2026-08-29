@@ -37,6 +37,7 @@ import { CnicInput } from '@/components/common/CnicInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
+import { isValidDutyTotalHours } from '@/lib/dutyHours'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { openOnboardingWhatsAppShare } from '@/lib/openOnboardingWhatsAppShare'
@@ -316,7 +317,14 @@ const step2BaseSchema = z.object({
   currentDepartmentId: z.string().min(1, 'Department is required'),
   currentDesignation: z.string().min(1, 'Designation is required'),
   joiningDate: z.string().min(1, 'Joining date is required'),
-  dutyTotalHours: z.number().int().min(1).max(24).optional(),
+  dutyTotalHours: z
+    .number()
+    .min(0.5)
+    .max(24)
+    .refine(isValidDutyTotalHours, {
+      message: 'Use half-hour steps, e.g. 6.5',
+    })
+    .optional(),
   dutyStartTime: z.string().optional(),
   dutyEndTime: z.string().optional(),
   monthlyAllowedLeaves: z.number().int().min(0).max(31).optional().nullable(),

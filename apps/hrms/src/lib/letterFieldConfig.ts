@@ -5,6 +5,9 @@ export interface LetterFieldDef {
   label: string
   type?: 'text' | 'textarea' | 'number' | 'date' | 'select'
   hint?: string
+  step?: number
+  min?: number
+  max?: number
   /** Place this field inside the on-template canvas (Urdu RTL). */
   onTemplate?: boolean
   /** Options for type: 'select'. */
@@ -259,6 +262,10 @@ export const LETTER_FIELD_CONFIG: Partial<
       key: 'dutyTotalHours',
       label: 'Duty Hours (total daily hours)',
       type: 'number',
+      step: 0.5,
+      min: 0.5,
+      max: 24,
+      hint: 'e.g. 6.5 for 6 hours 30 minutes',
     },
     { key: 'dutyStartTime', label: 'Working Hours From' },
     { key: 'dutyEndTime', label: 'Working Hours To' },

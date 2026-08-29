@@ -28,9 +28,25 @@ import {
   Matches,
   Max,
   Min,
+  Validate,
   ValidateIf,
   ValidateNested,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
 } from 'class-validator';
+import { isValidDutyTotalHours } from '../../common/duty.util';
+
+@ValidatorConstraint({ name: 'dutyTotalHours', async: false })
+class DutyTotalHoursConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown) {
+    if (value === undefined || value === null || value === '') return true;
+    return isValidDutyTotalHours(Number(value));
+  }
+
+  defaultMessage() {
+    return 'Duty hours must be between 0.5 and 24 in half-hour steps (e.g. 6.5)';
+  }
+}
 
 export class CreateEmployeeDto {
   @IsString()
@@ -230,9 +246,8 @@ export class CreateEmployeeDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(24)
+  @IsNumber()
+  @Validate(DutyTotalHoursConstraint)
   dutyTotalHours?: number;
 
   /** Monthly paid leave days; omit/null = unlimited paid leave. */
@@ -358,9 +373,8 @@ export class TransferDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(24)
+  @IsNumber()
+  @Validate(DutyTotalHoursConstraint)
   dutyTotalHours?: number;
 
   @IsOptional()
@@ -476,9 +490,8 @@ export class UpdateBranchDutyDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(24)
+  @IsNumber()
+  @Validate(DutyTotalHoursConstraint)
   dutyTotalHours?: number;
 
   /** Monthly paid leave days; null clears to unlimited. */

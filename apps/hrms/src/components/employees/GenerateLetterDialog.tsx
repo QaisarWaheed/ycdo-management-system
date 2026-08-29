@@ -397,6 +397,9 @@ export function GenerateLetterDialog({
                             ? 'date'
                             : 'text'
                       }
+                      step={field.step}
+                      min={field.min}
+                      max={field.max}
                       value={fields[field.key] ?? ''}
                       onChange={(e) => setField(field.key, e.target.value)}
                     />

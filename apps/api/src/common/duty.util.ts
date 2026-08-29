@@ -69,6 +69,32 @@ export function parseDutyTimeToMinutes(value: string): number {
   throw new Error(`Unparseable duty time: "${value}"`);
 }
 
+/** Daily duty length: 0.5–24 hours in half-hour steps (6.5 = 6h 30m). */
+export const DUTY_TOTAL_HOURS_MIN = 0.5;
+export const DUTY_TOTAL_HOURS_MAX = 24;
+
+export function normalizeDutyTotalHours(hours: number): number {
+  return Math.round(hours * 2) / 2;
+}
+
+export function isValidDutyTotalHours(value: unknown): value is number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+  if (value < DUTY_TOTAL_HOURS_MIN || value > DUTY_TOTAL_HOURS_MAX) {
+    return false;
+  }
+  return Math.abs(value - normalizeDutyTotalHours(value)) < 1e-6;
+}
+
+export function hoursBetweenDutyTimes(
+  startTime: string,
+  endTime: string,
+): number {
+  let minutes =
+    parseDutyTimeToMinutes(endTime) - parseDutyTimeToMinutes(startTime);
+  if (minutes <= 0) minutes += 24 * 60;
+  return normalizeDutyTotalHours(minutes / 60);
+}
+
 /** Normalize any accepted duty string to canonical "HH:mm". */
 export function normalizeDutyTimeToHhMm(value: string): string {
   const mins = parseDutyTimeToMinutes(value);

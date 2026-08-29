@@ -40,6 +40,9 @@ function FieldInput({
             ? 'date'
             : 'text'
       }
+      step={field.step}
+      min={field.min}
+      max={field.max}
     />
   )
 }

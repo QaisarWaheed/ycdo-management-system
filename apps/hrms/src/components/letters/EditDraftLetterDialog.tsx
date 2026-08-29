@@ -463,6 +463,9 @@ export function EditDraftLetterDialog({
                               ? 'date'
                               : 'text'
                         }
+                        step={field.step}
+                        min={field.min}
+                        max={field.max}
                         value={fields[field.key] ?? ''}
                         onChange={(e) =>
                           setFields((f) => ({
@@ -500,6 +503,9 @@ export function EditDraftLetterDialog({
                             ? 'date'
                             : 'text'
                       }
+                      step={field.step}
+                      min={field.min}
+                      max={field.max}
                       value={fields[field.key] ?? ''}
                       onChange={(e) =>
                         setFields((f) => ({
