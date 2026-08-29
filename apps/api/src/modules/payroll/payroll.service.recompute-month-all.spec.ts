@@ -1,6 +1,14 @@
 import { AttendanceLogType, AttendanceStatus, PayrollStatus } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 
+jest.mock('../attendance/discipline.helper', () => ({
+  repairLateDisciplineForPayrollMonth: jest.fn().mockResolvedValue({
+    applied: 0,
+    repaired: 0,
+    skipped: 0,
+  }),
+}));
+
 /**
  * Coverage for recomputeMonthAll — the bulk, generic-by-month/year
  * recompute mechanism for EXISTING stale payroll data (built for the
@@ -101,7 +109,7 @@ function inDateRange(date: Date, where: { gte?: Date; lte?: Date; lt?: Date }): 
 }
 
 function makeFakePrisma(db: FakeDb) {
-  return {
+  const prisma = {
     employee: {
       findUnique: async ({ where }: any) => db.employees.get(where.id) ?? null,
     },
@@ -295,6 +303,7 @@ function makeFakePrisma(db: FakeDb) {
         return data;
       },
     },
+    $transaction: async (fn: any) => fn(prisma),
   };
 
   function hydrate(entry: FakePayrollEntry, include: any) {
@@ -308,6 +317,8 @@ function makeFakePrisma(db: FakeDb) {
         : {}),
     };
   }
+
+  return prisma;
 }
 
 function makeService(db: FakeDb) {
@@ -479,7 +490,7 @@ describe('PayrollService.recomputeMonthAll', () => {
     expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300);
   });
 
-  it('E: an employee whose only segment is PROCESSED (unpaid) is still recomputed', async () => {
+  it('E: an employee whose only segment is PROCESSED is skipped, never mutated', async () => {
     const db = new FakeDb();
     seedEmployee(db, 'e1');
     const sr = seedStipend(db, 'e1', 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -487,11 +498,12 @@ describe('PayrollService.recomputeMonthAll', () => {
     seedFullMonthPresent(db, 'e1');
     const service = makeService(db);
 
+    const before = { ...db.payrollEntries.get(entry.id)! };
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM }, ACTING_USER);
 
-    expect(result.employeesSkipped).toBe(0);
-    expect(result.employeesProcessed).toBe(1);
-    expect(db.payrollEntries.get(entry.id)!.basicStipend).toBe(24800);
+    expect(result.employeesSkipped).toBe(1);
+    expect(result.employeesProcessed).toBe(0);
+    expect(db.payrollEntries.get(entry.id)).toEqual(before);
     expect(db.payrollEntries.get(entry.id)!.status).toBe(PayrollStatus.PROCESSED);
   });
 
@@ -511,7 +523,7 @@ describe('PayrollService.recomputeMonthAll', () => {
     expect(db.payrollEntries.get(entry.id)).toEqual(before);
   });
 
-  it('G: a mixed PROCESSED+PENDING employee refreshes both unpaid segments', async () => {
+  it('G: a mixed PROCESSED+PENDING employee freezes PROCESSED and refreshes PENDING', async () => {
     const db = new FakeDb();
     seedEmployee(db, 'e1');
     const oldSr = seedStipend(db, 'e1', 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -521,11 +533,13 @@ describe('PayrollService.recomputeMonthAll', () => {
     seedFullMonthPresent(db, 'e1');
     const service = makeService(db);
 
+    const frozenBefore = { ...db.payrollEntries.get(oldEntry.id)! };
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM }, ACTING_USER);
 
     expect(result.employeesProcessed).toBe(1);
     const employeeResult = result.results.find((r) => r.employeeId === 'e1')!;
-    expect(employeeResult.status).toBe('RECOMPUTED');
+    expect(employeeResult.status).toBe('PARTIAL_RECOMPUTE');
+    expect(db.payrollEntries.get(oldEntry.id)).toEqual(frozenBefore);
     expect(db.payrollEntries.get(oldEntry.id)?.status).toBe(PayrollStatus.PROCESSED);
     expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300);
   });

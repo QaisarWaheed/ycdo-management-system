@@ -131,6 +131,23 @@ describe('payroll-hours.util', () => {
     expect(breakdown.payableHours).toBe(152);
     expect(breakdown.hourlyBasicEarned).toBe(19000);
     expect(breakdown.netStipend).toBe(29000);
+
+    const contractual = buildHourlyPayrollBreakdown({
+      contractualBasicStipend: 30000,
+      dailyDutyHours: 8,
+      daysInMonth: 30,
+      workedMinutes: 0,
+      paidLeaveMinutes: 0,
+      policyCreditMinutes: 480 * 19,
+      fixedAllowances: 10000,
+      fixedPackageDeductions: 0,
+      disciplineDeductions: 0,
+      extraAllowances: 0,
+      payrollBasicStipend: 30000,
+    });
+    expect(contractual.hourlyBasicEarned).toBe(19000);
+    expect(contractual.payrollBasicStipend).toBe(30000);
+    expect(contractual.netStipend).toBe(40000);
   });
 
   it('counts policyCreditMinutes toward payable hours alongside worked/leave minutes', () => {

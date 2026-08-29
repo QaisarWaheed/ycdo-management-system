@@ -1,6 +1,14 @@
 import { AttendanceLogType, AttendanceStatus, PayrollStatus } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 
+jest.mock('../attendance/discipline.helper', () => ({
+  repairLateDisciplineForPayrollMonth: jest.fn().mockResolvedValue({
+    applied: 0,
+    repaired: 0,
+    skipped: 0,
+  }),
+}));
+
 beforeAll(() => {
   jest.useFakeTimers({
     now: new Date('2026-09-15T07:00:00.000Z'),
@@ -114,7 +122,7 @@ function inDateRange(date: Date, where: { gte?: Date; lte?: Date; lt?: Date }): 
 }
 
 function makeFakePrisma(db: FakeDb) {
-  return {
+  const prisma = {
     employee: {
       findUnique: async ({ where }: any) => db.employees.get(where.id) ?? null,
     },
@@ -307,6 +315,7 @@ function makeFakePrisma(db: FakeDb) {
         return data;
       },
     },
+    $transaction: async (fn: any) => fn(prisma),
   };
 
   function hydrate(entry: FakePayrollEntry, include: any) {
@@ -317,6 +326,8 @@ function makeFakePrisma(db: FakeDb) {
       ...(include.allowances ? { allowances: [...db.allowances.values()].filter((a) => a.payrollEntryId === entry.id) } : {}),
     };
   }
+
+  return prisma;
 }
 
 function makeService(db: FakeDb) {
@@ -422,7 +433,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
       [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
     ).toBeUndefined();
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(newEntry.basicStipend).toBe(15300); // 17 days * 8h * 112.5/h
+    expect(newEntry.basicStipend).toBe(15300); // 17/31 of 27900 calendar segment days
   });
 
   it('C: a later createOrGetEntry still does not recreate the closed-package row', async () => {
@@ -594,8 +605,8 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const service = makeService(db);
 
     const entry = await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    // hourlyRate = 24800/(8*31) = 100; 1 day * 8h * 100 = 800
-    expect(entry.basicStipend).toBe(800);
+    expect(entry.basicStipend).toBe(24800);
+    expect(entry.netStipend).toBe(24800);
   });
 
   // N. Step 2 half-open boundary still works (through the full orchestration).
@@ -617,7 +628,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
       [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
     ).toBeUndefined();
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(newEntry.basicStipend).toBe(900); // Aug 15 only: 8h * 112.5/h
+    expect(newEntry.basicStipend).toBe(15300); // Aug 15–31 calendar: 27900 * 17/31
   });
 
   // O. monthly summary unique employee count still correct.

@@ -2,6 +2,7 @@ import {
   calculateLumpsumTotal,
   dailyStipendRate,
   daysInPayrollMonth,
+  prorateContractualBasicForPayrollSegment,
   stipendRecordToPackage,
 } from '../../common/stipend.util';
 import {
@@ -251,11 +252,9 @@ export class PayrollService {
   /**
    * Explicit, "return everything" multi-segment recompute for one
    * employee/month. Unlike createOrGetEntry, this NEVER creates a new
-   * PayrollEntry — it only refreshes segments that already have one
-   * (skipping PAID, which stay frozen; PROCESSED is still refreshed until
-   * paid so in-progress attendance corrections keep salary current), and reports which
-   * overlapping segments have no entry yet at all (those still need an
-   * explicit createOrGetEntry call, which also carries the
+   * PayrollEntry — it only refreshes PENDING segments that already have one.
+   * PROCESSED and PAID stay financially frozen. Segments with no entry yet
+   * still need an explicit createOrGetEntry call (which also carries the
    * non-active-employee eligibility checks this method deliberately does
    * not duplicate). Shares upsertPayrollEntryForStipendSegment with
    * createOrGetEntry, so the two can never compute a segment differently.
@@ -340,7 +339,10 @@ export class PayrollService {
         continue;
       }
 
-      if (existing.status === PayrollStatus.PAID) {
+      if (
+        existing.status === PayrollStatus.PAID ||
+        existing.status === PayrollStatus.PROCESSED
+      ) {
         results.push({
           stipendRecordId: stipendRecord.id,
           status: 'FROZEN',
@@ -357,7 +359,6 @@ export class PayrollService {
         unpaidLeaveDatesForMonth,
         stipendRecord.id === packageBearingId,
         {
-          refreshUnpaidProcessed: true,
           backfillFromJoining:
             !backfillFromAttendance &&
             overlappingStipendRecords.length === 1 &&
@@ -418,8 +419,8 @@ export class PayrollService {
    * swap service — so this can never trigger another attendance mutation
    * or another recompute cycle.
    *
-   * PAID segments stay frozen. PENDING and PROCESSED (approved but not
-   * yet paid) are refreshed so in-progress months keep matching attendance.
+   * PROCESSED and PAID segments stay financially frozen. Only PENDING
+   * entries are refreshed so in-progress months keep matching attendance.
    */
   async recomputePendingPayrollForAttendanceDate(
     employeeId: string,
@@ -607,7 +608,7 @@ export class PayrollService {
         if (currentEntries.length === 0) continue; // entry set is closed; defensive only
 
         const unpaidCount = currentEntries.filter(
-          (e) => e.status !== PayrollStatus.PAID,
+          (e) => e.status === PayrollStatus.PENDING,
         ).length;
 
         const employee = await this.prisma.employee.findUnique({
@@ -616,7 +617,7 @@ export class PayrollService {
         });
 
         if (unpaidCount === 0) {
-          // Only PAID -> skip employee entirely, never mutated.
+          // Only PROCESSED/PAID -> skip employee entirely, never mutated.
           employeesSkipped++;
           segmentsFrozen += currentEntries.length;
           results.push({
@@ -651,9 +652,9 @@ export class PayrollService {
               payrollEntryId: e.id,
               statusBefore: e.status,
               outcome:
-                e.status === PayrollStatus.PAID
-                  ? 'FROZEN'
-                  : 'WOULD_RECOMPUTE',
+                e.status === PayrollStatus.PENDING
+                  ? 'WOULD_RECOMPUTE'
+                  : 'FROZEN',
             })),
           });
           continue;
@@ -926,7 +927,7 @@ export class PayrollService {
 
   /** Persist non-negative deduction/allowance totals; recompute net from parts. */
   private clampPayrollTotals(breakdown: HourlyPayrollBreakdown) {
-    const basicStipend = roundMoney(Math.max(0, breakdown.hourlyBasicEarned));
+    const basicStipend = roundMoney(Math.max(0, breakdown.payrollBasicStipend));
     const totalAllowances = roundMoney(
       Math.max(0, breakdown.fixedAllowances + breakdown.extraAllowances),
     );
@@ -1380,7 +1381,6 @@ export class PayrollService {
     unpaidLeaveDatesForMonth: Date[],
     applyContractualPackage = stipendRecord.effectiveTo == null,
     options: {
-      refreshUnpaidProcessed?: boolean;
       backfillFromJoining?: boolean;
       backfillFromAttendance?: boolean;
     } = {},
@@ -1396,15 +1396,12 @@ export class PayrollService {
       include: { deductions: true, allowances: true },
     });
 
-    if (entry && entry.status === PayrollStatus.PAID) {
-      return entry; // paid is frozen
-    }
     if (
       entry &&
-      entry.status === PayrollStatus.PROCESSED &&
-      !options.refreshUnpaidProcessed
+      (entry.status === PayrollStatus.PAID ||
+        entry.status === PayrollStatus.PROCESSED)
     ) {
-      return entry; // generate/OT leave PROCESSED locked; attendance recompute may refresh it
+      return entry; // PROCESSED and PAID financial totals are frozen
     }
 
     const markForced =
@@ -1541,15 +1538,9 @@ export class PayrollService {
       where: { id: entry.id },
       select: { status: true },
     });
-    if (statusNow?.status === PayrollStatus.PAID) {
-      return this.prisma.payrollEntry.findUniqueOrThrow({
-        where: { id: entry.id },
-        include: { deductions: true, allowances: true },
-      });
-    }
     if (
-      statusNow?.status === PayrollStatus.PROCESSED &&
-      !options.refreshUnpaidProcessed
+      statusNow?.status === PayrollStatus.PAID ||
+      statusNow?.status === PayrollStatus.PROCESSED
     ) {
       return this.prisma.payrollEntry.findUniqueOrThrow({
         where: { id: entry.id },
@@ -3504,6 +3495,16 @@ export class PayrollService {
       0,
     );
 
+    const payrollBasicStipend = prorateContractualBasicForPayrollSegment({
+      contractualBasic: pkg.basicStipend,
+      year,
+      month,
+      segmentStart,
+      segmentEndExclusive,
+      monthEnd,
+      employmentStart: context.employee.joiningDate ?? null,
+    });
+
     return buildHourlyPayrollBreakdown({
       contractualBasicStipend: pkg.basicStipend,
       dailyDutyHours,
@@ -3515,6 +3516,7 @@ export class PayrollService {
       fixedPackageDeductions,
       disciplineDeductions,
       extraAllowances,
+      payrollBasicStipend,
     });
   }
 

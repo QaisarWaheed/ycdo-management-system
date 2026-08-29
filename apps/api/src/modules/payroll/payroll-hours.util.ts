@@ -30,6 +30,11 @@ export interface HourlyPayrollBreakdown {
   payableMinutes: number;
   payableHours: number;
   hourlyBasicEarned: number;
+  /**
+   * Persisted Monthly Payroll Basic Stipend: contractual package amount
+   * prorated only by calendar stipend-segment days, never by attendance.
+   */
+  payrollBasicStipend: number;
   fixedAllowances: number;
   fixedPackageDeductions: number;
   disciplineDeductions: number;
@@ -264,6 +269,8 @@ export function buildHourlyPayrollBreakdown(input: {
   fixedPackageDeductions: number;
   disciplineDeductions: number;
   extraAllowances: number;
+  /** When set, Net uses this instead of hourlyBasicEarned (monthly payroll). */
+  payrollBasicStipend?: number;
 }): HourlyPayrollBreakdown {
   const scheduledHours = roundMoney(input.dailyDutyHours * input.daysInMonth);
   const hourlyRate = computeHourlyRate(
@@ -281,10 +288,18 @@ export function buildHourlyPayrollBreakdown(input: {
           (input.contractualBasicStipend * payableMinutes) / scheduledMinutes,
         )
       : 0;
+  const payrollBasicStipend = roundMoney(
+    Math.max(
+      0,
+      input.payrollBasicStipend != null
+        ? input.payrollBasicStipend
+        : hourlyBasicEarned,
+    ),
+  );
   const netStipend = roundMoney(
     Math.max(
       0,
-      hourlyBasicEarned +
+      payrollBasicStipend +
         input.fixedAllowances +
         input.extraAllowances -
         input.fixedPackageDeductions -
@@ -307,6 +322,7 @@ export function buildHourlyPayrollBreakdown(input: {
     payableMinutes,
     payableHours,
     hourlyBasicEarned,
+    payrollBasicStipend,
     fixedAllowances: input.fixedAllowances,
     fixedPackageDeductions: input.fixedPackageDeductions,
     disciplineDeductions: input.disciplineDeductions,

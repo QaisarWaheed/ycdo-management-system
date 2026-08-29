@@ -4,6 +4,14 @@ import { AttendanceStatus } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 import { computeHourlyRate, roundMoney, roundHoursFromMinutes } from './payroll-hours.util';
 
+jest.mock('../attendance/discipline.helper', () => ({
+  repairLateDisciplineForPayrollMonth: jest.fn().mockResolvedValue({
+    applied: 0,
+    repaired: 0,
+    skipped: 0,
+  }),
+}));
+
 /**
  * Regression coverage for the PRESENT/SWAP_COVERED basic-earning floor fix
  * in PayrollService.computeHourlyBreakdown() — see the file header comment
@@ -97,6 +105,7 @@ async function computeBreakdown(
     stipendRecord?: { basicStipend: number; effectiveFrom?: Date; effectiveTo?: Date | null };
     existingDeductions?: Array<{ amount: unknown }>;
     existingAllowances?: Array<{ amount: unknown }>;
+    employee?: { joiningDate?: Date | null };
   } = {},
 ) {
   const { service } = makeService(logs);
@@ -107,7 +116,7 @@ async function computeBreakdown(
   };
   return (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
     stipendRecord,
-    employee: EMPLOYEE,
+    employee: { ...EMPLOYEE, ...opts.employee },
     existingDeductions: opts.existingDeductions ?? [],
     existingAllowances: opts.existingAllowances ?? [],
     asOf: new Date(Date.UTC(2026, 8, 1)),
@@ -311,9 +320,10 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
   it('never stores a negative net stipend', async () => {
     const logs = [buildLog(3, AttendanceStatus.PRESENT)];
     const b = await computeBreakdown(logs, {
-      existingDeductions: [{ amount: 5000 }],
+      existingDeductions: [{ amount: 50000 }],
     });
     expect(b.hourlyBasicEarned).toBe(800);
+    expect(b.payrollBasicStipend).toBe(24800);
     expect(b.netStipend).toBe(0);
   });
 
@@ -718,7 +728,7 @@ describe('PayrollService.computeHourlyBreakdown — 19 present days and pre-join
     });
   }
 
-  it('19 PRESENT days in a 30-day month earn 19000 basic plus 10000 allowances', async () => {
+  it('19 PRESENT days after a Sep 12 join prorate contractual basic 19/30 plus 10000 allowances', async () => {
     const logs = Array.from({ length: 19 }, (_, i) => ({
       date: septemberDate(i + 12),
       checkIn: null,
@@ -742,6 +752,7 @@ describe('PayrollService.computeHourlyBreakdown — 19 present days and pre-join
     });
     expect(b.policyCreditMinutes).toBe(19 * FULL_DAY_MINUTES);
     expect(b.hourlyBasicEarned).toBe(19000);
+    expect(b.payrollBasicStipend).toBe(19000);
     expect(b.fixedAllowances).toBe(10000);
     expect(b.netStipend).toBe(29000);
   });
@@ -771,5 +782,114 @@ describe('PayrollService.computeHourlyBreakdown — 19 present days and pre-join
       joiningDate: new Date(Date.UTC(2026, 8, 14)),
     });
     expect(b.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
+  });
+});
+
+describe('PayrollService — contractual PayrollEntry basic stipend', () => {
+  function logsForDays(days: number[], status: AttendanceStatus = AttendanceStatus.PRESENT) {
+    return days.map((day) =>
+      buildLog(day, status, {
+        checkIn: pkTime(day, 9, 0),
+        checkOut: pkTime(day, 17, 0),
+      }),
+    );
+  }
+
+  it('A: full-month 100000 stipend with only Aug 1–28 logs still has payroll basic 100000', async () => {
+    const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
+    const b = await computeBreakdown(logs, {
+      stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
+    });
+    expect(b.hourlyBasicEarned).toBe(90322.58);
+    expect(b.payrollBasicStipend).toBe(100000);
+    expect(b.netStipend).toBe(100000);
+  });
+
+  it('B: 25000 and 18000 full-month packages keep contractual basic with 28 logs', async () => {
+    const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
+    const b25 = await computeBreakdown(logs, {
+      stipendRecord: { basicStipend: 25000, effectiveFrom: FAR_PAST, effectiveTo: null },
+    });
+    const b18 = await computeBreakdown(logs, {
+      stipendRecord: { basicStipend: 18000, effectiveFrom: FAR_PAST, effectiveTo: null },
+    });
+    expect(b25.payrollBasicStipend).toBe(25000);
+    expect(b18.payrollBasicStipend).toBe(18000);
+  });
+
+  it('C: adding Aug 29–31 logs does not change payroll basic', async () => {
+    const through28 = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
+    const full = logsForDays(Array.from({ length: 31 }, (_, i) => i + 1));
+    const stipend = {
+      stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
+    };
+    const before = await computeBreakdown(through28, stipend);
+    const after = await computeBreakdown(full, stipend);
+    expect(before.payrollBasicStipend).toBe(100000);
+    expect(after.payrollBasicStipend).toBe(before.payrollBasicStipend);
+    expect(after.hourlyBasicEarned).toBe(100000);
+  });
+
+  it('D: ABSENT / UNMARKED / LATE do not reduce payroll basic; deductions stay separate', async () => {
+    const logs = [
+      ...logsForDays([1, 2], AttendanceStatus.ABSENT),
+      ...logsForDays([3], AttendanceStatus.UNMARKED),
+      ...logsForDays([4], AttendanceStatus.LATE),
+      ...logsForDays(Array.from({ length: 24 }, (_, i) => i + 5)),
+    ];
+    const b = await computeBreakdown(logs, {
+      stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
+      existingDeductions: [{ amount: 6451.61 }],
+    });
+    expect(b.payrollBasicStipend).toBe(100000);
+    expect(b.disciplineDeductions).toBe(6451.61);
+    expect(b.netStipend).toBe(roundMoney(100000 - 6451.61));
+  });
+
+  it('E: mid-month stipend start Aug 15 prorates by 17/31 regardless of log count', async () => {
+    const aug15 = new Date(Date.UTC(2026, 7, 15));
+    const fewLogs = logsForDays([15, 16]);
+    const b = await computeBreakdown(fewLogs, {
+      stipendRecord: { basicStipend: 100000, effectiveFrom: aug15, effectiveTo: null },
+    });
+    expect(b.payrollBasicStipend).toBe(54838.71);
+    expect(b.hourlyBasicEarned).not.toBe(54838.71);
+  });
+
+  it('E2: mid-month joiningDate Aug 15 prorates Basic even if stipend effectiveFrom is before the month', async () => {
+    const fewLogs = logsForDays([15, 16]);
+    const b = await computeBreakdown(fewLogs, {
+      stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
+      employee: { joiningDate: new Date(Date.UTC(2026, 7, 15)) },
+    });
+    expect(b.payrollBasicStipend).toBe(54838.71);
+  });
+
+  it('F: closed vs open stipend segments prorate by calendar days', async () => {
+    const aug15 = new Date(Date.UTC(2026, 7, 15));
+    const logs = logsForDays(Array.from({ length: 31 }, (_, i) => i + 1));
+    const oldSeg = await computeBreakdown(logs, {
+      stipendRecord: {
+        basicStipend: 24800,
+        effectiveFrom: FAR_PAST,
+        effectiveTo: aug15,
+      },
+    });
+    const newSeg = await computeBreakdown(logs, {
+      stipendRecord: { basicStipend: 27900, effectiveFrom: aug15, effectiveTo: null },
+    });
+    expect(oldSeg.payrollBasicStipend).toBe(11200);
+    expect(newSeg.payrollBasicStipend).toBe(15300);
+  });
+
+  it('I: net is payroll basic + allowances − deductions', async () => {
+    const logs = logsForDays([1]);
+    const b = await computeBreakdown(logs, {
+      stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
+      existingDeductions: [{ amount: 5000 }],
+      existingAllowances: [{ amount: 2000 }],
+    });
+    expect(b.payrollBasicStipend).toBe(100000);
+    expect(b.netStipend).toBe(97000);
   });
 });

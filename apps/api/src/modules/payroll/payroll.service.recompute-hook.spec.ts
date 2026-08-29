@@ -1,6 +1,14 @@
 import { AttendanceLogType, AttendanceStatus, PayrollStatus } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 
+jest.mock('../attendance/discipline.helper', () => ({
+  repairLateDisciplineForPayrollMonth: jest.fn().mockResolvedValue({
+    applied: 0,
+    repaired: 0,
+    skipped: 0,
+  }),
+}));
+
 beforeAll(() => {
   jest.useFakeTimers({
     now: new Date('2026-09-15T07:00:00.000Z'),
@@ -113,7 +121,7 @@ function inDateRange(date: Date, where: { gte?: Date; lte?: Date; lt?: Date }): 
 }
 
 function makeFakePrisma(db: FakeDb) {
-  return {
+  const prisma = {
     employee: {
       findUnique: async ({ where }: any) => db.employees.get(where.id) ?? null,
     },
@@ -269,6 +277,7 @@ function makeFakePrisma(db: FakeDb) {
         return data;
       },
     },
+    $transaction: async (fn: any) => fn(prisma),
   };
 
   function hydrate(entry: FakePayrollEntry, include: any) {
@@ -279,6 +288,8 @@ function makeFakePrisma(db: FakeDb) {
       ...(include.allowances ? { allowances: [...db.allowances.values()].filter((a) => a.payrollEntryId === entry.id) } : {}),
     };
   }
+
+  return prisma;
 }
 
 function makeService(db: FakeDb) {
@@ -369,8 +380,8 @@ function seedPresentDay(db: FakeDb, day: number, status: AttendanceStatus = Atte
 const AUG_15 = new Date(Date.UTC(2026, 7, 15, 0, 0, 0));
 
 describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
-  // 1. UNMARKED -> PRESENT automatically increases PENDING accrued basic.
-  it('1: UNMARKED (no credit) -> PRESENT (full credit) increases the PENDING basicStipend', async () => {
+  // 1. Attendance appearing mid-month must not grow contractual Basic.
+  it('1: PENDING basic stays contractual when a PRESENT log appears', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -380,7 +391,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
     const before = [...db.payrollEntries.values()][0];
-    expect(before.basicStipend).toBe(0); // still nothing recorded
+    expect(before.basicStipend).toBe(24800);
 
     // Now the day is marked PRESENT (simulating markManual's write already
     // having committed) and the hook fires again.
@@ -388,8 +399,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
     const after = [...db.payrollEntries.values()][0];
-    expect(after.basicStipend).toBeGreaterThan(0); // 8h * 100/hr = 800
-    expect(after.basicStipend).toBe(800);
+    expect(after.basicStipend).toBe(24800);
   });
 
   // 2. PRESENT -> ABSENT automatically reconciles PENDING payroll.
@@ -418,8 +428,8 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
     const afterAbsent = [...db.payrollEntries.values()][0].basicStipend;
 
-    expect(afterAbsent).toBe(afterPresent); // 800 either way — full-day floor both statuses
-    expect(afterAbsent).toBe(800);
+    expect(afterAbsent).toBe(afterPresent);
+    expect(afterAbsent).toBe(24800);
   });
 
   // 3. Historical August correction made later recomputes August, not the
@@ -439,22 +449,54 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     // never a wall-clock "now".
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
-    expect(db.payrollEntries.get(augEntry.id)!.basicStipend).toBe(800); // August recomputed
-    expect(db.payrollEntries.get(sepEntry.id)!.basicStipend).toBe(12345); // September untouched
+    expect(db.payrollEntries.get(augEntry.id)!.basicStipend).toBe(24800);
+    expect(db.payrollEntries.get(sepEntry.id)!.basicStipend).toBe(12345);
   });
 
-  it('6: a PROCESSED (unpaid) PayrollEntry is still refreshed when attendance changes', async () => {
+  it('6: a PROCESSED PayrollEntry is financially frozen when attendance changes', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
-    const entry = seedPayrollEntry(db, sr.id, 8, 2026, PayrollStatus.PROCESSED, { basicStipend: 0, totalDeductions: 0, netStipend: 0 });
+    const entry = seedPayrollEntry(db, sr.id, 8, 2026, PayrollStatus.PROCESSED, {
+      basicStipend: 0,
+      totalAllowances: 0,
+      totalDeductions: 0,
+      netStipend: 0,
+    });
     seedPresentDay(db, 10);
+    const before = { ...db.payrollEntries.get(entry.id)! };
     const service = makeService(db);
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
-    expect(db.payrollEntries.get(entry.id)!.basicStipend).toBe(800);
+    expect(db.payrollEntries.get(entry.id)).toEqual(before);
     expect(db.payrollEntries.get(entry.id)!.status).toBe(PayrollStatus.PROCESSED);
+  });
+
+  it('6c: recomputeEmployeeMonth does not rewrite PROCESSED financial totals', async () => {
+    const db = new FakeDb();
+    seedEmployee(db);
+    const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
+    const entry = seedPayrollEntry(db, sr.id, 8, 2026, PayrollStatus.PROCESSED, {
+      basicStipend: 111,
+      totalAllowances: 22,
+      totalDeductions: 33,
+      netStipend: 100,
+    });
+    seedPresentDay(db, 10);
+    const before = { ...db.payrollEntries.get(entry.id)! };
+    const service = makeService(db);
+
+    const results = await service.recomputeEmployeeMonth({
+      employeeId: EMP_ID,
+      month: 8,
+      year: 2026,
+    });
+
+    expect(results).toEqual([
+      expect.objectContaining({ stipendRecordId: sr.id, status: 'FROZEN' }),
+    ]);
+    expect(db.payrollEntries.get(entry.id)).toEqual(before);
   });
 
   it('6b: PRESENT -> HALF_DAY reduces unpaid basic', async () => {
@@ -466,12 +508,12 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     const service = makeService(db);
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
-    expect([...db.payrollEntries.values()][0].basicStipend).toBe(800);
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(24800);
 
     db.attendanceLogs.find((l) => l.date.getTime() === augustDate(10).getTime())!.status =
       AttendanceStatus.HALF_DAY;
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
-    expect([...db.payrollEntries.values()][0].basicStipend).toBe(800);
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(24800);
   });
 
   // 7. PAID payroll remains financially unchanged.

@@ -2,6 +2,14 @@ import { BadRequestException } from '@nestjs/common';
 import { PayrollStatus } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 
+jest.mock('../attendance/discipline.helper', () => ({
+  repairLateDisciplineForPayrollMonth: jest.fn().mockResolvedValue({
+    applied: 0,
+    repaired: 0,
+    skipped: 0,
+  }),
+}));
+
 describe('PayrollService.resetUnpaidPayroll / rebuild', () => {
   const user = { id: 'user-1', role: 'SUPER_ADMIN' as const };
 

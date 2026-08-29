@@ -33,6 +33,68 @@ export function daysInPayrollMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
+function utcDateOnly(date: Date): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+}
+
+function roundStipendMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Contractual Basic Stipend for a payroll stipend segment: calendar days
+ * this segment covers in the payroll month ÷ calendar days in the month.
+ * Attendance logs are not an input — missing future/unmarked days do not
+ * shrink this figure. A segment covering the whole month returns the full
+ * assigned monthly stipend.
+ */
+export function prorateContractualBasicForPayrollSegment(input: {
+  contractualBasic: number;
+  year: number;
+  month: number;
+  segmentStart: Date;
+  segmentEndExclusive: Date | null;
+  monthEnd: Date;
+  /** Employee.joiningDate — Basic starts on the later of this and segmentStart. */
+  employmentStart?: Date | null;
+}): number {
+  const daysInMonth = daysInPayrollMonth(input.year, input.month);
+  const contractual = Number(input.contractualBasic);
+  if (daysInMonth <= 0 || !Number.isFinite(contractual) || contractual <= 0) {
+    return 0;
+  }
+
+  let start = utcDateOnly(input.segmentStart);
+  if (input.employmentStart) {
+    const join = utcDateOnly(input.employmentStart);
+    if (join.getTime() > start.getTime()) {
+      start = join;
+    }
+  }
+  const monthEnd = utcDateOnly(input.monthEnd);
+  let endInclusive = monthEnd;
+  if (input.segmentEndExclusive) {
+    const exclusive = utcDateOnly(input.segmentEndExclusive);
+    endInclusive = new Date(exclusive.getTime() - 24 * 60 * 60 * 1000);
+    if (endInclusive.getTime() > monthEnd.getTime()) {
+      endInclusive = monthEnd;
+    }
+  }
+  if (endInclusive.getTime() < start.getTime()) {
+    return 0;
+  }
+
+  const segmentDays =
+    Math.round((endInclusive.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) +
+    1;
+  if (segmentDays >= daysInMonth) {
+    return roundStipendMoney(contractual);
+  }
+  return roundStipendMoney((contractual * segmentDays) / daysInMonth);
+}
+
 /**
  * One day's worth of a stipend, using the actual number of calendar days in
  * the month the given business-event date falls in (not the server's

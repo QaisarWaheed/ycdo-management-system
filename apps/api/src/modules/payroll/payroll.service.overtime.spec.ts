@@ -1,6 +1,14 @@
 import { AllowanceType, AttendanceLogType, AttendanceStatus, PayrollStatus } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 
+jest.mock('../attendance/discipline.helper', () => ({
+  repairLateDisciplineForPayrollMonth: jest.fn().mockResolvedValue({
+    applied: 0,
+    repaired: 0,
+    skipped: 0,
+  }),
+}));
+
 /**
  * Step 4 (Gap #2) regression coverage: overtime is recorded per
  * AttendanceLog row (one date each), so — like every other date-based
