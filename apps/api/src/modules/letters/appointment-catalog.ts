@@ -34,7 +34,10 @@ function allTitles(department: string, extras: string[] = []): string[] {
   return uniqueTitles(DEPARTMENT_DESIGNATIONS[department], extras);
 }
 
-/** Exact Department + Designation rows seeded in Phase 3B. No global fallback. */
+/**
+ * Exact Department + Designation rows. Language follows appointmentLanguageForStaff:
+ * Urdu only for Grade 4 and Repair & Development (except Biomedical Engineer).
+ */
 export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   {
     department: 'ACCOUNTS',
@@ -73,17 +76,17 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   {
     department: 'OPD',
     titles: ['LHV', 'OPD STAFF'],
-    templateCode: 'APPT_CLINICAL_SUPPORT_UR',
+    templateCode: 'APPT_CLINICAL_SUPPORT_EN',
   },
   {
     department: 'ASSISTANT',
     titles: allTitles('ASSISTANT', ['GYNECOLOGY ASSISTANT']),
-    templateCode: 'APPT_CLINICAL_SUPPORT_UR',
+    templateCode: 'APPT_CLINICAL_SUPPORT_EN',
   },
   {
     department: 'INDOOR',
     titles: allTitles('INDOOR'),
-    templateCode: 'APPT_CLINICAL_SUPPORT_UR',
+    templateCode: 'APPT_CLINICAL_SUPPORT_EN',
   },
   {
     department: 'PHARMACY',
@@ -93,7 +96,7 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   {
     department: 'PHARMACY',
     titles: ['PHARMACY STAFF', 'RECEPTION', 'RECEPTIONIST', 'EMERGENCY STAFF'],
-    templateCode: 'APPT_PHARMACY_SUPPORT_UR',
+    templateCode: 'APPT_PHARMACY_SUPPORT_EN',
   },
   {
     department: 'LABORATORY',
@@ -103,7 +106,7 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   {
     department: 'LABORATORY',
     titles: ['LAB STAFF', 'LAB STORE ASSISTANT'],
-    templateCode: 'APPT_LAB_SUPPORT_UR',
+    templateCode: 'APPT_LAB_SUPPORT_EN',
   },
   {
     department: 'LABORATORY MANAGEMENT SYSTEM',
@@ -113,7 +116,7 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   {
     department: 'LABORATORY MANAGEMENT SYSTEM',
     titles: ['RIDER'],
-    templateCode: 'APPT_SUPPORT_UR',
+    templateCode: 'APPT_SUPPORT_EN',
   },
   {
     department: 'MEDICINE MANAGEMENT SYSTEM',
@@ -128,7 +131,7 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   {
     department: 'MEDICINE MANAGEMENT SYSTEM',
     titles: ['ASSISTANT DISPERSAL', 'ASSISTANT STORE MANAGER'],
-    templateCode: 'APPT_MEDICINE_SUPPORT_UR',
+    templateCode: 'APPT_MEDICINE_SUPPORT_EN',
   },
   {
     department: 'RADIOLOGY DEPARTMENT',
@@ -150,7 +153,7 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
       'OPPERATION THEATER TECHNICIAN',
       'OPERATION THEATER TECHNICIAN',
     ],
-    templateCode: 'APPT_SURGICAL_SUPPORT_UR',
+    templateCode: 'APPT_SURGICAL_SUPPORT_EN',
   },
   {
     department: 'IT',
@@ -169,12 +172,21 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   },
   {
     department: 'REPAIR AND DEVELOPMENT',
-    titles: ['BIO MEDICAL ENGINEERS', 'R&D COORDINATOR', 'COORDINATOR INCHARGE'],
+    titles: ['BIO MEDICAL ENGINEERS'],
     templateCode: 'APPT_TECHNICAL_EN',
   },
   {
     department: 'REPAIR AND DEVELOPMENT',
-    titles: ['ELECTRICIAN', 'CARPENTER', 'PLUMBER', 'R&D SUPERVISOR', 'SUPERVISOR'],
+    titles: [
+      'ELECTRICIAN',
+      'CARPENTER',
+      'PLUMBER',
+      'HELPER',
+      'R&D SUPERVISOR',
+      'SUPERVISOR',
+      'R&D COORDINATOR',
+      'COORDINATOR INCHARGE',
+    ],
     templateCode: 'APPT_TECHNICAL_SUPPORT_UR',
   },
   {
@@ -185,27 +197,27 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   {
     department: 'SANITARY',
     titles: allTitles('SANITARY'),
-    templateCode: 'APPT_SUPPORT_UR',
+    templateCode: 'APPT_SUPPORT_EN',
   },
   {
     department: 'KITCHEN',
     titles: allTitles('KITCHEN', ['KITCHEN STAFF']),
-    templateCode: 'APPT_SUPPORT_UR',
+    templateCode: 'APPT_SUPPORT_EN',
   },
   {
     department: 'VTI',
     titles: allTitles('VTI', ['BEAUTICIAN', 'STITCHING WORKER']),
-    templateCode: 'APPT_VTI_UR',
+    templateCode: 'APPT_VTI_EN',
   },
   {
     department: 'TEACHER',
     titles: allTitles('TEACHER'),
-    templateCode: 'APPT_VTI_UR',
+    templateCode: 'APPT_VTI_EN',
   },
   {
     department: 'PRINCIPAL',
     titles: allTitles('PRINCIPAL'),
-    templateCode: 'APPT_VTI_UR',
+    templateCode: 'APPT_VTI_EN',
   },
 ];
 

@@ -7,6 +7,7 @@ import {
   flattenAppointmentCatalogRows,
   APPOINTMENT_MAPPING_SPECS,
 } from './appointment-catalog';
+import { appointmentLanguageForStaff } from './appointment-language-policy';
 import {
   APPOINTMENT_TEMPLATE_CODES,
   resolveAppointmentServiceArea,
@@ -88,8 +89,8 @@ describe('Appointment Phase 3B catalog, policy, and templates', () => {
       language: AppointmentLetterLanguage.EN,
     });
     expect(lookupAppointmentCatalog('OPD', 'LHV')).toEqual({
-      templateCode: 'APPT_CLINICAL_SUPPORT_UR',
-      language: AppointmentLetterLanguage.UR,
+      templateCode: 'APPT_CLINICAL_SUPPORT_EN',
+      language: AppointmentLetterLanguage.EN,
     });
     expect(lookupAppointmentCatalog('RADIOLOGY DEPARTMENT', 'CONSULTANT RADIOLOGIST')).toEqual({
       templateCode: 'APPT_RADIOLOGY_EN',
@@ -100,8 +101,8 @@ describe('Appointment Phase 3B catalog, policy, and templates', () => {
       language: AppointmentLetterLanguage.EN,
     });
     expect(lookupAppointmentCatalog('VTI', 'VTI')).toEqual({
-      templateCode: 'APPT_VTI_UR',
-      language: AppointmentLetterLanguage.UR,
+      templateCode: 'APPT_VTI_EN',
+      language: AppointmentLetterLanguage.EN,
     });
     expect(lookupAppointmentCatalog('PHARMACY', 'PHARMACY INCHARGE')?.templateCode).toBe(
       'APPT_PHARMACY_EN',
@@ -116,8 +117,40 @@ describe('Appointment Phase 3B catalog, policy, and templates', () => {
     expect(
       lookupAppointmentCatalog('SURGICAL DEPARTMENT', 'OPPERATION THEATER TECHNICIAN')
         ?.templateCode,
-    ).toBe('APPT_SURGICAL_SUPPORT_UR');
+    ).toBe('APPT_SURGICAL_SUPPORT_EN');
+    expect(
+      lookupAppointmentCatalog('REPAIR AND DEVELOPMENT', 'BIO MEDICAL ENGINEERS'),
+    ).toEqual({
+      templateCode: 'APPT_TECHNICAL_EN',
+      language: AppointmentLetterLanguage.EN,
+    });
+    expect(
+      lookupAppointmentCatalog('REPAIR AND DEVELOPMENT', 'ELECTRICIAN'),
+    ).toEqual({
+      templateCode: 'APPT_TECHNICAL_SUPPORT_UR',
+      language: AppointmentLetterLanguage.UR,
+    });
+    expect(
+      lookupAppointmentCatalog('REPAIR AND DEVELOPMENT', 'COORDINATOR INCHARGE'),
+    ).toEqual({
+      templateCode: 'APPT_TECHNICAL_SUPPORT_UR',
+      language: AppointmentLetterLanguage.UR,
+    });
+    expect(lookupAppointmentCatalog('GRADE 4', 'SWEEPER')?.language).toBe(
+      AppointmentLetterLanguage.UR,
+    );
+    expect(lookupAppointmentCatalog('KITCHEN', 'COOK')?.language).toBe(
+      AppointmentLetterLanguage.EN,
+    );
     expect(lookupAppointmentCatalog('OPD', 'UNKNOWN ROLE')).toBeNull();
+  });
+
+  it('keeps catalog language aligned with Grade 4 / R&D Urdu policy', () => {
+    for (const row of flattenAppointmentCatalogRows()) {
+      expect(lookupAppointmentCatalog(row.department, row.designation)?.language).toBe(
+        appointmentLanguageForStaff(row.department, row.designation),
+      );
+    }
   });
 
   it('uses dynamic serviceArea by family and department', () => {
@@ -127,7 +160,7 @@ describe('Appointment Phase 3B catalog, policy, and templates', () => {
     expect(resolveAppointmentServiceArea('APPT_IT_SOFTWARE_EN', 'IT')).toBe(
       'IT & Software Services',
     );
-    expect(resolveAppointmentServiceArea('APPT_VTI_UR', 'VTI')).toBe(
+    expect(resolveAppointmentServiceArea('APPT_VTI_EN', 'VTI')).toBe(
       'Vocational Training Services',
     );
     expect(resolveAppointmentServiceArea('APPT_SUPPORT_UR', 'GRADE 4')).toBe(
@@ -192,26 +225,34 @@ describe('Appointment Phase 3B catalog, policy, and templates', () => {
     expect(html).toContain('Maximum Short Leave Duration: 4 hours');
   });
 
-  it('renders Urdu base with VTI/support SOP families and policy intent', () => {
-    const vti = renderFamily('APPT_BASE_UR.hbs', 'APPT_VTI_UR', AppointmentLetterLanguage.UR, {
+  it('renders English VTI and Urdu Grade 4 / R&D SOP families with policy intent', () => {
+    const vti = renderFamily('APPT_BASE_EN.hbs', 'APPT_VTI_EN', AppointmentLetterLanguage.EN, {
       department: 'VTI',
       designation: 'VTI',
       dutyTotalHours: '8',
       shortLeaveHours: '4',
     });
-    expect(vti).toContain('تیس (30) دن');
+    expect(vti).toContain('30 days');
     expect(vti).toContain('Short Leave');
-    expect(vti).toContain('ضبط یا ایڈجسٹ');
-    expect(vti).toContain('Suspension');
-    expect(vti).toContain('Termination');
-    expect(vti).toContain('تربیت یافتگان');
+    expect(vti).toContain('pending dues may be forfeited or adjusted');
+    expect(vti).toContain('trainees and students');
     expect(vti).toContain(APPOINTMENT_CHAIRMAN_ADMIN_NAME);
 
     const support = renderFamily('APPT_BASE_UR.hbs', 'APPT_SUPPORT_UR', AppointmentLetterLanguage.UR, {
       department: 'GRADE 4',
       designation: 'SWEEPER',
     });
+    expect(support).toContain('تیس (30) دن');
     expect(support).toContain('حفظانِ صحت');
+    expect(support).toContain('سیکیورٹی');
+
+    const rnd = renderFamily(
+      'APPT_BASE_UR.hbs',
+      'APPT_TECHNICAL_SUPPORT_UR',
+      AppointmentLetterLanguage.UR,
+      { department: 'REPAIR AND DEVELOPMENT', designation: 'ELECTRICIAN' },
+    );
+    expect(rnd).toContain('مرمت');
 
     const pharmacy = renderFamily(
       'APPT_BASE_EN.hbs',

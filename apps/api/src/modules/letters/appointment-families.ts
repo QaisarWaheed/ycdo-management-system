@@ -3,16 +3,16 @@ import { AppointmentLetterLanguage } from '@prisma/client';
 export const APPOINTMENT_TEMPLATE_CODES = [
   'APPT_MEDICAL_CONSULTANT_EN',
   'APPT_MEDICAL_CLINICAL_EN',
-  'APPT_CLINICAL_SUPPORT_UR',
+  'APPT_CLINICAL_SUPPORT_EN',
   'APPT_PHARMACY_EN',
-  'APPT_PHARMACY_SUPPORT_UR',
+  'APPT_PHARMACY_SUPPORT_EN',
   'APPT_LAB_EN',
-  'APPT_LAB_SUPPORT_UR',
+  'APPT_LAB_SUPPORT_EN',
   'APPT_LAB_MANAGEMENT_EN',
   'APPT_MEDICINE_MANAGEMENT_EN',
-  'APPT_MEDICINE_SUPPORT_UR',
+  'APPT_MEDICINE_SUPPORT_EN',
   'APPT_SURGICAL_EN',
-  'APPT_SURGICAL_SUPPORT_UR',
+  'APPT_SURGICAL_SUPPORT_EN',
   'APPT_RADIOLOGY_EN',
   'APPT_ADMIN_FINANCE_EN',
   'APPT_IT_SOFTWARE_EN',
@@ -20,6 +20,17 @@ export const APPOINTMENT_TEMPLATE_CODES = [
   'APPT_TECHNICAL_EN',
   'APPT_TECHNICAL_SUPPORT_UR',
   'APPT_SUPPORT_UR',
+  'APPT_SUPPORT_EN',
+  'APPT_VTI_EN',
+] as const;
+
+/** Former Urdu support/VTI families kept for already-issued letters. */
+export const LEGACY_APPOINTMENT_TEMPLATE_CODES = [
+  'APPT_CLINICAL_SUPPORT_UR',
+  'APPT_PHARMACY_SUPPORT_UR',
+  'APPT_LAB_SUPPORT_UR',
+  'APPT_MEDICINE_SUPPORT_UR',
+  'APPT_SURGICAL_SUPPORT_UR',
   'APPT_VTI_UR',
 ] as const;
 
@@ -34,6 +45,8 @@ export type AppointmentSopFamily =
   | 'ADMIN_HR_ACCOUNTS'
   | 'IT_SOFTWARE_MEDIA'
   | 'SUPPORT_TECHNICAL'
+  | 'SUPPORT_GRADE4'
+  | 'SUPPORT_OPERATIONS'
   | 'VTI';
 
 export const UNMAPPED_APPOINTMENT_DESIGNATIONS = new Set([
@@ -80,11 +93,11 @@ const FAMILY_BY_CODE: Record<
     serviceArea: 'Medical Services',
     name: 'Appointment — Medical Clinical (English)',
   },
-  APPT_CLINICAL_SUPPORT_UR: {
-    language: AppointmentLetterLanguage.UR,
+  APPT_CLINICAL_SUPPORT_EN: {
+    language: AppointmentLetterLanguage.EN,
     sopFamily: 'MEDICAL',
     serviceArea: 'Medical Services',
-    name: 'Appointment — Clinical Support (Urdu)',
+    name: 'Appointment — Clinical Support (English)',
   },
   APPT_PHARMACY_EN: {
     language: AppointmentLetterLanguage.EN,
@@ -92,11 +105,11 @@ const FAMILY_BY_CODE: Record<
     serviceArea: 'Pharmacy Services',
     name: 'Appointment — Pharmacy (English)',
   },
-  APPT_PHARMACY_SUPPORT_UR: {
-    language: AppointmentLetterLanguage.UR,
+  APPT_PHARMACY_SUPPORT_EN: {
+    language: AppointmentLetterLanguage.EN,
     sopFamily: 'PHARMACY_MEDICINE',
     serviceArea: 'Pharmacy Services',
-    name: 'Appointment — Pharmacy Support (Urdu)',
+    name: 'Appointment — Pharmacy Support (English)',
   },
   APPT_LAB_EN: {
     language: AppointmentLetterLanguage.EN,
@@ -104,11 +117,11 @@ const FAMILY_BY_CODE: Record<
     serviceArea: 'Laboratory Services',
     name: 'Appointment — Laboratory (English)',
   },
-  APPT_LAB_SUPPORT_UR: {
-    language: AppointmentLetterLanguage.UR,
+  APPT_LAB_SUPPORT_EN: {
+    language: AppointmentLetterLanguage.EN,
     sopFamily: 'LABORATORY',
     serviceArea: 'Laboratory Services',
-    name: 'Appointment — Laboratory Support (Urdu)',
+    name: 'Appointment — Laboratory Support (English)',
   },
   APPT_LAB_MANAGEMENT_EN: {
     language: AppointmentLetterLanguage.EN,
@@ -122,11 +135,11 @@ const FAMILY_BY_CODE: Record<
     serviceArea: 'Medicine Management Services',
     name: 'Appointment — Medicine Management (English)',
   },
-  APPT_MEDICINE_SUPPORT_UR: {
-    language: AppointmentLetterLanguage.UR,
+  APPT_MEDICINE_SUPPORT_EN: {
+    language: AppointmentLetterLanguage.EN,
     sopFamily: 'PHARMACY_MEDICINE',
     serviceArea: 'Medicine Management Services',
-    name: 'Appointment — Medicine Support (Urdu)',
+    name: 'Appointment — Medicine Support (English)',
   },
   APPT_SURGICAL_EN: {
     language: AppointmentLetterLanguage.EN,
@@ -134,11 +147,11 @@ const FAMILY_BY_CODE: Record<
     serviceArea: 'Surgical Services',
     name: 'Appointment — Surgical (English)',
   },
-  APPT_SURGICAL_SUPPORT_UR: {
-    language: AppointmentLetterLanguage.UR,
+  APPT_SURGICAL_SUPPORT_EN: {
+    language: AppointmentLetterLanguage.EN,
     sopFamily: 'SURGICAL_RADIOLOGY',
     serviceArea: 'Surgical Services',
-    name: 'Appointment — Surgical Support (Urdu)',
+    name: 'Appointment — Surgical Support (English)',
   },
   APPT_RADIOLOGY_EN: {
     language: AppointmentLetterLanguage.EN,
@@ -174,19 +187,72 @@ const FAMILY_BY_CODE: Record<
     language: AppointmentLetterLanguage.UR,
     sopFamily: 'SUPPORT_TECHNICAL',
     serviceArea: 'Repair & Development Services',
-    name: 'Appointment — Technical Support (Urdu)',
+    name: 'Appointment — Repair & Development (Urdu)',
   },
   APPT_SUPPORT_UR: {
     language: AppointmentLetterLanguage.UR,
-    sopFamily: 'SUPPORT_TECHNICAL',
+    sopFamily: 'SUPPORT_GRADE4',
     serviceArea: 'Support Services',
-    name: 'Appointment — Support Services (Urdu)',
+    name: 'Appointment — Grade 4 (Urdu)',
+  },
+  APPT_SUPPORT_EN: {
+    language: AppointmentLetterLanguage.EN,
+    sopFamily: 'SUPPORT_OPERATIONS',
+    serviceArea: 'Support Services',
+    name: 'Appointment — Support Services (English)',
+  },
+  APPT_VTI_EN: {
+    language: AppointmentLetterLanguage.EN,
+    sopFamily: 'VTI',
+    serviceArea: 'Vocational Training Services',
+    name: 'Appointment — VTI (English)',
+  },
+};
+
+const LEGACY_FAMILY_BY_CODE: Record<
+  (typeof LEGACY_APPOINTMENT_TEMPLATE_CODES)[number],
+  {
+    language: AppointmentLetterLanguage;
+    sopFamily: AppointmentSopFamily;
+    serviceArea: string;
+    name: string;
+  }
+> = {
+  APPT_CLINICAL_SUPPORT_UR: {
+    language: AppointmentLetterLanguage.UR,
+    sopFamily: 'MEDICAL',
+    serviceArea: 'Medical Services',
+    name: 'Appointment — Clinical Support (Urdu, legacy)',
+  },
+  APPT_PHARMACY_SUPPORT_UR: {
+    language: AppointmentLetterLanguage.UR,
+    sopFamily: 'PHARMACY_MEDICINE',
+    serviceArea: 'Pharmacy Services',
+    name: 'Appointment — Pharmacy Support (Urdu, legacy)',
+  },
+  APPT_LAB_SUPPORT_UR: {
+    language: AppointmentLetterLanguage.UR,
+    sopFamily: 'LABORATORY',
+    serviceArea: 'Laboratory Services',
+    name: 'Appointment — Laboratory Support (Urdu, legacy)',
+  },
+  APPT_MEDICINE_SUPPORT_UR: {
+    language: AppointmentLetterLanguage.UR,
+    sopFamily: 'PHARMACY_MEDICINE',
+    serviceArea: 'Medicine Management Services',
+    name: 'Appointment — Medicine Support (Urdu, legacy)',
+  },
+  APPT_SURGICAL_SUPPORT_UR: {
+    language: AppointmentLetterLanguage.UR,
+    sopFamily: 'SURGICAL_RADIOLOGY',
+    serviceArea: 'Surgical Services',
+    name: 'Appointment — Surgical Support (Urdu, legacy)',
   },
   APPT_VTI_UR: {
     language: AppointmentLetterLanguage.UR,
     sopFamily: 'VTI',
     serviceArea: 'Vocational Training Services',
-    name: 'Appointment — VTI (Urdu)',
+    name: 'Appointment — VTI (Urdu, legacy)',
   },
 };
 
@@ -196,9 +262,16 @@ export function isAppointmentTemplateCode(
   return (APPOINTMENT_TEMPLATE_CODES as readonly string[]).includes(code);
 }
 
+export function isLegacyAppointmentTemplateCode(
+  code: string,
+): code is (typeof LEGACY_APPOINTMENT_TEMPLATE_CODES)[number] {
+  return (LEGACY_APPOINTMENT_TEMPLATE_CODES as readonly string[]).includes(code);
+}
+
 export function appointmentFamilyMeta(code: string) {
-  if (!isAppointmentTemplateCode(code)) return null;
-  return FAMILY_BY_CODE[code];
+  if (isAppointmentTemplateCode(code)) return FAMILY_BY_CODE[code];
+  if (isLegacyAppointmentTemplateCode(code)) return LEGACY_FAMILY_BY_CODE[code];
+  return null;
 }
 
 export function resolveAppointmentServiceArea(
@@ -218,8 +291,11 @@ export function resolveAppointmentServiceArea(
     return 'Administrative Services';
   }
   if (templateCode === 'APPT_SUPPORT_UR') {
-    if (dept === 'KITCHEN') return 'Support Services';
-    if (dept === 'GRADE 4' || dept === 'SANITARY') return 'Support Services';
+    if (dept === 'GRADE 4') return 'Support Services';
+  }
+  if (templateCode === 'APPT_SUPPORT_EN') {
+    if (dept === 'KITCHEN') return 'Kitchen Services';
+    if (dept === 'SANITARY') return 'Sanitary Services';
     if (dept === 'LABORATORY MANAGEMENT SYSTEM') return 'Support Services';
   }
   return meta.serviceArea;
