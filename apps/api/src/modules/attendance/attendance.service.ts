@@ -86,7 +86,6 @@ import {
   DEFAULT_DUTY_START,
   getShiftAttendanceDate,
   hasDutyStartedForAttendanceDate,
-  isWithinAttendanceMarkingGrace,
   minutesSinceShiftStart,
   parseTimeToMinutes,
   statusFromLateMinutes,
@@ -126,16 +125,6 @@ const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
   UserRole.HR_OPERATIONS_MANAGER,
   UserRole.HR_EXECUTIVE,
 ];
-
-/** Branch admins may mark check-in/out once; only HR/IT may modify afterwards. */
-const ATTENDANCE_MARK_ONLY_ROLES: UserRole[] = [
-  UserRole.ADMIN_MANAGER,
-  UserRole.ADMIN_OFFICER,
-  UserRole.MEDICINE_MANAGER,
-];
-
-const ATTENDANCE_ALREADY_MARKED_MESSAGE =
-  'Attendance already marked and cannot be modified. Please contact HR to update attendance.';
 
 const ACTIVE_LEAVE_STATUSES: LeaveStatus[] = [
   LeaveStatus.PENDING,
@@ -1121,20 +1110,6 @@ export class AttendanceService {
       }
     }
 
-    if (
-      actingUser.role === UserRole.ADMIN_MANAGER ||
-      isMedicineManagerRole(actingUser.role)
-    ) {
-      const dutyStart =
-        resolveDutyStartTime(employee) ?? '08:00';
-      if (!isWithinAttendanceMarkingGrace(new Date(), dutyStart)) {
-        throw new ForbiddenException(
-          'Attendance can only be marked within the grace period. ' +
-            'Please contact HR to mark attendance after grace time.',
-        );
-      }
-    }
-
     const dateOnly = toPakistanDateOnly(
       new Date(`${dto.date}T00:00:00+05:00`),
     );
@@ -1153,20 +1128,6 @@ export class AttendanceService {
         },
       },
     });
-
-    if (this.isAttendanceMarkOnlyRole(actingUser.role)) {
-      if (existing?.checkIn) {
-        throw new ForbiddenException(ATTENDANCE_ALREADY_MARKED_MESSAGE);
-      }
-
-      if (
-        existing &&
-        existing.status !== AttendanceStatus.UNMARKED &&
-        !existing.checkIn
-      ) {
-        throw new ForbiddenException(ATTENDANCE_ALREADY_MARKED_MESSAGE);
-      }
-    }
 
     const checkIn = dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : undefined;
     const checkOut = dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : undefined;
@@ -1449,22 +1410,6 @@ export class AttendanceService {
         throw new ForbiddenException(
           'You can only update attendance for Medicine Management System staff',
         );
-      }
-    }
-
-    if (this.isAttendanceMarkOnlyRole(actingUser.role)) {
-      const isFirstCheckoutOnly =
-        dto.checkOut != null &&
-        !log.checkOut &&
-        !!log.checkIn &&
-        dto.checkIn === undefined &&
-        dto.status === undefined &&
-        dto.lateMinutes === undefined &&
-        dto.note === undefined &&
-        dto.overtimeMinutes === undefined;
-
-      if (!isFirstCheckoutOnly) {
-        throw new ForbiddenException(ATTENDANCE_ALREADY_MARKED_MESSAGE);
       }
     }
 
@@ -2558,10 +2503,6 @@ export class AttendanceService {
     }
 
     return result;
-  }
-
-  private isAttendanceMarkOnlyRole(role: UserRole): boolean {
-    return ATTENDANCE_MARK_ONLY_ROLES.includes(role);
   }
 
   private resolveDutyFilter(query: AttendanceQueryDto): 'onDutyNow' | 'all' {
