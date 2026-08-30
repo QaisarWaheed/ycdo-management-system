@@ -31,6 +31,7 @@ import {
   RelieverCheckInDto,
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
+  StartWatchlistInquiryDto,
   UpdateAttendanceDto,
   UpdateRelieverSessionDto,
 } from './attendance.dto';
@@ -331,7 +332,8 @@ export class AttendanceController {
   )
   startSuspensionCaseFromWatchlist(
     @Param('employeeId') employeeId: string,
-    @CurrentUser() user: { id: string; role: UserRole },
+    @Body() dto: StartWatchlistInquiryDto,
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
     @Query('year') year?: string,
     @Query('month') month?: string,
   ) {
@@ -339,8 +341,10 @@ export class AttendanceController {
       employeeId,
       user.id,
       user.role,
+      dto,
       year != null && year !== '' ? Number(year) : undefined,
       month != null && month !== '' ? Number(month) : undefined,
+      user.roles,
     );
   }
 

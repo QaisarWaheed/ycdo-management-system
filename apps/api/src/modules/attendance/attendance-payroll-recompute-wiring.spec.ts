@@ -93,6 +93,7 @@ function makeService(overrides: {
     payrollService as any,
     {} as any,
     {} as any,
+    {} as any,
     { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
   );
 
@@ -188,6 +189,7 @@ describe('AttendanceService — payroll recompute wiring', () => {
       payrollService as any,
       {} as any,
       {} as any,
+      {} as any,
       { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
     );
 
@@ -262,6 +264,7 @@ describe('AttendanceService — payroll recompute wiring', () => {
       permissionsService as any,
       accessScopeService as any,
       payrollService as any,
+      {} as any,
       {} as any,
       {} as any,
       { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
@@ -339,6 +342,7 @@ describe('AttendanceService — payroll recompute wiring', () => {
       permissionsService as any,
       accessScopeService as any,
       payrollService as any,
+      {} as any,
       {} as any,
       {} as any,
       { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,

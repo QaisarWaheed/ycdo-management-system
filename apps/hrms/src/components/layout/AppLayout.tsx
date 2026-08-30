@@ -32,6 +32,7 @@ function getPageTitle(pathname: string, search: string): string {
   if (pathname === '/letters') {
     const section = new URLSearchParams(search).get('section')
     if (section === 'disciplinary') return 'Disciplinary'
+    if (section === 'enquiries') return 'Enquiries'
     if (section === 'watchlist') return 'Suspension Watchlist'
     if (section === 'failed-whatsapp') return 'Failed WhatsApp'
     return 'Letters'

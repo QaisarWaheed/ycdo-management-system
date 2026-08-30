@@ -1043,6 +1043,7 @@ function PendingLetterShareDialog({
 const LETTER_SECTIONS = [
   'letters',
   'disciplinary',
+  'enquiries',
   'watchlist',
   'failed-whatsapp',
 ] as const
@@ -1346,6 +1347,7 @@ export function LettersPage() {
           [
             ['letters', 'Letters'],
             ['disciplinary', 'Disciplinary'],
+            ['enquiries', 'Enquiries'],
             ['watchlist', 'Watchlist'],
             ['failed-whatsapp', 'Failed WhatsApp'],
           ] as const
@@ -1369,6 +1371,9 @@ export function LettersPage() {
 
       {section === 'disciplinary' ? (
         <DisciplinaryPage embedded />
+      ) : null}
+      {section === 'enquiries' ? (
+        <DisciplinaryPage embedded onlyInquiries />
       ) : null}
       {section === 'watchlist' ? (
         <SuspensionWatchlistPage embedded />

@@ -381,6 +381,24 @@ export class RelieverCheckOutDto {
   checkOut?: string;
 }
 
+export class StartWatchlistInquiryDto {
+  @IsDateString()
+  @IsNotEmpty()
+  periodStart: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  periodEnd: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  inquiryOfficerUserId: string;
+
+  @IsOptional()
+  @IsDateString()
+  inquiryDeadlineAt?: string;
+}
+
 /** HR correction to an existing RelieverSession's recorded timestamps. */
 export class UpdateRelieverSessionDto {
   @IsOptional()

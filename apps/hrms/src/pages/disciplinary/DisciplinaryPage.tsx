@@ -1571,12 +1571,14 @@ function ProposeFinalDecisionDialog({
 
 export function DisciplinaryPage({
   embedded = false,
+  onlyInquiries = false,
 }: {
   embedded?: boolean
+  onlyInquiries?: boolean
 }) {
   const { hasRole } = useAuth()
   const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
-  const [tab, setTab] = useState('actions')
+  const [tab, setTab] = useState(onlyInquiries ? 'inquiries' : 'actions')
   const [newActionOpen, setNewActionOpen] = useState(false)
   const [startInquiryId, setStartInquiryId] = useState<string | null>(null)
   const [resolveInquiry, setResolveInquiry] = useState<Inquiry | null>(null)
@@ -1586,41 +1588,52 @@ export function DisciplinaryPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        {!embedded ? (
-          <h1 className="text-2xl font-bold text-text-primary">
-            Disciplinary Management
-          </h1>
-        ) : (
-          <p className="text-sm text-text-secondary">
-            Manage cases, inquiries, and suspension preparation (approval
-            required before issuing).
-          </p>
-        )}
-        <Button variant="destructive" onClick={() => setNewActionOpen(true)}>
-          New Action
-        </Button>
-      </div>
+      {!onlyInquiries ? (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {!embedded ? (
+            <h1 className="text-2xl font-bold text-text-primary">
+              Disciplinary Management
+            </h1>
+          ) : (
+            <p className="text-sm text-text-secondary">
+              Manage cases, inquiries, and suspension preparation (approval
+              required before issuing).
+            </p>
+          )}
+          <Button variant="destructive" onClick={() => setNewActionOpen(true)}>
+            New Action
+          </Button>
+        </div>
+      ) : (
+        <p className="text-sm text-text-secondary">
+          Employees whose inquiry has been started. Close an inquiry to record
+          the verdict (join again, rest, dismiss, or terminate).
+        </p>
+      )}
 
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="actions">Actions</TabsTrigger>
-          <TabsTrigger value="inquiries">Enquiries</TabsTrigger>
-        </TabsList>
+      {onlyInquiries ? (
+        <InquiriesTab onResolve={setResolveInquiry} />
+      ) : (
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            <TabsTrigger value="actions">Actions</TabsTrigger>
+            <TabsTrigger value="inquiries">Enquiries</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="actions" className="mt-4">
-          <ActionsTab
-            onStartInquiry={setStartInquiryId}
-            onSwitchToInquiries={() => setTab('inquiries')}
-            onPrepareSuspension={setPrepareAction}
-            canPrepare={canPrepare}
-          />
-        </TabsContent>
+          <TabsContent value="actions" className="mt-4">
+            <ActionsTab
+              onStartInquiry={setStartInquiryId}
+              onSwitchToInquiries={() => setTab('inquiries')}
+              onPrepareSuspension={setPrepareAction}
+              canPrepare={canPrepare}
+            />
+          </TabsContent>
 
-        <TabsContent value="inquiries" className="mt-4">
-          <InquiriesTab onResolve={setResolveInquiry} />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="inquiries" className="mt-4">
+            <InquiriesTab onResolve={setResolveInquiry} />
+          </TabsContent>
+        </Tabs>
+      )}
 
       <NewActionDialog open={newActionOpen} onOpenChange={setNewActionOpen} />
 

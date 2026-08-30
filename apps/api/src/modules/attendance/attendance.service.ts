@@ -30,6 +30,7 @@ import { PayrollService } from '../payroll/payroll.service';
 import { LettersService } from '../letters/letters.service';
 import { summarizeAttendanceLogs } from './attendance-summary.util';
 import { DisciplinaryService } from '../disciplinary/disciplinary.service';
+import { SuspensionRequestService } from '../disciplinary/suspension-request.service';
 import { AdditionalWorkingDaysService } from '../additional-working-days/additional-working-days.service';
 import {
   ApproveOvertimeDto,
@@ -43,6 +44,7 @@ import {
   RelieverCheckInDto,
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
+  StartWatchlistInquiryDto,
   UpdateAttendanceDto,
   UpdateRelieverSessionDto,
 } from './attendance.dto';
@@ -154,6 +156,7 @@ export class AttendanceService {
     private payrollService: PayrollService,
     private lettersService: LettersService,
     private disciplinaryService: DisciplinaryService,
+    private suspensionRequestService: SuspensionRequestService,
     private additionalWorkingDaysService: AdditionalWorkingDaysService,
   ) {}
 
@@ -4032,14 +4035,17 @@ export class AttendanceService {
   }
 
   /**
-   * Due-for-suspension: open a SUSPENSION disciplinary case (Disciplinary tab).
+   * Due-for-suspension: start an inquiry with officer + suspension period,
+   * then list the employee on the Enquiries tab.
    */
   async startSuspensionCaseFromWatchlist(
     employeeId: string,
     actingUserId: string,
     actingRole: UserRole,
+    dto: StartWatchlistInquiryDto,
     year?: number,
     month?: number,
+    actingRoles?: UserRole[],
   ) {
     const list = await this.getSuspensionWatchlist(year, month);
     const entry = list.due.find((e) => e.employeeId === employeeId);
@@ -4047,6 +4053,24 @@ export class AttendanceService {
       throw new BadRequestException(
         'Employee is not on the due-for-suspension watchlist for this month (or already has an open suspension case)',
       );
+    }
+
+    const periodStart = new Date(dto.periodStart);
+    const periodEnd = new Date(dto.periodEnd);
+    if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) {
+      throw new BadRequestException('Suspension period dates are invalid');
+    }
+    if (periodEnd.getTime() < periodStart.getTime()) {
+      throw new BadRequestException(
+        'Suspension period end must be on or after the start date',
+      );
+    }
+
+    const inquiryDeadlineAt = dto.inquiryDeadlineAt
+      ? new Date(dto.inquiryDeadlineAt)
+      : periodEnd;
+    if (Number.isNaN(inquiryDeadlineAt.getTime())) {
+      throw new BadRequestException('Inquiry deadline is invalid');
     }
 
     const reason = [
@@ -4066,7 +4090,59 @@ export class AttendanceService {
       actingRole,
     );
 
-    return action;
+    await this.suspensionRequestService.prepare(
+      action.id,
+      {
+        reason,
+        periodStart,
+        periodEnd,
+        inquiryDeadlineAt,
+        inquiryOfficerUserId: dto.inquiryOfficerUserId,
+        selectedApproverUserId: dto.inquiryOfficerUserId,
+      },
+      actingUserId,
+      actingRole,
+      actingRoles,
+    );
+
+    const existingInquiry = await this.prisma.inquiry.findUnique({
+      where: { disciplinaryActionId: action.id },
+      select: { id: true },
+    });
+    if (!existingInquiry) {
+      const created = await this.prisma.inquiry.create({
+        data: {
+          disciplinaryActionId: action.id,
+          inquiryOfficerUserId: dto.inquiryOfficerUserId,
+          deadlineAt: inquiryDeadlineAt,
+        },
+      });
+      await this.prisma.disciplinaryAction.update({
+        where: { id: action.id },
+        data: { status: DisciplinaryStatus.UNDER_INQUIRY },
+      });
+      await this.prisma.notification.create({
+        data: {
+          employeeId,
+          type: 'INQUIRY_STARTED',
+          message: `An inquiry has been initiated regarding your disciplinary action. Deadline: ${inquiryDeadlineAt.toISOString().slice(0, 10)}`,
+        },
+      });
+      await this.prisma.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'INQUIRY_STARTED',
+          entity: 'Inquiry',
+          entityId: created.id,
+          changes: { disciplinaryActionId: action.id },
+        },
+      });
+    }
+
+    return this.prisma.disciplinaryAction.findUnique({
+      where: { id: action.id },
+      include: { inquiry: true, suspensionRequest: true },
+    });
   }
 
   private async excludeActiveSuspensionCases<

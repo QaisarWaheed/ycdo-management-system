@@ -51,6 +51,8 @@ describe('HR UI Start Inquiry gating', () => {
     );
     expect(helper).toContain("action.type !== 'SUSPENSION'");
     expect(page).toContain('canStartLegacyInquiry');
+    expect(page).toContain('Close Inquiry');
+    expect(page).toContain('View Details');
     expect(page).not.toMatch(
       /action\.status === 'OPEN' \? \(\s*<Button[\s\S]*Start Inquiry/,
     );

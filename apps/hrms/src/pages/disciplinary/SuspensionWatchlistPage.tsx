@@ -1,11 +1,30 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { addDays, format } from 'date-fns'
 import { AlertTriangle, Clock } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
+import { disciplinaryApi } from '@/api/endpoints/disciplinary'
+import { DateInput } from '@/components/common/DateInput'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -18,12 +37,17 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { getApiErrorMessage } from '@/lib/apiErrorMessage'
+import { ROLE_LABELS } from '@/lib/roleLabels'
 import {
   partitionSuspensionWatchlist,
   type WatchEntry,
   type WatchReason,
 } from '@/lib/suspensionWatchlist'
 import { cn } from '@/lib/utils'
+
+function toIsoDate(value: string) {
+  return value ? `${value}T00:00:00.000Z` : ''
+}
 
 function reasonLabel(reason: WatchReason) {
   switch (reason) {
@@ -62,7 +86,7 @@ function WatchlistTable({
   mode: 'near' | 'due'
   busyEmployeeId: string | null
   onSendReminder: (employeeId: string) => void
-  onStartCase: (employeeId: string) => void
+  onStartCase: (row: WatchEntry) => void
 }) {
   if (loading) {
     return (
@@ -160,7 +184,7 @@ function WatchlistTable({
                     size="sm"
                     variant="destructive"
                     disabled={busy}
-                    onClick={() => onStartCase(row.employeeId)}
+                    onClick={() => onStartCase(row)}
                   >
                     {busy ? 'Starting…' : 'Start inquiry'}
                   </Button>
@@ -180,12 +204,23 @@ export function SuspensionWatchlistPage({
   embedded?: boolean
 }) {
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState<'near' | 'due'>('due')
   const [busyEmployeeId, setBusyEmployeeId] = useState<string | null>(null)
+  const [pending, setPending] = useState<WatchEntry | null>(null)
+  const [periodStart, setPeriodStart] = useState('')
+  const [periodEnd, setPeriodEnd] = useState('')
+  const [officerUserId, setOfficerUserId] = useState('')
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['suspension-watchlist'],
     queryFn: () => attendanceApi.getSuspensionWatchlist(),
+  })
+
+  const { data: officers = [] } = useQuery({
+    queryKey: ['disciplinary', 'suspension-approvers'],
+    queryFn: () => disciplinaryApi.listEligibleApprovers(),
+    enabled: !!pending,
   })
 
   const reminderMutation = useMutation({
@@ -210,23 +245,39 @@ export function SuspensionWatchlistPage({
     },
   })
 
+  const openStartInquiry = (row: WatchEntry) => {
+    const start = format(new Date(), 'yyyy-MM-dd')
+    setPeriodStart(start)
+    setPeriodEnd(format(addDays(new Date(), 7), 'yyyy-MM-dd'))
+    setOfficerUserId('')
+    setPending(row)
+  }
+
   const startCaseMutation = useMutation({
-    mutationFn: (employeeId: string) =>
-      attendanceApi.startSuspensionCaseFromWatchlist(employeeId),
-    onMutate: (employeeId) => setBusyEmployeeId(employeeId),
+    mutationFn: () =>
+      attendanceApi.startSuspensionCaseFromWatchlist(pending!.employeeId, {
+        periodStart: toIsoDate(periodStart),
+        periodEnd: toIsoDate(periodEnd),
+        inquiryOfficerUserId: officerUserId,
+        inquiryDeadlineAt: toIsoDate(periodEnd),
+      }),
+    onMutate: () => setBusyEmployeeId(pending!.employeeId),
     onSettled: () => setBusyEmployeeId(null),
     onSuccess: () => {
       toast({
-        title: 'Suspension case opened',
-        description:
-          'Employee moved to Disciplinary. Prepare and submit the suspension letter for approval when ready.',
+        title: 'Inquiry started',
+        description: `${pending?.fullName ?? 'Employee'} is now on the Enquiries tab.`,
       })
       queryClient.invalidateQueries({ queryKey: ['suspension-watchlist'] })
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
+      setPending(null)
+      const next = new URLSearchParams(searchParams)
+      next.set('section', 'enquiries')
+      setSearchParams(next, { replace: true })
     },
     onError: (err: unknown) => {
       toast({
-        title: 'Could not start case',
+        title: 'Could not start inquiry',
         description: getApiErrorMessage(err, 'Request failed'),
         variant: 'destructive',
       })
@@ -238,6 +289,8 @@ export function SuspensionWatchlistPage({
     [data],
   )
   const monthLabel = useMemo(() => data?.month ?? '—', [data?.month])
+  const canSubmit =
+    !!pending && !!periodStart && !!periodEnd && !!officerUserId
 
   return (
     <div className="space-y-6">
@@ -248,22 +301,23 @@ export function SuspensionWatchlistPage({
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
             Pakistan calendar month {monthLabel}. Near: send advice reminder.
-            Due: open a suspension disciplinary case.
+            Due: start inquiry (officer + suspension duration), then close it
+            from Enquiries.
           </p>
           <p className="mt-1 text-sm text-text-secondary">
             <Link
-              to="/letters?section=disciplinary"
+              to="/letters?section=enquiries"
               className="text-primary underline-offset-2 hover:underline"
             >
-              Open disciplinary cases
+              Open Enquiries
             </Link>
           </p>
         </div>
       ) : (
         <p className="text-sm text-text-secondary">
           Pakistan calendar month {monthLabel}. Near: Send reminder (letter +
-          WhatsApp). Due: Start inquiry opens a suspension case under
-          Disciplinary.
+          WhatsApp). Due: Start inquiry asks for the officer and suspension
+          duration, then moves the employee to Enquiries.
         </p>
       )}
 
@@ -305,7 +359,7 @@ export function SuspensionWatchlistPage({
             mode="due"
             busyEmployeeId={busyEmployeeId}
             onSendReminder={() => undefined}
-            onStartCase={(id) => startCaseMutation.mutate(id)}
+            onStartCase={openStartInquiry}
           />
         </TabsContent>
         <TabsContent
@@ -323,6 +377,60 @@ export function SuspensionWatchlistPage({
           />
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!pending} onOpenChange={(v) => !v && setPending(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Start inquiry</DialogTitle>
+            <DialogDescription>
+              {pending?.fullName ?? 'Employee'} — choose the inquiry officer
+              and the suspension period. The employee will appear on Enquiries.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Suspension start</Label>
+                <DateInput value={periodStart} onChange={setPeriodStart} />
+              </div>
+              <div>
+                <Label>Suspension end</Label>
+                <DateInput value={periodEnd} onChange={setPeriodEnd} />
+              </div>
+            </div>
+            <div>
+              <Label>Inquiry officer</Label>
+              <p className="mb-1.5 text-xs text-text-secondary">
+                This person is also the approver for the suspension letter.
+              </p>
+              <Select value={officerUserId} onValueChange={setOfficerUserId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select inquiry officer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {officers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.displayName} (
+                      {ROLE_LABELS[user.eligibleRole] ?? user.eligibleRole})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPending(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!canSubmit || startCaseMutation.isPending}
+              onClick={() => startCaseMutation.mutate()}
+            >
+              {startCaseMutation.isPending ? 'Starting…' : 'Start inquiry'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
