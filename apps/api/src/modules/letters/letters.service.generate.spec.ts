@@ -266,7 +266,7 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
 });
 
 describe('LettersService.findAll portal visibility', () => {
-  it('hides DRAFT from the employee portal and lists SENT', async () => {
+  it('hides DRAFT from the employee portal and lists SENT and REVERSED', async () => {
     const prisma = {
       letter: {
         findMany: jest.fn().mockResolvedValue([{ id: 'sent-1', status: LetterStatus.SENT }]),
@@ -282,7 +282,9 @@ describe('LettersService.findAll portal visibility', () => {
 
     expect(prisma.letter.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ status: LetterStatus.SENT }),
+        where: expect.objectContaining({
+          status: { in: [LetterStatus.SENT, LetterStatus.REVERSED] },
+        }),
       }),
     );
   });

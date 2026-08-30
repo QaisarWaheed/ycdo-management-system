@@ -443,9 +443,25 @@ async function applyAbsentDeduction(
       employeeId,
       date,
       'ABSENT',
-      `تاریخ ${date.toISOString().slice(0, 10)} کو بغیر منظور شدہ چھٹی غیر حاضری۔`,
     );
-    // Payroll waits until HR sends the draft explanation letter.
+    const absenceCount = await countMonthlyAbsenceDays(tx, employeeId, date);
+    if (absenceCount >= 3) {
+      const dayKey = incidentDateLabel(date);
+      const reason = `اس ماہ ${absenceCount} دن غیر حاضری — معطلی کی سفارش۔`;
+      await recommendHrSuspensionDraft(
+        tx,
+        employeeId,
+        date,
+        {
+          suspensionReason: reason,
+          suspensionStartDate: dayKey,
+          suspensionDuration: 'Pending HR review',
+          violations: reason,
+        },
+        reason,
+      );
+    }
+    // Payroll waits until HR sends the draft absence letter.
     return noOp;
   }
 
@@ -953,36 +969,35 @@ async function applyUninformedAbsenceDisciplineTracking(
       employeeId,
       date,
       'UNINFORMED_ABSENT',
-      `تاریخ ${dayKey} کو بغیر اطلاع غیر حاضری۔`,
     );
   }
 
-  // More than 2 uninformed-absent days in a month → HR suspension
-  // recommendation only (never auto-suspend / never SENT auto letter).
+  // Combined ABSENT + UA days this month → 3rd occurrence is an HR
+  // suspension recommendation only (never auto-suspend).
   let suspensionTriggered = false;
-  if (shouldIssueLetters && uninformedCount > 2) {
-    const employee = await tx.employee.findUnique({
-      where: { id: employeeId },
-      select: { status: true },
-    });
+  if (shouldIssueLetters) {
+    const absenceCount = await countMonthlyAbsenceDays(tx, employeeId, date);
+    if (absenceCount >= 3) {
+      const employee = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { status: true },
+      });
 
-    if (employee?.status !== EmployeeStatus.SUSPENDED) {
-      const reason = `اس ماہ ${uninformedCount} دن بغیر اطلاع غیر حاضری (2 دن سے زیادہ) — معطلی کی سفارش۔`;
-      suspensionTriggered = await recommendHrSuspensionDraft(
-        tx,
-        employeeId,
-        date,
-        {
-          suspensionReason: reason,
-          suspensionStartDate: dayKey,
-          suspensionDuration: 'Pending HR review',
-          violations: reason,
-          monthlyLateOccurrence: uninformedCount,
-          incidentDate: dayKey,
-          disciplineCategory: 'UNINFORMED_ABSENT',
-        },
-        reason,
-      );
+      if (employee?.status !== EmployeeStatus.SUSPENDED) {
+        const reason = `اس ماہ ${absenceCount} دن غیر حاضری (بلا اطلاع شامل) — معطلی کی سفارش۔`;
+        suspensionTriggered = await recommendHrSuspensionDraft(
+          tx,
+          employeeId,
+          date,
+          {
+            suspensionReason: reason,
+            suspensionStartDate: dayKey,
+            suspensionDuration: 'Pending HR review',
+            violations: reason,
+          },
+          reason,
+        );
+      }
     }
   }
 
@@ -1286,12 +1301,62 @@ async function hasLetterForAbsenceIncident(
   });
 }
 
+async function countMonthlyAbsenceDays(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+): Promise<number> {
+  const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(date);
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayKey = dayStart.toISOString().slice(0, 10);
+  const rows = await tx.attendanceLog.findMany({
+    where: {
+      employeeId,
+      date: { gte: startOfMonth, lte: endOfMonth },
+      status: {
+        in: [AttendanceStatus.ABSENT, AttendanceStatus.UNINFORMED_ABSENT],
+      },
+    },
+    select: { date: true },
+  });
+  const unique = new Set(rows.map((row) => row.date.toISOString().slice(0, 10)));
+  unique.add(dayKey);
+  return unique.size;
+}
+
+function absenceSopViolations(
+  dayKey: string,
+  occurrence: number,
+  category: 'ABSENT' | 'UNINFORMED_ABSENT',
+): string {
+  const kind =
+    category === 'UNINFORMED_ABSENT' ? 'بلا اطلاع غیر حاضری' : 'غیر حاضری';
+  const lines = [
+    `آج مورخہ ${dayKey} آپ کی ${kind} ریکارڈ کی گئی ہے۔`,
+    'تنظیمی ضابطے کے مطابق اس غیر حاضری پر دو یوم کی تنخواہ / وظیفہ منہا کیا جائے گا۔',
+  ];
+  if (occurrence <= 1) {
+    lines.push(
+      'اگر اسی کیلنڈر ماہ میں دوبارہ غیر حاضری ہوئی تو دوبارہ دو یوم کی کٹوتی ہوگی۔ تیسری مرتبہ معطلی پر غور کیا جائے گا۔',
+    );
+  } else if (occurrence === 2) {
+    lines.push(
+      'یہ اس ماہ کی دوسری غیر حاضری ہے — دوبارہ دو یوم کی کٹوتی ہوگی۔ تیسری مرتبہ معطلی پر غور کیا جائے گا۔',
+    );
+  } else {
+    lines.push(
+      `یہ اس ماہ کی ${occurrence}ویں غیر حاضری ہے — معطلی پر غور کیا جائے گا۔`,
+    );
+  }
+  return lines.join('\n');
+}
+
 async function issueAbsenceLetterIfNotAlready(
   tx: Prisma.TransactionClient,
   employeeId: string,
   date: Date,
   category: 'ABSENT' | 'UNINFORMED_ABSENT',
-  violations: string,
 ): Promise<void> {
   if (await hasLetterForAbsenceIncident(tx, employeeId, date, category)) {
     return;
@@ -1300,16 +1365,19 @@ async function issueAbsenceLetterIfNotAlready(
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dayKey = dayStart.toISOString().slice(0, 10);
+  const occurrence = await countMonthlyAbsenceDays(tx, employeeId, date);
 
   await issueAutoTemplatedLetter(tx, {
     employeeId,
     letterType: LetterType.EXPLANATION,
     extraFields: {
-      violations,
+      violations: absenceSopViolations(dayKey, occurrence, category),
       incidentDate: dayKey,
       disciplineCategory: category,
+      monthlyAbsenceOccurrence: occurrence,
+      subject: 'غیر حاضری بابت نوٹس',
     },
-    notificationMessage: `Draft explanation letter for ${dayKey} absence is ready for proofread and send.`,
+    notificationMessage: `Draft absence letter for ${dayKey} is ready for proofread and send.`,
     notificationType: 'DRAFT_LETTER_READY',
   });
 }

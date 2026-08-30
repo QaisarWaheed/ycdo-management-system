@@ -1166,7 +1166,7 @@ export class EmployeesService {
 
     if (dto.status === EmployeeStatus.SUSPENDED) {
       throw new BadRequestException(
-        'Status does not become Suspended from this endpoint. Open a Suspension case from Change Status or Disciplinary (New Action). The employee stays Active until the approved suspension letter is sent.',
+        'Status does not become Suspended from Change Status. Open inquiry from Letters → Watchlist (Start Inquiry). The employee stays Active until inquiry opening is approved.',
       );
     }
 

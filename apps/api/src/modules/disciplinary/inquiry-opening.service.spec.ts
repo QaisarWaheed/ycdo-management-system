@@ -1,4 +1,12 @@
 import { InquiryOpenApprovalStatus } from '@prisma/client';
+
+jest.mock('../letters/letters.service', () => ({
+  LettersService: class LettersService {},
+}));
+jest.mock('../letters/pdf.helper', () => ({
+  generatePdf: jest.fn().mockResolvedValue(Buffer.from('pdf')),
+}));
+
 import { InquiryOpeningService } from './inquiry-opening.service';
 
 describe('InquiryOpeningService', () => {
@@ -83,14 +91,16 @@ describe('InquiryOpeningService', () => {
         employeeId,
         reason: 'Due for suspension (2026-08). Late days: 10.',
         durationDays: 3,
-        inquiryOfficerUserId: officerId,
+        inquiryOfficerName: 'Officer',
+        inquiryOfficerPhone: '03007654321',
         selectedApproverUserId: approverId,
+        approverWhatsApp: '03001112222',
       },
       actingUserId,
       'HR_MANAGER' as never,
     );
 
     expect(prisma.inquiry.create).toHaveBeenCalled();
-    expect(whatsapp.sendPlainText).toHaveBeenCalled();
+    expect(whatsapp.sendPlainText).toHaveBeenCalledTimes(2);
   });
 });

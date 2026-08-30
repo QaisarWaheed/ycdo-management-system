@@ -208,6 +208,7 @@ export interface Letter {
   isReplied?: boolean
   autoEscalated?: boolean
   requiresAcknowledgement?: boolean
+  status?: string
 }
 
 export interface BranchChangeRequest {

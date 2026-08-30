@@ -79,8 +79,12 @@ export class InquiryOpeningService {
       employeeId: string;
       reason: string;
       durationDays: number;
-      inquiryOfficerUserId: string;
+      inquiryOfficerUserId?: string;
+      inquiryOfficerName: string;
+      inquiryOfficerDesignation?: string;
+      inquiryOfficerPhone: string;
       selectedApproverUserId: string;
+      approverWhatsApp: string;
     },
     actingUserId: string,
     actingRole: UserRole,
@@ -132,7 +136,23 @@ export class InquiryOpeningService {
       );
     }
 
-    await this.assertInquiryOfficer(input.inquiryOfficerUserId);
+    const officerName = input.inquiryOfficerName.trim();
+    const officerPhone = input.inquiryOfficerPhone.trim();
+    const approverWhatsApp = input.approverWhatsApp.trim();
+    if (!officerName || !officerPhone) {
+      throw new BadRequestException(
+        'Enter the inquiry officer name and WhatsApp number.',
+      );
+    }
+    if (!approverWhatsApp) {
+      throw new BadRequestException(
+        'Enter the WhatsApp number for the selected approving authority.',
+      );
+    }
+
+    if (input.inquiryOfficerUserId) {
+      await this.assertInquiryOfficer(input.inquiryOfficerUserId);
+    }
     await this.assertEligibleApprover(input.selectedApproverUserId);
 
     const now = new Date();
@@ -155,7 +175,10 @@ export class InquiryOpeningService {
           startedAt: now,
           deadlineAt,
           durationDays: input.durationDays,
-          inquiryOfficerUserId: input.inquiryOfficerUserId,
+          inquiryOfficerUserId: input.inquiryOfficerUserId || null,
+          inquiryOfficerName: officerName,
+          inquiryOfficerDesignation: input.inquiryOfficerDesignation?.trim() || null,
+          inquiryOfficerPhone: officerPhone,
           openApprovalStatus: InquiryOpenApprovalStatus.PENDING_APPROVAL,
           selectedOpenApproverUserId: input.selectedApproverUserId,
           openSubmittedById: actingUserId,
@@ -172,7 +195,8 @@ export class InquiryOpeningService {
           changes: {
             employeeId: input.employeeId,
             durationDays: input.durationDays,
-            inquiryOfficerUserId: input.inquiryOfficerUserId,
+            inquiryOfficerName: officerName,
+            inquiryOfficerPhone: officerPhone,
             selectedApproverUserId: input.selectedApproverUserId,
           },
         },
@@ -189,11 +213,22 @@ export class InquiryOpeningService {
 
     await notifyInquiryApproverWhatsApp(this.whatsapp, {
       kind: 'open',
-      phone: loaded.selectedOpenApprover?.employee?.phone,
+      phone: approverWhatsApp,
       approverName: loaded.selectedOpenApprover?.employee?.fullName,
       employeeName: employee.fullName,
       employeeCode: employee.employeeCode,
       reason: input.reason,
+    });
+    await notifyInquiryOfficerAssignedWhatsApp(this.whatsapp, {
+      phone: officerPhone,
+      officerName,
+      employeeName: employee.fullName,
+      employeeCode: employee.employeeCode,
+      startDate: this.formatDate(now),
+      endDate: this.formatDate(deadlineAt),
+      reason: input.reason,
+      pendingApproval: true,
+      durationDays: input.durationDays,
     });
 
     return loaded;
@@ -281,8 +316,8 @@ export class InquiryOpeningService {
 
     const officer = updated?.inquiryOfficer;
     await notifyInquiryOfficerAssignedWhatsApp(this.whatsapp, {
-      phone: officer?.employee?.phone,
-      officerName: officer?.employee?.fullName,
+      phone: updated?.inquiryOfficerPhone || officer?.employee?.phone,
+      officerName: updated?.inquiryOfficerName || officer?.employee?.fullName,
       employeeName: employee.fullName,
       employeeCode: employee.employeeCode,
       startDate: this.formatDate(now),

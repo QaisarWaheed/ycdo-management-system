@@ -324,7 +324,9 @@ function AdminDashboard() {
   const uninformedAbsentToday = attendanceLogs.filter(
     (l) => l.status === 'UNINFORMED_ABSENT',
   ).length
-  const lateToday = attendanceLogs.filter((l) => l.status === 'LATE').length
+  const lateToday = attendanceLogs.filter(
+    (l) => l.status === 'LATE' || l.status === 'HALF_DAY',
+  ).length
   const onLeaveToday = attendanceLogs.filter((l) => l.status === 'ON_LEAVE').length
 
   const recentEmployees = ((employees ?? []) as Employee[]).slice(0, 5)
@@ -430,7 +432,7 @@ function AdminDashboard() {
           loading={loadingAttendance}
           error={errorAttendance}
           iconBg="bg-amber-100 text-amber-700"
-          subtitle="Marked late"
+          subtitle="Late or late half-day"
           to="/attendance?date=today&status=LATE"
         />
         <StatCard

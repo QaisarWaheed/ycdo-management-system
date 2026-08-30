@@ -63,7 +63,6 @@ import {
 import {
   buildHourlyPayrollBreakdown,
   computeHourlyRate,
-  computeRelieverPayableMinutes,
   DEFAULT_MONTHLY_ALLOWED_LEAVES,
   dateKey,
   hoursFromDutyWindow,
@@ -2038,61 +2037,15 @@ export class PayrollService {
       },
     });
 
-    // Own-duty overlap must reflect what this employee's OWN duty actually
-    // was on each session's date, not their current duty — RelieverSession
-    // itself carries no snapshot, so the employee's own REGULAR
-    // AttendanceLog for that same date is the next best historical source.
-    // A date with no such row at all (e.g. the reliever's own attendance
-    // was never marked that day) falls back to current duty — the same
-    // last-resort fallback resolveAttendanceDutyTimes uses everywhere else.
-    const ownAttendanceLogs = sessions.length
-      ? await this.prisma.attendanceLog.findMany({
-          where: {
-            employeeId,
-            type: AttendanceLogType.REGULAR,
-            date: { in: sessions.map((s) => s.date) },
-          },
-          select: {
-            date: true,
-            dutyStartTimeSnapshot: true,
-            dutyEndTimeSnapshot: true,
-          },
-        })
-      : [];
-    const ownDutyByDate = new Map(
-      ownAttendanceLogs.map((l) => [l.date.toISOString().slice(0, 10), l]),
-    );
-
-    const totalPayableMinutes = sessions.reduce((sum, s) => {
-      if (!s.checkOut) return sum;
-      const ownLogForDate = ownDutyByDate.get(
-        s.date.toISOString().slice(0, 10),
-      );
-      const dayDuty = resolveAttendanceDutyTimes(ownLogForDate, employee);
-      return (
-        sum +
-        computeRelieverPayableMinutes(
-          {
-            relieverOnly: employee.relieverOnly,
-            dutyStartTime: dayDuty.dutyStartTime,
-            dutyEndTime: dayDuty.dutyEndTime,
-          },
-          {
-            checkIn: s.checkIn,
-            checkOut: s.checkOut,
-            totalMinutes: s.totalMinutes,
-          },
-        )
-      );
-    }, 0);
-
     const dailyHours = resolveDailyDutyHours(employee);
     const hourlyRate = computeHourlyRate(
       contractualBasic,
       dailyHours,
       daysInMonth,
     );
-    const hours = roundMoney(totalPayableMinutes / 60);
+    // Each completed reliever session is one extra full duty day (double duty),
+    // same unit as manual Additional Working Days.
+    const hours = roundMoney(sessions.length * dailyHours);
     const amount = roundMoney(hours * hourlyRate);
 
     const existing = await this.keepSingleAllowance(
@@ -2100,7 +2053,7 @@ export class PayrollService {
       AllowanceType.RELIEVER,
     );
 
-    if (totalPayableMinutes <= 0 || amount <= 0) {
+    if (sessions.length === 0 || amount <= 0) {
       if (existing) {
         await this.prisma.allowance.delete({ where: { id: existing.id } });
       }
@@ -2111,7 +2064,7 @@ export class PayrollService {
       month: 'long',
       year: 'numeric',
     });
-    const description = `Reliever extra duty: ${sessions.length} session(s), ${hours}h payable @ PKR ${hourlyRate}/hr (${monthLabel})`;
+    const description = `Reliever extra duty: ${sessions.length} full day(s) (${hours}h @ PKR ${hourlyRate}/hr, ${monthLabel})`;
 
     if (existing) {
       await this.prisma.allowance.update({
@@ -2855,7 +2808,11 @@ export class PayrollService {
       .reduce((sum, d) => sum + Number(d.amount), 0);
 
     const extraDutyAmount = allowances
-      .filter((a) => a.type === AllowanceType.ADDITIONAL_WORKING_DAYS)
+      .filter(
+        (a) =>
+          a.type === AllowanceType.ADDITIONAL_WORKING_DAYS ||
+          a.type === AllowanceType.RELIEVER,
+      )
       .reduce((sum, a) => sum + Number(a.amount), 0);
     const overtimeAmount = allowances
       .filter((a) => a.type === AllowanceType.OVERTIME)
@@ -2864,6 +2821,7 @@ export class PayrollService {
       .filter(
         (a) =>
           a.type !== AllowanceType.ADDITIONAL_WORKING_DAYS &&
+          a.type !== AllowanceType.RELIEVER &&
           a.type !== AllowanceType.OVERTIME,
       )
       .reduce((sum, a) => sum + Number(a.amount), 0);

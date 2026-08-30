@@ -64,24 +64,61 @@ export class ShiftAbsentScheduler {
     let marked = 0;
 
     for (const employee of employees) {
+      const is24h =
+        (employee.shift && is24HourShiftRecord(employee.shift)) ||
+        is24HourShift(employee);
+
+      if (is24h) {
+        const attendanceDate = toPakistanDateOnly(now);
+        if (isPreJoinAttendanceDate(attendanceDate, employee.joiningDate)) {
+          continue;
+        }
+
+        const existing = await this.prisma.attendanceLog.findUnique({
+          where: {
+            employeeId_date_type: {
+              employeeId: employee.id,
+              date: attendanceDate,
+              type: AttendanceLogType.REGULAR,
+            },
+          },
+        });
+
+        if (!existing) {
+          const dutyStart =
+            employee.dutyStartTime?.trim() ||
+            employee.shift?.startTime?.trim() ||
+            null;
+          await this.prisma.attendanceLog.create({
+            data: {
+              employeeId: employee.id,
+              branchId: employee.currentBranchId,
+              date: attendanceDate,
+              type: AttendanceLogType.REGULAR,
+              status: AttendanceStatus.UNMARKED,
+              source: AttendanceSource.MANUAL,
+              note: AUTO_UNMARKED_NOTE,
+              dutyStartTimeSnapshot: employee.dutyStartTime ?? dutyStart,
+              dutyEndTimeSnapshot:
+                employee.dutyEndTime ?? employee.shift?.endTime ?? null,
+            },
+          });
+          marked++;
+        }
+        continue;
+      }
+
       const dutyStart =
         employee.dutyStartTime?.trim() ||
         employee.shift?.startTime?.trim() ||
         null;
       if (!dutyStart) continue;
 
-      if (
-        (employee.shift && is24HourShiftRecord(employee.shift)) ||
-        is24HourShift(employee)
-      ) {
-        continue;
-      }
-
       const shiftStartMinutes = parseTimeToMinutes(dutyStart);
       const sinceStart = minutesSinceShiftStart(nowMinutes, shiftStartMinutes);
-      // Wider than one 5-min tick so a delayed process still materializes
-      // UNMARKED shortly after duty start (dashboard also batch-ensures).
-      if (sinceStart < 0 || sinceStart > 120) {
+      // No upper bound: delayed ticks still create UNMARKED so HR can chase
+      // and UA upgrade can run after 120 minutes.
+      if (sinceStart < 0) {
         continue;
       }
 
@@ -231,6 +268,67 @@ export class ShiftAbsentScheduler {
     if (upgraded > 0) {
       this.logger.log(
         `Upgraded ${upgraded} employee(s) to uninformed absent after 2 hours`,
+      );
+    }
+
+    await this.finalizeYesterday24HourUnmarked(pkYesterday);
+  }
+
+  /**
+   * 24-hour staff stay UNMARKED all Pakistan calendar day (no UA, no late).
+   * After midnight, leftover UNMARKED with no punch becomes ABSENT + absent SOP.
+   */
+  private async finalizeYesterday24HourUnmarked(pkYesterday: Date) {
+    const leftover = await this.prisma.attendanceLog.findMany({
+      where: {
+        type: AttendanceLogType.REGULAR,
+        date: pkYesterday,
+        status: AttendanceStatus.UNMARKED,
+        checkIn: null,
+      },
+      include: {
+        employee: { include: { shift: true } },
+      },
+    });
+
+    let closed = 0;
+    for (const log of leftover) {
+      if (
+        !(
+          (log.employee.shift && is24HourShiftRecord(log.employee.shift)) ||
+          is24HourShift(log.employee)
+        )
+      ) {
+        continue;
+      }
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.attendanceLog.update({
+          where: { id: log.id },
+          data: {
+            status: AttendanceStatus.ABSENT,
+            note: AUTO_ABSENT_24H_NOTE,
+          },
+        });
+
+        await applyDisciplineRules(
+          tx,
+          log.employee.id,
+          AttendanceStatus.ABSENT,
+          log.date,
+        );
+      });
+
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        log.employee.id,
+        log.date,
+      );
+      closed++;
+    }
+
+    if (closed > 0) {
+      this.logger.log(
+        `Closed ${closed} 24-hour unmarked row(s) as absent for prior calendar day`,
       );
     }
   }

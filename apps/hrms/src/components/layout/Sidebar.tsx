@@ -33,7 +33,7 @@ const allNavItems = [
   { to: '/employees', label: 'Employees', icon: Users },
   { to: '/portal-login', label: 'Portal Login', icon: Monitor },
   { to: '/attendance', label: 'Attendance', icon: Clock },
-  { to: '/branch-change-request', label: 'Branch Change Request', icon: MapPin },
+  { to: '/branch-change-request', label: 'Station / Branch Change', icon: MapPin },
   { to: '/leave', label: 'Leave', icon: Calendar },
   { to: '/branch-contacts', label: 'Branch Contacts', icon: Phone },
   { to: '/payroll', label: 'Payroll', icon: Wallet },

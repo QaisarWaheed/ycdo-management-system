@@ -7,13 +7,13 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { canStartLegacyInquiry, isOpenEnquiryAction, isOrphanEnquiryAction, officerNameFromReason } from '@/lib/disciplinaryInquiryUi'
-import { branchesApi } from '@/api/endpoints/branches'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { PrepareSuspensionDialog } from '@/components/disciplinary/PrepareSuspensionDialog'
+import { CloseInquiryDialog } from '@/components/disciplinary/CloseInquiryDialog'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
 import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
 import { Badge } from '@/components/ui/badge'
@@ -252,10 +252,12 @@ function InquiryFinalState({
 
   return (
     <div className="space-y-0.5 text-xs text-text-secondary">
-      <p>Inquiry officer: {personName(inquiry.inquiryOfficer)}</p>
+      <p>Inquiry officer: {inquiryOfficerLabel(inquiry)}</p>
       <p>
         Officer designation:{' '}
-        {inquiry.inquiryOfficer?.employee?.currentDesignation ?? '—'}
+        {inquiry.inquiryOfficerDesignation ||
+          inquiry.inquiryOfficer?.employee?.currentDesignation ||
+          '—'}
       </p>
       <p>Finding: {inquiry.finding?.replace(/_/g, ' ') ?? '—'}</p>
       <p>Finding recorded by: {personName(inquiry.findingRecordedBy)}</p>
@@ -263,7 +265,7 @@ function InquiryFinalState({
       <p>
         Final action:{' '}
         {inquiry.finding === 'NOT_GUILTY'
-          ? 'Transfer + reinstate'
+          ? 'Reinstate (Active)'
           : inquiry.finalAction?.replace(/_/g, ' ') ?? '—'}
       </p>
       <p>
@@ -1023,13 +1025,11 @@ function InquiriesTab({
 }: {
   onCloseInquiry: (action: DisciplinaryAction) => void
 }) {
-  const { user, hasRole, hasPermission } = useAuth()
+  const { hasRole, hasPermission } = useAuth()
   const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
   const canClose =
     hasPermission('DISCIPLINARY_MANAGE') ||
     hasRole([...COMPLETE_INQUIRY_ROLES])
-  const [findingInquiry, setFindingInquiry] = useState<Inquiry | null>(null)
-  const [decisionInquiry, setDecisionInquiry] = useState<Inquiry | null>(null)
   const [detailInquiry, setDetailInquiry] = useState<
     (Inquiry & { action: DisciplinaryAction }) | null
   >(null)
@@ -1212,7 +1212,9 @@ function InquiriesTab({
                     </TableCell>
                     <TableCell className="min-w-[150px]">
                       <div className="flex flex-col items-stretch gap-2">
-                        {canClose && inquiryIsOpen(inquiry) && (
+                        {canClose &&
+                          inquiryIsOpen(inquiry) &&
+                          inquiry.openApprovalStatus !== 'PENDING_APPROVAL' && (
                           <Button
                             size="sm"
                             onClick={() => onCloseInquiry(inquiry.action)}
@@ -1227,39 +1229,6 @@ function InquiriesTab({
                         >
                           View Details
                         </Button>
-                        {action.type === 'SUSPENSION' &&
-                          !inquiry.finding &&
-                          !inquiry.outcome &&
-                          officiallyOpen &&
-                          inquiry.finalDecisionStatus !== 'APPLIED' &&
-                          user?.id === inquiry.inquiryOfficerUserId && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setFindingInquiry(inquiry)}
-                            >
-                              Record finding
-                            </Button>
-                          )}
-                        {action.type === 'SUSPENSION' &&
-                          !!inquiry.finding &&
-                          inquiryIsOpen(inquiry) &&
-                          inquiry.finalDecisionStatus !== 'PENDING_APPROVAL' &&
-                          inquiry.finalDecisionStatus !== 'APPLIED' &&
-                          canPrepare &&
-                          officiallyOpen && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setDecisionInquiry(inquiry)}
-                            >
-                              {inquiry.finalDecisionStatus === 'REJECTED'
-                                ? 'Revise final decision'
-                                : inquiry.finding === 'NOT_GUILTY'
-                                  ? 'Select transfer & submit'
-                                  : 'Select final action'}
-                            </Button>
-                          )}
                         {inquiry.finalDecisionStatus === 'APPLIED' && (
                           <p className="text-xs text-text-secondary">
                             Applied — letters stay draft until issued from Letters.
@@ -1315,277 +1284,7 @@ function InquiriesTab({
           )}
         </DialogContent>
       </Dialog>
-
-      <RecordFindingDialog
-        inquiry={findingInquiry}
-        open={!!findingInquiry}
-        onOpenChange={(v) => !v && setFindingInquiry(null)}
-      />
-      <ProposeFinalDecisionDialog
-        inquiry={decisionInquiry}
-        open={!!decisionInquiry}
-        onOpenChange={(v) => !v && setDecisionInquiry(null)}
-      />
     </div>
-  )
-}
-
-function RecordFindingDialog({
-  inquiry,
-  open,
-  onOpenChange,
-}: {
-  inquiry: Inquiry | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const queryClient = useQueryClient()
-  const [finding, setFinding] = useState<'GUILTY' | 'NOT_GUILTY'>('NOT_GUILTY')
-  const [notes, setNotes] = useState('')
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      disciplinaryApi.recordInquiryFinding(inquiry!.id, {
-        finding,
-        notes: notes || undefined,
-      }),
-    onSuccess: () => {
-      toast({ title: 'Finding recorded', description: finding.replace(/_/g, ' ') })
-      queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
-      onOpenChange(false)
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Could not record finding',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
-        variant: 'destructive',
-      })
-    },
-  })
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Record inquiry finding</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <p className="text-sm text-text-secondary">
-            The finding does not change employment status. A separate approved
-            decision is required.
-          </p>
-          <div className="space-y-1">
-            <Label>Finding</Label>
-            <Select
-              value={finding}
-              onValueChange={(v) => setFinding(v as 'GUILTY' | 'NOT_GUILTY')}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="NOT_GUILTY">NOT GUILTY</SelectItem>
-                <SelectItem value="GUILTY">GUILTY</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {finding === 'NOT_GUILTY' && (
-            <p className="text-sm font-medium text-amber-800">
-              NOT GUILTY — they may continue duties at the same branch or another branch.
-            </p>
-          )}
-          <div className="space-y-1">
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            disabled={mutation.isPending}
-            onClick={() => mutation.mutate()}
-          >
-            Submit finding
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function ProposeFinalDecisionDialog({
-  inquiry,
-  open,
-  onOpenChange,
-}: {
-  inquiry: Inquiry | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const queryClient = useQueryClient()
-  const [finalAction, setFinalAction] = useState('DISMISS')
-  const [destinationBranchId, setDestinationBranchId] = useState('')
-  const [approverId, setApproverId] = useState('')
-  const [fineAmount, setFineAmount] = useState('')
-  const [notes, setNotes] = useState('')
-
-  const needsDutyBranch =
-    inquiry?.finding === 'NOT_GUILTY' || finalAction === 'FINE_AND_REINSTATE'
-
-  const { data: branches = [] } = useQuery({
-    queryKey: ['branches'],
-    queryFn: () => branchesApi.getAll(),
-    enabled: open,
-  })
-  const { data: approvers = [] } = useQuery({
-    queryKey: ['disciplinary', 'suspension-approvers'],
-    queryFn: () => disciplinaryApi.listEligibleApprovers(),
-    enabled: open,
-  })
-
-  const currentDutyBranchId = (
-    inquiry as Inquiry & { action?: DisciplinaryAction }
-  )?.action?.suspensionRequest?.suspendedFromBranchId
-
-  useEffect(() => {
-    if (!open || !inquiry) return
-    setDestinationBranchId(currentDutyBranchId ?? '')
-  }, [open, inquiry, currentDutyBranchId])
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      disciplinaryApi.submitInquiryFinalDecision(inquiry!.id, {
-        selectedApproverUserId: approverId,
-        destinationBranchId: needsDutyBranch ? destinationBranchId : undefined,
-        finalAction:
-          inquiry?.finding === 'GUILTY' ? finalAction : undefined,
-        fineAmount:
-          finalAction === 'FINE_AND_REINSTATE' ? Number(fineAmount) : undefined,
-        notes: notes || undefined,
-      }),
-    onSuccess: () => {
-      toast({
-        title: 'Final decision submitted',
-        description: 'Waiting for the selected approver. Nothing has been applied yet.',
-      })
-      queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
-      onOpenChange(false)
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Could not submit decision',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
-        variant: 'destructive',
-      })
-    },
-  })
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {inquiry?.finding === 'NOT_GUILTY'
-              ? 'Choose duty branch for reinstatement'
-              : 'Select final inquiry action'}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          {inquiry?.finding === 'NOT_GUILTY' && (
-            <p className="text-sm font-medium text-amber-800">
-              NOT GUILTY — they may continue duties at the same branch or another branch.
-            </p>
-          )}
-          {inquiry?.finding === 'GUILTY' && (
-            <div className="space-y-1">
-              <Label>Final action</Label>
-              <Select value={finalAction} onValueChange={setFinalAction}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="DISMISS">Dismiss</SelectItem>
-                  <SelectItem value="TERMINATE">Terminate</SelectItem>
-                  <SelectItem value="REST">Rest (ON_REST)</SelectItem>
-                  <SelectItem value="FINE_AND_REINSTATE">
-                    Fine and reinstate
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          {needsDutyBranch && (
-            <div className="space-y-1">
-              <Label>Duty branch</Label>
-              <Select
-                value={destinationBranchId}
-                onValueChange={setDestinationBranchId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Same branch or another branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-text-secondary">
-                They may continue at the same branch or be posted to another.
-              </p>
-            </div>
-          )}
-          {inquiry?.finding === 'GUILTY' &&
-            finalAction === 'FINE_AND_REINSTATE' && (
-              <div className="space-y-1">
-                <Label>Fine amount</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={fineAmount}
-                  onChange={(e) => setFineAmount(e.target.value)}
-                />
-              </div>
-            )}
-          <div className="space-y-1">
-            <Label>Approver</Label>
-            <Select value={approverId} onValueChange={setApproverId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select approver" />
-              </SelectTrigger>
-              <SelectContent>
-                {approvers.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.displayName} ({a.eligibleRole})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            disabled={mutation.isPending || !approverId}
-            onClick={() => mutation.mutate()}
-          >
-            Submit for approval
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }
 
@@ -1606,19 +1305,28 @@ export function DisciplinaryPage({
   const [newActionOpen, setNewActionOpen] = useState(false)
   const [startInquiryId, setStartInquiryId] = useState<string | null>(null)
   const [resolveInquiry, setResolveInquiry] = useState<Inquiry | null>(null)
+  const [closeOfficialInquiry, setCloseOfficialInquiry] =
+    useState<Inquiry | null>(null)
   const [prepareAction, setPrepareAction] = useState<DisciplinaryAction | null>(
     null,
   )
 
   const openCloseInquiry = async (action: DisciplinaryAction) => {
+    const openForm = (inquiry: Inquiry) => {
+      if (inquiry.officiallyOpenedAt) {
+        setCloseOfficialInquiry(inquiry)
+      } else {
+        setResolveInquiry(inquiry)
+      }
+    }
     if (action.inquiry?.id) {
-      setResolveInquiry(action.inquiry)
+      openForm(action.inquiry)
       return
     }
     try {
       const inquiry = await disciplinaryApi.ensureInquiry(action.id)
       await queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
-      setResolveInquiry(inquiry)
+      openForm(inquiry)
     } catch (err: unknown) {
       const msg = (
         err as { response?: { data?: { message?: string | string[] } } }
@@ -1694,6 +1402,12 @@ export function DisciplinaryPage({
           setStartInquiryId(null)
           setTab('inquiries')
         }}
+      />
+
+      <CloseInquiryDialog
+        inquiry={closeOfficialInquiry}
+        open={!!closeOfficialInquiry}
+        onOpenChange={(v) => !v && setCloseOfficialInquiry(null)}
       />
 
       <ResolveInquiryDialog

@@ -651,6 +651,8 @@ model Inquiry {
   closedAt                      DateTime?
   inquiryOfficerUserId          String?
   inquiryOfficerName            String?
+  inquiryOfficerDesignation     String?
+  inquiryOfficerPhone           String?
   finding                       InquiryFinding?
   findingRecordedById           String?
   findingRecordedAt             DateTime?

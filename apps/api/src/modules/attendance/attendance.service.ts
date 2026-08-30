@@ -118,6 +118,7 @@ import { buildSuspensionWatchlist } from './suspension-watchlist';
 import { issueDueSuspensionEligibilityNotices } from './suspension-eligibility-notice';
 import { issueNearSuspensionWarnings } from './near-suspension-warning';
 import {
+  ATTENDANCE_ELIGIBLE_STATUSES,
   assertEmployeeEligibleForAttendanceRecord,
   assertEmployeeEligibleForBiometricAttendance,
   assertEmployeeEligibleForManualAttendance,
@@ -1957,7 +1958,9 @@ export class AttendanceService {
 
     const employees = await this.prisma.employee.findMany({
       where: {
-        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        status: {
+          in: [...ATTENDANCE_ELIGIBLE_STATUSES, EmployeeStatus.APPOINTED],
+        },
         relieverOnly: false,
         ...(employeeWhere ?? {}),
       },
@@ -1977,7 +1980,11 @@ export class AttendanceService {
       if (isPreJoinAttendanceDate(dateOnly, employee.joiningDate)) {
         continue;
       }
+
       if (is24HourShift(employee)) {
+        if (isToday || dateOnly.getTime() < pkToday.getTime()) {
+          eligible.push(employee);
+        }
         continue;
       }
 
@@ -2089,7 +2096,9 @@ export class AttendanceService {
         employee: {
           select: {
             dutyStartTime: true,
-            shift: { select: { startTime: true } },
+            dutyEndTime: true,
+            dutyTotalHours: true,
+            shift: { select: { startTime: true, endTime: true, name: true } },
           },
         },
       },
@@ -2097,6 +2106,9 @@ export class AttendanceService {
 
     const toDelete: string[] = [];
     for (const row of openUnmarked) {
+      if (is24HourShift(row.employee)) {
+        continue;
+      }
       const dutyStart =
         row.dutyStartTimeSnapshot?.trim() ||
         row.employee.dutyStartTime?.trim() ||
@@ -2335,7 +2347,11 @@ export class AttendanceService {
         filterQuery.employeeStatus === EmployeeStatus.ACTIVE)
     ) {
       employeeWhere.status = {
-        in: [EmployeeStatus.ACTIVE, EmployeeStatus.ON_LEAVE],
+        in: [
+          EmployeeStatus.ACTIVE,
+          EmployeeStatus.ON_LEAVE,
+          EmployeeStatus.TRAINEE,
+        ],
       };
     }
 
@@ -4048,18 +4064,24 @@ export class AttendanceService {
     month?: number,
     input?: {
       durationDays: number;
-      inquiryOfficerUserId: string;
+      inquiryOfficerUserId?: string;
+      inquiryOfficerName: string;
+      inquiryOfficerDesignation?: string;
+      inquiryOfficerPhone: string;
       selectedApproverUserId: string;
+      approverWhatsApp: string;
     },
     actingRoles?: UserRole[],
   ) {
     if (
       !input?.durationDays ||
-      !input.inquiryOfficerUserId ||
-      !input.selectedApproverUserId
+      !input.selectedApproverUserId ||
+      !input.inquiryOfficerName?.trim() ||
+      !input.inquiryOfficerPhone?.trim() ||
+      !input.approverWhatsApp?.trim()
     ) {
       throw new BadRequestException(
-        'Select inquiry days, inquiry officer, and whose approval is required.',
+        'Select inquiry days, inquiry officer (name and WhatsApp), approving authority, and that person’s WhatsApp number.',
       );
     }
 
@@ -4084,7 +4106,11 @@ export class AttendanceService {
         reason,
         durationDays: input.durationDays,
         inquiryOfficerUserId: input.inquiryOfficerUserId,
+        inquiryOfficerName: input.inquiryOfficerName,
+        inquiryOfficerDesignation: input.inquiryOfficerDesignation,
+        inquiryOfficerPhone: input.inquiryOfficerPhone,
         selectedApproverUserId: input.selectedApproverUserId,
+        approverWhatsApp: input.approverWhatsApp,
       },
       actingUserId,
       actingRole,

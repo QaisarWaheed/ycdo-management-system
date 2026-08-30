@@ -64,18 +64,25 @@ export async function notifyInquiryOfficerAssignedWhatsApp(
     startDate: string;
     endDate: string;
     reason?: string | null;
+    pendingApproval?: boolean;
+    durationDays?: number;
   },
 ) {
   const employee = personLine(input.employeeName, input.employeeCode);
   const greeting = input.officerName ? ` ${input.officerName}` : '';
+  const timing = input.pendingApproval
+    ? `انکوائری کی مدت ${input.durationDays ?? '—'} دن ہے — آغاز منظوری کے بعد ہوگا۔`
+    : `آغاز: ${input.startDate}\nاختتام: ${input.endDate}`;
   const body = [
     `${RLI}السلام علیکم${greeting}،`,
     'آپ کو اس انکوائری کا انکوائری آفیسر مقرر کیا گیا ہے۔',
     `ملازم: ${employee}`,
     input.reason ? `وجہ: ${input.reason}` : null,
-    `آغاز: ${input.startDate}`,
-    `اختتام: ${input.endDate}`,
+    timing,
     'انکوائری جسمانی / آف لائن مکمل کریں۔ حتمی ریکارڈ HRMS میں HR درج کرے گی۔',
+    input.pendingApproval
+      ? 'کھولنے کی منظوری ابھی زیر التواء ہے۔'
+      : 'براہ کرم یہ انکوائری مقررہ تاریخ تک مکمل کریں۔',
     PDI,
   ]
     .filter(Boolean)

@@ -58,7 +58,7 @@ describe('EmployeesService.changeStatus', () => {
         status: EmployeeStatus.SUSPENDED,
         reason: 'Manual suspend',
       }),
-    ).rejects.toThrow(/Open a Suspension case/i);
+    ).rejects.toThrow(/Watchlist/i);
 
     expect(prisma.employee.update).not.toHaveBeenCalled();
   });

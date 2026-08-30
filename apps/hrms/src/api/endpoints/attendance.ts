@@ -83,8 +83,12 @@ export const attendanceApi = {
     employeeId: string,
     data: {
       durationDays: number
-      inquiryOfficerUserId: string
+      inquiryOfficerUserId?: string
+      inquiryOfficerName: string
+      inquiryOfficerDesignation?: string
+      inquiryOfficerPhone: string
       selectedApproverUserId: string
+      approverWhatsApp: string
     },
     params?: { month?: number; year?: number },
   ) =>

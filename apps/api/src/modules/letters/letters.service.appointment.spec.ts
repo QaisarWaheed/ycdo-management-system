@@ -234,7 +234,9 @@ describe('LettersService appointment Phase 3A', () => {
     await service.findAll({}, { id: 'u', role: UserRole.EMPLOYEE, portalOnly: true });
     expect(prisma.letter.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ status: LetterStatus.SENT }),
+        where: expect.objectContaining({
+          status: { in: [LetterStatus.SENT, LetterStatus.REVERSED] },
+        }),
       }),
     );
   });

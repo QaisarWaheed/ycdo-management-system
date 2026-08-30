@@ -453,6 +453,7 @@ export function MyLettersPage() {
                   key={letter.id}
                   className={cn(
                     pendingIds.has(letter.id) && 'bg-red-50/50',
+                    letter.status === 'REVERSED' && 'opacity-70',
                   )}
                 >
                   <TableCell className="font-mono text-sm">
@@ -465,6 +466,14 @@ export function MyLettersPage() {
                     >
                       {letterTypeLabel(letter.letterType)}
                     </Badge>
+                    {letter.status === 'REVERSED' && (
+                      <Badge
+                        variant="outline"
+                        className="ml-2 border-slate-300 bg-slate-100 text-slate-700"
+                      >
+                        Reversed
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     {format(new Date(letter.generatedAt), 'dd/MM/yyyy')}
@@ -488,7 +497,8 @@ export function MyLettersPage() {
                         <Download className="h-4 w-4" />
                       </Button>
                       {letter.letterType === 'SHOW_CAUSE' &&
-                        !letter.isReplied && (
+                        !letter.isReplied &&
+                        letter.status !== 'REVERSED' && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -498,7 +508,8 @@ export function MyLettersPage() {
                           </Button>
                         )}
                       {letter.requiresAcknowledgement &&
-                        pendingIds.has(letter.id) && (
+                        pendingIds.has(letter.id) &&
+                        letter.status !== 'REVERSED' && (
                           <Button
                             variant="ghost"
                             size="sm"

@@ -907,4 +907,55 @@ describe('InquiryDecisionService', () => {
     expect(result.generated).toEqual([]);
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
+
+  it('closeInquiry applies NOT_GUILTY immediately and resets the late/UA cycle', async () => {
+    const inquiry = openInquiry({
+      officiallyOpenedAt: new Date('2026-08-01T00:00:00.000Z'),
+    });
+    const { service, tx, prisma } = build(inquiry);
+    prisma.branch.findUnique.mockResolvedValue({
+      id: fromBranch,
+      isActive: true,
+    });
+
+    await service.closeInquiry(
+      inquiryId,
+      { finding: InquiryFinding.NOT_GUILTY },
+      hrId,
+      UserRole.HR_MANAGER,
+    );
+
+    expect(tx.inquiry.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: inquiryId,
+          officiallyOpenedAt: { not: null },
+        }),
+        data: expect.objectContaining({
+          finding: InquiryFinding.NOT_GUILTY,
+          finalDecisionStatus: InquiryFinalDecisionStatus.APPLIED,
+        }),
+      }),
+    );
+    expect(tx.employee.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: EmployeeStatus.ACTIVE,
+          suspensionWatchBaselineOn: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it('closeInquiry rejects before opening approval', async () => {
+    const { service } = build(openInquiry({ officiallyOpenedAt: null }));
+    await expect(
+      service.closeInquiry(
+        inquiryId,
+        { finding: InquiryFinding.NOT_GUILTY },
+        hrId,
+        UserRole.HR_MANAGER,
+      ),
+    ).rejects.toThrow(/officially open/i);
+  });
 });

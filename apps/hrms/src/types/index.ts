@@ -903,6 +903,8 @@ export interface Inquiry {
   closedAt?: string | null
   inquiryOfficerUserId?: string | null
   inquiryOfficerName?: string | null
+  inquiryOfficerDesignation?: string | null
+  inquiryOfficerPhone?: string | null
   finding?: 'GUILTY' | 'NOT_GUILTY' | null
   findingRecordedAt?: string | null
   finalAction?: 'DISMISS' | 'TERMINATE' | 'REST' | 'FINE_AND_REINSTATE' | null

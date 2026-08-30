@@ -194,9 +194,8 @@ export class InquiryDecisionService {
   }
 
   /**
-   * HR close form: record finding + recommendation + required action.
-   * Legacy inquiries with no officer apply immediately (auto-approval).
-   * New inquiries notify the officer in Urdu, then wait for final approver.
+   * HR close form after an official opening: record what the officer said
+   * and apply the outcome immediately (Active on reinstate, cycle baseline reset).
    */
   async closeInquiry(
     inquiryId: string,
@@ -225,94 +224,92 @@ export class InquiryDecisionService {
       );
     }
 
-    const isLegacyNoOfficer = !inquiry.inquiryOfficerUserId;
-    if (!isLegacyNoOfficer && !dto.selectedApproverUserId) {
-      throw new BadRequestException('Select whose approval is required.');
-    }
-
-    await this.prisma.inquiry.update({
-      where: { id: inquiryId },
-      data: {
-        finding: dto.finding,
-        findingRecordedById: actingUserId,
-        findingRecordedAt: new Date(),
-        notes: dto.notes ?? inquiry.notes,
-        closeRecommendation: dto.closeRecommendation ?? inquiry.closeRecommendation,
-      },
-    });
-
-    const withFinding = await this.loadInquiry(inquiryId);
-
-    if (isLegacyNoOfficer) {
-      const payload = await this.validateDecisionPayload(withFinding, {
-        destinationBranchId: dto.destinationBranchId,
-        finalAction: dto.finalAction,
-        fineAmount: dto.fineAmount,
-      });
-      const now = new Date();
-      await this.prisma.$transaction(async (tx) => {
-        await tx.inquiry.update({
-          where: { id: inquiryId },
-          data: {
-            finalAction: payload.finalAction,
-            finalDecisionStatus: InquiryFinalDecisionStatus.APPLIED,
-            selectedFinalApproverUserId: actingUserId,
-            finalDecisionSubmittedById: actingUserId,
-            finalDecisionSubmittedAt: now,
-            finalDecidedById: actingUserId,
-            finalDecidedAt: now,
-            finalDecisionNote: 'Legacy inquiry: automatic approval (no inquiry officer assigned).',
-            destinationBranchId: payload.destinationBranchId,
-            fineAmount: payload.fineAmount,
-          },
-        });
-        const snapshot = await tx.inquiry.findUnique({
-          where: { id: inquiryId },
-          include: INQUIRY_INCLUDE,
-        });
-        if (!snapshot) throw new NotFoundException('Inquiry not found');
-        await this.applyApprovedDecision(tx, snapshot as never, actingUserId, now);
-      });
-      await this.generatePostApplyLetters(await this.loadInquiry(inquiryId), actingUserId);
-      return this.loadInquiry(inquiryId);
-    }
-
-    const submitted = await this.submitFinalDecision(
-      inquiryId,
+    const payload = await this.validateDecisionPayload(
+      { ...inquiry, finding: dto.finding },
       {
-        selectedApproverUserId: dto.selectedApproverUserId!,
-        destinationBranchId: dto.destinationBranchId,
+        destinationBranchId:
+          dto.destinationBranchId ||
+          inquiry.disciplinaryAction.employee.currentBranchId,
         finalAction: dto.finalAction,
         fineAmount: dto.fineAmount,
-        notes: dto.notes,
       },
+    );
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.inquiry.updateMany({
+        where: {
+          id: inquiryId,
+          closedAt: null,
+          outcome: null,
+          officiallyOpenedAt: { not: null },
+          OR: [
+            { finalDecisionStatus: null },
+            { finalDecisionStatus: InquiryFinalDecisionStatus.REJECTED },
+          ],
+        },
+        data: {
+          finding: dto.finding,
+          findingRecordedById: actingUserId,
+          findingRecordedAt: now,
+          notes: dto.notes ?? inquiry.notes,
+          closeRecommendation:
+            dto.closeRecommendation ?? inquiry.closeRecommendation,
+          finalAction: payload.finalAction,
+          finalDecisionStatus: InquiryFinalDecisionStatus.APPLIED,
+          selectedFinalApproverUserId: actingUserId,
+          finalDecisionSubmittedById: actingUserId,
+          finalDecisionSubmittedAt: now,
+          finalDecidedById: actingUserId,
+          finalDecidedAt: now,
+          finalDecisionNote:
+            dto.closeRecommendation ??
+            'HR recorded the physical inquiry result and applied the outcome.',
+          destinationBranchId: payload.destinationBranchId,
+          fineAmount: payload.fineAmount,
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException(
+          'A final decision is already pending or applied.',
+        );
+      }
+      const snapshot = await tx.inquiry.findUnique({
+        where: { id: inquiryId },
+        include: INQUIRY_INCLUDE,
+      });
+      if (!snapshot) throw new NotFoundException('Inquiry not found');
+      await this.applyApprovedDecision(
+        tx,
+        {
+          ...snapshot,
+          finding: dto.finding,
+          finalAction: payload.finalAction,
+          destinationBranchId: payload.destinationBranchId,
+          fineAmount: payload.fineAmount,
+        } as never,
+        actingUserId,
+        now,
+      );
+    });
+    await this.generatePostApplyLetters(
+      await this.loadInquiry(inquiryId),
       actingUserId,
-      actingRole,
-      actingRoles,
     );
 
-    const employee = submitted?.disciplinaryAction.employee;
-    const officer = submitted?.inquiryOfficer;
+    const applied = await this.loadInquiry(inquiryId);
+    const employee = applied.disciplinaryAction.employee;
+    const officer = applied.inquiryOfficer;
     await notifyInquiryOfficerResultWhatsApp(this.whatsapp, {
-      phone: officer?.employee?.phone,
-      officerName: officer?.employee?.fullName,
+      phone: applied.inquiryOfficerPhone || officer?.employee?.phone,
+      officerName: applied.inquiryOfficerName || officer?.employee?.fullName,
       employeeName: employee?.fullName ?? '',
       employeeCode: employee?.employeeCode,
-      finding: submitted?.finding,
-      finalAction: submitted?.finalAction,
+      finding: applied.finding,
+      finalAction: applied.finalAction,
       recommendation: dto.closeRecommendation,
       notes: dto.notes,
     });
-    await notifyInquiryApproverWhatsApp(this.whatsapp, {
-      kind: 'close',
-      phone: submitted?.selectedFinalApprover?.employee?.phone,
-      approverName: submitted?.selectedFinalApprover?.employee?.fullName,
-      employeeName: employee?.fullName ?? '',
-      employeeCode: employee?.employeeCode,
-      reason: submitted?.disciplinaryAction.reason,
-    });
-
-    return submitted;
+    return applied;
   }
 
   async submitFinalDecision(
@@ -710,11 +707,9 @@ export class InquiryDecisionService {
     now: Date,
   ): Promise<boolean> {
     const employee = inquiry.disciplinaryAction.employee;
-    const destinationId = inquiry.destinationBranchId;
-    if (!destinationId) {
-      throw new BadRequestException('A duty branch is required.');
-    }
-    if (employee.currentBranchId === destinationId) {
+    const destinationId =
+      inquiry.destinationBranchId ?? employee.currentBranchId;
+    if (!destinationId || employee.currentBranchId === destinationId) {
       return false;
     }
     if (!employee.currentDepartmentId || !employee.currentDesignation) {
@@ -1020,7 +1015,8 @@ export class InquiryDecisionService {
         );
       }
       const destinationBranchId = await this.assertDutyBranch(
-        dto.destinationBranchId,
+        dto.destinationBranchId ||
+          inquiry.disciplinaryAction.employee.currentBranchId,
       );
       return {
         finalAction: null as InquiryFinalAction | null,
@@ -1036,7 +1032,8 @@ export class InquiryDecisionService {
     }
     if (dto.finalAction === InquiryFinalAction.FINE_AND_REINSTATE) {
       const destinationBranchId = await this.assertDutyBranch(
-        dto.destinationBranchId,
+        dto.destinationBranchId ||
+          inquiry.disciplinaryAction.employee.currentBranchId,
       );
       const fineAmount = Number(dto.fineAmount);
       if (!(fineAmount > 0)) {

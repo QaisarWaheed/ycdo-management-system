@@ -42,7 +42,10 @@ import {
   isResolutionTriggerKind,
   letterContentStamps,
 } from '../disciplinary/inquiry-final-letters';
-import { applyDisciplineDeductionOnLetterSend } from '../attendance/discipline.helper';
+import {
+  applyDisciplineDeductionOnLetterSend,
+  reverseAbsenceDeductionForDate,
+} from '../attendance/discipline.helper';
 import {
   GenerateLetterDto,
   LetterQueryDto,
@@ -122,16 +125,11 @@ function letterIssuedAuditAction(letterType: LetterType): string {
   return 'LETTER_GENERATED';
 }
 
-/** Discipline letters that stay DRAFT until HR explicitly sends to portal. */
-const DRAFT_UNTIL_SEND_TYPES: LetterType[] = [
-  LetterType.ADVICE,
-  LetterType.WARNING,
-  LetterType.FINE,
-  LetterType.EXPLANATION,
-  LetterType.SUSPENSION,
-  LetterType.REINSTATEMENT,
-  LetterType.TERMINATION,
-  LetterType.APPOINTMENT,
+/** Discipline letters that stay DRAFT until HR explicitly sends to portal.
+ * Near-suspension and Due (eligibility) notices are sent immediately. */
+const IMMEDIATE_SEND_LETTER_TYPES: LetterType[] = [
+  LetterType.NEAR_SUSPENSION_WARNING,
+  LetterType.SUSPENSION_ELIGIBILITY,
 ];
 
 /** Pre-send Appointment lifecycle (watermarked; not on the employee portal). */
@@ -620,7 +618,7 @@ export class LettersService {
         ? new Date(Date.now() + 48 * 60 * 60 * 1000)
         : undefined;
 
-    const deferPortal = DRAFT_UNTIL_SEND_TYPES.includes(dto.letterType);
+    const deferPortal = !IMMEDIATE_SEND_LETTER_TYPES.includes(dto.letterType);
     const status = deferPortal ? LetterStatus.DRAFT : LetterStatus.SENT;
 
     const letter = await this.prisma.$transaction(async (tx) => {
@@ -708,6 +706,7 @@ export class LettersService {
       include: {
         currentBranch: { select: { name: true, address: true } },
         currentDepartment: { select: { name: true } },
+        user: { select: { role: true } },
       },
     });
 
@@ -828,6 +827,10 @@ export class LettersService {
       department:
         String(normalized.department ?? '').trim() ||
         employee.currentDepartment?.name ||
+        '',
+      role:
+        String(normalized.role ?? '').trim() ||
+        employee.user?.role ||
         '',
       branch:
         String(normalized.branch ?? '').trim() ||
@@ -2088,6 +2091,27 @@ export class LettersService {
         fineSkippedReason = unwind.skippedReason;
       }
 
+      if (letter.letterType === LetterType.EXPLANATION) {
+        const incidentDateRaw =
+          (typeof vars.incidentDate === 'string' && vars.incidentDate) || null;
+        if (incidentDateRaw) {
+          const day = new Date(`${incidentDateRaw.slice(0, 10)}T00:00:00.000Z`);
+          if (!Number.isNaN(day.getTime())) {
+            const absenceUnwind = await reverseAbsenceDeductionForDate(
+              tx,
+              letter.employeeId,
+              day,
+            );
+            if (absenceUnwind.deductionReversed) {
+              fineUndone = true;
+            } else if (absenceUnwind.blockedByPayrollStatus) {
+              fineSkippedReason =
+                'absence deduction not undone (payroll finalized)';
+            }
+          }
+        }
+      }
+
       // Soft-mark linked DisciplineEvent for the incident date when present
       const incidentDateRaw =
         (typeof vars.incidentDate === 'string' && vars.incidentDate) ||
@@ -2225,7 +2249,7 @@ export class LettersService {
     } else if (query.status) {
       where.status = query.status;
     } else if (actingUser?.portalOnly) {
-      where.status = LetterStatus.SENT;
+      where.status = { in: [LetterStatus.SENT, LetterStatus.REVERSED] };
     }
 
     if (query.startDate && query.endDate) {
@@ -2684,9 +2708,12 @@ export class LettersService {
     if (!actor?.employeeId || letter.employeeId !== actor.employeeId) {
       throw new NotFoundException(`Letter with id ${letterId} not found`);
     }
-    if (letter.status !== LetterStatus.SENT) {
+    if (
+      letter.status !== LetterStatus.SENT &&
+      letter.status !== LetterStatus.REVERSED
+    ) {
       throw new ForbiddenException(
-        'Draft and reversed letters are not available in the employee portal',
+        'Draft letters are not available in the employee portal',
       );
     }
   }

@@ -652,10 +652,17 @@ export function BranchChangeRequestPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-text-primary">
-          Branch Change Request Management
-        </h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold text-text-primary">
+            Station / Branch Change
+          </h1>
+          <p className="max-w-xl text-sm text-text-secondary">
+            Posting moves across branches and cities (for example Multan,
+            Jahanian, DG Khan, Choti Zareen). This is not outstation duty
+            attendance.
+          </p>
+        </div>
         <Button
           className="bg-primary hover:bg-primary-dark"
           onClick={() => setNewRequestOpen(true)}

@@ -44,7 +44,7 @@ const employeePrimary: NavItem[] = [
 const employeeMore: NavItem[] = [
   { to: '/payroll', label: 'Payroll', icon: Receipt },
   { to: '/advance-loan', label: 'Advance & Loan', icon: Wallet },
-  { to: '/branch-change-request', label: 'Branch Change', icon: MapPin },
+  { to: '/branch-change-request', label: 'Station / Branch Change', icon: MapPin },
   { to: '/profile', label: 'Profile', icon: User },
 ]
 

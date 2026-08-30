@@ -91,6 +91,20 @@ describe('LettersService.findOne / getPdf portal access', () => {
     await expect(service.findOne(letterId, portalEmployee)).resolves.toEqual(letter);
   });
 
+  it('employee can fetch own REVERSED letter', async () => {
+    const letter = {
+      id: letterId,
+      employeeId: ownId,
+      status: LetterStatus.REVERSED,
+      employee: { id: ownId },
+      acknowledgement: null,
+      replies: [],
+    };
+    const { service } = build(letter);
+
+    await expect(service.findOne(letterId, portalEmployee)).resolves.toEqual(letter);
+  });
+
   it('HR can still fetch DRAFT letters', async () => {
     const letter = {
       id: letterId,
@@ -103,20 +117,5 @@ describe('LettersService.findOne / getPdf portal access', () => {
     const { service } = build(letter);
 
     await expect(service.findOne(letterId, hrManager)).resolves.toEqual(letter);
-  });
-
-  it('employee cannot fetch own REVERSED letter', async () => {
-    const { service } = build({
-      id: letterId,
-      employeeId: ownId,
-      status: LetterStatus.REVERSED,
-      employee: { id: ownId },
-      acknowledgement: null,
-      replies: [],
-    });
-
-    await expect(service.findOne(letterId, portalEmployee)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
   });
 });

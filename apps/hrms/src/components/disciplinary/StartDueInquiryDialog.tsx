@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, format } from 'date-fns'
 import { attendanceApi } from '@/api/endpoints/attendance'
@@ -37,7 +37,11 @@ export function StartDueInquiryDialog({
   const [step, setStep] = useState<'details' | 'approver'>('details')
   const [durationDays, setDurationDays] = useState('3')
   const [officerId, setOfficerId] = useState('')
+  const [officerName, setOfficerName] = useState('')
+  const [officerDesignation, setOfficerDesignation] = useState('')
+  const [officerPhone, setOfficerPhone] = useState('')
   const [approverId, setApproverId] = useState('')
+  const [approverWhatsApp, setApproverWhatsApp] = useState('')
 
   const { data: preview, isLoading: previewLoading } = useQuery({
     queryKey: ['due-inquiry-preview', employeeId],
@@ -59,30 +63,58 @@ export function StartDueInquiryDialog({
     () => officers.find((row) => row.id === officerId),
     [officers, officerId],
   )
+  const approver = useMemo(
+    () => approvers.find((row) => row.id === approverId),
+    [approvers, approverId],
+  )
 
   const days = Math.min(30, Math.max(1, Number(durationDays) || 1))
   const startDate = new Date()
   const endDate = addDays(startDate, days)
+  const detailsReady =
+    !!preview &&
+    officerName.trim().length > 1 &&
+    officerPhone.trim().length >= 10
 
   const reset = () => {
     setStep('details')
     setDurationDays('3')
     setOfficerId('')
+    setOfficerName('')
+    setOfficerDesignation('')
+    setOfficerPhone('')
     setApproverId('')
+    setApproverWhatsApp('')
   }
+
+  useEffect(() => {
+    if (!officer) return
+    setOfficerName(officer.displayName)
+    setOfficerDesignation(officer.designation ?? '')
+    setOfficerPhone(officer.phone ?? '')
+  }, [officer])
+
+  useEffect(() => {
+    if (!approver) return
+    setApproverWhatsApp(approver.phone ?? '')
+  }, [approver])
 
   const submitMutation = useMutation({
     mutationFn: () =>
       attendanceApi.startSuspensionCaseFromWatchlist(employeeId!, {
         durationDays: days,
-        inquiryOfficerUserId: officerId,
+        inquiryOfficerUserId: officerId || undefined,
+        inquiryOfficerName: officerName.trim(),
+        inquiryOfficerDesignation: officerDesignation.trim() || undefined,
+        inquiryOfficerPhone: officerPhone.trim(),
         selectedApproverUserId: approverId,
+        approverWhatsApp: approverWhatsApp.trim(),
       }),
     onSuccess: () => {
       toast({
         title: 'Inquiry sent for approval',
         description:
-          'The employee stays ACTIVE until the selected authority approves opening the inquiry.',
+          'The employee stays ACTIVE. WhatsApp went to the inquiry officer and the selected authority.',
       })
       queryClient.invalidateQueries({ queryKey: ['suspension-watchlist'] })
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
@@ -109,7 +141,7 @@ export function StartDueInquiryDialog({
         onOpenChange(next)
       }}
     >
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {step === 'details' ? 'Start inquiry' : 'Whose approval is required?'}
@@ -128,7 +160,8 @@ export function StartDueInquiryDialog({
               </strong>
             </p>
             <p className="text-xs text-text-secondary">
-              Status stays ACTIVE until this inquiry is approved and officially opened.
+              Status stays ACTIVE until this inquiry is approved and officially
+              opened. The inquiry itself is physical / offline.
             </p>
             <div className="space-y-1">
               <Label>Number of inquiry days</Label>
@@ -140,15 +173,18 @@ export function StartDueInquiryDialog({
                 onChange={(e) => setDurationDays(e.target.value)}
               />
               <p className="text-xs text-text-secondary">
-                Start {format(startDate, 'dd/MM/yyyy')} · End{' '}
-                {format(endDate, 'dd/MM/yyyy')} (starts when approved)
+                Clock starts when approved · expected end{' '}
+                {format(endDate, 'dd/MM/yyyy')} (from {format(startDate, 'dd/MM/yyyy')})
               </p>
             </div>
             <div className="space-y-1">
-              <Label>Inquiry officer</Label>
-              <Select value={officerId} onValueChange={setOfficerId}>
+              <Label>Fill officer from HRMS user (optional)</Label>
+              <Select
+                value={officerId}
+                onValueChange={(value) => setOfficerId(value)}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select officer" />
+                  <SelectValue placeholder="Skip if the officer is not in the user list" />
                 </SelectTrigger>
                 <SelectContent>
                   {officers.map((row) => (
@@ -161,12 +197,28 @@ export function StartDueInquiryDialog({
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Inquiry officer designation</Label>
-              <Input value={officer?.designation ?? '—'} readOnly />
+              <Label>Inquiry officer name *</Label>
+              <Input
+                value={officerName}
+                onChange={(e) => setOfficerName(e.target.value)}
+                placeholder="Name as it should appear / WhatsApp greeting"
+              />
             </div>
             <div className="space-y-1">
-              <Label>Inquiry officer WhatsApp</Label>
-              <Input value={officer?.phone ?? '—'} readOnly />
+              <Label>Inquiry officer designation</Label>
+              <Input
+                value={officerDesignation}
+                onChange={(e) => setOfficerDesignation(e.target.value)}
+                placeholder="e.g. Chairman Admin"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Inquiry officer WhatsApp *</Label>
+              <Input
+                value={officerPhone}
+                onChange={(e) => setOfficerPhone(e.target.value)}
+                placeholder="03XXXXXXXXX"
+              />
             </div>
             <div className="space-y-1">
               <Label>Reason for inquiry</Label>
@@ -176,12 +228,16 @@ export function StartDueInquiryDialog({
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-text-secondary">
-              A WhatsApp approval request will be sent to the selected authority,
-              same pattern as appointment approval.
+              Select Founder, Chairman Admin, or President. Enter their WhatsApp
+              number so the approval request can be sent even if the profile
+              phone is missing.
             </p>
             <div className="space-y-1">
               <Label>Approving authority</Label>
-              <Select value={approverId} onValueChange={setApproverId}>
+              <Select
+                value={approverId}
+                onValueChange={(value) => setApproverId(value)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select Founder, Chairman, President…" />
                 </SelectTrigger>
@@ -194,15 +250,20 @@ export function StartDueInquiryDialog({
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1">
+              <Label>Approver WhatsApp *</Label>
+              <Input
+                value={approverWhatsApp}
+                onChange={(e) => setApproverWhatsApp(e.target.value)}
+                placeholder="03XXXXXXXXX"
+              />
+            </div>
           </div>
         )}
 
         <DialogFooter>
           {step === 'details' ? (
-            <Button
-              disabled={!officerId || !preview}
-              onClick={() => setStep('approver')}
-            >
+            <Button disabled={!detailsReady} onClick={() => setStep('approver')}>
               Continue
             </Button>
           ) : (
@@ -211,10 +272,14 @@ export function StartDueInquiryDialog({
                 Back
               </Button>
               <Button
-                disabled={!approverId || submitMutation.isPending}
+                disabled={
+                  !approverId ||
+                  approverWhatsApp.trim().length < 10 ||
+                  submitMutation.isPending
+                }
                 onClick={() => submitMutation.mutate()}
               >
-                {submitMutation.isPending ? 'Submitting…' : 'Start inquiry'}
+                {submitMutation.isPending ? 'Submitting…' : 'Send for approval'}
               </Button>
             </>
           )}

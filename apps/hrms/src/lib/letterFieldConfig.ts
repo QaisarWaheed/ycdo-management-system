@@ -31,6 +31,18 @@ const URDU_IDENTITY_FIELDS: LetterFieldDef[] = [
     hint: 'اردو میں عہدہ لکھیں',
   },
   {
+    key: 'department',
+    label: 'محکمہ',
+    onTemplate: true,
+    hint: 'اردو میں محکمہ لکھیں',
+  },
+  {
+    key: 'role',
+    label: 'رول',
+    onTemplate: true,
+    hint: 'پورٹل / سسٹم رول',
+  },
+  {
     key: 'branch',
     label: 'برانچ / مقام',
     onTemplate: true,
@@ -100,10 +112,10 @@ export const LETTER_FIELD_CONFIG: Partial<
     },
     {
       key: 'violations',
-      label: 'امور جن پر وضاحت درکار ہے (ہر سطر ایک نکتہ)',
+      label: 'متنِ خط (ہر سطر ایک نکتہ)',
       type: 'textarea',
       onTemplate: true,
-      hint: 'اردو میں لکھیں — ہر لائن الگ نکتہ بنے گا',
+      hint: 'اردو میں لکھیں — نام، محکمہ، عہدہ، رول اوپر الگ فیلڈز میں ہیں',
     },
     {
       key: 'responseDeadline',
@@ -456,6 +468,7 @@ export function getLetterRequiredFields(
     'designation',
     'branch',
     'department',
+    'role',
     'adviceLetterNo',
     'adviceLetterDate',
     'warningLetterNo',
@@ -495,6 +508,7 @@ const DISCIPLINARY_TYPES: LetterType[] = [
   'SUSPENSION',
   'TERMINATION',
   'DISCIPLINARY',
+  'EXPLANATION',
   'EXPLANATION_FINE',
 ]
 
@@ -512,6 +526,7 @@ export function letterTypeLabel(type: string): string {
   if (type === 'NEAR_SUSPENSION_WARNING') {
     return 'تنبیہی نوٹس برائے ممکنہ معطلی'
   }
+  if (type === 'EXPLANATION') return 'Absence notice'
   return type.replace(/_/g, ' ')
 }
 
@@ -549,7 +564,7 @@ export const URDU_LETTER_SUBJECT: Partial<Record<LetterType, string>> = {
   WARNING: 'لیٹر آف وارننگ',
   ADVICE: 'ایڈوائس لیٹر',
   DISCIPLINARY: 'لیٹر آف ڈسپلیژر',
-  EXPLANATION: 'تحریری وضاحت طلب',
+  EXPLANATION: 'غیر حاضری بابت نوٹس',
   EXPLANATION_FINE: 'تحریری وضاحت طلب و جرمانہ نوٹس',
   SHOW_CAUSE: 'شو کاز نوٹس',
   FINE: 'فائن / جرمانہ نوٹس',

@@ -223,13 +223,33 @@ export class CloseInquiryDto {
 }
 
 export class StartDueInquiryDto {
+  @IsOptional()
   @IsUUID()
+  inquiryOfficerUserId?: string;
+
+  @IsString()
   @IsNotEmpty()
-  inquiryOfficerUserId: string;
+  @MaxLength(200)
+  inquiryOfficerName: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  inquiryOfficerDesignation?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  inquiryOfficerPhone: string;
 
   @IsUUID()
   @IsNotEmpty()
   selectedApproverUserId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  approverWhatsApp: string;
 
   @Type(() => Number)
   @IsInt()

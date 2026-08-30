@@ -576,6 +576,8 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
     const newReliever = [...db.allowances.values()].find((a) => a.payrollEntryId === newEntry.id && a.type === 'RELIEVER');
     expect(newReliever).toBeDefined();
+    // One completed session = one extra full duty day (default 8h), not overlap minutes (4h).
+    expect(newReliever!.hours).toBe(8);
   });
 
   it('L: month payroll is the active package only', async () => {

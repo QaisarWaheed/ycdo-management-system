@@ -31,7 +31,7 @@ export const LETTER_TYPE_SUBJECT: Record<LetterType, string> = {
   WARNING: 'لیٹر آف وارننگ',
   ADVICE: 'ایڈوائس لیٹر',
   DISCIPLINARY: 'لیٹر آف ڈسپلیژر',
-  EXPLANATION: 'تحریری وضاحت طلب',
+  EXPLANATION: 'غیر حاضری بابت نوٹس',
   SHOW_CAUSE: 'شو کاز نوٹس',
   FINE: 'فائن / جرمانہ نوٹس',
   INQUIRY: 'انکوائری نوٹس',
@@ -57,7 +57,7 @@ export const LETTER_TYPE_EN_HEADER: Record<
   WARNING: { title: 'LETTER OF WARNING', prescribed: '', subtitle: '' },
   ADVICE: { title: 'LETTER OF ADVICE', prescribed: '', subtitle: '' },
   DISCIPLINARY: { title: 'LETTER OF DISPLEASURE', prescribed: '', subtitle: '' },
-  EXPLANATION: { title: 'LETTER OF EXPLANATION', prescribed: '', subtitle: '' },
+  EXPLANATION: { title: 'ABSENCE NOTICE', prescribed: '', subtitle: '' },
   SHOW_CAUSE: { title: 'SHOW CAUSE NOTICE', prescribed: '', subtitle: '' },
   FINE: { title: 'LETTER OF FINE / PENALTY', prescribed: '', subtitle: '' },
   INQUIRY: { title: 'INQUIRY NOTICE', prescribed: '', subtitle: '' },
@@ -110,7 +110,7 @@ export const LETTER_TEMPLATE_META: Record<
     requiredVars: ['disciplinaryReason'],
   },
   EXPLANATION: {
-    name: 'Explanation Request (Urdu)',
+    name: 'Absence Notice (Urdu)',
     requiredVars: ['violations'],
   },
   SHOW_CAUSE: {
@@ -321,6 +321,8 @@ const YCDO_LETTER_HEADER = `
   <div class="row"><span class="label">منجانب:</span> {{senderTitle}}</div>
   <div class="row">{{orgLine}}</div>
   <div class="row"><span class="label">بجانب:</span> {{employeeName}}{{#if designation}} ({{designation}}){{/if}}</div>
+  {{#if department}}<div class="row"><span class="label">محکمہ:</span> {{department}}</div>{{/if}}
+  {{#if role}}<div class="row"><span class="label">رول:</span> {{role}}</div>{{/if}}
   {{#if branch}}<div class="row">{{branch}}</div>{{/if}}
   <div class="row subject-row"><span class="label">عنوان:</span> {{subject}}</div>
 </div>

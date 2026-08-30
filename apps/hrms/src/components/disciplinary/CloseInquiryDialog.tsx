@@ -34,47 +34,48 @@ export function CloseInquiryDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const queryClient = useQueryClient()
-  const legacy = !inquiry?.inquiryOfficerUserId
   const [finding, setFinding] = useState<'GUILTY' | 'NOT_GUILTY'>('NOT_GUILTY')
-  const [notes, setNotes] = useState('')
+  const [notesEn, setNotesEn] = useState('')
+  const [notesUr, setNotesUr] = useState('')
   const [recommendation, setRecommendation] = useState('')
-  const [finalAction, setFinalAction] = useState('DISMISS')
+  const [finalAction, setFinalAction] = useState('FINE_AND_REINSTATE')
   const [destinationBranchId, setDestinationBranchId] = useState('')
   const [fineAmount, setFineAmount] = useState('')
-  const [approverId, setApproverId] = useState('')
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
     queryFn: () => branchesApi.getAll(),
     enabled: open,
   })
-  const { data: approvers = [] } = useQuery({
-    queryKey: ['suspension-approvers'],
-    queryFn: () => disciplinaryApi.listEligibleApprovers(),
-    enabled: open && !legacy,
-  })
 
   useEffect(() => {
     if (!open || !inquiry) return
     setFinding(inquiry.finding ?? 'NOT_GUILTY')
-    setNotes(inquiry.notes ?? '')
+    const existing = inquiry.notes ?? ''
+    const enMatch = existing.match(/English:\s*([\s\S]*?)(?:\nUrdu:|$)/i)
+    const urMatch = existing.match(/Urdu:\s*([\s\S]*)$/i)
+    setNotesEn(enMatch?.[1]?.trim() || existing)
+    setNotesUr(urMatch?.[1]?.trim() || '')
     setRecommendation(inquiry.closeRecommendation ?? '')
-    setFinalAction(inquiry.finalAction ?? 'DISMISS')
+    setFinalAction(inquiry.finalAction ?? 'FINE_AND_REINSTATE')
     setDestinationBranchId(inquiry.destinationBranchId ?? '')
     setFineAmount(inquiry.fineAmount != null ? String(inquiry.fineAmount) : '')
-    setApproverId('')
   }, [open, inquiry])
 
-  const needsDutyBranch = finding === 'NOT_GUILTY' || finalAction === 'FINE_AND_REINSTATE'
+  const combinedNotes = [
+    notesEn.trim() ? `English:\n${notesEn.trim()}` : '',
+    notesUr.trim() ? `Urdu:\n${notesUr.trim()}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 
   const submitMutation = useMutation({
     mutationFn: () =>
       disciplinaryApi.closeInquiry(inquiry!.id, {
         finding,
-        notes,
+        notes: combinedNotes,
         closeRecommendation: recommendation,
-        selectedApproverUserId: legacy ? undefined : approverId,
-        destinationBranchId: needsDutyBranch ? destinationBranchId : undefined,
+        destinationBranchId: destinationBranchId || undefined,
         finalAction: finding === 'GUILTY' ? finalAction : undefined,
         fineAmount:
           finding === 'GUILTY' && finalAction === 'FINE_AND_REINSTATE'
@@ -83,13 +84,13 @@ export function CloseInquiryDialog({
       }),
     onSuccess: () => {
       toast({
-        title: legacy ? 'Inquiry closed (automatic approval)' : 'Inquiry result submitted',
-        description: legacy
-          ? 'No inquiry officer was assigned, so the selected action was applied.'
-          : 'Inquiry officer was notified in Urdu. Final approver must approve before the employee status changes.',
+        title: 'Inquiry closed',
+        description:
+          'The inquiry officer’s result was recorded. If reinstated, the employee is ACTIVE now and late/UA counts restart from today.',
       })
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
       queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['suspension-watchlist'] })
       onOpenChange(false)
     },
     onError: (err: unknown) => {
@@ -108,17 +109,10 @@ export function CloseInquiryDialog({
           <DialogTitle>Close inquiry</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          {legacy ? (
-            <p className="text-xs text-amber-800">
-              Legacy record: no inquiry officer assigned. HR can complete this
-              with automatic approval.
-            </p>
-          ) : (
-            <p className="text-xs text-text-secondary">
-              Physical inquiry is complete. Fill the result, then send for final
-              approval. The inquiry officer will receive a Urdu WhatsApp summary.
-            </p>
-          )}
+          <p className="text-xs text-text-secondary">
+            The inquiry is physical / offline. Write what the inquiry officer or
+            management decided. Closing applies the outcome immediately.
+          </p>
           <div className="space-y-1">
             <Label>Finding</Label>
             <Select
@@ -129,59 +123,77 @@ export function CloseInquiryDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="NOT_GUILTY">Not guilty — reinstate / continue duties</SelectItem>
-                <SelectItem value="GUILTY">Guilty</SelectItem>
+                <SelectItem value="NOT_GUILTY">
+                  Not guilty / first-time favor / reinstate without fine (Active)
+                </SelectItem>
+                <SelectItem value="GUILTY">Guilty — choose action below</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>Inquiry result / notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+            <Label>What the inquiry officer said (English)</Label>
+            <Textarea
+              value={notesEn}
+              onChange={(e) => setNotesEn(e.target.value)}
+              rows={3}
+            />
           </div>
           <div className="space-y-1">
-            <Label>Recommendation</Label>
+            <Label>انکوائری آفیسر کا بیان (اردو)</Label>
+            <Textarea
+              dir="rtl"
+              value={notesUr}
+              onChange={(e) => setNotesUr(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Recommendation / action note</Label>
             <Textarea
               value={recommendation}
               onChange={(e) => setRecommendation(e.target.value)}
-              rows={3}
+              rows={2}
             />
           </div>
           {finding === 'GUILTY' && (
             <div className="space-y-1">
-              <Label>Required action (applied to employee after approval)</Label>
+              <Label>Action (applied now)</Label>
               <Select value={finalAction} onValueChange={setFinalAction}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="DISMISS">Dismissed</SelectItem>
-                  <SelectItem value="TERMINATE">Terminated</SelectItem>
+                  <SelectItem value="FINE_AND_REINSTATE">
+                    Fine and reinstate (Active)
+                  </SelectItem>
                   <SelectItem value="REST">On rest</SelectItem>
-                  <SelectItem value="FINE_AND_REINSTATE">Fine and reinstate (Active)</SelectItem>
+                  <SelectItem value="TERMINATE">Terminated</SelectItem>
+                  <SelectItem value="DISMISS">Dismissed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           )}
-          {needsDutyBranch && (
-            <div className="space-y-1">
-              <Label>Duty branch</Label>
-              <Select
-                value={destinationBranchId}
-                onValueChange={setDestinationBranchId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b: { id: string; name: string }) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <div className="space-y-1">
+            <Label>Duty branch (optional — leave blank to keep current)</Label>
+            <Select
+              value={destinationBranchId || 'KEEP'}
+              onValueChange={(value) =>
+                setDestinationBranchId(value === 'KEEP' ? '' : value)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Keep current branch" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="KEEP">Keep current branch</SelectItem>
+                {branches.map((b: { id: string; name: string }) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {finding === 'GUILTY' && finalAction === 'FINE_AND_REINSTATE' && (
             <div className="space-y-1">
               <Label>Fine amount</Label>
@@ -193,38 +205,18 @@ export function CloseInquiryDialog({
               />
             </div>
           )}
-          {!legacy && (
-            <div className="space-y-1">
-              <Label>Final approving authority</Label>
-              <Select value={approverId} onValueChange={setApproverId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select approver" />
-                </SelectTrigger>
-                <SelectContent>
-                  {approvers.map((row) => (
-                    <SelectItem key={row.id} value={row.id}>
-                      {row.displayName} · {row.eligibleRole.replace(/_/g, ' ')}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
         </div>
         <DialogFooter>
           <Button
             disabled={
               submitMutation.isPending ||
-              (!legacy && !approverId) ||
-              (needsDutyBranch && !destinationBranchId)
+              (finding === 'GUILTY' &&
+                finalAction === 'FINE_AND_REINSTATE' &&
+                !(Number(fineAmount) > 0))
             }
             onClick={() => submitMutation.mutate()}
           >
-            {submitMutation.isPending
-              ? 'Submitting…'
-              : legacy
-                ? 'Close and apply'
-                : 'Submit for approval'}
+            {submitMutation.isPending ? 'Closing…' : 'Close inquiry and apply'}
           </Button>
         </DialogFooter>
       </DialogContent>

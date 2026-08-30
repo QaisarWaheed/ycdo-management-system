@@ -132,7 +132,7 @@ export class SuspensionRequestService {
         id: true,
         role: true,
         email: true,
-        employee: { select: { fullName: true, employeeCode: true } },
+        employee: { select: { fullName: true, employeeCode: true, phone: true } },
         additionalRoles: { select: { role: true } },
       },
       orderBy: { email: 'asc' },
@@ -147,6 +147,7 @@ export class SuspensionRequestService {
         id: user.id,
         displayName: user.employee?.fullName ?? user.email,
         employeeCode: user.employee?.employeeCode ?? null,
+        phone: user.employee?.phone ?? null,
         eligibleRole,
       };
     });

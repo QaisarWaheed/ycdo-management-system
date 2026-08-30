@@ -9,6 +9,7 @@ import {
   FileText,
   Fingerprint,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Plus,
   Printer,
@@ -60,7 +61,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -161,6 +167,7 @@ function letterDisciplineReason(letter: Letter): string {
     return 'Missing Checkout'
   }
   if (category === 'UNINFORMED_ABSENT') return 'Uninformed Absence'
+  if (category === 'ABSENT') return 'Absence'
   if (v.warningNumber != null) return 'Manual Disciplinary Action'
   return 'Manual / Other'
 }
@@ -170,6 +177,7 @@ function letterOccurrence(letter: Letter): string {
   const n =
     v.monthlyLateOccurrence ??
     v.monthlyMissingCheckoutOccurrence ??
+    v.monthlyAbsenceOccurrence ??
     v.warningNumber
   return n != null ? String(n) : '—'
 }
@@ -647,6 +655,8 @@ export function EmployeeProfilePage() {
   const [editAppointmentPreviewHtml, setEditAppointmentPreviewHtml] = useState<
     string | null
   >(null)
+  const [reverseLetter, setReverseLetter] = useState<Letter | null>(null)
+  const [reverseReason, setReverseReason] = useState('')
   const [statusOpen, setStatusOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
   const [branchDutyOpen, setBranchDutyOpen] = useState(false)
@@ -867,6 +877,26 @@ export function EmployeeProfilePage() {
     },
   })
 
+  const reverseLetterMutation = useMutation({
+    mutationFn: ({ letterId, reason }: { letterId: string; reason: string }) =>
+      lettersApi.reverse(letterId, reason),
+    onSuccess: (data) => {
+      toast({ title: 'Letter reversed', description: data.message })
+      queryClient.invalidateQueries({ queryKey: ['letters', id] })
+      queryClient.invalidateQueries({ queryKey: ['payroll'] })
+      setReverseLetter(null)
+      setReverseReason('')
+    },
+    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title: 'Reverse failed',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? ''),
+        variant: 'destructive',
+      })
+    },
+  })
+
   const sendAppointmentMutation = useMutation({
     mutationFn: (letterId: string) => lettersApi.send(letterId),
     onSuccess: (data) => {
@@ -1035,6 +1065,7 @@ export function EmployeeProfilePage() {
   const documents = (employee.documents ?? []) as EmployeeDocument[]
 
   const isItTeam = hasRole([...IT_PROFILE_ROLES])
+  const canReverseLetters = isItTeam
 
   const isHrTeam = hasRole([...HR_JOB_ROLES])
   const canApproveAppointment = hasRole([
@@ -2251,7 +2282,20 @@ export function EmployeeProfilePage() {
                                         ? 'Preview PDF'
                                         : 'Download PDF'}
                                 </Button>
-                                {letter.letterType === 'APPOINTMENT' && (
+                                {letter.status === 'DRAFT' && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditAppointmentPreviewHtml(null)
+                                      setEditAppointmentLetter(letter)
+                                    }}
+                                  >
+                                    Edit
+                                  </Button>
+                                )}
+                                {letter.letterType === 'APPOINTMENT' &&
+                                  letter.status !== 'DRAFT' && (
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -2361,6 +2405,27 @@ export function EmployeeProfilePage() {
                                     ? 'Printed'
                                     : 'Mark Printed'}
                                 </Button>
+                                {canReverseLetters &&
+                                  letter.status === 'SENT' && (
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="outline" size="sm">
+                                          <MoreHorizontal className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem
+                                          className="text-red-600"
+                                          onClick={() => {
+                                            setReverseLetter(letter)
+                                            setReverseReason('')
+                                          }}
+                                        >
+                                          Reverse (IT)
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -2724,6 +2789,60 @@ export function EmployeeProfilePage() {
           }
         }}
       />
+      <Dialog
+        open={!!reverseLetter}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReverseLetter(null)
+            setReverseReason('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reverse letter (IT)</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-text-secondary">
+            This voids the letter on the portal and unwinds linked pending
+            fines or two-day absence deductions where payroll is not finalized.
+          </p>
+          <div className="space-y-2">
+            <Label>Reason</Label>
+            <Textarea
+              value={reverseReason}
+              onChange={(e) => setReverseReason(e.target.value)}
+              placeholder="Why is this letter being reversed?"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReverseLetter(null)
+                setReverseReason('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700"
+              disabled={
+                reverseReason.trim().length < 3 ||
+                reverseLetterMutation.isPending
+              }
+              onClick={() => {
+                if (!reverseLetter) return
+                reverseLetterMutation.mutate({
+                  letterId: reverseLetter.id,
+                  reason: reverseReason.trim(),
+                })
+              }}
+            >
+              Reverse letter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ChangeStatusDialog
         open={statusOpen}
         onOpenChange={setStatusOpen}

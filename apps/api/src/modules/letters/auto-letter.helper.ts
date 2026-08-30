@@ -38,6 +38,7 @@ async function loadEmployee(db: Db, employeeId: string) {
     include: {
       currentBranch: { select: { name: true } },
       currentDepartment: { select: { name: true } },
+      user: { select: { role: true } },
     },
   });
 }
@@ -107,6 +108,7 @@ export async function issueAutoTemplatedLetter(
     employeeCode: employee.employeeCode,
     designation: employee.currentDesignation ?? '',
     department: employee.currentDepartment?.name ?? '',
+    role: employee.user?.role ?? '',
     branch: employee.currentBranch?.name ?? '',
     cnic: employee.cnic ?? '',
     letterNo,

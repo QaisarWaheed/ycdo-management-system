@@ -19,6 +19,7 @@ export const disciplinaryApi = {
         id: string
         displayName: string
         employeeCode: string | null
+        phone: string | null
         eligibleRole: string
       }>
     >('/disciplinary/suspension/eligible-approvers'),

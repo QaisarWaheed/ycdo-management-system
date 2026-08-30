@@ -17,6 +17,7 @@ import {
   SuspensionRequestStatus,
   UserRole,
 } from '@prisma/client';
+import { suspensionInquiryReinstatementData } from '../attendance/suspension-watch-baseline.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { LettersService } from '../letters/letters.service';
@@ -608,7 +609,7 @@ export class DisciplinaryService {
       ) {
         await tx.employee.update({
           where: { id: employee.id },
-          data: { status: EmployeeStatus.ACTIVE },
+          data: suspensionInquiryReinstatementData(now),
         });
         await tx.user.updateMany({
           where: { employeeId: employee.id },
