@@ -20,11 +20,15 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  ATTENDANCE_ELIGIBLE_STATUSES,
+  assertEmployeeEligibleForManualAttendance,
+  assertEmployeeEligibleForRelieverAttendance,
+} from '../attendance/attendance-eligibility.util';
 import { PayrollService } from '../payroll/payroll.service';
 import { enforceBranchScope } from '../../common/branch-scope.util';
 import { dutyWindowsOverlap, getDutyWindow } from '../../common/duty.util';
 import { is24HourShift } from '../attendance/attendance-biometric.util';
-import { assertEmployeeEligibleForManualAttendance } from '../attendance/attendance-eligibility.util';
 import { toPakistanDateOnly } from '../attendance/attendance-late.util';
 import { pakistanYearMonthFromDate } from '../attendance/attendance-calendar.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
@@ -1297,7 +1301,7 @@ export class LeaveService {
 
   async getRelieverCandidates(search?: string) {
     const where: Prisma.EmployeeWhereInput = {
-      status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+      status: { in: ATTENDANCE_ELIGIBLE_STATUSES },
     };
 
     if (search?.trim()) {
@@ -1824,12 +1828,7 @@ export class LeaveService {
     if (!reliever) {
       throw new NotFoundException('Selected reliever not found');
     }
-    if (
-      reliever.status !== EmployeeStatus.ACTIVE &&
-      reliever.status !== EmployeeStatus.APPOINTED
-    ) {
-      throw new BadRequestException('Selected reliever is not active');
-    }
+    assertEmployeeEligibleForRelieverAttendance(reliever.status);
 
     const ownLeaveConflict = await db.leaveRecord.findFirst({
       where: {

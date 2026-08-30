@@ -30,6 +30,7 @@ import { notificationsApi } from '@/api/endpoints/notifications'
 import { DisciplinaryPage } from '@/pages/disciplinary/DisciplinaryPage'
 import { SuspensionWatchlistPage } from '@/pages/disciplinary/SuspensionWatchlistPage'
 import { FailedWhatsAppPage } from '@/pages/whatsapp/FailedWhatsAppPage'
+import { PageErrorBoundary } from '@/components/common/PageErrorBoundary'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
@@ -1376,7 +1377,12 @@ export function LettersPage() {
         <DisciplinaryPage embedded onlyInquiries />
       ) : null}
       {section === 'watchlist' ? (
-        <SuspensionWatchlistPage embedded />
+        <PageErrorBoundary
+          resetKey="watchlist"
+          label="The watchlist failed to load. Use Reload, or open Letters / Disciplinary."
+        >
+          <SuspensionWatchlistPage embedded />
+        </PageErrorBoundary>
       ) : null}
       {section === 'failed-whatsapp' ? (
         <FailedWhatsAppPage embedded />

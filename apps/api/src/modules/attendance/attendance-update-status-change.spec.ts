@@ -256,6 +256,7 @@ function makeLateStatusUpdateService() {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
     { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
   );
 

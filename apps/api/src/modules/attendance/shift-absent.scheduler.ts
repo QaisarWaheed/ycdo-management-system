@@ -4,7 +4,6 @@ import {
   AttendanceLogType,
   AttendanceSource,
   AttendanceStatus,
-  EmployeeStatus,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -16,6 +15,7 @@ import {
   isPreJoinAttendanceDate,
   isUninformedUpgradeNote,
 } from './attendance-calendar.util';
+import { ATTENDANCE_ELIGIBLE_STATUS_WHERE } from './attendance-eligibility.util';
 import {
   getShiftAttendanceDate,
   minutesSinceShiftStart,
@@ -56,7 +56,7 @@ export class ShiftAbsentScheduler {
     const employees = await this.prisma.employee.findMany({
       where: {
         relieverOnly: false,
-        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        ...ATTENDANCE_ELIGIBLE_STATUS_WHERE,
       },
       include: { shift: true },
     });
@@ -268,7 +268,7 @@ export class ShiftAbsentScheduler {
       where: {
         shiftId,
         relieverOnly: false,
-        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        ...ATTENDANCE_ELIGIBLE_STATUS_WHERE,
       },
     });
 

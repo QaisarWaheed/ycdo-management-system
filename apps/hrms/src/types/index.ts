@@ -655,6 +655,7 @@ export interface AttendanceLog {
     dutyStartTime?: string | null
     dutyEndTime?: string | null
     relieverOnly?: boolean
+    status?: string
     shift?: { name?: string; startTime?: string; endTime?: string } | null
     user?: {
       role?: string
@@ -919,10 +920,18 @@ export interface Inquiry {
     letterId: string | null
     letterNo: string | null
   }>
+  durationDays?: number | null
+  closeRecommendation?: string | null
+  officiallyOpenedAt?: string | null
+  openApprovalStatus?: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | null
   inquiryOfficer?: {
     id: string
     email?: string
-    employee?: { fullName: string } | null
+    employee?: {
+      fullName: string
+      phone?: string | null
+      currentDesignation?: string | null
+    } | null
   } | null
   findingRecordedBy?: {
     id: string

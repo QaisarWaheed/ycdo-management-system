@@ -188,7 +188,13 @@ export class DisciplinaryService {
               select: {
                 id: true,
                 email: true,
-                employee: { select: { fullName: true } },
+                employee: {
+                  select: {
+                    fullName: true,
+                    phone: true,
+                    currentDesignation: true,
+                  },
+                },
               },
             },
             findingRecordedBy: {
@@ -273,7 +279,13 @@ export class DisciplinaryService {
               select: {
                 id: true,
                 email: true,
-                employee: { select: { fullName: true } },
+                employee: {
+                  select: {
+                    fullName: true,
+                    phone: true,
+                    currentDesignation: true,
+                  },
+                },
               },
             },
             findingRecordedBy: {

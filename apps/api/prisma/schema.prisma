@@ -238,6 +238,8 @@ model Employee {
   dutyTotalHours         Float?
   /// Monthly paid leave allowance. Null/omitted uses the runtime default of 2 days (not unlimited).
   monthlyAllowedLeaves   Int?
+  /// Pakistan calendar date: LATE/UA on this day or later count toward the next Near/Due cycle after a closed suspension inquiry reinstatement. Null = full current month.
+  suspensionWatchBaselineOn DateTime?
   province               String?
   city                   String?
   permanentProvince      String?
@@ -665,6 +667,16 @@ model Inquiry {
   appliedFineDeductionId        String?
   deadlineReminderSentAt        DateTime?
   overdueNotificationSentAt     DateTime?
+  durationDays                  Int?
+  closeRecommendation           String?
+  officiallyOpenedAt            DateTime?
+  openApprovalStatus            InquiryOpenApprovalStatus?
+  selectedOpenApproverUserId    String?
+  openSubmittedById             String?
+  openSubmittedAt               DateTime?
+  openDecidedById               String?
+  openDecidedAt                 DateTime?
+  openDecisionNote              String?
 
   disciplinaryAction      DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
   inquiryOfficer          User?              @relation("InquiryOfficer", fields: [inquiryOfficerUserId], references: [id])
@@ -673,9 +685,13 @@ model Inquiry {
   finalDecisionSubmittedBy User?             @relation("InquiryFinalSubmittedBy", fields: [finalDecisionSubmittedById], references: [id])
   finalDecidedBy          User?              @relation("InquiryFinalDecidedBy", fields: [finalDecidedById], references: [id])
   destinationBranch       Branch?            @relation("InquiryDestinationBranch", fields: [destinationBranchId], references: [id])
+  selectedOpenApprover    User?              @relation("InquiryOpenApprover", fields: [selectedOpenApproverUserId], references: [id])
+  openSubmittedBy         User?              @relation("InquiryOpenSubmittedBy", fields: [openSubmittedById], references: [id])
+  openDecidedBy           User?              @relation("InquiryOpenDecidedBy", fields: [openDecidedById], references: [id])
 
   @@index([inquiryOfficerUserId])
   @@index([selectedFinalApproverUserId, finalDecisionStatus])
+  @@index([selectedOpenApproverUserId, openApprovalStatus])
 }
 
 enum InquiryOutcome {
@@ -702,6 +718,12 @@ enum InquiryFinalDecisionStatus {
   PENDING_APPROVAL
   REJECTED
   APPLIED
+}
+
+enum InquiryOpenApprovalStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
 }
 
 enum SuspensionRequestStatus {
@@ -1107,6 +1129,9 @@ model User {
   inquiryFinalApprovals        Inquiry[]                    @relation("InquiryFinalApprover")
   inquiryFinalSubmitted        Inquiry[]                    @relation("InquiryFinalSubmittedBy")
   inquiryFinalDecided          Inquiry[]                    @relation("InquiryFinalDecidedBy")
+  inquiriesAsOpenApprover      Inquiry[]                    @relation("InquiryOpenApprover")
+  inquiryOpenSubmitted         Inquiry[]                    @relation("InquiryOpenSubmittedBy")
+  inquiryOpenDecided           Inquiry[]                    @relation("InquiryOpenDecidedBy")
 }
 
 model LoginOtpChallenge {

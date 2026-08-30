@@ -15,6 +15,8 @@ import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { PrepareSuspensionDialog } from '@/components/disciplinary/PrepareSuspensionDialog'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
+import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
+import { CloseInquiryDialog } from '@/components/disciplinary/CloseInquiryDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -75,10 +77,10 @@ import {
 const ALL = 'ALL'
 
 function inquiryDeadlineWarning(
-  inquiry: Pick<Inquiry, 'deadlineAt' | 'outcome' | 'closedAt'>,
+  inquiry: Pick<Inquiry, 'deadlineAt' | 'outcome' | 'closedAt' | 'officiallyOpenedAt'>,
   now = new Date(),
 ): 'Overdue' | 'Due soon' | null {
-  if (inquiry.closedAt || inquiry.outcome) return null
+  if (inquiry.closedAt || inquiry.outcome || !inquiry.officiallyOpenedAt) return null
   const deadline = new Date(inquiry.deadlineAt).getTime()
   if (Number.isNaN(deadline)) return null
   if (deadline <= now.getTime()) return 'Overdue'
@@ -161,14 +163,23 @@ function inquiryWorkflowLabel(inquiry: Inquiry) {
   if (inquiry.outcome) {
     return inquiry.outcome.replace(/_/g, ' ')
   }
+  if (inquiry.openApprovalStatus === 'PENDING_APPROVAL' && !inquiry.officiallyOpenedAt) {
+    return 'Awaiting opening approval'
+  }
+  if (inquiry.openApprovalStatus === 'REJECTED' && !inquiry.officiallyOpenedAt) {
+    return 'Opening rejected'
+  }
   if (inquiry.finalDecisionStatus === 'PENDING_APPROVAL') {
     return 'Final decision pending approval'
   }
   if (inquiry.finalDecisionStatus === 'REJECTED') {
-    return 'Final decision rejected'
+    return 'Final decision rejected — correct and close again'
+  }
+  if (inquiry.officiallyOpenedAt && !inquiry.finding) {
+    return 'Open inquiry'
   }
   if (inquiry.finding === 'NOT_GUILTY') {
-    return 'NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT'
+    return 'NOT GUILTY — choose duty branch, then reinstate'
   }
   if (inquiry.finding === 'GUILTY') {
     return 'GUILTY — select final action'
@@ -232,6 +243,11 @@ function InquiryFinalState({
 
   return (
     <div className="space-y-0.5 text-xs text-text-secondary">
+      <p>Inquiry officer: {personName(inquiry.inquiryOfficer)}</p>
+      <p>
+        Officer designation:{' '}
+        {inquiry.inquiryOfficer?.employee?.currentDesignation ?? '—'}
+      </p>
       <p>Finding: {inquiry.finding?.replace(/_/g, ' ') ?? '—'}</p>
       <p>Finding recorded by: {personName(inquiry.findingRecordedBy)}</p>
       <p>Finding recorded at: {formatWhen(inquiry.findingRecordedAt)}</p>
@@ -263,6 +279,7 @@ function InquiryFinalState({
           : '—'}
       </p>
       <p>Fine: {fineLabel}</p>
+      <p>Recommendation: {inquiry.closeRecommendation ?? '—'}</p>
       <p>Final outcome: {inquiry.outcome?.replace(/_/g, ' ') ?? '—'}</p>
       <p>Closed at: {formatWhen(inquiry.closedAt)}</p>
       <p>Employee status: {employeeStatus?.replace(/_/g, ' ') ?? '—'}</p>
@@ -551,7 +568,7 @@ function StartInquiryDialog({
   )
 }
 
-function CloseInquiryDialog({
+function ResolveInquiryDialog({
   inquiry,
   open,
   onOpenChange,
@@ -1005,6 +1022,7 @@ function InquiriesTab({
   const [detailInquiry, setDetailInquiry] = useState<
     (Inquiry & { action: DisciplinaryAction }) | null
   >(null)
+  const [closeInquiry, setCloseInquiry] = useState<Inquiry | null>(null)
   const [employeeId, setEmployeeId] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState(ALL)
 
@@ -1041,6 +1059,7 @@ function InquiriesTab({
 
   return (
     <div className="space-y-4">
+      <PendingInquiryOpenApprovalsCard />
       <PendingInquiryDecisionsCard />
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[220px] flex-1">
@@ -1108,8 +1127,12 @@ function InquiriesTab({
               paginated.map((inquiry) => {
                 const action = inquiry.action
                 const warning = inquiryDeadlineWarning(inquiry)
+                const officiallyOpen = !!inquiry.officiallyOpenedAt
                 return (
-                  <TableRow key={inquiry.id}>
+                  <TableRow
+                    key={inquiry.id}
+                    className={cn(warning === 'Overdue' && 'bg-red-50')}
+                  >
                     <TableCell>
                       <EmployeeNameLink
                         employee={action.employee}
@@ -1153,9 +1176,21 @@ function InquiriesTab({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm">
-                        {inquiryIsOpen(inquiry) ? 'Open' : 'Closed'}
-                      </span>
+                      <div className="flex flex-col gap-2">
+                        <span className="text-sm">
+                          {inquiry.outcome
+                            ? 'Closed'
+                            : inquiry.officiallyOpenedAt
+                              ? 'Open inquiry'
+                              : 'Awaiting opening approval'}
+                        </span>
+                        <InquiryFinalState
+                          inquiry={inquiry}
+                          employeeStatus={action.employee?.status}
+                          employeeId={action.employeeId}
+                          canRecoverLetters={canPrepare}
+                        />
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -1183,8 +1218,23 @@ function InquiriesTab({
                           </Button>
                         )}
                         {action.type === 'SUSPENSION' &&
+                          officiallyOpen &&
+                          !inquiry.outcome &&
+                          inquiry.finalDecisionStatus !== 'PENDING_APPROVAL' &&
+                          inquiry.finalDecisionStatus !== 'APPLIED' &&
+                          canPrepare && (
+                            <Button
+                              size="sm"
+                              onClick={() => setCloseInquiry(inquiry)}
+                            >
+                              Close inquiry
+                            </Button>
+                          )}
+                        {action.type === 'SUSPENSION' &&
                           !inquiry.finding &&
-                          inquiryIsOpen(inquiry) &&
+                          !inquiry.outcome &&
+                          officiallyOpen &&
+                          inquiry.finalDecisionStatus !== 'APPLIED' &&
                           user?.id === inquiry.inquiryOfficerUserId && (
                             <Button
                               size="sm"
@@ -1198,7 +1248,9 @@ function InquiriesTab({
                           !!inquiry.finding &&
                           inquiryIsOpen(inquiry) &&
                           inquiry.finalDecisionStatus !== 'PENDING_APPROVAL' &&
-                          canPrepare && (
+                          inquiry.finalDecisionStatus !== 'APPLIED' &&
+                          canPrepare &&
+                          officiallyOpen && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -1277,6 +1329,11 @@ function InquiriesTab({
         open={!!decisionInquiry}
         onOpenChange={(v) => !v && setDecisionInquiry(null)}
       />
+      <CloseInquiryDialog
+        inquiry={closeInquiry}
+        open={!!closeInquiry}
+        onOpenChange={(v) => !v && setCloseInquiry(null)}
+      />
     </div>
   )
 }
@@ -1343,7 +1400,7 @@ function RecordFindingDialog({
           </div>
           {finding === 'NOT_GUILTY' && (
             <p className="text-sm font-medium text-amber-800">
-              NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT
+              NOT GUILTY — they may continue duties at the same branch or another branch.
             </p>
           )}
           <div className="space-y-1">
@@ -1383,7 +1440,7 @@ function ProposeFinalDecisionDialog({
   const [fineAmount, setFineAmount] = useState('')
   const [notes, setNotes] = useState('')
 
-  const needsTransfer =
+  const needsDutyBranch =
     inquiry?.finding === 'NOT_GUILTY' || finalAction === 'FINE_AND_REINSTATE'
 
   const { data: branches = [] } = useQuery({
@@ -1397,15 +1454,20 @@ function ProposeFinalDecisionDialog({
     enabled: open,
   })
 
-  const forbiddenBranchId = (
+  const currentDutyBranchId = (
     inquiry as Inquiry & { action?: DisciplinaryAction }
   )?.action?.suspensionRequest?.suspendedFromBranchId
+
+  useEffect(() => {
+    if (!open || !inquiry) return
+    setDestinationBranchId(currentDutyBranchId ?? '')
+  }, [open, inquiry, currentDutyBranchId])
 
   const mutation = useMutation({
     mutationFn: () =>
       disciplinaryApi.submitInquiryFinalDecision(inquiry!.id, {
         selectedApproverUserId: approverId,
-        destinationBranchId: needsTransfer ? destinationBranchId : undefined,
+        destinationBranchId: needsDutyBranch ? destinationBranchId : undefined,
         finalAction:
           inquiry?.finding === 'GUILTY' ? finalAction : undefined,
         fineAmount:
@@ -1436,14 +1498,14 @@ function ProposeFinalDecisionDialog({
         <DialogHeader>
           <DialogTitle>
             {inquiry?.finding === 'NOT_GUILTY'
-              ? 'Mandatory transfer before reinstatement'
+              ? 'Choose duty branch for reinstatement'
               : 'Select final inquiry action'}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           {inquiry?.finding === 'NOT_GUILTY' && (
             <p className="text-sm font-medium text-amber-800">
-              NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT
+              NOT GUILTY — they may continue duties at the same branch or another branch.
             </p>
           )}
           {inquiry?.finding === 'GUILTY' && (
@@ -1464,26 +1526,27 @@ function ProposeFinalDecisionDialog({
               </Select>
             </div>
           )}
-          {needsTransfer && (
+          {needsDutyBranch && (
             <div className="space-y-1">
-              <Label>Destination branch</Label>
+              <Label>Duty branch</Label>
               <Select
                 value={destinationBranchId}
                 onValueChange={setDestinationBranchId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a different branch" />
+                  <SelectValue placeholder="Same branch or another branch" />
                 </SelectTrigger>
                 <SelectContent>
-                  {branches
-                    .filter((b) => b.id !== forbiddenBranchId)
-                    .map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-text-secondary">
+                They may continue at the same branch or be posted to another.
+              </p>
             </div>
           )}
           {inquiry?.finding === 'GUILTY' &&
@@ -1639,7 +1702,7 @@ export function DisciplinaryPage({
         }}
       />
 
-      <CloseInquiryDialog
+      <ResolveInquiryDialog
         inquiry={resolveInquiry}
         open={!!resolveInquiry}
         onOpenChange={(v) => !v && setResolveInquiry(null)}

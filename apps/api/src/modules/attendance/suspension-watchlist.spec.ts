@@ -1,4 +1,4 @@
-import { AttendanceStatus } from '@prisma/client';
+import { AttendanceStatus, EmployeeStatus } from '@prisma/client';
 import { buildSuspensionWatchlist } from './suspension-watchlist';
 
 describe('buildSuspensionWatchlist', () => {
@@ -61,6 +61,8 @@ describe('buildSuspensionWatchlist', () => {
         phone: '03001234567',
         currentBranchId: null,
         currentBranch: null,
+        status: EmployeeStatus.ACTIVE,
+        suspensionWatchBaselineOn: null,
       },
       {
         id: 'emp-due',
@@ -70,6 +72,8 @@ describe('buildSuspensionWatchlist', () => {
         phone: null,
         currentBranchId: null,
         currentBranch: null,
+        status: EmployeeStatus.ACTIVE,
+        suspensionWatchBaselineOn: null,
       },
       {
         id: 'emp-ua-near',
@@ -79,6 +83,8 @@ describe('buildSuspensionWatchlist', () => {
         phone: '03007654321',
         currentBranchId: null,
         currentBranch: null,
+        status: EmployeeStatus.ACTIVE,
+        suspensionWatchBaselineOn: null,
       },
       {
         id: 'emp-both',
@@ -88,6 +94,8 @@ describe('buildSuspensionWatchlist', () => {
         phone: null,
         currentBranchId: null,
         currentBranch: null,
+        status: EmployeeStatus.ACTIVE,
+        suspensionWatchBaselineOn: null,
       },
     ];
 
@@ -149,6 +157,120 @@ describe('buildSuspensionWatchlist', () => {
     expect(result.counts).toEqual({ near: 0, due: 0 });
     expect(result.near).toEqual([]);
     expect(result.due).toEqual([]);
-    expect(db.employee.findMany).not.toHaveBeenCalled();
+    expect(db.employee.findMany).toHaveBeenCalled();
+  });
+
+  it('does not list ON_REST, TERMINATED, or RESIGNED even if logs exist', async () => {
+    const logs = Array.from({ length: 9 }, (_, i) => ({
+      employeeId: 'emp-rest',
+      date: new Date(Date.UTC(2026, 7, i + 1)),
+      status: AttendanceStatus.LATE,
+      note: null,
+      lateMinutes: 10,
+    }));
+    const db = {
+      attendanceLog: { findMany: jest.fn().mockResolvedValue(logs) },
+      employee: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+
+    const result = await buildSuspensionWatchlist(db, 2026, 8);
+    expect(result.due).toEqual([]);
+    expect(db.employee.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.SUSPENDED] },
+        }),
+      }),
+    );
+  });
+
+  it('ignores LATE/UA before suspensionWatchBaselineOn', async () => {
+    const logs = [
+      ...Array.from({ length: 9 }, (_, i) => ({
+        employeeId: 'emp-reset',
+        date: new Date(Date.UTC(2026, 7, i + 1)),
+        status: AttendanceStatus.LATE,
+        note: null,
+        lateMinutes: 10,
+      })),
+      {
+        employeeId: 'emp-reset',
+        date: new Date(Date.UTC(2026, 7, 20)),
+        status: AttendanceStatus.LATE,
+        note: null,
+        lateMinutes: 10,
+      },
+    ];
+    const db = {
+      attendanceLog: { findMany: jest.fn().mockResolvedValue(logs) },
+      employee: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'emp-reset',
+            fullName: 'Reset Staff',
+            employeeCode: 'R1',
+            biometricId: null,
+            phone: null,
+            currentBranchId: null,
+            currentBranch: null,
+            status: EmployeeStatus.ACTIVE,
+            suspensionWatchBaselineOn: new Date(Date.UTC(2026, 7, 15)),
+          },
+        ]),
+      },
+    };
+
+    const result = await buildSuspensionWatchlist(db, 2026, 8);
+    expect(result.due).toEqual([]);
+    expect(result.near).toEqual([]);
+    expect(result.counts).toEqual({ near: 0, due: 0 });
+  });
+
+  it('includes SUSPENDED employees and applies the same baseline as ACTIVE', async () => {
+    const logs = [
+      ...Array.from({ length: 8 }, (_, i) => ({
+        employeeId: 'emp-susp',
+        date: new Date(Date.UTC(2026, 7, i + 1)),
+        status: AttendanceStatus.LATE,
+        note: null,
+        lateMinutes: 10,
+      })),
+      {
+        employeeId: 'emp-susp',
+        date: new Date(Date.UTC(2026, 7, 20)),
+        status: AttendanceStatus.LATE,
+        note: null,
+        lateMinutes: 10,
+      },
+    ];
+    const db = {
+      attendanceLog: { findMany: jest.fn().mockResolvedValue(logs) },
+      employee: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'emp-susp',
+            fullName: 'Suspended Staff',
+            employeeCode: 'S1',
+            biometricId: null,
+            phone: null,
+            currentBranchId: null,
+            currentBranch: null,
+            status: EmployeeStatus.SUSPENDED,
+            suspensionWatchBaselineOn: new Date(Date.UTC(2026, 7, 15)),
+          },
+        ]),
+      },
+    };
+
+    const result = await buildSuspensionWatchlist(db, 2026, 8);
+    expect(result.near).toHaveLength(0);
+    expect(result.due).toHaveLength(0);
+    expect(db.employee.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.SUSPENDED] },
+        }),
+      }),
+    );
   });
 });

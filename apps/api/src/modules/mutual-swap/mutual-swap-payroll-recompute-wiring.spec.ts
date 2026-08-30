@@ -1,3 +1,4 @@
+import { EmployeeStatus } from '@prisma/client';
 import { MutualSwapService } from './mutual-swap.service';
 
 jest.mock('../attendance/discipline.helper', () => ({
@@ -36,6 +37,7 @@ describe('MutualSwapService — payroll recompute wiring', () => {
       currentDepartmentId: 'dept-1',
       dutyStartTime: '09:00',
       dutyEndTime: '17:00',
+      status: EmployeeStatus.ACTIVE,
     };
     const coveredEmployee = {
       id: COVERED_ID,
@@ -46,6 +48,7 @@ describe('MutualSwapService — payroll recompute wiring', () => {
       currentDepartmentId: 'dept-1',
       dutyStartTime: '17:00',
       dutyEndTime: '01:00',
+      status: EmployeeStatus.ACTIVE,
     };
 
     const createdSwap = { id: 'swap-1', date: new Date(Date.UTC(2026, 7, 10)) };

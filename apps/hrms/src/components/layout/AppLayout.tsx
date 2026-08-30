@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Header } from './Header'
 import { Sidebar, SidebarNav } from './Sidebar'
+import { PageErrorBoundary } from '@/components/common/PageErrorBoundary'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 
 const pageTitles: Record<string, string> = {
@@ -64,7 +65,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           title={title}
           onMenuClick={() => setMobileNavOpen(true)}
         />
-        <main className="p-3 sm:p-4 md:p-6 print:p-0">{children}</main>
+        <main className="p-3 sm:p-4 md:p-6 print:p-0">
+          <PageErrorBoundary resetKey={`${pathname}${search}`}>
+            {children}
+          </PageErrorBoundary>
+        </main>
       </div>
     </div>
   )

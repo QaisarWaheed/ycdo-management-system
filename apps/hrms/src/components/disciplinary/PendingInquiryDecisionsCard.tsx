@@ -173,7 +173,7 @@ export function PendingInquiryDecisionsCard() {
           </p>
           {review?.finding === 'NOT_GUILTY' && (
             <p className="text-sm font-medium text-amber-800">
-              NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT
+              NOT GUILTY — they may continue duties at the same branch or another branch.
             </p>
           )}
           <div className="space-y-1">

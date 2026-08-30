@@ -166,4 +166,22 @@ describe('EmployeesService.changeStatus', () => {
     ).rejects.toThrow(/A sent Appointment Letter is required/);
     expect(prisma.employee.update).not.toHaveBeenCalled();
   });
+
+  it('ON_REST / RESIGNED / TERMINATED → ACTIVE does not set suspensionWatchBaselineOn', async () => {
+    for (const from of [
+      EmployeeStatus.ON_REST,
+      EmployeeStatus.RESIGNED,
+      EmployeeStatus.TERMINATED,
+    ]) {
+      const { service, prisma } = build(from);
+      await service.changeStatus('emp-1', {
+        status: EmployeeStatus.ACTIVE,
+        reason: 'Return to duty',
+      });
+      expect(prisma.employee.update.mock.calls[0][0].data).toEqual({
+        status: EmployeeStatus.ACTIVE,
+      });
+      prisma.employee.update.mockClear();
+    }
+  });
 });

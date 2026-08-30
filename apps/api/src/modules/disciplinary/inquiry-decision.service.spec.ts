@@ -138,6 +138,7 @@ describe('InquiryDecisionService', () => {
       prisma as never,
       lettersService as never,
       suspensionRequestService as never,
+      { sendPlainText: jest.fn().mockResolvedValue({ sent: false }) } as never,
     );
     return { service, prisma, tx, lettersService, suspensionRequestService };
   }
@@ -250,19 +251,29 @@ describe('InquiryDecisionService', () => {
     expect(tx.inquiry.updateMany.mock.calls[0][0].data.finalAction).toBeUndefined();
   });
 
-  it('rejects NOT_GUILTY submission without a different destination branch', async () => {
-    const { service } = build(
+  it('allows NOT_GUILTY submission with the same branch as the suspension', async () => {
+    const { service, prisma, tx } = build(
       openInquiry({ finding: InquiryFinding.NOT_GUILTY }),
     );
+    prisma.branch.findUnique.mockResolvedValue({
+      id: fromBranch,
+      isActive: true,
+    });
 
-    await expect(
-      service.submitFinalDecision(
-        inquiryId,
-        { selectedApproverUserId: approverId, destinationBranchId: fromBranch },
-        hrId,
-        UserRole.HR_MANAGER,
-      ),
-    ).rejects.toThrow(/differ from the branch/i);
+    await service.submitFinalDecision(
+      inquiryId,
+      { selectedApproverUserId: approverId, destinationBranchId: fromBranch },
+      hrId,
+      UserRole.HR_MANAGER,
+    );
+
+    expect(tx.inquiry.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          destinationBranchId: fromBranch,
+        }),
+      }),
+    );
   });
 
   it('rejects GUILTY final-action controls before a finding exists', async () => {
@@ -350,7 +361,7 @@ describe('InquiryDecisionService', () => {
     expect(tx.employmentHistory.create).not.toHaveBeenCalled();
   });
 
-  it('reinstates NOT_GUILTY only after transferring to a different branch', async () => {
+  it('reinstates NOT_GUILTY after transferring when a different branch is chosen', async () => {
     const inquiry = openInquiry({
       finding: InquiryFinding.NOT_GUILTY,
       finalDecisionStatus: InquiryFinalDecisionStatus.PENDING_APPROVAL,
@@ -375,11 +386,47 @@ describe('InquiryDecisionService', () => {
     );
     expect(tx.employee.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { status: EmployeeStatus.ACTIVE },
+        data: expect.objectContaining({
+          status: EmployeeStatus.ACTIVE,
+          suspensionWatchBaselineOn: expect.any(Date),
+        }),
       }),
     );
     expect(tx.user.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: { isActive: true } }),
+    );
+  });
+
+  it('reinstates NOT_GUILTY on the same branch without a transfer history row', async () => {
+    const inquiry = openInquiry({
+      finding: InquiryFinding.NOT_GUILTY,
+      finalDecisionStatus: InquiryFinalDecisionStatus.PENDING_APPROVAL,
+      selectedFinalApproverUserId: approverId,
+      destinationBranchId: fromBranch,
+    });
+    const { service, tx, prisma } = build(inquiry);
+    prisma.user.findUnique.mockResolvedValue({ id: approverId, isActive: true });
+
+    await service.approve(inquiryId, approverId);
+
+    expect(tx.employmentHistory.create).not.toHaveBeenCalled();
+    expect(tx.employee.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: EmployeeStatus.ACTIVE,
+          suspensionWatchBaselineOn: expect.any(Date),
+        }),
+      }),
+    );
+    expect(tx.auditLog.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'EMPLOYEE_TRANSFERRED' }),
+      }),
+    );
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'EMPLOYEE_REINSTATED' }),
+      }),
     );
   });
 
@@ -434,7 +481,10 @@ describe('InquiryDecisionService', () => {
     );
     expect(tx.employee.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { status: EmployeeStatus.ACTIVE },
+        data: expect.objectContaining({
+          status: EmployeeStatus.ACTIVE,
+          suspensionWatchBaselineOn: expect.any(Date),
+        }),
       }),
     );
   });

@@ -86,6 +86,7 @@ function makeService(opts: {
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
     { upsertFromRelieverSession: jest.fn().mockResolvedValue(null) } as any,
   );
 
@@ -284,6 +285,7 @@ describe('AttendanceService.updateRelieverSession — overlap validation', () =>
       {} as any,
       {} as any,
       payrollService as any,
+      {} as any,
       {} as any,
       {} as any,
       {} as any,

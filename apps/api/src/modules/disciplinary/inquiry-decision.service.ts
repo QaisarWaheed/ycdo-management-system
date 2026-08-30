@@ -24,6 +24,8 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { hasAnyRole } from '../../common/user-roles.util';
 import { LettersService } from '../letters/letters.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { suspensionInquiryReinstatementData } from '../attendance/suspension-watch-baseline.util';
 import {
   SUSPENSION_PREPARE_ROLES,
   SuspensionRequestService,
@@ -35,13 +37,19 @@ import {
   restNotifiesOnApply,
   type ExpectedFinalLetter,
 } from './inquiry-final-letters';
+import {
+  notifyInquiryApproverWhatsApp,
+  notifyInquiryOfficerResultWhatsApp,
+} from './inquiry-whatsapp';
 
 const INQUIRY_INCLUDE = {
   inquiryOfficer: {
     select: {
       id: true,
       email: true,
-      employee: { select: { fullName: true } },
+      employee: {
+        select: { fullName: true, phone: true, currentDesignation: true },
+      },
     },
   },
   findingRecordedBy: {
@@ -55,7 +63,7 @@ const INQUIRY_INCLUDE = {
     select: {
       id: true,
       email: true,
-      employee: { select: { fullName: true } },
+      employee: { select: { fullName: true, phone: true } },
     },
   },
   finalDecidedBy: {
@@ -98,6 +106,7 @@ export class InquiryDecisionService {
     private prisma: PrismaService,
     private lettersService: LettersService,
     private suspensionRequestService: SuspensionRequestService,
+    private whatsapp: WhatsAppService,
   ) {}
 
   async recordFinding(
@@ -182,6 +191,128 @@ export class InquiryDecisionService {
     });
 
     return updated;
+  }
+
+  /**
+   * HR close form: record finding + recommendation + required action.
+   * Legacy inquiries with no officer apply immediately (auto-approval).
+   * New inquiries notify the officer in Urdu, then wait for final approver.
+   */
+  async closeInquiry(
+    inquiryId: string,
+    dto: {
+      finding: InquiryFinding;
+      notes?: string;
+      closeRecommendation?: string;
+      selectedApproverUserId?: string;
+      destinationBranchId?: string;
+      finalAction?: InquiryFinalAction;
+      fineAmount?: number;
+    },
+    actingUserId: string,
+    actingRole: UserRole,
+    actingRoles?: UserRole[],
+  ) {
+    this.assertPrepareRole(actingRole, actingRoles);
+    const inquiry = await this.loadInquiry(inquiryId);
+    this.assertOfficiallyOpen(inquiry);
+    if (
+      inquiry.finalDecisionStatus === InquiryFinalDecisionStatus.PENDING_APPROVAL ||
+      inquiry.finalDecisionStatus === InquiryFinalDecisionStatus.APPLIED
+    ) {
+      throw new BadRequestException(
+        'A final decision is already pending or applied.',
+      );
+    }
+
+    const isLegacyNoOfficer = !inquiry.inquiryOfficerUserId;
+    if (!isLegacyNoOfficer && !dto.selectedApproverUserId) {
+      throw new BadRequestException('Select whose approval is required.');
+    }
+
+    await this.prisma.inquiry.update({
+      where: { id: inquiryId },
+      data: {
+        finding: dto.finding,
+        findingRecordedById: actingUserId,
+        findingRecordedAt: new Date(),
+        notes: dto.notes ?? inquiry.notes,
+        closeRecommendation: dto.closeRecommendation ?? inquiry.closeRecommendation,
+      },
+    });
+
+    const withFinding = await this.loadInquiry(inquiryId);
+
+    if (isLegacyNoOfficer) {
+      const payload = await this.validateDecisionPayload(withFinding, {
+        destinationBranchId: dto.destinationBranchId,
+        finalAction: dto.finalAction,
+        fineAmount: dto.fineAmount,
+      });
+      const now = new Date();
+      await this.prisma.$transaction(async (tx) => {
+        await tx.inquiry.update({
+          where: { id: inquiryId },
+          data: {
+            finalAction: payload.finalAction,
+            finalDecisionStatus: InquiryFinalDecisionStatus.APPLIED,
+            selectedFinalApproverUserId: actingUserId,
+            finalDecisionSubmittedById: actingUserId,
+            finalDecisionSubmittedAt: now,
+            finalDecidedById: actingUserId,
+            finalDecidedAt: now,
+            finalDecisionNote: 'Legacy inquiry: automatic approval (no inquiry officer assigned).',
+            destinationBranchId: payload.destinationBranchId,
+            fineAmount: payload.fineAmount,
+          },
+        });
+        const snapshot = await tx.inquiry.findUnique({
+          where: { id: inquiryId },
+          include: INQUIRY_INCLUDE,
+        });
+        if (!snapshot) throw new NotFoundException('Inquiry not found');
+        await this.applyApprovedDecision(tx, snapshot as never, actingUserId, now);
+      });
+      await this.generatePostApplyLetters(await this.loadInquiry(inquiryId), actingUserId);
+      return this.loadInquiry(inquiryId);
+    }
+
+    const submitted = await this.submitFinalDecision(
+      inquiryId,
+      {
+        selectedApproverUserId: dto.selectedApproverUserId!,
+        destinationBranchId: dto.destinationBranchId,
+        finalAction: dto.finalAction,
+        fineAmount: dto.fineAmount,
+        notes: dto.notes,
+      },
+      actingUserId,
+      actingRole,
+      actingRoles,
+    );
+
+    const employee = submitted?.disciplinaryAction.employee;
+    const officer = submitted?.inquiryOfficer;
+    await notifyInquiryOfficerResultWhatsApp(this.whatsapp, {
+      phone: officer?.employee?.phone,
+      officerName: officer?.employee?.fullName,
+      employeeName: employee?.fullName ?? '',
+      employeeCode: employee?.employeeCode,
+      finding: submitted?.finding,
+      finalAction: submitted?.finalAction,
+      recommendation: dto.closeRecommendation,
+      notes: dto.notes,
+    });
+    await notifyInquiryApproverWhatsApp(this.whatsapp, {
+      kind: 'close',
+      phone: submitted?.selectedFinalApprover?.employee?.phone,
+      approverName: submitted?.selectedFinalApprover?.employee?.fullName,
+      employeeName: employee?.fullName ?? '',
+      employeeCode: employee?.employeeCode,
+      reason: submitted?.disciplinaryAction.reason,
+    });
+
+    return submitted;
   }
 
   async submitFinalDecision(
@@ -420,22 +551,28 @@ export class InquiryDecisionService {
     };
 
     if (finding === InquiryFinding.NOT_GUILTY) {
-      await this.applyMandatoryTransfer(tx, inquiry, now);
-      result.transferred = true;
+      const transferred = await this.applyReinstatementPlacement(
+        tx,
+        inquiry,
+        now,
+      );
+      result.transferred = transferred;
       result.outcome = InquiryOutcome.REINSTATED;
       result.employeeStatus = EmployeeStatus.ACTIVE;
       await tx.employee.update({
         where: { id: employee.id },
-        data: { status: EmployeeStatus.ACTIVE },
+        data: suspensionInquiryReinstatementData(now),
       });
       await tx.user.updateMany({
         where: { employeeId: employee.id },
         data: { isActive: true },
       });
-      await this.audit(tx, actingUserId, 'EMPLOYEE_TRANSFERRED', employee.id, {
-        inquiryId: inquiry.id,
-        destinationBranchId: inquiry.destinationBranchId,
-      });
+      if (transferred) {
+        await this.audit(tx, actingUserId, 'EMPLOYEE_TRANSFERRED', employee.id, {
+          inquiryId: inquiry.id,
+          destinationBranchId: inquiry.destinationBranchId,
+        });
+      }
       await this.audit(tx, actingUserId, 'EMPLOYEE_REINSTATED', employee.id, {
         inquiryId: inquiry.id,
         finding,
@@ -482,13 +619,17 @@ export class InquiryDecisionService {
       const fine = await this.applyDisciplinaryFine(tx, inquiry, now);
       result.fineDeductionId = fine.deductionId;
       result.fineSkippedReason = null;
-      await this.applyMandatoryTransfer(tx, inquiry, now);
-      result.transferred = true;
+      const transferred = await this.applyReinstatementPlacement(
+        tx,
+        inquiry,
+        now,
+      );
+      result.transferred = transferred;
       result.outcome = InquiryOutcome.REINSTATED;
       result.employeeStatus = EmployeeStatus.ACTIVE;
       await tx.employee.update({
         where: { id: employee.id },
-        data: { status: EmployeeStatus.ACTIVE },
+        data: suspensionInquiryReinstatementData(now),
       });
       await tx.user.updateMany({
         where: { employeeId: employee.id },
@@ -500,10 +641,12 @@ export class InquiryDecisionService {
         deductionId: fine.deductionId,
         payrollEntryId: fine.payrollEntryId,
       });
-      await this.audit(tx, actingUserId, 'EMPLOYEE_TRANSFERRED', employee.id, {
-        inquiryId: inquiry.id,
-        destinationBranchId: inquiry.destinationBranchId,
-      });
+      if (transferred) {
+        await this.audit(tx, actingUserId, 'EMPLOYEE_TRANSFERRED', employee.id, {
+          inquiryId: inquiry.id,
+          destinationBranchId: inquiry.destinationBranchId,
+        });
+      }
       await this.audit(tx, actingUserId, 'EMPLOYEE_REINSTATED', employee.id, {
         inquiryId: inquiry.id,
         finding,
@@ -561,21 +704,18 @@ export class InquiryDecisionService {
     return result;
   }
 
-  private async applyMandatoryTransfer(
+  private async applyReinstatementPlacement(
     tx: Prisma.TransactionClient,
     inquiry: Awaited<ReturnType<InquiryDecisionService['loadInquiry']>>,
     now: Date,
-  ) {
+  ): Promise<boolean> {
     const employee = inquiry.disciplinaryAction.employee;
     const destinationId = inquiry.destinationBranchId;
     if (!destinationId) {
-      throw new BadRequestException('A destination branch is required.');
+      throw new BadRequestException('A duty branch is required.');
     }
-    const forbidden = this.forbiddenBranchId(inquiry);
-    if (destinationId === forbidden) {
-      throw new BadRequestException(
-        'The employee must be transferred to a different branch.',
-      );
+    if (employee.currentBranchId === destinationId) {
+      return false;
     }
     if (!employee.currentDepartmentId || !employee.currentDesignation) {
       throw new BadRequestException(
@@ -583,7 +723,7 @@ export class InquiryDecisionService {
       );
     }
 
-    const transferReason = `Mandatory inquiry transfer (${inquiry.finding}) [${inquiry.id}]`;
+    const transferReason = `Inquiry reinstatement placement (${inquiry.finding}) [${inquiry.id}]`;
     const existingTransfer = await tx.employmentHistory.findFirst({
       where: { employeeId: employee.id, changeReason: transferReason },
     });
@@ -593,8 +733,9 @@ export class InquiryDecisionService {
           where: { id: employee.id },
           data: { currentBranchId: destinationId },
         });
+        return true;
       }
-      return;
+      return false;
     }
 
     const openHistory = await tx.employmentHistory.findFirst({
@@ -624,6 +765,7 @@ export class InquiryDecisionService {
         effectiveDate: now,
       },
     });
+    return true;
   }
 
   private async applyDisciplinaryFine(
@@ -874,11 +1016,10 @@ export class InquiryDecisionService {
     if (inquiry.finding === InquiryFinding.NOT_GUILTY) {
       if (dto.finalAction) {
         throw new BadRequestException(
-          'NOT_GUILTY does not take a GUILTY final action. Transfer and reinstatement are required.',
+          'NOT_GUILTY does not take a GUILTY final action. Choose the duty branch; the employee may stay at the same branch or move to another.',
         );
       }
-      const destinationBranchId = await this.assertNewBranch(
-        inquiry,
+      const destinationBranchId = await this.assertDutyBranch(
         dto.destinationBranchId,
       );
       return {
@@ -894,8 +1035,7 @@ export class InquiryDecisionService {
       );
     }
     if (dto.finalAction === InquiryFinalAction.FINE_AND_REINSTATE) {
-      const destinationBranchId = await this.assertNewBranch(
-        inquiry,
+      const destinationBranchId = await this.assertDutyBranch(
         dto.destinationBranchId,
       );
       const fineAmount = Number(dto.fineAmount);
@@ -911,19 +1051,10 @@ export class InquiryDecisionService {
     };
   }
 
-  private async assertNewBranch(
-    inquiry: Awaited<ReturnType<InquiryDecisionService['loadInquiry']>>,
-    destinationBranchId?: string,
-  ) {
+  private async assertDutyBranch(destinationBranchId?: string) {
     if (!destinationBranchId) {
       throw new BadRequestException(
-        'Select a destination branch. The employee cannot return to the suspension branch.',
-      );
-    }
-    const forbidden = this.forbiddenBranchId(inquiry);
-    if (destinationBranchId === forbidden) {
-      throw new BadRequestException(
-        'The destination branch must differ from the branch associated with this suspension.',
+        'Select the branch where the employee will continue duties. The same branch as before is allowed.',
       );
     }
     const branch = await this.prisma.branch.findUnique({
@@ -931,18 +1062,20 @@ export class InquiryDecisionService {
       select: { id: true, isActive: true },
     });
     if (!branch?.isActive) {
-      throw new BadRequestException('Destination branch was not found.');
+      throw new BadRequestException('Duty branch was not found.');
     }
     return branch.id;
   }
 
-  private forbiddenBranchId(
+  private assertOfficiallyOpen(
     inquiry: Awaited<ReturnType<InquiryDecisionService['loadInquiry']>>,
   ) {
-    return (
-      inquiry.disciplinaryAction.suspensionRequest?.suspendedFromBranchId ??
-      inquiry.disciplinaryAction.employee.currentBranchId
-    );
+    this.assertOpen(inquiry);
+    if (!inquiry.officiallyOpenedAt) {
+      throw new BadRequestException(
+        'This inquiry is not officially open yet. Wait for opening approval.',
+      );
+    }
   }
 
   private assertOpen(

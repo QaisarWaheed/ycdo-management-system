@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import {
   APPOINTMENT_TEMPLATE_CODES,
+  LEGACY_APPOINTMENT_TEMPLATE_CODES,
   appointmentFamilyMeta,
   appointmentTemplateFile,
 } from '../../src/modules/letters/appointment-families';
@@ -51,6 +52,12 @@ const TEMPLATES: TemplateSeed[] = [
     requiredVars: [],
   },
   ...APPOINTMENT_TEMPLATE_CODES.map((code) => ({
+    code,
+    name: appointmentFamilyMeta(code)!.name,
+    file: appointmentTemplateFile(code),
+    requiredVars: ['stipendAmount'],
+  })),
+  ...LEGACY_APPOINTMENT_TEMPLATE_CODES.map((code) => ({
     code,
     name: appointmentFamilyMeta(code)!.name,
     file: appointmentTemplateFile(code),

@@ -87,8 +87,8 @@ describe('AppointmentMappingsService', () => {
             departmentId: 'dept-1',
             designationId: 'des-lhv',
             active: false,
-            templateCode: 'APPT_CLINICAL_SUPPORT_UR',
-            language: AppointmentLetterLanguage.UR,
+            templateCode: 'APPT_CLINICAL_SUPPORT_EN',
+            language: AppointmentLetterLanguage.EN,
           },
         ]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -208,17 +208,17 @@ describe('AppointmentMappingsService', () => {
     expect(prisma.appointmentTemplateMapping.create).not.toHaveBeenCalled();
 
     prisma.letterTemplate.findFirst.mockResolvedValue({
-      code: 'APPT_VTI_UR',
+      code: 'APPT_SUPPORT_UR',
       active: true,
       bodyHtml: '<p>{{serviceArea}} {{chairmanAdminName}}</p>',
     });
     const ur = await service.previewSample({
-      templateCode: 'APPT_VTI_UR',
-      departmentName: 'VTI',
+      templateCode: 'APPT_SUPPORT_UR',
+      departmentName: 'GRADE 4',
     });
     expect(ur.language).toBe(AppointmentLetterLanguage.UR);
     expect(ur.previewHtml).toContain(APPOINTMENT_DRAFT_WATERMARK_TEXT);
-    expect(ur.variables.serviceArea).toBe('Vocational Training Services');
+    expect(ur.variables.serviceArea).toBe('Support Services');
   });
 
   it('rejects mapping ADMIN+LAB', async () => {

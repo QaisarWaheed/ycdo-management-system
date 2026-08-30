@@ -30,6 +30,7 @@ import {
 import type { LeaveRecord } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
+import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
 import { PendingSuspensionApprovalsCard } from '@/components/disciplinary/PendingSuspensionApprovalsCard'
 
 export function ExecutiveDashboard() {
@@ -120,6 +121,7 @@ export function ExecutiveDashboard() {
         </Card>
       </div>
 
+      <PendingInquiryOpenApprovalsCard />
       <PendingAppointmentApprovalsCard />
       <PendingSuspensionApprovalsCard />
       <PendingInquiryDecisionsCard />

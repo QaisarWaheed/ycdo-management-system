@@ -173,8 +173,10 @@ export function AppointmentLetterSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold">Appointment Letter Settings</h1>
         <p className="text-sm text-text-secondary">
-          Template mappings and coverage. Exact Department + Designation is the
-          default. Global fallback is not available here.
+          Urdu appointment letters are issued only to Grade 4 staff and to Repair
+          and Development staff except the Biomedical Engineer. All other staff
+          receive the English letter. Language follows the selected template
+          family.
         </p>
       </div>
 
