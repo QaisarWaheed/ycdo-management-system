@@ -1175,7 +1175,7 @@ export class EmployeesService {
       dto.status === EmployeeStatus.ACTIVE
     ) {
       throw new BadRequestException(
-        'A suspended employee cannot be set ACTIVE from Change Status. Complete the inquiry finding, approval, and mandatory transfer workflow.',
+        'A suspended employee cannot be set ACTIVE from Change Status. Complete the inquiry finding, approval, and reinstatement workflow.',
       );
     }
 

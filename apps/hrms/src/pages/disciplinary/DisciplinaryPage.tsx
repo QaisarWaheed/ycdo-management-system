@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, format } from 'date-fns'
@@ -128,7 +128,7 @@ function inquiryWorkflowLabel(inquiry: Inquiry) {
     return 'Final decision rejected'
   }
   if (inquiry.finding === 'NOT_GUILTY') {
-    return 'NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT'
+    return 'NOT GUILTY — choose duty branch, then reinstate'
   }
   if (inquiry.finding === 'GUILTY') {
     return 'GUILTY — select final action'
@@ -1301,7 +1301,7 @@ function RecordFindingDialog({
           </div>
           {finding === 'NOT_GUILTY' && (
             <p className="text-sm font-medium text-amber-800">
-              NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT
+              NOT GUILTY — they may continue duties at the same branch or another branch.
             </p>
           )}
           <div className="space-y-1">
@@ -1341,7 +1341,7 @@ function ProposeFinalDecisionDialog({
   const [fineAmount, setFineAmount] = useState('')
   const [notes, setNotes] = useState('')
 
-  const needsTransfer =
+  const needsDutyBranch =
     inquiry?.finding === 'NOT_GUILTY' || finalAction === 'FINE_AND_REINSTATE'
 
   const { data: branches = [] } = useQuery({
@@ -1355,15 +1355,20 @@ function ProposeFinalDecisionDialog({
     enabled: open,
   })
 
-  const forbiddenBranchId = (
+  const currentDutyBranchId = (
     inquiry as Inquiry & { action?: DisciplinaryAction }
   )?.action?.suspensionRequest?.suspendedFromBranchId
+
+  useEffect(() => {
+    if (!open || !inquiry) return
+    setDestinationBranchId(currentDutyBranchId ?? '')
+  }, [open, inquiry, currentDutyBranchId])
 
   const mutation = useMutation({
     mutationFn: () =>
       disciplinaryApi.submitInquiryFinalDecision(inquiry!.id, {
         selectedApproverUserId: approverId,
-        destinationBranchId: needsTransfer ? destinationBranchId : undefined,
+        destinationBranchId: needsDutyBranch ? destinationBranchId : undefined,
         finalAction:
           inquiry?.finding === 'GUILTY' ? finalAction : undefined,
         fineAmount:
@@ -1394,14 +1399,14 @@ function ProposeFinalDecisionDialog({
         <DialogHeader>
           <DialogTitle>
             {inquiry?.finding === 'NOT_GUILTY'
-              ? 'Mandatory transfer before reinstatement'
+              ? 'Choose duty branch for reinstatement'
               : 'Select final inquiry action'}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           {inquiry?.finding === 'NOT_GUILTY' && (
             <p className="text-sm font-medium text-amber-800">
-              NOT GUILTY — TRANSFER REQUIRED BEFORE REINSTATEMENT
+              NOT GUILTY — they may continue duties at the same branch or another branch.
             </p>
           )}
           {inquiry?.finding === 'GUILTY' && (
@@ -1422,26 +1427,27 @@ function ProposeFinalDecisionDialog({
               </Select>
             </div>
           )}
-          {needsTransfer && (
+          {needsDutyBranch && (
             <div className="space-y-1">
-              <Label>Destination branch</Label>
+              <Label>Duty branch</Label>
               <Select
                 value={destinationBranchId}
                 onValueChange={setDestinationBranchId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a different branch" />
+                  <SelectValue placeholder="Same branch or another branch" />
                 </SelectTrigger>
                 <SelectContent>
-                  {branches
-                    .filter((b) => b.id !== forbiddenBranchId)
-                    .map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-text-secondary">
+                They may continue at the same branch or be posted to another.
+              </p>
             </div>
           )}
           {inquiry?.finding === 'GUILTY' &&

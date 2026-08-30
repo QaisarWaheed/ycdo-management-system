@@ -421,8 +421,12 @@ export class InquiryDecisionService {
     };
 
     if (finding === InquiryFinding.NOT_GUILTY) {
-      await this.applyMandatoryTransfer(tx, inquiry, now);
-      result.transferred = true;
+      const transferred = await this.applyReinstatementPlacement(
+        tx,
+        inquiry,
+        now,
+      );
+      result.transferred = transferred;
       result.outcome = InquiryOutcome.REINSTATED;
       result.employeeStatus = EmployeeStatus.ACTIVE;
       await tx.employee.update({
@@ -433,10 +437,12 @@ export class InquiryDecisionService {
         where: { employeeId: employee.id },
         data: { isActive: true },
       });
-      await this.audit(tx, actingUserId, 'EMPLOYEE_TRANSFERRED', employee.id, {
-        inquiryId: inquiry.id,
-        destinationBranchId: inquiry.destinationBranchId,
-      });
+      if (transferred) {
+        await this.audit(tx, actingUserId, 'EMPLOYEE_TRANSFERRED', employee.id, {
+          inquiryId: inquiry.id,
+          destinationBranchId: inquiry.destinationBranchId,
+        });
+      }
       await this.audit(tx, actingUserId, 'EMPLOYEE_REINSTATED', employee.id, {
         inquiryId: inquiry.id,
         finding,
@@ -483,8 +489,12 @@ export class InquiryDecisionService {
       const fine = await this.applyDisciplinaryFine(tx, inquiry, now);
       result.fineDeductionId = fine.deductionId;
       result.fineSkippedReason = null;
-      await this.applyMandatoryTransfer(tx, inquiry, now);
-      result.transferred = true;
+      const transferred = await this.applyReinstatementPlacement(
+        tx,
+        inquiry,
+        now,
+      );
+      result.transferred = transferred;
       result.outcome = InquiryOutcome.REINSTATED;
       result.employeeStatus = EmployeeStatus.ACTIVE;
       await tx.employee.update({
@@ -501,10 +511,12 @@ export class InquiryDecisionService {
         deductionId: fine.deductionId,
         payrollEntryId: fine.payrollEntryId,
       });
-      await this.audit(tx, actingUserId, 'EMPLOYEE_TRANSFERRED', employee.id, {
-        inquiryId: inquiry.id,
-        destinationBranchId: inquiry.destinationBranchId,
-      });
+      if (transferred) {
+        await this.audit(tx, actingUserId, 'EMPLOYEE_TRANSFERRED', employee.id, {
+          inquiryId: inquiry.id,
+          destinationBranchId: inquiry.destinationBranchId,
+        });
+      }
       await this.audit(tx, actingUserId, 'EMPLOYEE_REINSTATED', employee.id, {
         inquiryId: inquiry.id,
         finding,
@@ -562,21 +574,18 @@ export class InquiryDecisionService {
     return result;
   }
 
-  private async applyMandatoryTransfer(
+  private async applyReinstatementPlacement(
     tx: Prisma.TransactionClient,
     inquiry: Awaited<ReturnType<InquiryDecisionService['loadInquiry']>>,
     now: Date,
-  ) {
+  ): Promise<boolean> {
     const employee = inquiry.disciplinaryAction.employee;
     const destinationId = inquiry.destinationBranchId;
     if (!destinationId) {
-      throw new BadRequestException('A destination branch is required.');
+      throw new BadRequestException('A duty branch is required.');
     }
-    const forbidden = this.forbiddenBranchId(inquiry);
-    if (destinationId === forbidden) {
-      throw new BadRequestException(
-        'The employee must be transferred to a different branch.',
-      );
+    if (employee.currentBranchId === destinationId) {
+      return false;
     }
     if (!employee.currentDepartmentId || !employee.currentDesignation) {
       throw new BadRequestException(
@@ -584,7 +593,7 @@ export class InquiryDecisionService {
       );
     }
 
-    const transferReason = `Mandatory inquiry transfer (${inquiry.finding}) [${inquiry.id}]`;
+    const transferReason = `Inquiry reinstatement placement (${inquiry.finding}) [${inquiry.id}]`;
     const existingTransfer = await tx.employmentHistory.findFirst({
       where: { employeeId: employee.id, changeReason: transferReason },
     });
@@ -594,8 +603,9 @@ export class InquiryDecisionService {
           where: { id: employee.id },
           data: { currentBranchId: destinationId },
         });
+        return true;
       }
-      return;
+      return false;
     }
 
     const openHistory = await tx.employmentHistory.findFirst({
@@ -625,6 +635,7 @@ export class InquiryDecisionService {
         effectiveDate: now,
       },
     });
+    return true;
   }
 
   private async applyDisciplinaryFine(
@@ -875,11 +886,10 @@ export class InquiryDecisionService {
     if (inquiry.finding === InquiryFinding.NOT_GUILTY) {
       if (dto.finalAction) {
         throw new BadRequestException(
-          'NOT_GUILTY does not take a GUILTY final action. Transfer and reinstatement are required.',
+          'NOT_GUILTY does not take a GUILTY final action. Choose the duty branch; the employee may stay at the same branch or move to another.',
         );
       }
-      const destinationBranchId = await this.assertNewBranch(
-        inquiry,
+      const destinationBranchId = await this.assertDutyBranch(
         dto.destinationBranchId,
       );
       return {
@@ -895,8 +905,7 @@ export class InquiryDecisionService {
       );
     }
     if (dto.finalAction === InquiryFinalAction.FINE_AND_REINSTATE) {
-      const destinationBranchId = await this.assertNewBranch(
-        inquiry,
+      const destinationBranchId = await this.assertDutyBranch(
         dto.destinationBranchId,
       );
       const fineAmount = Number(dto.fineAmount);
@@ -912,19 +921,10 @@ export class InquiryDecisionService {
     };
   }
 
-  private async assertNewBranch(
-    inquiry: Awaited<ReturnType<InquiryDecisionService['loadInquiry']>>,
-    destinationBranchId?: string,
-  ) {
+  private async assertDutyBranch(destinationBranchId?: string) {
     if (!destinationBranchId) {
       throw new BadRequestException(
-        'Select a destination branch. The employee cannot return to the suspension branch.',
-      );
-    }
-    const forbidden = this.forbiddenBranchId(inquiry);
-    if (destinationBranchId === forbidden) {
-      throw new BadRequestException(
-        'The destination branch must differ from the branch associated with this suspension.',
+        'Select the branch where the employee will continue duties. The same branch as before is allowed.',
       );
     }
     const branch = await this.prisma.branch.findUnique({
@@ -932,18 +932,9 @@ export class InquiryDecisionService {
       select: { id: true, isActive: true },
     });
     if (!branch?.isActive) {
-      throw new BadRequestException('Destination branch was not found.');
+      throw new BadRequestException('Duty branch was not found.');
     }
     return branch.id;
-  }
-
-  private forbiddenBranchId(
-    inquiry: Awaited<ReturnType<InquiryDecisionService['loadInquiry']>>,
-  ) {
-    return (
-      inquiry.disciplinaryAction.suspensionRequest?.suspendedFromBranchId ??
-      inquiry.disciplinaryAction.employee.currentBranchId
-    );
   }
 
   private assertOpen(
