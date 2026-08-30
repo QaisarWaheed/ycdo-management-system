@@ -24,6 +24,7 @@ import { PayrollService } from '../payroll/payroll.service';
 import { enforceBranchScope } from '../../common/branch-scope.util';
 import { dutyWindowsOverlap, getDutyWindow } from '../../common/duty.util';
 import { is24HourShift } from '../attendance/attendance-biometric.util';
+import { assertEmployeeEligibleForManualAttendance } from '../attendance/attendance-eligibility.util';
 import { toPakistanDateOnly } from '../attendance/attendance-late.util';
 import { pakistanYearMonthFromDate } from '../attendance/attendance-calendar.util';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
@@ -1113,12 +1114,7 @@ export class LeaveService {
       );
     }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.APPOINTED
-    ) {
-      throw new BadRequestException('Employee is not active');
-    }
+    assertEmployeeEligibleForManualAttendance(employee.status);
 
     if (isMedicineManagerRole(actingUser.role)) {
       if (!assertEmployeeInMedicineScope(employee)) {

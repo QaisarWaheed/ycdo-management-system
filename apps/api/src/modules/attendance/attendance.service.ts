@@ -110,6 +110,12 @@ import {
 import { buildSuspensionWatchlist } from './suspension-watchlist';
 import { issueDueSuspensionEligibilityNotices } from './suspension-eligibility-notice';
 import { issueNearSuspensionWarnings } from './near-suspension-warning';
+import {
+  assertEmployeeEligibleForAttendanceRecord,
+  assertEmployeeEligibleForBiometricAttendance,
+  assertEmployeeEligibleForManualAttendance,
+  assertEmployeeEligibleForRelieverAttendance,
+} from './attendance-eligibility.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
 const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
@@ -192,12 +198,7 @@ export class AttendanceService {
       );
     }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.TRAINEE
-    ) {
-      throw new BadRequestException('Employee is not active');
-    }
+    assertEmployeeEligibleForBiometricAttendance(employee.status);
 
     if (!dto.punchType) {
       throw new BadRequestException(
@@ -283,12 +284,7 @@ export class AttendanceService {
       );
     }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.TRAINEE
-    ) {
-      throw new BadRequestException('Employee is not active');
-    }
+    assertEmployeeEligibleForBiometricAttendance(employee.status);
 
     const device = await this.prisma.biometricDevice.findUnique({
       where: { deviceId: dto.deviceId },
@@ -1063,12 +1059,7 @@ export class AttendanceService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.TRAINEE
-    ) {
-      throw new BadRequestException('Employee is not active');
-    }
+    assertEmployeeEligibleForBiometricAttendance(employee.status);
 
     const checkTime = new Date();
     const twentyFourHour = is24HourShift(employee);
@@ -1120,12 +1111,7 @@ export class AttendanceService {
       );
     }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.APPOINTED
-    ) {
-      throw new BadRequestException('Employee is not active');
-    }
+    assertEmployeeEligibleForManualAttendance(employee.status);
 
     if (isMedicineManagerRole(actingUser.role)) {
       if (!assertEmployeeInMedicineScope(employee)) {
@@ -1431,6 +1417,7 @@ export class AttendanceService {
             id: true,
             fullName: true,
             employeeCode: true,
+            status: true,
             currentBranchId: true,
             dutyStartTime: true,
             dutyEndTime: true,
@@ -1447,6 +1434,8 @@ export class AttendanceService {
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
+
+    assertEmployeeEligibleForAttendanceRecord(log.employee.status);
 
     await this.accessScopeService.assertEmployeeAccess(
       actingUser.id,
@@ -2726,13 +2715,7 @@ export class AttendanceService {
     if (!employee) {
       throw new NotFoundException(`Employee with id ${dto.employeeId} not found`);
     }
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.APPOINTED &&
-      employee.status !== EmployeeStatus.TRAINEE
-    ) {
-      throw new BadRequestException('Reliever employee is not active');
-    }
+    assertEmployeeEligibleForRelieverAttendance(employee.status);
 
     const openSession = await this.prisma.relieverSession.findFirst({
       where: {
@@ -3256,6 +3239,8 @@ export class AttendanceService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
+    assertEmployeeEligibleForBiometricAttendance(employee.status);
+
     const branchLocation = employee.currentBranch.location;
     if (!branchLocation) {
       throw new BadRequestException(
@@ -3401,6 +3386,8 @@ export class AttendanceService {
     if (!employee) {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
+
+    assertEmployeeEligibleForBiometricAttendance(employee.status);
 
     const branchLocation = employee.currentBranch.location;
     if (!branchLocation) {
@@ -3825,6 +3812,7 @@ export class AttendanceService {
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       select: {
+        status: true,
         currentBranchId: true,
         dutyStartTime: true,
         dutyEndTime: true,
@@ -3837,6 +3825,8 @@ export class AttendanceService {
         `Employee with id ${dto.employeeId} not found`,
       );
     }
+
+    assertEmployeeEligibleForAttendanceRecord(employee.status);
 
     if (!employee.currentBranchId && !existing) {
       throw new BadRequestException(
