@@ -24,6 +24,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { hasAnyRole } from '../../common/user-roles.util';
 import { LettersService } from '../letters/letters.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { suspensionInquiryReinstatementData } from '../attendance/suspension-watch-baseline.util';
 import {
   SUSPENSION_PREPARE_ROLES,
@@ -36,13 +37,19 @@ import {
   restNotifiesOnApply,
   type ExpectedFinalLetter,
 } from './inquiry-final-letters';
+import {
+  notifyInquiryApproverWhatsApp,
+  notifyInquiryOfficerResultWhatsApp,
+} from './inquiry-whatsapp';
 
 const INQUIRY_INCLUDE = {
   inquiryOfficer: {
     select: {
       id: true,
       email: true,
-      employee: { select: { fullName: true } },
+      employee: {
+        select: { fullName: true, phone: true, currentDesignation: true },
+      },
     },
   },
   findingRecordedBy: {
@@ -56,7 +63,7 @@ const INQUIRY_INCLUDE = {
     select: {
       id: true,
       email: true,
-      employee: { select: { fullName: true } },
+      employee: { select: { fullName: true, phone: true } },
     },
   },
   finalDecidedBy: {
@@ -99,6 +106,7 @@ export class InquiryDecisionService {
     private prisma: PrismaService,
     private lettersService: LettersService,
     private suspensionRequestService: SuspensionRequestService,
+    private whatsapp: WhatsAppService,
   ) {}
 
   async recordFinding(
@@ -183,6 +191,128 @@ export class InquiryDecisionService {
     });
 
     return updated;
+  }
+
+  /**
+   * HR close form: record finding + recommendation + required action.
+   * Legacy inquiries with no officer apply immediately (auto-approval).
+   * New inquiries notify the officer in Urdu, then wait for final approver.
+   */
+  async closeInquiry(
+    inquiryId: string,
+    dto: {
+      finding: InquiryFinding;
+      notes?: string;
+      closeRecommendation?: string;
+      selectedApproverUserId?: string;
+      destinationBranchId?: string;
+      finalAction?: InquiryFinalAction;
+      fineAmount?: number;
+    },
+    actingUserId: string,
+    actingRole: UserRole,
+    actingRoles?: UserRole[],
+  ) {
+    this.assertPrepareRole(actingRole, actingRoles);
+    const inquiry = await this.loadInquiry(inquiryId);
+    this.assertOfficiallyOpen(inquiry);
+    if (
+      inquiry.finalDecisionStatus === InquiryFinalDecisionStatus.PENDING_APPROVAL ||
+      inquiry.finalDecisionStatus === InquiryFinalDecisionStatus.APPLIED
+    ) {
+      throw new BadRequestException(
+        'A final decision is already pending or applied.',
+      );
+    }
+
+    const isLegacyNoOfficer = !inquiry.inquiryOfficerUserId;
+    if (!isLegacyNoOfficer && !dto.selectedApproverUserId) {
+      throw new BadRequestException('Select whose approval is required.');
+    }
+
+    await this.prisma.inquiry.update({
+      where: { id: inquiryId },
+      data: {
+        finding: dto.finding,
+        findingRecordedById: actingUserId,
+        findingRecordedAt: new Date(),
+        notes: dto.notes ?? inquiry.notes,
+        closeRecommendation: dto.closeRecommendation ?? inquiry.closeRecommendation,
+      },
+    });
+
+    const withFinding = await this.loadInquiry(inquiryId);
+
+    if (isLegacyNoOfficer) {
+      const payload = await this.validateDecisionPayload(withFinding, {
+        destinationBranchId: dto.destinationBranchId,
+        finalAction: dto.finalAction,
+        fineAmount: dto.fineAmount,
+      });
+      const now = new Date();
+      await this.prisma.$transaction(async (tx) => {
+        await tx.inquiry.update({
+          where: { id: inquiryId },
+          data: {
+            finalAction: payload.finalAction,
+            finalDecisionStatus: InquiryFinalDecisionStatus.APPLIED,
+            selectedFinalApproverUserId: actingUserId,
+            finalDecisionSubmittedById: actingUserId,
+            finalDecisionSubmittedAt: now,
+            finalDecidedById: actingUserId,
+            finalDecidedAt: now,
+            finalDecisionNote: 'Legacy inquiry: automatic approval (no inquiry officer assigned).',
+            destinationBranchId: payload.destinationBranchId,
+            fineAmount: payload.fineAmount,
+          },
+        });
+        const snapshot = await tx.inquiry.findUnique({
+          where: { id: inquiryId },
+          include: INQUIRY_INCLUDE,
+        });
+        if (!snapshot) throw new NotFoundException('Inquiry not found');
+        await this.applyApprovedDecision(tx, snapshot as never, actingUserId, now);
+      });
+      await this.generatePostApplyLetters(await this.loadInquiry(inquiryId), actingUserId);
+      return this.loadInquiry(inquiryId);
+    }
+
+    const submitted = await this.submitFinalDecision(
+      inquiryId,
+      {
+        selectedApproverUserId: dto.selectedApproverUserId!,
+        destinationBranchId: dto.destinationBranchId,
+        finalAction: dto.finalAction,
+        fineAmount: dto.fineAmount,
+        notes: dto.notes,
+      },
+      actingUserId,
+      actingRole,
+      actingRoles,
+    );
+
+    const employee = submitted?.disciplinaryAction.employee;
+    const officer = submitted?.inquiryOfficer;
+    await notifyInquiryOfficerResultWhatsApp(this.whatsapp, {
+      phone: officer?.employee?.phone,
+      officerName: officer?.employee?.fullName,
+      employeeName: employee?.fullName ?? '',
+      employeeCode: employee?.employeeCode,
+      finding: submitted?.finding,
+      finalAction: submitted?.finalAction,
+      recommendation: dto.closeRecommendation,
+      notes: dto.notes,
+    });
+    await notifyInquiryApproverWhatsApp(this.whatsapp, {
+      kind: 'close',
+      phone: submitted?.selectedFinalApprover?.employee?.phone,
+      approverName: submitted?.selectedFinalApprover?.employee?.fullName,
+      employeeName: employee?.fullName ?? '',
+      employeeCode: employee?.employeeCode,
+      reason: submitted?.disciplinaryAction.reason,
+    });
+
+    return submitted;
   }
 
   async submitFinalDecision(
@@ -935,6 +1065,17 @@ export class InquiryDecisionService {
       throw new BadRequestException('Duty branch was not found.');
     }
     return branch.id;
+  }
+
+  private assertOfficiallyOpen(
+    inquiry: Awaited<ReturnType<InquiryDecisionService['loadInquiry']>>,
+  ) {
+    this.assertOpen(inquiry);
+    if (!inquiry.officiallyOpenedAt) {
+      throw new BadRequestException(
+        'This inquiry is not officially open yet. Wait for opening approval.',
+      );
+    }
   }
 
   private assertOpen(

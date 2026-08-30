@@ -4,11 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node api.js && vite",
+    "build": "node api.js && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "build:mobile": "CAPACITOR_BUILD=1 npm run build && npx cap sync",
+    "build:mobile": "node api.js && CAPACITOR_BUILD=1 npm run build && npx cap sync",
     "cap:sync": "npx cap sync",
     "cap:android": "npx cap open android",
     "cap:ios": "npx cap open ios"

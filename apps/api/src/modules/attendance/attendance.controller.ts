@@ -34,7 +34,7 @@ import {
   UpdateAttendanceDto,
   UpdateRelieverSessionDto,
 } from './attendance.dto';
-import { AccessScopeService } from '../permissions/access-scope.service';
+import { StartDueInquiryDto } from '../disciplinary/disciplinary.dto';
 import { AttendanceService } from './attendance.service';
 import { ShiftAbsentScheduler } from './shift-absent.scheduler';
 
@@ -318,6 +318,29 @@ export class AttendanceController {
     );
   }
 
+  @Get('suspension-watchlist/:employeeId/inquiry-preview')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
+  )
+  getDueInquiryPreview(
+    @Param('employeeId') employeeId: string,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    return this.attendanceService.getDueInquiryPreview(
+      employeeId,
+      year != null && year !== '' ? Number(year) : undefined,
+      month != null && month !== '' ? Number(month) : undefined,
+    );
+  }
+
   @Post('suspension-watchlist/:employeeId/start-case')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
@@ -331,7 +354,8 @@ export class AttendanceController {
   )
   startSuspensionCaseFromWatchlist(
     @Param('employeeId') employeeId: string,
-    @CurrentUser() user: { id: string; role: UserRole },
+    @Body() dto: StartDueInquiryDto,
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
     @Query('year') year?: string,
     @Query('month') month?: string,
   ) {
@@ -341,6 +365,8 @@ export class AttendanceController {
       user.role,
       year != null && year !== '' ? Number(year) : undefined,
       month != null && month !== '' ? Number(month) : undefined,
+      dto,
+      user.roles,
     );
   }
 

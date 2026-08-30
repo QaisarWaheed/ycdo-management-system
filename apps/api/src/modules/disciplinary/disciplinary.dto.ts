@@ -173,6 +173,54 @@ export class SubmitInquiryFinalDecisionDto {
   notes?: string;
 }
 
+export class CloseInquiryDto {
+  @IsEnum(InquiryFinding)
+  @IsNotEmpty()
+  finding: InquiryFinding;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  notes?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  closeRecommendation?: string;
+
+  @IsOptional()
+  @IsUUID()
+  selectedApproverUserId?: string;
+
+  @IsOptional()
+  @IsEnum(InquiryFinalAction)
+  finalAction?: InquiryFinalAction;
+
+  @IsOptional()
+  @IsUUID()
+  destinationBranchId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  fineAmount?: number;
+}
+
+export class StartDueInquiryDto {
+  @IsUUID()
+  @IsNotEmpty()
+  inquiryOfficerUserId: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  selectedApproverUserId: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  durationDays: number;
+}
+
 export class DecideSuspensionDto {
   @IsOptional()
   @IsString()

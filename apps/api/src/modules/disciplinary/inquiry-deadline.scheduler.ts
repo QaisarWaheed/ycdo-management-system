@@ -28,6 +28,7 @@ export class InquiryDeadlineScheduler {
     const candidates = await this.prisma.inquiry.findMany({
       where: {
         ...OPEN_INQUIRY,
+        officiallyOpenedAt: { not: null },
         deadlineReminderSentAt: null,
         deadlineAt: { gt: now, lte: windowEnd },
       },
@@ -58,6 +59,7 @@ export class InquiryDeadlineScheduler {
     const candidates = await this.prisma.inquiry.findMany({
       where: {
         ...OPEN_INQUIRY,
+        officiallyOpenedAt: { not: null },
         overdueNotificationSentAt: null,
         deadlineAt: { lte: now },
       },

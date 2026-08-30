@@ -138,6 +138,7 @@ describe('InquiryDecisionService', () => {
       prisma as never,
       lettersService as never,
       suspensionRequestService as never,
+      { sendPlainText: jest.fn().mockResolvedValue({ sent: false }) } as never,
     );
     return { service, prisma, tx, lettersService, suspensionRequestService };
   }

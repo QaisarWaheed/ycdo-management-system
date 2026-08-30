@@ -354,4 +354,56 @@ export class WhatsAppService {
     }
     return body.messages?.[0]?.id;
   }
+
+  /**
+   * Session/free-form text. Fails quietly for the caller when Meta is not
+   * configured or the number is missing; logs and returns skipped/failed.
+   */
+  async sendPlainText(input: {
+    phone?: string | null;
+    body: string;
+    context: string;
+  }): Promise<{ sent: boolean; skippedReason?: string }> {
+    const phoneE164 = normalizePakistanPhone(input.phone) ?? '';
+    if (!this.isConfigured()) {
+      this.logger.warn(`WhatsApp text skipped (${input.context}): not configured`);
+      return { sent: false, skippedReason: 'not_configured' };
+    }
+    if (!phoneE164) {
+      this.logger.warn(`WhatsApp text skipped (${input.context}): no phone`);
+      return { sent: false, skippedReason: 'no_phone' };
+    }
+
+    const token = process.env.WHATSAPP_TOKEN!;
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID!;
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to: phoneE164,
+            type: 'text',
+            text: { body: input.body.slice(0, 4096), preview_url: true },
+          }),
+        },
+      );
+      const body = (await res.json()) as { error?: { message?: string } };
+      if (!res.ok) {
+        throw new Error(body.error?.message ?? `Message send failed (${res.status})`);
+      }
+      return { sent: true };
+    } catch (err) {
+      this.logger.error(
+        `WhatsApp text failed (${input.context})`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      return { sent: false, skippedReason: err instanceof Error ? err.message : 'send_failed' };
+    }
+  }
 }

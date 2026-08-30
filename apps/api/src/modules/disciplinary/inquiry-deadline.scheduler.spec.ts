@@ -122,6 +122,7 @@ describe('InquiryDeadlineScheduler', () => {
         where: expect.objectContaining({
           closedAt: null,
           outcome: null,
+          officiallyOpenedAt: { not: null },
           deadlineReminderSentAt: null,
           deadlineAt: {
             gt: now,
@@ -204,6 +205,7 @@ describe('InquiryDeadlineScheduler', () => {
         where: expect.objectContaining({
           closedAt: null,
           outcome: null,
+          officiallyOpenedAt: { not: null },
           overdueNotificationSentAt: null,
           deadlineAt: { lte: now },
         }),
