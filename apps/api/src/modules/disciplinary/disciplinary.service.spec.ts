@@ -1,9 +1,12 @@
 import {
   DisciplinaryType,
   EmployeeStatus,
+  InquiryFinalAction,
+  InquiryFinalDecisionStatus,
   InquiryOutcome,
   LetterType,
   Permission,
+  SuspensionRequestStatus,
   UserRole,
 } from '@prisma/client';
 
@@ -215,35 +218,162 @@ describe('DisciplinaryService.create', () => {
     expect(tx.employee.update).not.toHaveBeenCalled();
   });
 
-  it('rejects legacy resolveInquiry for a SUSPENSION inquiry', async () => {
-    const { service, prisma, tx } = buildService();
-    Object.assign(prisma, {
+});
+
+describe('DisciplinaryService.resolveInquiry', () => {
+  const employeeId = 'emp-1';
+  const actingUserId = 'user-hr';
+
+  function buildResolve(inquiry: {
+    id: string;
+    outcome: InquiryOutcome | null;
+    closedAt?: Date | null;
+    finalDecisionStatus?: InquiryFinalDecisionStatus | null;
+    notes?: string | null;
+    disciplinaryAction: {
+      id: string;
+      type: DisciplinaryType;
+      reason: string;
+      employee: {
+        id: string;
+        currentDesignation?: string;
+        currentDepartment?: { name: string } | null;
+      };
+    };
+  }) {
+    const tx = {
+      inquiry: { update: jest.fn().mockResolvedValue({}) },
+      disciplinaryAction: { update: jest.fn().mockResolvedValue({}) },
+      employee: { update: jest.fn().mockResolvedValue({}) },
+      user: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      suspensionRequest: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      notification: { create: jest.fn().mockResolvedValue({}) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
       inquiry: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'inq-1',
-          outcome: null,
-          notes: null,
-          disciplinaryAction: {
-            id: 'action-1',
-            type: DisciplinaryType.SUSPENSION,
-            reason: 'Suspension case',
-            employee: { id: employeeId, currentDesignation: 'Staff' },
-          },
+        findUnique: jest.fn().mockResolvedValue(inquiry),
+      },
+      notification: { create: jest.fn().mockResolvedValue({}) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) =>
+        fn(tx),
+      ),
+    };
+    const lettersService = {
+      generate: jest.fn().mockResolvedValue({ letter: { status: 'DRAFT' } }),
+    };
+    const service = new DisciplinaryService(
+      prisma as never,
+      lettersService as never,
+      { assertEmployeeAccess: jest.fn() } as never,
+    );
+    return { service, prisma, tx, lettersService };
+  }
+
+  it('lets HR close a SUSPENSION inquiry with a reinstatement verdict', async () => {
+    const { service, tx, lettersService } = buildResolve({
+      id: 'inq-1',
+      outcome: null,
+      notes: null,
+      disciplinaryAction: {
+        id: 'action-1',
+        type: DisciplinaryType.SUSPENSION,
+        reason: 'Suspension case',
+        employee: {
+          id: employeeId,
+          currentDesignation: 'Staff',
+          currentDepartment: { name: 'OPD' },
+        },
+      },
+    });
+
+    await service.resolveInquiry(
+      { inquiryId: 'inq-1', outcome: InquiryOutcome.REINSTATED },
+      actingUserId,
+    );
+
+    expect(tx.inquiry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          outcome: InquiryOutcome.REINSTATED,
+          finalDecisionStatus: InquiryFinalDecisionStatus.APPLIED,
         }),
+      }),
+    );
+    expect(tx.employee.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { status: EmployeeStatus.ACTIVE },
+      }),
+    );
+    expect(tx.user.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { isActive: true },
+      }),
+    );
+    expect(tx.suspensionRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { status: SuspensionRequestStatus.COMPLETED },
+      }),
+    );
+    expect(lettersService.generate).toHaveBeenCalledWith(
+      expect.objectContaining({ letterType: LetterType.REINSTATEMENT }),
+      actingUserId,
+    );
+  });
+
+  it('maps REST verdict to ON_REST', async () => {
+    const { service, tx, lettersService } = buildResolve({
+      id: 'inq-2',
+      outcome: null,
+      disciplinaryAction: {
+        id: 'action-2',
+        type: DisciplinaryType.SUSPENSION,
+        reason: 'Inquiry',
+        employee: { id: employeeId, currentDesignation: 'Staff' },
+      },
+    });
+
+    await service.resolveInquiry(
+      { inquiryId: 'inq-2', outcome: InquiryOutcome.REST },
+      actingUserId,
+    );
+
+    expect(tx.inquiry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          outcome: InquiryOutcome.REST,
+          finalAction: InquiryFinalAction.REST,
+        }),
+      }),
+    );
+    expect(tx.employee.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { status: EmployeeStatus.ON_REST },
+      }),
+    );
+    expect(lettersService.generate).not.toHaveBeenCalled();
+  });
+
+  it('rejects an already closed inquiry', async () => {
+    const { service, tx } = buildResolve({
+      id: 'inq-3',
+      outcome: InquiryOutcome.REST,
+      disciplinaryAction: {
+        id: 'action-3',
+        type: DisciplinaryType.SUSPENSION,
+        reason: 'Done',
+        employee: { id: employeeId },
       },
     });
 
     await expect(
       service.resolveInquiry(
-        {
-          inquiryId: 'inq-1',
-          outcome: InquiryOutcome.REINSTATED,
-        },
+        { inquiryId: 'inq-3', outcome: InquiryOutcome.REINSTATED },
         actingUserId,
       ),
-    ).rejects.toThrow(/finding and final-decision workflow/);
-
-    expect((tx as { inquiry?: { update?: unknown } }).inquiry?.update).toBeUndefined();
+    ).rejects.toThrow('Inquiry has already been resolved');
+    expect(tx.inquiry.update).not.toHaveBeenCalled();
   });
 });
 

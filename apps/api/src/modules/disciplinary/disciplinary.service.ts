@@ -7,11 +7,14 @@ import {
   DisciplinaryStatus,
   DisciplinaryType,
   EmployeeStatus,
+  InquiryFinalAction,
+  InquiryFinalDecisionStatus,
   InquiryOutcome,
   LetterStatus,
   LetterType,
   Permission,
   Prisma,
+  SuspensionRequestStatus,
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -171,7 +174,12 @@ export class DisciplinaryService {
       where,
       include: {
         employee: {
-          select: { fullName: true, employeeCode: true, status: true },
+          select: {
+            id: true,
+            fullName: true,
+            employeeCode: true,
+            status: true,
+          },
         },
         inquiry: {
           include: {
@@ -485,19 +493,19 @@ export class DisciplinaryService {
       throw new NotFoundException(`Inquiry with id ${dto.inquiryId} not found`);
     }
 
-    if (inquiry.outcome) {
+    if (
+      inquiry.outcome ||
+      inquiry.closedAt ||
+      inquiry.finalDecisionStatus === InquiryFinalDecisionStatus.APPLIED
+    ) {
       throw new BadRequestException('Inquiry has already been resolved');
     }
 
     const action = inquiry.disciplinaryAction;
-    if (action.type === DisciplinaryType.SUSPENSION) {
-      throw new BadRequestException(
-        'Suspension inquiries must be completed through the finding and final-decision workflow.',
-      );
-    }
-
     const employee = action.employee;
     const today = this.formatDate(new Date());
+    const now = new Date();
+    const finalAction = this.finalActionForOutcome(dto.outcome);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.inquiry.update({
@@ -505,7 +513,12 @@ export class DisciplinaryService {
         data: {
           outcome: dto.outcome,
           notes: dto.notes,
-          closedAt: new Date(),
+          closedAt: now,
+          finalAction,
+          finalDecisionStatus: InquiryFinalDecisionStatus.APPLIED,
+          finalDecidedById: actingUserId,
+          finalDecidedAt: now,
+          finalDecisionNote: dto.notes,
         },
       });
 
@@ -518,25 +531,36 @@ export class DisciplinaryService {
         where: { id: action.id },
         data: {
           status: actionStatus,
-          resolvedAt: new Date(),
+          resolvedAt: now,
           resolution: dto.notes,
         },
       });
 
-      if (dto.outcome === InquiryOutcome.REINSTATED) {
+      if (
+        dto.outcome === InquiryOutcome.REINSTATED ||
+        dto.outcome === InquiryOutcome.REJOINED
+      ) {
         await tx.employee.update({
           where: { id: employee.id },
           data: { status: EmployeeStatus.ACTIVE },
+        });
+        await tx.user.updateMany({
+          where: { employeeId: employee.id },
+          data: { isActive: true },
         });
       } else if (dto.outcome === InquiryOutcome.TERMINATED) {
         await tx.employee.update({
           where: { id: employee.id },
           data: { status: EmployeeStatus.TERMINATED },
         });
-      } else if (dto.outcome === InquiryOutcome.REJOINED) {
+        await tx.user.updateMany({
+          where: { employeeId: employee.id },
+          data: { isActive: false },
+        });
+      } else if (dto.outcome === InquiryOutcome.REST) {
         await tx.employee.update({
           where: { id: employee.id },
-          data: { status: EmployeeStatus.ACTIVE },
+          data: { status: EmployeeStatus.ON_REST },
         });
       } else if (dto.outcome === InquiryOutcome.DISMISSED) {
         await tx.employee.update({
@@ -548,6 +572,14 @@ export class DisciplinaryService {
           data: { isActive: false },
         });
       }
+
+      await tx.suspensionRequest.updateMany({
+        where: {
+          disciplinaryActionId: action.id,
+          status: SuspensionRequestStatus.ISSUED,
+        },
+        data: { status: SuspensionRequestStatus.COMPLETED },
+      });
 
       await tx.notification.create({
         data: {
@@ -578,7 +610,7 @@ export class DisciplinaryService {
           extraFields: {
             reinstatementDate: today,
             reinstatedDesignation: employee.currentDesignation,
-            reinstatedDepartment: employee.currentDepartment.name,
+            reinstatedDepartment: employee.currentDepartment?.name ?? '',
             ...letterExtra,
           },
         },
@@ -737,6 +769,15 @@ export class DisciplinaryService {
       default:
         break;
     }
+  }
+
+  private finalActionForOutcome(
+    outcome: InquiryOutcome,
+  ): InquiryFinalAction | null {
+    if (outcome === InquiryOutcome.DISMISSED) return InquiryFinalAction.DISMISS;
+    if (outcome === InquiryOutcome.TERMINATED) return InquiryFinalAction.TERMINATE;
+    if (outcome === InquiryOutcome.REST) return InquiryFinalAction.REST;
+    return null;
   }
 
   private addDays(date: Date, days: number): Date {

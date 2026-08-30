@@ -25,6 +25,7 @@ Expected `/attendance/raw-scan` payload:
 ```json
 {
   "biometricId": "124",
+  "eventTime": "2026-08-22T08:03:17+05:00",
   "timestamp": "2026-08-22T08:03:17+05:00",
   "deviceId": "YCDO-CENTRAL-HOSPITAL",
   "deviceStatus": "checkIn",

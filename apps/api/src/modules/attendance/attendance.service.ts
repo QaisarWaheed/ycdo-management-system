@@ -57,6 +57,12 @@ import {
 } from './attendance-biometric.util';
 import { mapDeviceStatusToPunchType } from './device-status.util';
 import {
+  CHECKOUT_TOO_SOON_REASON,
+  devicePunchRejectReason,
+  isCheckoutTooSoon,
+  resolveRawScanPunchTime,
+} from './device-punch-time.util';
+import {
   applyDisciplineRules,
   reconcileAttendanceFinancialConsequences,
 } from './discipline.helper';
@@ -206,7 +212,17 @@ export class AttendanceService {
     // and a mis-registered or shared device used to stamp logs with a branch
     // that disagreed with the employee's profile.
     const branchId = employee.currentBranchId ?? device?.branchId ?? null;
-    // Always use API/server time in Pakistan — ignore device/agent clock (often wrong TZ).
+    // Live stream has no trustworthy device clock (TZ skew), so punch time is
+    // API now. If an agent *did* send a timestamp, still refuse hours-old
+    // reconnect dumps so they cannot stamp the whole branch at receive time.
+    if (dto.timestamp) {
+      const dumpReason = devicePunchRejectReason(
+        resolveRawScanPunchTime({ timestamp: dto.timestamp }).verdict,
+      );
+      if (dumpReason) {
+        throw new BadRequestException(dumpReason);
+      }
+    }
     const checkTime = new Date();
     const twentyFourHour = is24HourShift(employee);
     // Night shifts: a punch after midnight still belongs to yesterday's
@@ -279,7 +295,15 @@ export class AttendanceService {
       where: { deviceId: dto.deviceId },
     });
     const branchId = employee.currentBranchId ?? device?.branchId ?? null;
-    const checkTime = new Date();
+    const punchClock = resolveRawScanPunchTime({
+      eventTime: dto.eventTime,
+      timestamp: dto.timestamp,
+    });
+    const staleReason = devicePunchRejectReason(punchClock.verdict);
+    if (staleReason) {
+      return this.claimRawScanAndReject(dto, staleReason, employee.id);
+    }
+    const checkTime = punchClock.checkTime;
     const twentyFourHour = is24HourShift(employee);
     const dateOnly = this.resolvePunchAttendanceDate(
       checkTime,
@@ -397,6 +421,51 @@ export class AttendanceService {
     }
 
     return txResult;
+  }
+
+  /**
+   * Consume a device event we will not apply (stale reconnect dump, etc.)
+   * so the gateway marks it REJECTED and does not retry it into attendance.
+   */
+  private async claimRawScanAndReject(
+    dto: RawScanDto,
+    reason: string,
+    employeeId?: string | null,
+  ) {
+    try {
+      await this.prisma.processedDeviceEvent.create({
+        data: {
+          deviceId: dto.deviceId,
+          serialNo: dto.serialNo,
+          biometricId: dto.biometricId,
+          employeeId: employeeId ?? null,
+          punchType: mapDeviceStatusToPunchType(dto.deviceStatus),
+          rawStatus: dto.deviceStatus,
+        },
+      });
+    } catch (err: unknown) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'code' in err &&
+        (err as { code: string }).code === 'P2002'
+      ) {
+        return {
+          ok: true as const,
+          accepted: false as const,
+          idempotent: true as const,
+          reason: 'DEVICE_EVENT_ALREADY_PROCESSED',
+        };
+      }
+      throw err;
+    }
+
+    return {
+      ok: true as const,
+      accepted: false as const,
+      idempotent: false as const,
+      reason,
+    };
   }
 
   /**
@@ -897,6 +966,10 @@ export class AttendanceService {
       throw new BadRequestException(
         'No open check-in found for this employee today.',
       );
+    }
+
+    if (isCheckoutTooSoon(openRegular.checkIn, checkTime)) {
+      throw new BadRequestException(CHECKOUT_TOO_SOON_REASON);
     }
 
     const sessionMinutes = Math.round(

@@ -872,6 +872,7 @@ export interface DisciplinaryAction {
   status: string
   issuedAt: string
   employee?: {
+    id?: string
     fullName: string
     employeeCode: string
     status?: string

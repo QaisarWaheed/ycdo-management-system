@@ -30,7 +30,7 @@ HRMS_API    = "https://hrms-api.ycdo.org.pk"
 DEVICE_KEY  = "ycdo-device-secret-2026"
 DEVICE_ID   = "newOLD"
 
-REPLAY_HOURS         = 24    # process events up to 24 hours old
+REPLAY_HOURS         = 0.5   # 30 min — longer reconnect dumps must not rewrite attendance
 PENDING_SCAN_SECONDS = 120   # how long to wait for status after face scan
 
 # ── Mode ──
@@ -1445,7 +1445,7 @@ if __name__ == "__main__":
     print(f"API:       {HRMS_API}")
     print(f"Device ID: {DEVICE_ID}")
     print(f"PKT Time:  {get_pakistan_time()}")
-    print(f"Replay:    Last {REPLAY_HOURS} hours")
+    print(f"Replay:    Last {int(REPLAY_HOURS * 60)} minutes")
     print("=" * 35)
 
     threading.Thread(target=poll_face_sync, daemon=True).start()

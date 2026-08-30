@@ -178,12 +178,21 @@ const insertEvent = db.prepare(`
 INSERT INTO events (
   event_key, device_id, hikvision_device_id, employee_no, device_time, received_time,
   attendance_status, raw_attendance_status, auth_method, serial_no, major_event_type,
-  sub_event_type, source_ip, raw_json, next_attempt_at, created_at, updated_at
+  sub_event_type, source_ip, raw_json, delivery_status, hrms_reason, next_attempt_at, created_at, updated_at
 ) VALUES (
   @event_key, @device_id, @hikvision_device_id, @employee_no, @device_time, @received_time,
   @attendance_status, @raw_attendance_status, @auth_method, @serial_no, @major_event_type,
-  @sub_event_type, @source_ip, @raw_json, @next_attempt_at, @created_at, @updated_at
+  @sub_event_type, @source_ip, @raw_json, @delivery_status, @hrms_reason, @next_attempt_at, @created_at, @updated_at
 )`);
+
+const STALE_PUNCH_MS = 30 * 60 * 1000;
+
+function punchLagMs(deviceTime, receivedAt) {
+  const punch = Date.parse(String(deviceTime));
+  const recv = Date.parse(String(receivedAt));
+  if (!Number.isFinite(punch) || !Number.isFinite(recv)) return 0;
+  return recv - punch;
+}
 
 function normalizeIp(ip) {
   if (!ip) return "";
@@ -295,8 +304,11 @@ function normalizeEvent(event, device, sourceIp, receivedAt) {
     return { reject: true, reason: "HIKVISION_DEVICE_ID_MISMATCH", hikvisionDeviceId: String(hikvisionDeviceId) };
   }
 
-  const serialNo = ace.serialNo ?? ace.serialNumber ?? event.serialNo ?? event.serialNumber ?? null;
-  const deviceTime = event.dateTime ?? event.deviceTime ?? ace.dateTime ?? receivedAt;
+    const serialNo = ace.serialNo ?? ace.serialNumber ?? event.serialNo ?? event.serialNumber ?? null;
+    // Punch clock lives on AccessControllerEvent. The outer EventNotificationAlert
+    // dateTime is often the reconnect/envelope time and would stamp a whole
+    // offline dump onto one instant.
+    const deviceTime = ace.dateTime ?? event.dateTime ?? event.deviceTime ?? receivedAt;
   const authMethod = detectAuthMethod(event, ace);
 
   const normalized = {
@@ -387,6 +399,7 @@ app.post("/hikvision/event/:token", upload.any(), (req, res) => {
   }
 
   const now = new Date().toISOString();
+  const staleDump = punchLagMs(n.deviceTime, n.receivedTime) > STALE_PUNCH_MS;
   try {
     const info = insertEvent.run({
       event_key: n.eventKey,
@@ -403,12 +416,14 @@ app.post("/hikvision/event/:token", upload.any(), (req, res) => {
       sub_event_type: n.subEventType,
       source_ip: n.sourceIp,
       raw_json: JSON.stringify(n.raw),
-      next_attempt_at: now,
+      delivery_status: staleDump ? "REJECTED_BY_HRMS" : "PENDING",
+      hrms_reason: staleDump ? "STALE_DEVICE_EVENT" : null,
+      next_attempt_at: staleDump ? null : now,
       created_at: now,
       updated_at: now,
     });
     saveImages(req, info.lastInsertRowid);
-    log("info", "Attendance event queued", {
+    log("info", staleDump ? "Stale reconnect dump ignored" : "Attendance event queued", {
       id: Number(info.lastInsertRowid), deviceId: n.deviceId, employeeNo: n.employeeNo,
       status: n.attendanceStatus, serialNo: n.serialNo, deviceTime: n.deviceTime,
     });
@@ -469,6 +484,7 @@ function payloadForHrms(row) {
 
   const payload = {
     biometricId: String(row.employee_no),
+    eventTime: row.device_time,
     timestamp: row.device_time,
     deviceId: row.device_id,
     deviceStatus: statusForHrms,
@@ -550,7 +566,7 @@ async function outboxTick() {
       SELECT * FROM events
       WHERE delivery_status IN ('PENDING','RETRY')
         AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-      ORDER BY id ASC LIMIT 50
+      ORDER BY device_time ASC, id ASC LIMIT 50
     `).all(now);
     for (const row of rows) await deliverOne(row);
   } finally {

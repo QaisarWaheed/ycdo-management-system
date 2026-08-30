@@ -60,6 +60,15 @@ export class RawScanDto {
   @IsString()
   eventTime?: string;
 
+  /**
+   * Alias for eventTime. The gateway historically sent `timestamp`;
+   * ValidationPipe whitelist strips unknown fields, so this must be declared
+   * or HRMS never sees the device punch clock.
+   */
+  @IsOptional()
+  @IsString()
+  timestamp?: string;
+
   /** Per-device monotonically increasing event id — the idempotency key together with deviceId. */
   @IsString()
   @IsNotEmpty()

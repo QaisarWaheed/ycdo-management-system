@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -112,6 +113,22 @@ function personName(user?: {
 } | null) {
   if (!user) return '—'
   return user.employee?.fullName || user.email || '—'
+}
+
+const VERDICT_LABELS: Record<InquiryOutcome, string> = {
+  REINSTATED: 'Join again (reinstate)',
+  REJOINED: 'Rejoin',
+  REST: 'Send to rest',
+  DISMISSED: 'Dismiss',
+  TERMINATED: 'Terminate',
+}
+
+function inquiryIsOpen(inquiry: Pick<Inquiry, 'outcome' | 'closedAt' | 'finalDecisionStatus'>) {
+  return (
+    !inquiry.outcome &&
+    !inquiry.closedAt &&
+    inquiry.finalDecisionStatus !== 'APPLIED'
+  )
 }
 
 function inquiryWorkflowLabel(inquiry: Inquiry) {
@@ -532,7 +549,7 @@ const RESOLVE_FIELDS: Record<
   REST: [],
 }
 
-function ResolveInquiryDialog({
+function CloseInquiryDialog({
   inquiry,
   open,
   onOpenChange,
@@ -559,8 +576,8 @@ function ResolveInquiryDialog({
       }),
     onSuccess: () => {
       toast({
-        title: 'Inquiry resolved',
-        description: `Outcome: ${outcome.replace(/_/g, ' ')} — letter generated`,
+        title: 'Inquiry closed',
+        description: `Verdict: ${VERDICT_LABELS[outcome]}`,
       })
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
       setNotes('')
@@ -571,7 +588,7 @@ function ResolveInquiryDialog({
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
       toast({
-        title: 'Failed to resolve inquiry',
+        title: 'Failed to close inquiry',
         description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
         variant: 'destructive',
       })
@@ -584,11 +601,15 @@ function ResolveInquiryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Resolve Inquiry</DialogTitle>
+          <DialogTitle>Close Inquiry</DialogTitle>
+          <DialogDescription>
+            Record the verdict for this inquiry. This updates the employee’s
+            status and closes the case.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Outcome</Label>
+            <Label>Verdict</Label>
             <Select
               value={outcome}
               onValueChange={(v) => {
@@ -603,7 +624,7 @@ function ResolveInquiryDialog({
               <SelectContent>
                 {INQUIRY_OUTCOMES.map((o) => (
                   <SelectItem key={o} value={o}>
-                    {o.replace(/_/g, ' ')}
+                    {VERDICT_LABELS[o]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -612,19 +633,28 @@ function ResolveInquiryDialog({
 
           {outcome === 'TERMINATED' && (
             <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              This will permanently terminate the employee.
+              Employment will be terminated.
             </p>
           )}
           {outcome === 'REINSTATED' && (
             <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-              Employee will be reinstated to ACTIVE status.
+              The employee will return to ACTIVE and can join duty again.
+            </p>
+          )}
+          {outcome === 'REJOINED' && (
+            <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+              The employee will return to ACTIVE as a rejoin.
+            </p>
+          )}
+          {outcome === 'REST' && (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              The employee will be placed ON REST.
             </p>
           )}
           {outcome === 'DISMISSED' && (
             <>
               <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                This will permanently dismiss the employee. Dismissed employees
-                cannot change status and are barred from rejoining.
+                This permanently dismisses the employee. They cannot rejoin.
               </p>
               <label className="flex items-start gap-2 text-sm">
                 <input
@@ -642,8 +672,12 @@ function ResolveInquiryDialog({
           )}
 
           <div className="space-y-2">
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <Label>Decision notes</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Why this verdict was chosen…"
+            />
           </div>
 
           {fields.map((field) => (
@@ -668,6 +702,9 @@ function ResolveInquiryDialog({
           ))}
         </div>
         <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
             disabled={
@@ -675,7 +712,7 @@ function ResolveInquiryDialog({
             }
             onClick={() => mutation.mutate()}
           >
-            {mutation.isPending ? 'Resolving...' : 'Resolve Inquiry'}
+            {mutation.isPending ? 'Closing...' : 'Apply verdict'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -822,7 +859,10 @@ function ActionsTab({
                   <TableRow>
                     <TableCell>
                       <div>
-                        <EmployeeNameLink employee={action.employee} />
+                        <EmployeeNameLink
+                          employee={action.employee}
+                          employeeId={action.employeeId}
+                        />
                         <p className="font-mono text-xs text-text-secondary">
                           {action.employee?.employeeCode ?? '—'}
                         </p>
@@ -996,8 +1036,12 @@ function InquiriesTab({
 }) {
   const { user, hasRole } = useAuth()
   const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
+  const canClose = hasRole(['SUPER_ADMIN', 'HR_MANAGER'])
   const [findingInquiry, setFindingInquiry] = useState<Inquiry | null>(null)
   const [decisionInquiry, setDecisionInquiry] = useState<Inquiry | null>(null)
+  const [detailInquiry, setDetailInquiry] = useState<
+    (Inquiry & { action: DisciplinaryAction }) | null
+  >(null)
   const [employeeId, setEmployeeId] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState(ALL)
 
@@ -1103,7 +1147,10 @@ function InquiriesTab({
                 return (
                   <TableRow key={inquiry.id}>
                     <TableCell>
-                      <EmployeeNameLink employee={action.employee} />
+                      <EmployeeNameLink
+                        employee={action.employee}
+                        employeeId={action.employeeId}
+                      />
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={typeBadgeClass(action.type)}>
@@ -1141,17 +1188,9 @@ function InquiriesTab({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-2">
-                        <span className="text-sm">
-                          {inquiry.outcome ? 'Closed' : 'Open'}
-                        </span>
-                        <InquiryFinalState
-                          inquiry={inquiry}
-                          employeeStatus={action.employee?.status}
-                          employeeId={action.employeeId}
-                          canRecoverLetters={canPrepare}
-                        />
-                      </div>
+                      <span className="text-sm">
+                        {inquiryIsOpen(inquiry) ? 'Open' : 'Closed'}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -1163,10 +1202,24 @@ function InquiriesTab({
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDetailInquiry(inquiry)}
+                        >
+                          View Details
+                        </Button>
+                        {canClose && inquiryIsOpen(inquiry) && (
+                          <Button
+                            size="sm"
+                            onClick={() => onResolve(inquiry)}
+                          >
+                            Close Inquiry
+                          </Button>
+                        )}
                         {action.type === 'SUSPENSION' &&
                           !inquiry.finding &&
-                          !inquiry.outcome &&
-                          inquiry.finalDecisionStatus !== 'APPLIED' &&
+                          inquiryIsOpen(inquiry) &&
                           user?.id === inquiry.inquiryOfficerUserId && (
                             <Button
                               size="sm"
@@ -1178,9 +1231,8 @@ function InquiriesTab({
                           )}
                         {action.type === 'SUSPENSION' &&
                           !!inquiry.finding &&
-                          !inquiry.outcome &&
+                          inquiryIsOpen(inquiry) &&
                           inquiry.finalDecisionStatus !== 'PENDING_APPROVAL' &&
-                          inquiry.finalDecisionStatus !== 'APPLIED' &&
                           canPrepare && (
                             <Button
                               size="sm"
@@ -1199,15 +1251,6 @@ function InquiriesTab({
                             Applied — letters stay draft until issued from Letters.
                           </p>
                         )}
-                        {action.type !== 'SUSPENSION' && !inquiry.outcome && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => onResolve(inquiry)}
-                          >
-                            Resolve Inquiry
-                          </Button>
-                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1224,6 +1267,40 @@ function InquiriesTab({
           onPageChange={setPage}
         />
       </div>
+
+      <Dialog open={!!detailInquiry} onOpenChange={(v) => !v && setDetailInquiry(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Inquiry details</DialogTitle>
+            <DialogDescription>
+              {detailInquiry?.action.employee?.fullName ?? 'Employee'} ·{' '}
+              {detailInquiry?.action.type.replace(/_/g, ' ')}
+            </DialogDescription>
+          </DialogHeader>
+          {detailInquiry && (
+            <div className="space-y-3 text-sm">
+              <p>
+                <span className="font-medium">Reason: </span>
+                {detailInquiry.action.reason}
+              </p>
+              <p>
+                <span className="font-medium">Inquiry officer: </span>
+                {personName(detailInquiry.inquiryOfficer)}
+              </p>
+              <p>
+                <span className="font-medium">Notes: </span>
+                {detailInquiry.notes || '—'}
+              </p>
+              <InquiryFinalState
+                inquiry={detailInquiry}
+                employeeStatus={detailInquiry.action.employee?.status}
+                employeeId={detailInquiry.action.employeeId}
+                canRecoverLetters={canPrepare}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <RecordFindingDialog
         inquiry={findingInquiry}
@@ -1528,7 +1605,7 @@ export function DisciplinaryPage({
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="actions">Actions</TabsTrigger>
-          <TabsTrigger value="inquiries">Inquiries</TabsTrigger>
+          <TabsTrigger value="inquiries">Enquiries</TabsTrigger>
         </TabsList>
 
         <TabsContent value="actions" className="mt-4">
@@ -1557,7 +1634,7 @@ export function DisciplinaryPage({
         }}
       />
 
-      <ResolveInquiryDialog
+      <CloseInquiryDialog
         inquiry={resolveInquiry}
         open={!!resolveInquiry}
         onOpenChange={(v) => !v && setResolveInquiry(null)}

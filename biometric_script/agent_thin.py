@@ -52,7 +52,7 @@ HRMS_API    = "https://hrms-api.ycdo.org.pk"
 DEVICE_KEY  = "ycdo-device-secret-2026"
 DEVICE_ID   = "newOLD"
 
-REPLAY_HOURS = 24  # backfill: forward events up to this many hours old after an outage
+REPLAY_HOURS = 0.5  # 30 min — do not forward hours-old reconnect dumps
 
 # ── Mode ──
 # "stream" = alertStream realtime push (modern devices)
