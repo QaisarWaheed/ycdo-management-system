@@ -82,10 +82,9 @@ export const attendanceApi = {
   startSuspensionCaseFromWatchlist: (
     employeeId: string,
     data: {
-      periodStart: string
-      periodEnd: string
-      inquiryOfficerUserId: string
-      inquiryDeadlineAt?: string
+      enquiryStart: string
+      enquiryEnd: string
+      inquiryOfficerName: string
     },
     params?: { month?: number; year?: number },
   ) =>

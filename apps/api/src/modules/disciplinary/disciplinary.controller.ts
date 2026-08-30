@@ -63,12 +63,18 @@ export class DisciplinaryController {
   }
 
   @Patch('inquiry/resolve')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
   resolveInquiry(
     @Body() dto: ResolveInquiryDto,
     @CurrentUser() user: { id: string },
   ) {
     return this.disciplinaryService.resolveInquiry(dto, user.id);
+  }
+
+  @Post(':actionId/ensure-inquiry')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
+  ensureInquiry(@Param('actionId') actionId: string) {
+    return this.disciplinaryService.ensureInquiry(actionId);
   }
 
   @Get('suspension/eligible-approvers')

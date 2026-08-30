@@ -10,6 +10,7 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -384,19 +385,16 @@ export class RelieverCheckOutDto {
 export class StartWatchlistInquiryDto {
   @IsDateString()
   @IsNotEmpty()
-  periodStart: string;
+  enquiryStart: string;
 
   @IsDateString()
   @IsNotEmpty()
-  periodEnd: string;
+  enquiryEnd: string;
 
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
-  inquiryOfficerUserId: string;
-
-  @IsOptional()
-  @IsDateString()
-  inquiryDeadlineAt?: string;
+  @MaxLength(200)
+  inquiryOfficerName: string;
 }
 
 /** HR correction to an existing RelieverSession's recorded timestamps. */

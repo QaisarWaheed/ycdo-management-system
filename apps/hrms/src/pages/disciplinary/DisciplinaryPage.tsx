@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, format } from 'date-fns'
@@ -6,7 +6,7 @@ import { MoreHorizontal } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
-import { canStartLegacyInquiry } from '@/lib/disciplinaryInquiryUi'
+import { canStartLegacyInquiry, isOpenEnquiryAction, isOrphanEnquiryAction, officerNameFromReason } from '@/lib/disciplinaryInquiryUi'
 import { branchesApi } from '@/api/endpoints/branches'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
@@ -113,6 +113,29 @@ function personName(user?: {
 } | null) {
   if (!user) return '—'
   return user.employee?.fullName || user.email || '—'
+}
+
+function inquiryOfficerLabel(inquiry: Inquiry) {
+  const named = inquiry.inquiryOfficerName?.trim()
+  if (named) return named
+  return personName(inquiry.inquiryOfficer)
+}
+
+function placeholderInquiry(action: DisciplinaryAction): Inquiry {
+  const started = action.issuedAt
+  const startDate = new Date(started)
+  const deadline = Number.isNaN(startDate.getTime())
+    ? new Date()
+    : addDays(startDate, 7)
+  return {
+    id: '',
+    disciplinaryActionId: action.id,
+    startedAt: started,
+    deadlineAt: deadline.toISOString(),
+    inquiryOfficerName: officerNameFromReason(action.reason),
+    outcome: null,
+    closedAt: null,
+  }
 }
 
 const VERDICT_LABELS: Record<InquiryOutcome, string> = {
@@ -528,27 +551,6 @@ function StartInquiryDialog({
   )
 }
 
-const RESOLVE_FIELDS: Record<
-  InquiryOutcome,
-  { key: string; label: string; type?: 'textarea' }[]
-> = {
-  REINSTATED: [
-    { key: 'reinstatementDate', label: 'Reinstatement Date' },
-    { key: 'reinstatedDesignation', label: 'Reinstated Designation' },
-  ],
-  TERMINATED: [
-    { key: 'terminationDate', label: 'Termination Date' },
-    { key: 'terminationReason', label: 'Termination Reason', type: 'textarea' },
-    { key: 'settlementDetails', label: 'Settlement Details', type: 'textarea' },
-  ],
-  REJOINED: [
-    { key: 'rejoiningDate', label: 'Rejoining Date' },
-    { key: 'rejoiningDesignation', label: 'Rejoining Designation' },
-  ],
-  DISMISSED: [],
-  REST: [],
-}
-
 function CloseInquiryDialog({
   inquiry,
   open,
@@ -560,29 +562,32 @@ function CloseInquiryDialog({
 }) {
   const queryClient = useQueryClient()
   const [outcome, setOutcome] = useState<InquiryOutcome>('REINSTATED')
-  const [notes, setNotes] = useState('')
-  const [extraFields, setExtraFields] = useState<Record<string, string>>({})
-  const [confirmDismissed, setConfirmDismissed] = useState(false)
+  const [decision, setDecision] = useState('')
+  const [duration, setDuration] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setOutcome('REINSTATED')
+    setDecision('')
+    setDuration('')
+  }, [open, inquiry?.id])
 
   const mutation = useMutation({
     mutationFn: () =>
       disciplinaryApi.resolveInquiry({
         inquiryId: inquiry!.id,
         outcome,
-        notes: notes || undefined,
-        extraLetterFields: Object.fromEntries(
-          Object.entries(extraFields).filter(([, v]) => v !== ''),
-        ),
+        decision: decision.trim() || undefined,
+        duration: duration.trim() || undefined,
       }),
     onSuccess: () => {
       toast({
         title: 'Inquiry closed',
-        description: `Verdict: ${VERDICT_LABELS[outcome]}`,
+        description: `Outcome: ${VERDICT_LABELS[outcome]}`,
       })
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
-      setNotes('')
-      setExtraFields({})
-      setConfirmDismissed(false)
+      setDecision('')
+      setDuration('')
       onOpenChange(false)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -595,28 +600,21 @@ function CloseInquiryDialog({
     },
   })
 
-  const fields = RESOLVE_FIELDS[outcome]
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Close Inquiry</DialogTitle>
           <DialogDescription>
-            Record the verdict for this inquiry. This updates the employee’s
-            status and closes the case.
+            Record the outcome, decision, and duration for this inquiry.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Verdict</Label>
+            <Label>Outcome of inquiry</Label>
             <Select
               value={outcome}
-              onValueChange={(v) => {
-                setOutcome(v as InquiryOutcome)
-                setExtraFields({})
-                setConfirmDismissed(false)
-              }}
+              onValueChange={(v) => setOutcome(v as InquiryOutcome)}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -630,76 +628,22 @@ function CloseInquiryDialog({
               </SelectContent>
             </Select>
           </div>
-
-          {outcome === 'TERMINATED' && (
-            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              Employment will be terminated.
-            </p>
-          )}
-          {outcome === 'REINSTATED' && (
-            <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-              The employee will return to ACTIVE and can join duty again.
-            </p>
-          )}
-          {outcome === 'REJOINED' && (
-            <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-              The employee will return to ACTIVE as a rejoin.
-            </p>
-          )}
-          {outcome === 'REST' && (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              The employee will be placed ON REST.
-            </p>
-          )}
-          {outcome === 'DISMISSED' && (
-            <>
-              <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                This permanently dismisses the employee. They cannot rejoin.
-              </p>
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={confirmDismissed}
-                  onChange={(e) => setConfirmDismissed(e.target.checked)}
-                />
-                <span>
-                  I understand this action is permanent and will dismiss the
-                  employee from the organization.
-                </span>
-              </label>
-            </>
-          )}
-
           <div className="space-y-2">
-            <Label>Decision notes</Label>
+            <Label>Decision</Label>
             <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Why this verdict was chosen…"
+              value={decision}
+              onChange={(e) => setDecision(e.target.value)}
+              placeholder="Write the decision on this inquiry…"
             />
           </div>
-
-          {fields.map((field) => (
-            <div key={field.key} className="space-y-2">
-              <Label>{field.label}</Label>
-              {field.type === 'textarea' ? (
-                <Textarea
-                  value={extraFields[field.key] ?? ''}
-                  onChange={(e) =>
-                    setExtraFields((f) => ({ ...f, [field.key]: e.target.value }))
-                  }
-                />
-              ) : (
-                <Input
-                  value={extraFields[field.key] ?? ''}
-                  onChange={(e) =>
-                    setExtraFields((f) => ({ ...f, [field.key]: e.target.value }))
-                  }
-                />
-              )}
-            </div>
-          ))}
+          <div className="space-y-2">
+            <Label>Duration</Label>
+            <Input
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              placeholder="e.g. 7 days"
+            />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -707,12 +651,10 @@ function CloseInquiryDialog({
           </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={
-              mutation.isPending || (outcome === 'DISMISSED' && !confirmDismissed)
-            }
+            disabled={mutation.isPending || !inquiry?.id}
             onClick={() => mutation.mutate()}
           >
-            {mutation.isPending ? 'Closing...' : 'Apply verdict'}
+            {mutation.isPending ? 'Closing...' : 'Close Inquiry'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -731,12 +673,16 @@ function ActionsTab({
   onStartInquiry,
   onSwitchToInquiries,
   onPrepareSuspension,
+  onCloseInquiry,
   canPrepare,
+  canClose,
 }: {
   onStartInquiry: (actionId: string) => void
   onSwitchToInquiries: () => void
   onPrepareSuspension: (action: DisciplinaryAction) => void
+  onCloseInquiry: (action: DisciplinaryAction) => void
   canPrepare: boolean
+  canClose: boolean
 }) {
   const [employeeId, setEmployeeId] = useState('')
   const [typeFilter, setTypeFilter] = useState(ALL)
@@ -833,7 +779,7 @@ function ActionsTab({
               <TableHead>Status</TableHead>
               <TableHead>Issued Date</TableHead>
               <TableHead>Inquiry</TableHead>
-              <TableHead className="w-[50px]" />
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -916,6 +862,15 @@ function ActionsTab({
                       )}
                     </TableCell>
                     <TableCell>
+                      <div className="flex items-center gap-2">
+                        {canClose && isOpenEnquiryAction(action) && (
+                          <Button
+                            size="sm"
+                            onClick={() => onCloseInquiry(action)}
+                          >
+                            Close Inquiry
+                          </Button>
+                        )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon">
@@ -937,6 +892,13 @@ function ActionsTab({
                               Start Inquiry
                             </DropdownMenuItem>
                           )}
+                          {canClose && isOpenEnquiryAction(action) && (
+                            <DropdownMenuItem
+                              onClick={() => onCloseInquiry(action)}
+                            >
+                              Close Inquiry
+                            </DropdownMenuItem>
+                          )}
                           {canPrepare && canPrepareSuspension(action) && (
                             <DropdownMenuItem
                               onClick={() => onPrepareSuspension(action)}
@@ -955,6 +917,7 @@ function ActionsTab({
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                   {expandedId === action.id && (
@@ -1030,13 +993,13 @@ function ActionsTab({
 }
 
 function InquiriesTab({
-  onResolve,
+  onCloseInquiry,
 }: {
-  onResolve: (inquiry: Inquiry) => void
+  onCloseInquiry: (action: DisciplinaryAction) => void
 }) {
   const { user, hasRole } = useAuth()
   const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
-  const canClose = hasRole(['SUPER_ADMIN', 'HR_MANAGER'])
+  const canClose = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
   const [findingInquiry, setFindingInquiry] = useState<Inquiry | null>(null)
   const [decisionInquiry, setDecisionInquiry] = useState<Inquiry | null>(null)
   const [detailInquiry, setDetailInquiry] = useState<
@@ -1056,9 +1019,9 @@ function InquiriesTab({
   const inquiries = useMemo(() => {
     type InquiryRow = Inquiry & { action: DisciplinaryAction }
     let list: InquiryRow[] = (actions as DisciplinaryAction[])
-      .filter((a) => a.inquiry)
+      .filter((a) => a.inquiry || isOrphanEnquiryAction(a))
       .map((a) => ({
-        ...a.inquiry!,
+        ...(a.inquiry ?? placeholderInquiry(a)),
         action: a,
       }))
 
@@ -1114,10 +1077,11 @@ function InquiriesTab({
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
+              <TableHead>Officer</TableHead>
               <TableHead>Action Type</TableHead>
               <TableHead>Reason</TableHead>
-              <TableHead>Started</TableHead>
-              <TableHead>Deadline</TableHead>
+              <TableHead>Start enquiry</TableHead>
+              <TableHead>End enquiry</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Outcome</TableHead>
               <TableHead>Actions</TableHead>
@@ -1127,7 +1091,7 @@ function InquiriesTab({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(8)].map((__, j) => (
+                  {[...Array(9)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -1136,7 +1100,7 @@ function InquiriesTab({
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={9} className="h-32 text-center text-text-secondary">
                   No inquiries found
                 </TableCell>
               </TableRow>
@@ -1152,6 +1116,7 @@ function InquiriesTab({
                         employeeId={action.employeeId}
                       />
                     </TableCell>
+                    <TableCell>{inquiryOfficerLabel(inquiry)}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={typeBadgeClass(action.type)}>
                         {action.type.replace(/_/g, ' ')}
@@ -1212,7 +1177,7 @@ function InquiriesTab({
                         {canClose && inquiryIsOpen(inquiry) && (
                           <Button
                             size="sm"
-                            onClick={() => onResolve(inquiry)}
+                            onClick={() => onCloseInquiry(inquiry.action)}
                           >
                             Close Inquiry
                           </Button>
@@ -1285,7 +1250,7 @@ function InquiriesTab({
               </p>
               <p>
                 <span className="font-medium">Inquiry officer: </span>
-                {personName(detailInquiry.inquiryOfficer)}
+                {inquiryOfficerLabel(detailInquiry)}
               </p>
               <p>
                 <span className="font-medium">Notes: </span>
@@ -1577,7 +1542,9 @@ export function DisciplinaryPage({
   onlyInquiries?: boolean
 }) {
   const { hasRole } = useAuth()
+  const queryClient = useQueryClient()
   const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
+  const canClose = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
   const [tab, setTab] = useState(onlyInquiries ? 'inquiries' : 'actions')
   const [newActionOpen, setNewActionOpen] = useState(false)
   const [startInquiryId, setStartInquiryId] = useState<string | null>(null)
@@ -1585,6 +1552,29 @@ export function DisciplinaryPage({
   const [prepareAction, setPrepareAction] = useState<DisciplinaryAction | null>(
     null,
   )
+
+  const openCloseInquiry = async (action: DisciplinaryAction) => {
+    if (action.inquiry?.id) {
+      setResolveInquiry(action.inquiry)
+      return
+    }
+    try {
+      const inquiry = await disciplinaryApi.ensureInquiry(action.id)
+      await queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
+      setResolveInquiry(inquiry)
+    } catch (err: unknown) {
+      const msg = (
+        err as { response?: { data?: { message?: string | string[] } } }
+      )?.response?.data?.message
+      toast({
+        title: 'Could not close inquiry',
+        description: Array.isArray(msg)
+          ? msg.join(', ')
+          : String(msg ?? 'The inquiry record could not be created.'),
+        variant: 'destructive',
+      })
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -1612,7 +1602,7 @@ export function DisciplinaryPage({
       )}
 
       {onlyInquiries ? (
-        <InquiriesTab onResolve={setResolveInquiry} />
+        <InquiriesTab onCloseInquiry={openCloseInquiry} />
       ) : (
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
@@ -1625,12 +1615,14 @@ export function DisciplinaryPage({
               onStartInquiry={setStartInquiryId}
               onSwitchToInquiries={() => setTab('inquiries')}
               onPrepareSuspension={setPrepareAction}
+              onCloseInquiry={openCloseInquiry}
               canPrepare={canPrepare}
+              canClose={canClose}
             />
           </TabsContent>
 
           <TabsContent value="inquiries" className="mt-4">
-            <InquiriesTab onResolve={setResolveInquiry} />
+            <InquiriesTab onCloseInquiry={openCloseInquiry} />
           </TabsContent>
         </Tabs>
       )}

@@ -901,6 +901,7 @@ export interface Inquiry {
   notes?: string | null
   closedAt?: string | null
   inquiryOfficerUserId?: string | null
+  inquiryOfficerName?: string | null
   finding?: 'GUILTY' | 'NOT_GUILTY' | null
   findingRecordedAt?: string | null
   finalAction?: 'DISMISS' | 'TERMINATE' | 'REST' | 'FINE_AND_REINSTATE' | null

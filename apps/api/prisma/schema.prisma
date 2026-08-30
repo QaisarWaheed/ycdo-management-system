@@ -648,6 +648,7 @@ model Inquiry {
   notes                         String?
   closedAt                      DateTime?
   inquiryOfficerUserId          String?
+  inquiryOfficerName            String?
   finding                       InquiryFinding?
   findingRecordedById           String?
   findingRecordedAt             DateTime?

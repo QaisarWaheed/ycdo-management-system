@@ -139,6 +139,7 @@ export class DisciplinaryService {
   async findAll(
     query: DisciplinaryQueryDto,
     actingUser?: { id: string; role: UserRole },
+    repaired = false,
   ) {
     const where: Prisma.DisciplinaryActionWhereInput = {};
 
@@ -236,6 +237,20 @@ export class DisciplinaryService {
       orderBy: { issuedAt: 'desc' },
     });
 
+    const missingInquiry = rows.filter(
+      (row) =>
+        !row.inquiry &&
+        (row.status === DisciplinaryStatus.UNDER_INQUIRY ||
+          (row.type === DisciplinaryType.SUSPENSION &&
+            row.status === DisciplinaryStatus.OPEN)),
+    );
+    if (missingInquiry.length > 0 && !repaired) {
+      for (const action of missingInquiry) {
+        await this.ensureInquiryForAction(action);
+      }
+      return this.findAll(query, actingUser, true);
+    }
+
     return this.withFinalLetterStatuses(rows);
   }
 
@@ -314,6 +329,35 @@ export class DisciplinaryService {
 
     const [annotated] = await this.withFinalLetterStatuses([action]);
     return annotated;
+  }
+
+  async ensureInquiry(actionId: string) {
+    const existing = await this.prisma.inquiry.findUnique({
+      where: { disciplinaryActionId: actionId },
+    });
+    if (existing) return existing;
+
+    const action = await this.prisma.disciplinaryAction.findUnique({
+      where: { id: actionId },
+      select: { id: true, issuedAt: true, reason: true },
+    });
+    if (!action) {
+      throw new NotFoundException(
+        `Disciplinary action with id ${actionId} not found`,
+      );
+    }
+
+    await this.ensureInquiryForAction(action);
+
+    const created = await this.prisma.inquiry.findUnique({
+      where: { disciplinaryActionId: actionId },
+    });
+    if (!created) {
+      throw new BadRequestException(
+        'Could not create an inquiry for this disciplinary action',
+      );
+    }
+    return created;
   }
 
   private async withFinalLetterStatuses<
@@ -506,19 +550,29 @@ export class DisciplinaryService {
     const today = this.formatDate(new Date());
     const now = new Date();
     const finalAction = this.finalActionForOutcome(dto.outcome);
+    const noteParts = [
+      dto.decision?.trim(),
+      dto.duration?.trim()
+        ? `Duration: ${dto.duration.trim()}`
+        : dto.durationDays != null
+          ? `Duration: ${dto.durationDays} days`
+          : null,
+      dto.notes?.trim(),
+    ].filter((part): part is string => !!part);
+    const combinedNotes = noteParts.join('\n') || undefined;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.inquiry.update({
         where: { id: dto.inquiryId },
         data: {
           outcome: dto.outcome,
-          notes: dto.notes,
+          notes: combinedNotes,
           closedAt: now,
           finalAction,
           finalDecisionStatus: InquiryFinalDecisionStatus.APPLIED,
           finalDecidedById: actingUserId,
           finalDecidedAt: now,
-          finalDecisionNote: dto.notes,
+          finalDecisionNote: combinedNotes,
         },
       });
 
@@ -532,7 +586,7 @@ export class DisciplinaryService {
         data: {
           status: actionStatus,
           resolvedAt: now,
-          resolution: dto.notes,
+          resolution: combinedNotes,
         },
       });
 
@@ -595,7 +649,13 @@ export class DisciplinaryService {
           action: 'INQUIRY_RESOLVED',
           entity: 'Inquiry',
           entityId: dto.inquiryId,
-          changes: { outcome: dto.outcome, notes: dto.notes },
+          changes: {
+            outcome: dto.outcome,
+            notes: combinedNotes,
+            decision: dto.decision,
+            duration: dto.duration,
+            durationDays: dto.durationDays,
+          },
         },
       });
     });
@@ -623,7 +683,7 @@ export class DisciplinaryService {
           letterType: LetterType.TERMINATION,
           extraFields: {
             terminationReason:
-              dto.notes || inquiry.notes || action.reason,
+              combinedNotes || inquiry.notes || action.reason,
             terminationDate: today,
             settlementDetails: 'As per HR policy',
             ...letterExtra,
@@ -652,7 +712,7 @@ export class DisciplinaryService {
           extraFields: {
             terminationReason: 'Dismissed due to corruption inquiry',
             terminationDate: today,
-            settlementDetails: dto.notes || inquiry.notes || action.reason,
+            settlementDetails: combinedNotes || inquiry.notes || action.reason,
             ...letterExtra,
           },
         },
@@ -677,7 +737,7 @@ export class DisciplinaryService {
           changes: {
             inquiryId: dto.inquiryId,
             outcome: dto.outcome,
-            notes: dto.notes,
+            notes: combinedNotes,
           },
         },
       });
@@ -769,6 +829,44 @@ export class DisciplinaryService {
       default:
         break;
     }
+  }
+
+  private async ensureInquiryForAction(action: {
+    id: string;
+    issuedAt: Date;
+    reason: string;
+  }) {
+    const officerMatch = action.reason.match(/Inquiry officer:\s*(.+?)\./i);
+    const officerName = officerMatch?.[1]?.trim();
+    const startedAt = action.issuedAt ?? new Date();
+    const deadlineAt = this.addDays(startedAt, 7);
+    try {
+      await this.prisma.inquiry.create({
+        data: {
+          disciplinaryActionId: action.id,
+          startedAt,
+          deadlineAt,
+          ...(officerName ? { inquiryOfficerName: officerName } : {}),
+        },
+      });
+    } catch {
+      try {
+        await this.prisma.inquiry.create({
+          data: {
+            disciplinaryActionId: action.id,
+            startedAt,
+            deadlineAt,
+            notes: officerName ? `Inquiry officer: ${officerName}` : undefined,
+          },
+        });
+      } catch {
+        return;
+      }
+    }
+    await this.prisma.disciplinaryAction.update({
+      where: { id: action.id },
+      data: { status: DisciplinaryStatus.UNDER_INQUIRY },
+    });
   }
 
   private finalActionForOutcome(

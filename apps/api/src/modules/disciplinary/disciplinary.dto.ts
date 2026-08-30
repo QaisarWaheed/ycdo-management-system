@@ -80,6 +80,23 @@ export class ResolveInquiryDto {
   notes?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  decision?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  duration?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(3650)
+  durationDays?: number;
+
+  @IsOptional()
   @IsObject()
   extraLetterFields?: Record<string, unknown>;
 }

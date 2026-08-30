@@ -4045,7 +4045,7 @@ export class AttendanceService {
     dto: StartWatchlistInquiryDto,
     year?: number,
     month?: number,
-    actingRoles?: UserRole[],
+    _actingRoles?: UserRole[],
   ) {
     const list = await this.getSuspensionWatchlist(year, month);
     const entry = list.due.find((e) => e.employeeId === employeeId);
@@ -4055,22 +4055,20 @@ export class AttendanceService {
       );
     }
 
-    const periodStart = new Date(dto.periodStart);
-    const periodEnd = new Date(dto.periodEnd);
-    if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) {
-      throw new BadRequestException('Suspension period dates are invalid');
+    const enquiryStart = new Date(dto.enquiryStart);
+    const enquiryEnd = new Date(dto.enquiryEnd);
+    if (Number.isNaN(enquiryStart.getTime()) || Number.isNaN(enquiryEnd.getTime())) {
+      throw new BadRequestException('Enquiry dates are invalid');
     }
-    if (periodEnd.getTime() < periodStart.getTime()) {
+    if (enquiryEnd.getTime() < enquiryStart.getTime()) {
       throw new BadRequestException(
-        'Suspension period end must be on or after the start date',
+        'End enquiry date must be on or after the start enquiry date',
       );
     }
 
-    const inquiryDeadlineAt = dto.inquiryDeadlineAt
-      ? new Date(dto.inquiryDeadlineAt)
-      : periodEnd;
-    if (Number.isNaN(inquiryDeadlineAt.getTime())) {
-      throw new BadRequestException('Inquiry deadline is invalid');
+    const officerName = dto.inquiryOfficerName.trim();
+    if (!officerName) {
+      throw new BadRequestException('Inquiry officer name is required');
     }
 
     const reason = [
@@ -4078,6 +4076,7 @@ export class AttendanceService {
       `Late days: ${entry.lateDays}.`,
       `Uninformed absent days: ${entry.uninformedAbsentDays}.`,
       `Watchlist reasons: ${entry.reasons.join(', ')}.`,
+      `Inquiry officer: ${officerName}.`,
     ].join(' ');
 
     const action = await this.disciplinaryService.create(
@@ -4090,33 +4089,31 @@ export class AttendanceService {
       actingRole,
     );
 
-    await this.suspensionRequestService.prepare(
-      action.id,
-      {
-        reason,
-        periodStart,
-        periodEnd,
-        inquiryDeadlineAt,
-        inquiryOfficerUserId: dto.inquiryOfficerUserId,
-        selectedApproverUserId: dto.inquiryOfficerUserId,
-      },
-      actingUserId,
-      actingRole,
-      actingRoles,
-    );
-
     const existingInquiry = await this.prisma.inquiry.findUnique({
       where: { disciplinaryActionId: action.id },
       select: { id: true },
     });
     if (!existingInquiry) {
-      const created = await this.prisma.inquiry.create({
-        data: {
-          disciplinaryActionId: action.id,
-          inquiryOfficerUserId: dto.inquiryOfficerUserId,
-          deadlineAt: inquiryDeadlineAt,
-        },
-      });
+      let created: { id: string };
+      try {
+        created = await this.prisma.inquiry.create({
+          data: {
+            disciplinaryActionId: action.id,
+            inquiryOfficerName: officerName,
+            startedAt: enquiryStart,
+            deadlineAt: enquiryEnd,
+          },
+        });
+      } catch {
+        created = await this.prisma.inquiry.create({
+          data: {
+            disciplinaryActionId: action.id,
+            startedAt: enquiryStart,
+            deadlineAt: enquiryEnd,
+            notes: `Inquiry officer: ${officerName}`,
+          },
+        });
+      }
       await this.prisma.disciplinaryAction.update({
         where: { id: action.id },
         data: { status: DisciplinaryStatus.UNDER_INQUIRY },
@@ -4125,7 +4122,7 @@ export class AttendanceService {
         data: {
           employeeId,
           type: 'INQUIRY_STARTED',
-          message: `An inquiry has been initiated regarding your disciplinary action. Deadline: ${inquiryDeadlineAt.toISOString().slice(0, 10)}`,
+          message: `An inquiry has been initiated regarding your disciplinary action. Deadline: ${enquiryEnd.toISOString().slice(0, 10)}`,
         },
       });
       await this.prisma.auditLog.create({
@@ -4134,7 +4131,12 @@ export class AttendanceService {
           action: 'INQUIRY_STARTED',
           entity: 'Inquiry',
           entityId: created.id,
-          changes: { disciplinaryActionId: action.id },
+          changes: {
+            disciplinaryActionId: action.id,
+            inquiryOfficerName: officerName,
+            enquiryStart: enquiryStart.toISOString(),
+            enquiryEnd: enquiryEnd.toISOString(),
+          },
         },
       });
     }

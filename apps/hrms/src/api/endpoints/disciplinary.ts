@@ -10,6 +10,8 @@ export const disciplinaryApi = {
     api.post('/disciplinary/inquiry', data),
   resolveInquiry: (data: Record<string, unknown>) =>
     api.patch('/disciplinary/inquiry/resolve', data),
+  ensureInquiry: (actionId: string) =>
+    api.post<unknown, Inquiry>(`/disciplinary/${actionId}/ensure-inquiry`),
   listEligibleApprovers: () =>
     api.get<
       unknown,
