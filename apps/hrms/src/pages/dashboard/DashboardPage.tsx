@@ -21,6 +21,7 @@ import { portalPresenceApi } from '@/api/endpoints/portalPresence'
 import { recruitmentApi } from '@/api/endpoints/recruitment'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
+import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
 import { PendingSuspensionApprovalsCard } from '@/components/disciplinary/PendingSuspensionApprovalsCard'
 import { PendingAppointmentApprovalsCard } from '@/components/letters/PendingAppointmentApprovalsCard'
 import type { AttendanceLog, Employee, LeaveRecord } from '@/types'
@@ -334,6 +335,7 @@ function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      <PendingInquiryOpenApprovalsCard />
       <PendingAppointmentApprovalsCard />
       <PendingSuspensionApprovalsCard />
       <PendingInquiryDecisionsCard />

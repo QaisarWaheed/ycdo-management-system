@@ -43,6 +43,7 @@ function makeService(employeeStatus: EmployeeStatus) {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
     { upsertFromRelieverSession: jest.fn() } as never,
   );
 

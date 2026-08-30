@@ -30,6 +30,7 @@ import { PayrollService } from '../payroll/payroll.service';
 import { LettersService } from '../letters/letters.service';
 import { summarizeAttendanceLogs } from './attendance-summary.util';
 import { DisciplinaryService } from '../disciplinary/disciplinary.service';
+import { InquiryOpeningService } from '../disciplinary/inquiry-opening.service';
 import { AdditionalWorkingDaysService } from '../additional-working-days/additional-working-days.service';
 import {
   ApproveOvertimeDto,
@@ -158,6 +159,7 @@ export class AttendanceService {
     private payrollService: PayrollService,
     private lettersService: LettersService,
     private disciplinaryService: DisciplinaryService,
+    private inquiryOpeningService: InquiryOpeningService,
     private additionalWorkingDaysService: AdditionalWorkingDaysService,
   ) {}
 
@@ -4031,7 +4033,8 @@ export class AttendanceService {
   }
 
   /**
-   * Due-for-suspension: open a SUSPENSION disciplinary case (Disciplinary tab).
+   * Due-for-suspension: submit an inquiry for opening approval.
+   * Employee stays ACTIVE until the selected authority approves.
    */
   async startSuspensionCaseFromWatchlist(
     employeeId: string,
@@ -4039,7 +4042,23 @@ export class AttendanceService {
     actingRole: UserRole,
     year?: number,
     month?: number,
+    input?: {
+      durationDays: number;
+      inquiryOfficerUserId: string;
+      selectedApproverUserId: string;
+    },
+    actingRoles?: UserRole[],
   ) {
+    if (
+      !input?.durationDays ||
+      !input.inquiryOfficerUserId ||
+      !input.selectedApproverUserId
+    ) {
+      throw new BadRequestException(
+        'Select inquiry days, inquiry officer, and whose approval is required.',
+      );
+    }
+
     const list = await this.getSuspensionWatchlist(year, month);
     const entry = list.due.find((e) => e.employeeId === employeeId);
     if (!entry) {
@@ -4055,17 +4074,48 @@ export class AttendanceService {
       `Watchlist reasons: ${entry.reasons.join(', ')}.`,
     ].join(' ');
 
-    const action = await this.disciplinaryService.create(
+    return this.inquiryOpeningService.submitPendingOpen(
       {
         employeeId,
-        type: DisciplinaryType.SUSPENSION,
         reason,
+        durationDays: input.durationDays,
+        inquiryOfficerUserId: input.inquiryOfficerUserId,
+        selectedApproverUserId: input.selectedApproverUserId,
       },
       actingUserId,
       actingRole,
+      actingRoles,
     );
+  }
 
-    return action;
+  async getDueInquiryPreview(
+    employeeId: string,
+    year?: number,
+    month?: number,
+  ) {
+    const list = await this.getSuspensionWatchlist(year, month);
+    const entry = list.due.find((e) => e.employeeId === employeeId);
+    if (!entry) {
+      throw new BadRequestException(
+        'Employee is not on the due-for-suspension watchlist for this month (or already has an open suspension case)',
+      );
+    }
+    const reason = [
+      `Due for suspension (${list.month}).`,
+      `Late days: ${entry.lateDays}.`,
+      `Uninformed absent days: ${entry.uninformedAbsentDays}.`,
+      `Watchlist reasons: ${entry.reasons.join(', ')}.`,
+    ].join(' ');
+    return {
+      employeeId: entry.employeeId,
+      fullName: entry.fullName,
+      employeeCode: entry.employeeCode,
+      month: list.month,
+      lateDays: entry.lateDays,
+      uninformedAbsentDays: entry.uninformedAbsentDays,
+      reasons: entry.reasons,
+      reason,
+    };
   }
 
   private async excludeActiveSuspensionCases<

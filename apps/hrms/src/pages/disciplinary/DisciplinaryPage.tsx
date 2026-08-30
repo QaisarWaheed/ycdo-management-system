@@ -15,6 +15,8 @@ import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { PrepareSuspensionDialog } from '@/components/disciplinary/PrepareSuspensionDialog'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
+import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
+import { CloseInquiryDialog } from '@/components/disciplinary/CloseInquiryDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -74,10 +76,10 @@ import {
 const ALL = 'ALL'
 
 function inquiryDeadlineWarning(
-  inquiry: Pick<Inquiry, 'deadlineAt' | 'outcome' | 'closedAt'>,
+  inquiry: Pick<Inquiry, 'deadlineAt' | 'outcome' | 'closedAt' | 'officiallyOpenedAt'>,
   now = new Date(),
 ): 'Overdue' | 'Due soon' | null {
-  if (inquiry.closedAt || inquiry.outcome) return null
+  if (inquiry.closedAt || inquiry.outcome || !inquiry.officiallyOpenedAt) return null
   const deadline = new Date(inquiry.deadlineAt).getTime()
   if (Number.isNaN(deadline)) return null
   if (deadline <= now.getTime()) return 'Overdue'
@@ -121,11 +123,20 @@ function inquiryWorkflowLabel(inquiry: Inquiry) {
   if (inquiry.outcome) {
     return inquiry.outcome.replace(/_/g, ' ')
   }
+  if (inquiry.openApprovalStatus === 'PENDING_APPROVAL' && !inquiry.officiallyOpenedAt) {
+    return 'Awaiting opening approval'
+  }
+  if (inquiry.openApprovalStatus === 'REJECTED' && !inquiry.officiallyOpenedAt) {
+    return 'Opening rejected'
+  }
   if (inquiry.finalDecisionStatus === 'PENDING_APPROVAL') {
     return 'Final decision pending approval'
   }
   if (inquiry.finalDecisionStatus === 'REJECTED') {
-    return 'Final decision rejected'
+    return 'Final decision rejected — correct and close again'
+  }
+  if (inquiry.officiallyOpenedAt && !inquiry.finding) {
+    return 'Open inquiry'
   }
   if (inquiry.finding === 'NOT_GUILTY') {
     return 'NOT GUILTY — choose duty branch, then reinstate'
@@ -192,6 +203,11 @@ function InquiryFinalState({
 
   return (
     <div className="space-y-0.5 text-xs text-text-secondary">
+      <p>Inquiry officer: {personName(inquiry.inquiryOfficer)}</p>
+      <p>
+        Officer designation:{' '}
+        {inquiry.inquiryOfficer?.employee?.currentDesignation ?? '—'}
+      </p>
       <p>Finding: {inquiry.finding?.replace(/_/g, ' ') ?? '—'}</p>
       <p>Finding recorded by: {personName(inquiry.findingRecordedBy)}</p>
       <p>Finding recorded at: {formatWhen(inquiry.findingRecordedAt)}</p>
@@ -223,6 +239,7 @@ function InquiryFinalState({
           : '—'}
       </p>
       <p>Fine: {fineLabel}</p>
+      <p>Recommendation: {inquiry.closeRecommendation ?? '—'}</p>
       <p>Final outcome: {inquiry.outcome?.replace(/_/g, ' ') ?? '—'}</p>
       <p>Closed at: {formatWhen(inquiry.closedAt)}</p>
       <p>Employee status: {employeeStatus?.replace(/_/g, ' ') ?? '—'}</p>
@@ -998,6 +1015,7 @@ function InquiriesTab({
   const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
   const [findingInquiry, setFindingInquiry] = useState<Inquiry | null>(null)
   const [decisionInquiry, setDecisionInquiry] = useState<Inquiry | null>(null)
+  const [closeInquiry, setCloseInquiry] = useState<Inquiry | null>(null)
   const [employeeId, setEmployeeId] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState(ALL)
 
@@ -1034,6 +1052,7 @@ function InquiriesTab({
 
   return (
     <div className="space-y-4">
+      <PendingInquiryOpenApprovalsCard />
       <PendingInquiryDecisionsCard />
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[220px] flex-1">
@@ -1100,8 +1119,12 @@ function InquiriesTab({
               paginated.map((inquiry) => {
                 const action = inquiry.action
                 const warning = inquiryDeadlineWarning(inquiry)
+                const officiallyOpen = !!inquiry.officiallyOpenedAt
                 return (
-                  <TableRow key={inquiry.id}>
+                  <TableRow
+                    key={inquiry.id}
+                    className={cn(warning === 'Overdue' && 'bg-red-50')}
+                  >
                     <TableCell>
                       <EmployeeNameLink employee={action.employee} />
                     </TableCell>
@@ -1143,7 +1166,11 @@ function InquiriesTab({
                     <TableCell>
                       <div className="flex flex-col gap-2">
                         <span className="text-sm">
-                          {inquiry.outcome ? 'Closed' : 'Open'}
+                          {inquiry.outcome
+                            ? 'Closed'
+                            : inquiry.officiallyOpenedAt
+                              ? 'Open inquiry'
+                              : 'Awaiting opening approval'}
                         </span>
                         <InquiryFinalState
                           inquiry={inquiry}
@@ -1164,8 +1191,22 @@ function InquiriesTab({
                     <TableCell>
                       <div className="flex flex-col gap-2">
                         {action.type === 'SUSPENSION' &&
+                          officiallyOpen &&
+                          !inquiry.outcome &&
+                          inquiry.finalDecisionStatus !== 'PENDING_APPROVAL' &&
+                          inquiry.finalDecisionStatus !== 'APPLIED' &&
+                          canPrepare && (
+                            <Button
+                              size="sm"
+                              onClick={() => setCloseInquiry(inquiry)}
+                            >
+                              Close inquiry
+                            </Button>
+                          )}
+                        {action.type === 'SUSPENSION' &&
                           !inquiry.finding &&
                           !inquiry.outcome &&
+                          officiallyOpen &&
                           inquiry.finalDecisionStatus !== 'APPLIED' &&
                           user?.id === inquiry.inquiryOfficerUserId && (
                             <Button
@@ -1181,7 +1222,8 @@ function InquiriesTab({
                           !inquiry.outcome &&
                           inquiry.finalDecisionStatus !== 'PENDING_APPROVAL' &&
                           inquiry.finalDecisionStatus !== 'APPLIED' &&
-                          canPrepare && (
+                          canPrepare &&
+                          !officiallyOpen && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -1234,6 +1276,11 @@ function InquiriesTab({
         inquiry={decisionInquiry}
         open={!!decisionInquiry}
         onOpenChange={(v) => !v && setDecisionInquiry(null)}
+      />
+      <CloseInquiryDialog
+        inquiry={closeInquiry}
+        open={!!closeInquiry}
+        onOpenChange={(v) => !v && setCloseInquiry(null)}
       />
     </div>
   )

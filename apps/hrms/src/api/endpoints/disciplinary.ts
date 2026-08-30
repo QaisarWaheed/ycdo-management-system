@@ -27,6 +27,8 @@ export const disciplinaryApi = {
         id: string
         displayName: string
         employeeCode: string | null
+        designation: string | null
+        phone: string | null
         role: string
       }>
     >('/disciplinary/suspension/inquiry-officers'),
@@ -72,6 +74,16 @@ export const disciplinaryApi = {
     api.post(`/disciplinary/inquiries/${id}/final-decision/reject`, { reason }),
   generateMissingFinalLetters: (id: string) =>
     api.post(`/disciplinary/inquiries/${id}/final-letters/generate-missing`),
+  closeInquiry: (id: string, data: Record<string, unknown>) =>
+    api.post(`/disciplinary/inquiries/${id}/close`, data),
+  listMyPendingOpenApprovals: () =>
+    api.get<unknown, Inquiry[]>(
+      '/disciplinary/inquiry-open-approvals/my-pending',
+    ),
+  approveInquiryOpen: (id: string, note?: string) =>
+    api.post(`/disciplinary/inquiries/${id}/open/approve`, { note }),
+  rejectInquiryOpen: (id: string, reason: string) =>
+    api.post(`/disciplinary/inquiries/${id}/open/reject`, { reason }),
 }
 
 export type SuspensionApprovalRequest = {

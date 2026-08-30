@@ -23,7 +23,7 @@ import {
   type WatchEntry,
   type WatchReason,
 } from '@/lib/suspensionWatchlist'
-import { cn } from '@/lib/utils'
+import { StartDueInquiryDialog } from '@/components/disciplinary/StartDueInquiryDialog'
 
 function reasonLabel(reason: WatchReason) {
   switch (reason) {
@@ -182,6 +182,7 @@ export function SuspensionWatchlistPage({
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<'near' | 'due'>('due')
   const [busyEmployeeId, setBusyEmployeeId] = useState<string | null>(null)
+  const [startEmployeeId, setStartEmployeeId] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['suspension-watchlist'],
@@ -210,29 +211,6 @@ export function SuspensionWatchlistPage({
     },
   })
 
-  const startCaseMutation = useMutation({
-    mutationFn: (employeeId: string) =>
-      attendanceApi.startSuspensionCaseFromWatchlist(employeeId),
-    onMutate: (employeeId) => setBusyEmployeeId(employeeId),
-    onSettled: () => setBusyEmployeeId(null),
-    onSuccess: () => {
-      toast({
-        title: 'Suspension case opened',
-        description:
-          'Employee moved to Disciplinary. Prepare and submit the suspension letter for approval when ready.',
-      })
-      queryClient.invalidateQueries({ queryKey: ['suspension-watchlist'] })
-      queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
-    },
-    onError: (err: unknown) => {
-      toast({
-        title: 'Could not start case',
-        description: getApiErrorMessage(err, 'Request failed'),
-        variant: 'destructive',
-      })
-    },
-  })
-
   const { near, due } = useMemo(
     () => partitionSuspensionWatchlist(data),
     [data],
@@ -248,7 +226,7 @@ export function SuspensionWatchlistPage({
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
             Pakistan calendar month {monthLabel}. Near: send advice reminder.
-            Due: open a suspension disciplinary case.
+            Due: Start Inquiry (employee stays ACTIVE until opening is approved).
           </p>
           <p className="mt-1 text-sm text-text-secondary">
             <Link
@@ -262,8 +240,8 @@ export function SuspensionWatchlistPage({
       ) : (
         <p className="text-sm text-text-secondary">
           Pakistan calendar month {monthLabel}. Near: Send reminder (letter +
-          WhatsApp). Due: Start inquiry opens a suspension case under
-          Disciplinary.
+          WhatsApp). Due: Start Inquiry — employee stays ACTIVE until an
+          authority approves opening the inquiry.
         </p>
       )}
 
@@ -305,7 +283,7 @@ export function SuspensionWatchlistPage({
             mode="due"
             busyEmployeeId={busyEmployeeId}
             onSendReminder={() => undefined}
-            onStartCase={(id) => startCaseMutation.mutate(id)}
+            onStartCase={(id) => setStartEmployeeId(id)}
           />
         </TabsContent>
         <TabsContent
@@ -323,6 +301,14 @@ export function SuspensionWatchlistPage({
           />
         </TabsContent>
       </Tabs>
+
+      <StartDueInquiryDialog
+        employeeId={startEmployeeId}
+        open={!!startEmployeeId}
+        onOpenChange={(next) => {
+          if (!next) setStartEmployeeId(null)
+        }}
+      />
     </div>
   )
 }

@@ -16,6 +16,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import type { Response } from 'express';
 import {
+  CloseInquiryDto,
   CreateDisciplinaryDto,
   DecideSuspensionDto,
   DisciplinaryQueryDto,
@@ -29,6 +30,7 @@ import {
 } from './disciplinary.dto';
 import { DisciplinaryService } from './disciplinary.service';
 import { InquiryDecisionService } from './inquiry-decision.service';
+import { InquiryOpeningService } from './inquiry-opening.service';
 import { SuspensionRequestService } from './suspension-request.service';
 
 const SUSPENSION_PREPARE_ROLES = [
@@ -51,6 +53,7 @@ export class DisciplinaryController {
     private disciplinaryService: DisciplinaryService,
     private suspensionRequestService: SuspensionRequestService,
     private inquiryDecisionService: InquiryDecisionService,
+    private inquiryOpeningService: InquiryOpeningService,
   ) {}
 
   @Post('inquiry')
@@ -200,6 +203,48 @@ export class DisciplinaryController {
     @CurrentUser() user: { id: string },
   ) {
     return this.suspensionRequestService.reject(id, user.id, dto.reason);
+  }
+
+  @Post('inquiries/:id/close')
+  @Roles(...SUSPENSION_PREPARE_ROLES)
+  closeInquiry(
+    @Param('id') id: string,
+    @Body() dto: CloseInquiryDto,
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
+  ) {
+    return this.inquiryDecisionService.closeInquiry(
+      id,
+      dto,
+      user.id,
+      user.role,
+      user.roles,
+    );
+  }
+
+  @Get('inquiry-open-approvals/my-pending')
+  @Roles(...SUSPENSION_APPROVER_ROUTE_ROLES)
+  listMyPendingOpenApprovals(@CurrentUser() user: { id: string }) {
+    return this.inquiryOpeningService.listMyPending(user.id);
+  }
+
+  @Post('inquiries/:id/open/approve')
+  @Roles(...SUSPENSION_APPROVER_ROUTE_ROLES)
+  approveInquiryOpen(
+    @Param('id') id: string,
+    @Body() dto: DecideSuspensionDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.inquiryOpeningService.approveOpen(id, user.id, dto.note);
+  }
+
+  @Post('inquiries/:id/open/reject')
+  @Roles(...SUSPENSION_APPROVER_ROUTE_ROLES)
+  rejectInquiryOpen(
+    @Param('id') id: string,
+    @Body() dto: RejectSuspensionDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.inquiryOpeningService.rejectOpen(id, user.id, dto.reason);
   }
 
   @Post('inquiries/:id/finding')
