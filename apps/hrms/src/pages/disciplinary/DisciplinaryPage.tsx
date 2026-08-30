@@ -16,7 +16,6 @@ import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { PrepareSuspensionDialog } from '@/components/disciplinary/PrepareSuspensionDialog'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
 import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
-import { CloseInquiryDialog } from '@/components/disciplinary/CloseInquiryDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -75,6 +74,16 @@ import {
 } from '@/types'
 
 const ALL = 'ALL'
+
+const COMPLETE_INQUIRY_ROLES = [
+  'SUPER_ADMIN',
+  'HR_MANAGER',
+  'HR_ADMIN_MANAGER',
+  'HR_OPERATIONS_MANAGER',
+  'HR_EXECUTIVE',
+  'ADMIN_MANAGER',
+  'IT_ADMIN',
+] as const
 
 function inquiryDeadlineWarning(
   inquiry: Pick<Inquiry, 'deadlineAt' | 'outcome' | 'closedAt' | 'officiallyOpenedAt'>,
@@ -594,12 +603,12 @@ function ResolveInquiryDialog({
       disciplinaryApi.resolveInquiry({
         inquiryId: inquiry!.id,
         outcome,
-        decision: decision.trim() || undefined,
+        decision: decision.trim(),
         duration: duration.trim() || undefined,
       }),
     onSuccess: () => {
       toast({
-        title: 'Inquiry closed',
+        title: 'Inquiry completed',
         description: `Outcome: ${VERDICT_LABELS[outcome]}`,
       })
       queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
@@ -610,7 +619,7 @@ function ResolveInquiryDialog({
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
       toast({
-        title: 'Failed to close inquiry',
+        title: 'Failed to complete inquiry',
         description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
         variant: 'destructive',
       })
@@ -621,9 +630,9 @@ function ResolveInquiryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Close Inquiry</DialogTitle>
+          <DialogTitle>Complete Inquiry</DialogTitle>
           <DialogDescription>
-            Record the outcome, decision, and duration for this inquiry.
+            Record the outcome of this inquiry and the decision that was made.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -650,11 +659,11 @@ function ResolveInquiryDialog({
             <Textarea
               value={decision}
               onChange={(e) => setDecision(e.target.value)}
-              placeholder="Write the decision on this inquiry…"
+              placeholder="Write the decision made on this inquiry…"
             />
           </div>
           <div className="space-y-2">
-            <Label>Duration</Label>
+            <Label>Duration (optional)</Label>
             <Input
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
@@ -668,10 +677,10 @@ function ResolveInquiryDialog({
           </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={mutation.isPending || !inquiry?.id}
+            disabled={mutation.isPending || !inquiry?.id || !decision.trim()}
             onClick={() => mutation.mutate()}
           >
-            {mutation.isPending ? 'Closing...' : 'Close Inquiry'}
+            {mutation.isPending ? 'Completing…' : 'Complete Inquiry'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -885,7 +894,7 @@ function ActionsTab({
                             size="sm"
                             onClick={() => onCloseInquiry(action)}
                           >
-                            Close Inquiry
+                            Complete Inquiry
                           </Button>
                         )}
                       <DropdownMenu>
@@ -913,7 +922,7 @@ function ActionsTab({
                             <DropdownMenuItem
                               onClick={() => onCloseInquiry(action)}
                             >
-                              Close Inquiry
+                              Complete Inquiry
                             </DropdownMenuItem>
                           )}
                           {canPrepare && canPrepareSuspension(action) && (
@@ -1014,15 +1023,16 @@ function InquiriesTab({
 }: {
   onCloseInquiry: (action: DisciplinaryAction) => void
 }) {
-  const { user, hasRole } = useAuth()
+  const { user, hasRole, hasPermission } = useAuth()
   const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
-  const canClose = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
+  const canClose =
+    hasPermission('DISCIPLINARY_MANAGE') ||
+    hasRole([...COMPLETE_INQUIRY_ROLES])
   const [findingInquiry, setFindingInquiry] = useState<Inquiry | null>(null)
   const [decisionInquiry, setDecisionInquiry] = useState<Inquiry | null>(null)
   const [detailInquiry, setDetailInquiry] = useState<
     (Inquiry & { action: DisciplinaryAction }) | null
   >(null)
-  const [closeInquiry, setCloseInquiry] = useState<Inquiry | null>(null)
   const [employeeId, setEmployeeId] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState(ALL)
 
@@ -1130,7 +1140,7 @@ function InquiriesTab({
                 const officiallyOpen = !!inquiry.officiallyOpenedAt
                 return (
                   <TableRow
-                    key={inquiry.id}
+                    key={inquiry.id || inquiry.action.id}
                     className={cn(warning === 'Overdue' && 'bg-red-50')}
                   >
                     <TableCell>
@@ -1200,8 +1210,16 @@ function InquiriesTab({
                         {inquiryWorkflowLabel(inquiry)}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-2">
+                    <TableCell className="min-w-[150px]">
+                      <div className="flex flex-col items-stretch gap-2">
+                        {canClose && inquiryIsOpen(inquiry) && (
+                          <Button
+                            size="sm"
+                            onClick={() => onCloseInquiry(inquiry.action)}
+                          >
+                            Complete Inquiry
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -1209,27 +1227,6 @@ function InquiriesTab({
                         >
                           View Details
                         </Button>
-                        {canClose && inquiryIsOpen(inquiry) && (
-                          <Button
-                            size="sm"
-                            onClick={() => onCloseInquiry(inquiry.action)}
-                          >
-                            Close Inquiry
-                          </Button>
-                        )}
-                        {action.type === 'SUSPENSION' &&
-                          officiallyOpen &&
-                          !inquiry.outcome &&
-                          inquiry.finalDecisionStatus !== 'PENDING_APPROVAL' &&
-                          inquiry.finalDecisionStatus !== 'APPLIED' &&
-                          canPrepare && (
-                            <Button
-                              size="sm"
-                              onClick={() => setCloseInquiry(inquiry)}
-                            >
-                              Close inquiry
-                            </Button>
-                          )}
                         {action.type === 'SUSPENSION' &&
                           !inquiry.finding &&
                           !inquiry.outcome &&
@@ -1328,11 +1325,6 @@ function InquiriesTab({
         inquiry={decisionInquiry}
         open={!!decisionInquiry}
         onOpenChange={(v) => !v && setDecisionInquiry(null)}
-      />
-      <CloseInquiryDialog
-        inquiry={closeInquiry}
-        open={!!closeInquiry}
-        onOpenChange={(v) => !v && setCloseInquiry(null)}
       />
     </div>
   )
@@ -1604,10 +1596,12 @@ export function DisciplinaryPage({
   embedded?: boolean
   onlyInquiries?: boolean
 }) {
-  const { hasRole } = useAuth()
+  const { hasRole, hasPermission } = useAuth()
   const queryClient = useQueryClient()
   const canPrepare = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
-  const canClose = hasRole(['SUPER_ADMIN', 'HR_MANAGER', 'ADMIN_MANAGER'])
+  const canClose =
+    hasPermission('DISCIPLINARY_MANAGE') ||
+    hasRole([...COMPLETE_INQUIRY_ROLES])
   const [tab, setTab] = useState(onlyInquiries ? 'inquiries' : 'actions')
   const [newActionOpen, setNewActionOpen] = useState(false)
   const [startInquiryId, setStartInquiryId] = useState<string | null>(null)
@@ -1659,8 +1653,8 @@ export function DisciplinaryPage({
         </div>
       ) : (
         <p className="text-sm text-text-secondary">
-          Employees whose inquiry has been started. Close an inquiry to record
-          the verdict (join again, rest, dismiss, or terminate).
+          Employees whose inquiry has been started. Complete an inquiry to record
+          the outcome and the decision that was made.
         </p>
       )}
 

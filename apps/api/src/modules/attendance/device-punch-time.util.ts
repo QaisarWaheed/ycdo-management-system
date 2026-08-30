@@ -1,10 +1,19 @@
-import { parseAttendanceDateTime } from './attendance-late.util';
+import {
+  parseAttendanceDateTime,
+  toPakistanMinutesOfDay,
+} from './attendance-late.util';
 
 /** Offline device dumps older than this must never write attendance. */
 export const MAX_DEVICE_PUNCH_AGE_MS = 30 * 60 * 1000;
 
 /** Device clock slightly ahead of the API is normal; more than this is garbage. */
 export const MAX_DEVICE_PUNCH_FUTURE_MS = 5 * 60 * 1000;
+
+/** Calendar that far off is a broken device year, not an offline dump. */
+export const BAD_DEVICE_CALENDAR_MS = 24 * 60 * 60 * 1000;
+
+/** Clock-of-day slack when the device year/date is nonsense. */
+const CLOCK_OF_DAY_SLACK_MINUTES = 30;
 
 /** Burst replay stamps check-in and check-out on the same second. */
 export const MIN_BIOMETRIC_SESSION_MS = 2 * 60 * 1000;
@@ -36,10 +45,38 @@ export function devicePunchRejectReason(
   return null;
 }
 
+function pakistanWallClock(raw: string): Date | null {
+  const match = raw
+    .trim()
+    .match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+  if (!match) return null;
+  const parsed = parseAttendanceDateTime(match[1].replace(' ', 'T'));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function clockOfDayClose(a: Date, b: Date): boolean {
+  const diff = Math.abs(toPakistanMinutesOfDay(a) - toPakistanMinutesOfDay(b));
+  return Math.min(diff, 24 * 60 - diff) <= CLOCK_OF_DAY_SLACK_MINUTES;
+}
+
+function salvageWrongCalendar(
+  candidate: Date,
+  now: Date,
+): { checkTime: Date; fromDevice: boolean; verdict: DevicePunchVerdict } | null {
+  const age = Math.abs(now.getTime() - candidate.getTime());
+  if (age <= BAD_DEVICE_CALENDAR_MS) return null;
+  if (!clockOfDayClose(candidate, now)) return null;
+  return { checkTime: now, fromDevice: false, verdict: 'ok' };
+}
+
 /**
  * Prefer the device's punch clock when the gateway/agent sent one.
  * Falls back to API receive time only when no device time was provided
  * (live biometric-push / broken firmware).
+ *
+ * Hikvision terminals often ship with China +08:00, or a factory year
+ * (2016) while the wall clock is Pakistan local. Treat those as live
+ * punches. Same-day offline dumps (30 min–24 h old) stay rejected.
  */
 export function resolveRawScanPunchTime(opts: {
   eventTime?: string | null;
@@ -56,6 +93,20 @@ export function resolveRawScanPunchTime(opts: {
   if (Number.isNaN(parsed.getTime())) {
     return { checkTime: now, fromDevice: true, verdict: 'invalid' };
   }
+
+  if (classifyDevicePunchAge(parsed, now) === 'ok') {
+    return { checkTime: parsed, fromDevice: true, verdict: 'ok' };
+  }
+
+  const pktWall = pakistanWallClock(raw);
+  if (pktWall && classifyDevicePunchAge(pktWall, now) === 'ok') {
+    return { checkTime: pktWall, fromDevice: true, verdict: 'ok' };
+  }
+
+  const salvaged =
+    salvageWrongCalendar(parsed, now) ??
+    (pktWall ? salvageWrongCalendar(pktWall, now) : null);
+  if (salvaged) return salvaged;
 
   return {
     checkTime: parsed,

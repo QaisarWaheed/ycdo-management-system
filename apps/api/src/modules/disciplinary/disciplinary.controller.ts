@@ -66,7 +66,15 @@ export class DisciplinaryController {
   }
 
   @Patch('inquiry/resolve')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
+  )
   resolveInquiry(
     @Body() dto: ResolveInquiryDto,
     @CurrentUser() user: { id: string },
@@ -75,7 +83,15 @@ export class DisciplinaryController {
   }
 
   @Post(':actionId/ensure-inquiry')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_MANAGER,
+    UserRole.IT_ADMIN,
+  )
   ensureInquiry(@Param('actionId') actionId: string) {
     return this.disciplinaryService.ensureInquiry(actionId);
   }

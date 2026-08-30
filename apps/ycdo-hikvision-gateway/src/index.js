@@ -186,12 +186,52 @@ INSERT INTO events (
 )`);
 
 const STALE_PUNCH_MS = 30 * 60 * 1000;
+const FUTURE_PUNCH_MS = 5 * 60 * 1000;
+const BAD_CALENDAR_MS = 24 * 60 * 60 * 1000;
 
-function punchLagMs(deviceTime, receivedAt) {
-  const punch = Date.parse(String(deviceTime));
+function parseDevicePunchMs(deviceTime) {
+  const raw = String(deviceTime || "").trim();
+  const instant = Date.parse(raw);
+  const naive = raw.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+  const pktWall = naive
+    ? Date.parse(`${naive[1].replace(" ", "T")}+05:00`)
+    : NaN;
+  return { instant, pktWall };
+}
+
+function pakistanMinutesOfDay(ms) {
+  const pk = new Date(ms + 5 * 60 * 60 * 1000);
+  return pk.getUTCHours() * 60 + pk.getUTCMinutes();
+}
+
+function clockOfDayClose(aMs, bMs) {
+  if (!Number.isFinite(aMs) || !Number.isFinite(bMs)) return false;
+  const diff = Math.abs(pakistanMinutesOfDay(aMs) - pakistanMinutesOfDay(bMs));
+  return Math.min(diff, 24 * 60 - diff) <= 30;
+}
+
+function isLiveDeviceClock(t, recv) {
+  const delta = recv - t;
+  return delta <= STALE_PUNCH_MS && delta >= -FUTURE_PUNCH_MS;
+}
+
+function isStaleReconnectDump(deviceTime, receivedAt) {
   const recv = Date.parse(String(receivedAt));
-  if (!Number.isFinite(punch) || !Number.isFinite(recv)) return 0;
-  return recv - punch;
+  const { instant, pktWall } = parseDevicePunchMs(deviceTime);
+  if (!Number.isFinite(recv)) return false;
+  const candidates = [instant, pktWall].filter((t) => Number.isFinite(t));
+  if (candidates.some((t) => isLiveDeviceClock(t, recv))) return false;
+  if (
+    candidates.some(
+      (t) => Math.abs(recv - t) > BAD_CALENDAR_MS && clockOfDayClose(t, recv),
+    )
+  ) {
+    return false;
+  }
+  const t = Number.isFinite(instant) ? instant : pktWall;
+  if (!Number.isFinite(t)) return false;
+  const delta = recv - t;
+  return delta > STALE_PUNCH_MS || delta < -FUTURE_PUNCH_MS;
 }
 
 function normalizeIp(ip) {
@@ -399,7 +439,7 @@ app.post("/hikvision/event/:token", upload.any(), (req, res) => {
   }
 
   const now = new Date().toISOString();
-  const staleDump = punchLagMs(n.deviceTime, n.receivedTime) > STALE_PUNCH_MS;
+  const staleDump = isStaleReconnectDump(n.deviceTime, n.receivedTime);
   try {
     const info = insertEvent.run({
       event_key: n.eventKey,

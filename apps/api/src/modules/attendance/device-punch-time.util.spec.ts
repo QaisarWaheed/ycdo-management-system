@@ -81,4 +81,44 @@ describe('device-punch-time.util', () => {
     const checkOut = new Date('2026-08-30T13:53:00+05:00');
     expect(isCheckoutTooSoon(checkIn, checkOut)).toBe(false);
   });
+
+  it('keeps Pakistan wall-clock when the device stamps China +08:00', () => {
+    const result = resolveRawScanPunchTime({
+      eventTime: '2026-08-30T14:22:00+08:00',
+      now,
+    });
+    expect(result.verdict).toBe('ok');
+    expect(result.checkTime.toISOString()).toBe(
+      new Date('2026-08-30T14:22:00+05:00').toISOString(),
+    );
+  });
+
+  it('keeps a China-offset timestamp when the instant is actually current', () => {
+    const result = resolveRawScanPunchTime({
+      eventTime: '2026-08-30T17:22:00+08:00',
+      now,
+    });
+    expect(result.verdict).toBe('ok');
+    expect(result.checkTime.toISOString()).toBe(
+      new Date('2026-08-30T14:22:00+05:00').toISOString(),
+    );
+  });
+
+  it('uses API time when the device year is ten years behind but the clock-of-day matches', () => {
+    const result = resolveRawScanPunchTime({
+      eventTime: '2016-08-30T14:28:00+05:00',
+      now,
+    });
+    expect(result.verdict).toBe('ok');
+    expect(result.checkTime).toEqual(now);
+    expect(result.fromDevice).toBe(false);
+  });
+
+  it('still rejects a historical dump whose clock-of-day does not match now', () => {
+    const result = resolveRawScanPunchTime({
+      eventTime: '2024-07-13T10:05:00+05:00',
+      now,
+    });
+    expect(result.verdict).toBe('stale');
+  });
 });
