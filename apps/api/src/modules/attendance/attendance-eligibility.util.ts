@@ -30,6 +30,14 @@ const RELIEVER_ATTENDANCE_STATUSES: ReadonlySet<EmployeeStatus> = new Set([
   EmployeeStatus.TRAINEE,
 ]);
 
+/** Statuses HR may correct on an existing attendance row. */
+const HR_ATTENDANCE_CORRECTION_STATUSES: ReadonlySet<EmployeeStatus> = new Set([
+  EmployeeStatus.ACTIVE,
+  EmployeeStatus.TRAINEE,
+  EmployeeStatus.ON_LEAVE,
+  EmployeeStatus.APPOINTED,
+]);
+
 export function isEmployeeEligibleForAttendance(
   status: EmployeeStatus,
 ): boolean {
@@ -83,6 +91,14 @@ export function assertEmployeeEligibleForAttendanceRecord(
   status: EmployeeStatus,
 ): void {
   rejectPendingApproval(status);
+  if (status === EmployeeStatus.SUSPENDED) {
+    throw new BadRequestException(
+      'Attendance is locked while the employee is suspended.',
+    );
+  }
+  if (!HR_ATTENDANCE_CORRECTION_STATUSES.has(status)) {
+    throw new BadRequestException('Employee is not eligible for attendance');
+  }
 }
 
 export function assertEmployeeEligibleForAttendance(employee: {

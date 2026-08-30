@@ -16,7 +16,7 @@ import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendance
 import { AttendanceStatusBadge } from '@/components/attendance/AttendanceStatusBadge'
 import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { combineCheckOutDateTime, combineDateAndTime } from '@/lib/attendanceUtils'
-import { isEmployeeEligibleForAttendance } from '@/lib/attendanceEligibility'
+import { canHrCorrectAttendance } from '@/lib/attendanceEligibility'
 import {
   CheckInManualTab,
   CheckOutManualTab,
@@ -585,7 +585,7 @@ function DailyLogTab({
                   {canFullyEditAttendance && (
                   <TableCell>
                     <div className="flex flex-wrap gap-2">
-                      {isEmployeeEligibleForAttendance(log.employee?.status) ? (
+                      {canHrCorrectAttendance(log.employee?.status) ? (
                         <>
                           <Button
                             size="sm"

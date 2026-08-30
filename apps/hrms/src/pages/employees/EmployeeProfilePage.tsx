@@ -19,7 +19,7 @@ import { useParams } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import {
   attendanceLockMessage,
-  isEmployeeEligibleForAttendance,
+  canHrCorrectAttendance,
 } from '@/lib/attendanceEligibility'
 import { AttendanceStatusBadge } from '@/components/attendance/AttendanceStatusBadge'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
@@ -717,7 +717,7 @@ export function EmployeeProfilePage() {
   )
   const monthPayrollPaid = monthPayroll.some((entry) => entry.status === 'PAID')
   const canEditAttendance = hasRole([...ATTENDANCE_EDIT_ROLES])
-  const attendanceUnlocked = isEmployeeEligibleForAttendance(employee?.status)
+  const attendanceUnlocked = canHrCorrectAttendance(employee?.status)
   const canUpdateAttendance = canEditAttendance && attendanceUnlocked
 
   const { data: leaves = [], isLoading: loadingLeaves } = useQuery({

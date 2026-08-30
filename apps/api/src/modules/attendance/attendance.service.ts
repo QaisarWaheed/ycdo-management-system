@@ -2472,6 +2472,7 @@ export class AttendanceService {
             dutyStartTime: true,
             dutyEndTime: true,
             relieverOnly: true,
+            status: true,
             currentBranch: { select: BRANCH_LABEL_SELECT },
             currentDepartment: { select: { name: true } },
             shift: {

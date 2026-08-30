@@ -32,7 +32,7 @@ import {
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
 import { formatDateTimeTime, toPakistanTime24 } from '@/lib/timeFormat'
-import { attendanceLockMessage, isEmployeeEligibleForAttendance } from '@/lib/attendanceEligibility'
+import { attendanceLockMessage, canHrCorrectAttendance } from '@/lib/attendanceEligibility'
 import { cn } from '@/lib/utils'
 import { ATTENDANCE_STATUSES, type AttendanceLog, type AttendanceStatus } from '@/types'
 import { attendanceStatusStyles } from '@/components/attendance/AttendanceStatusBadge'
@@ -119,7 +119,7 @@ export function UpdateAttendanceDialog({
       if (!log) throw new Error('No attendance record')
       if (
         employeeDetail &&
-        !isEmployeeEligibleForAttendance(employeeDetail.status)
+        !canHrCorrectAttendance(employeeDetail.status)
       ) {
         throw new Error(attendanceLockMessage(employeeDetail.status))
       }
@@ -204,7 +204,7 @@ export function UpdateAttendanceDialog({
   const showOvertime = checkIn || showsTimeFields(displayStatus)
   const attendanceLocked =
     !!employeeDetail &&
-    !isEmployeeEligibleForAttendance(employeeDetail.status)
+    !canHrCorrectAttendance(employeeDetail.status)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

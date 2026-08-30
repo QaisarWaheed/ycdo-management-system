@@ -46,6 +46,27 @@ describe('attendance-eligibility.util', () => {
     ).toThrow(new BadRequestException(ATTENDANCE_PENDING_APPROVAL_MESSAGE));
   });
 
+  it('allows HR to correct ACTIVE, TRAINEE, ON_LEAVE, and APPOINTED records', () => {
+    expect(() =>
+      assertEmployeeEligibleForAttendanceRecord(EmployeeStatus.ACTIVE),
+    ).not.toThrow();
+    expect(() =>
+      assertEmployeeEligibleForAttendanceRecord(EmployeeStatus.TRAINEE),
+    ).not.toThrow();
+    expect(() =>
+      assertEmployeeEligibleForAttendanceRecord(EmployeeStatus.ON_LEAVE),
+    ).not.toThrow();
+    expect(() =>
+      assertEmployeeEligibleForAttendanceRecord(EmployeeStatus.APPOINTED),
+    ).not.toThrow();
+  });
+
+  it('rejects SUSPENDED attendance record writes', () => {
+    expect(() =>
+      assertEmployeeEligibleForAttendanceRecord(EmployeeStatus.SUSPENDED),
+    ).toThrow(/suspended/);
+  });
+
   it('allows ACTIVE and TRAINEE only for working-staff filters', () => {
     expect(isEmployeeEligibleForAttendance(EmployeeStatus.ACTIVE)).toBe(true);
     expect(isEmployeeEligibleForAttendance(EmployeeStatus.TRAINEE)).toBe(true);
