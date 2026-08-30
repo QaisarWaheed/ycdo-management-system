@@ -24,6 +24,7 @@ import {
   type WatchReason,
 } from '@/lib/suspensionWatchlist'
 import { StartDueInquiryDialog } from '@/components/disciplinary/StartDueInquiryDialog'
+import { cn } from '@/lib/utils'
 
 function reasonLabel(reason: WatchReason) {
   switch (reason) {
@@ -134,7 +135,7 @@ function WatchlistTable({
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap gap-1">
-                  {row.reasons.map((r) => (
+                  {(row.reasons ?? []).map((r) => (
                     <Badge
                       key={r}
                       variant="outline"
@@ -184,7 +185,7 @@ export function SuspensionWatchlistPage({
   const [busyEmployeeId, setBusyEmployeeId] = useState<string | null>(null)
   const [startEmployeeId, setStartEmployeeId] = useState<string | null>(null)
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['suspension-watchlist'],
     queryFn: () => attendanceApi.getSuspensionWatchlist(),
   })
@@ -247,7 +248,8 @@ export function SuspensionWatchlistPage({
 
       {isError ? (
         <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          Could not load the watchlist. Try again or check API access.
+          Could not load the watchlist.{' '}
+          {getApiErrorMessage(error, 'Try again or check API access.')}
         </p>
       ) : null}
 
