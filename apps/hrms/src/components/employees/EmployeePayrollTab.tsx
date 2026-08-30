@@ -323,6 +323,13 @@ export function EmployeePayrollTab({
                   </TableRow>
                 ) : (
                   historySlice.map((entry) => {
+                    const extraDuty = (entry.allowances ?? [])
+                      .filter(
+                        (a) =>
+                          a.type === 'ADDITIONAL_WORKING_DAYS' ||
+                          a.type === 'RELIEVER',
+                      )
+                      .reduce((sum, a) => sum + Number(a.amount), 0)
                     const otAllowance = entry.allowances?.find(
                       (a) => a.type === 'OVERTIME',
                     )
@@ -330,6 +337,11 @@ export function EmployeePayrollTab({
                       <TableRow key={entry.id}>
                         <TableCell>
                           {MONTHS[entry.month - 1] ?? entry.month}
+                          {extraDuty > 0 ? (
+                            <p className="text-xs text-text-secondary">
+                              Extra duty {money(extraDuty)}
+                            </p>
+                          ) : null}
                           {otAllowance ? (
                             <p className="text-xs text-text-secondary">
                               OT {money(otAllowance.amount)}

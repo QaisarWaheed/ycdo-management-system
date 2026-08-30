@@ -112,14 +112,19 @@ export function buildPayslipSlipFromEntry(data: {
   const deductions = data.deductions ?? []
 
   const extraDuty = allowances
-    .filter((a) => a.type === 'ADDITIONAL_WORKING_DAYS')
+    .filter(
+      (a) => a.type === 'ADDITIONAL_WORKING_DAYS' || a.type === 'RELIEVER',
+    )
     .reduce((s, a) => s + money(a.amount), 0)
   const overtime = allowances
     .filter((a) => a.type === 'OVERTIME')
     .reduce((s, a) => s + money(a.amount), 0)
   const otherExtra = allowances
     .filter(
-      (a) => a.type !== 'ADDITIONAL_WORKING_DAYS' && a.type !== 'OVERTIME',
+      (a) =>
+        a.type !== 'ADDITIONAL_WORKING_DAYS' &&
+        a.type !== 'RELIEVER' &&
+        a.type !== 'OVERTIME',
     )
     .reduce((s, a) => s + money(a.amount), 0)
 

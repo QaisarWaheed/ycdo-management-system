@@ -1,5 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
 import { EmployeeStatus } from '@prisma/client';
+
+jest.mock('../payroll/payroll.service', () => ({
+  PayrollService: class PayrollService {},
+}));
+jest.mock('../letters/letters.service', () => ({
+  LettersService: class LettersService {},
+}));
+jest.mock('../letters/pdf.helper', () => ({
+  generatePdf: jest.fn().mockResolvedValue(Buffer.from('pdf')),
+}));
+
 import { AdditionalWorkingDaysService } from './additional-working-days.service';
 
 describe('AdditionalWorkingDaysService eligibility', () => {
@@ -13,7 +24,11 @@ describe('AdditionalWorkingDaysService eligibility', () => {
       },
       additionalWorkingDay: { create: jest.fn() },
     };
-    const service = new AdditionalWorkingDaysService(prisma as never);
+    const service = new AdditionalWorkingDaysService(prisma as never, {
+      recomputePendingPayrollForAttendanceDate: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    } as never);
 
     await expect(
       service.create({ employeeId: 'emp-1', date: '2026-08-20' }, 'user-1'),
@@ -33,7 +48,11 @@ describe('AdditionalWorkingDaysService eligibility', () => {
         create: jest.fn(),
       },
     };
-    const service = new AdditionalWorkingDaysService(prisma as never);
+    const service = new AdditionalWorkingDaysService(prisma as never, {
+      recomputePendingPayrollForAttendanceDate: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    } as never);
 
     await expect(
       service.upsertFromRelieverSession({
@@ -55,7 +74,11 @@ describe('AdditionalWorkingDaysService eligibility', () => {
         create: jest.fn(),
       },
     };
-    const service = new AdditionalWorkingDaysService(prisma as never);
+    const service = new AdditionalWorkingDaysService(prisma as never, {
+      recomputePendingPayrollForAttendanceDate: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    } as never);
 
     await expect(
       service.upsertFromRelieverSession({

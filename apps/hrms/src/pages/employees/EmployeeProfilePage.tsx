@@ -798,12 +798,11 @@ export function EmployeeProfilePage() {
     user?.role === 'HR_ADMIN_MANAGER' ||
     user?.role === 'ADMIN_OFFICER'
 
-  const canEditAdditionalWorkingDays =
-    user?.role === 'SUPER_ADMIN' ||
-    user?.role === 'HR_MANAGER' ||
-    user?.role === 'HR_ADMIN_MANAGER' ||
-    user?.role === 'HR_OPERATIONS_MANAGER' ||
-    user?.role === 'ADMIN_OFFICER'
+  const canEditAdditionalWorkingDays = hasRole([
+    ...HR_JOB_ROLES,
+    'ADMIN_OFFICER',
+    'ADMIN_MANAGER',
+  ])
 
   const incentiveTotal = (incentives as Incentive[]).reduce(
     (sum, i) => sum + Number(i.amount),

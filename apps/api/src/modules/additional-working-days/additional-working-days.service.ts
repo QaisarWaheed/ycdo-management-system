@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PayrollService } from '../payroll/payroll.service';
 import { assertEmployeeEligibleForAttendance } from '../attendance/attendance-eligibility.util';
 import { CreateAdditionalWorkingDayDto } from './additional-working-days.dto';
 
@@ -11,7 +12,10 @@ export const RELIEVER_AWD_NOTE = 'Reliever duty';
 
 @Injectable()
 export class AdditionalWorkingDaysService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private payrollService: PayrollService,
+  ) {}
 
   async create(dto: CreateAdditionalWorkingDayDto, addedById: string) {
     const employee = await this.prisma.employee.findUnique({
@@ -25,7 +29,7 @@ export class AdditionalWorkingDaysService {
     const date = this.toDateOnly(dto.date);
 
     try {
-      return await this.prisma.additionalWorkingDay.create({
+      const created = await this.prisma.additionalWorkingDay.create({
         data: {
           employeeId: dto.employeeId,
           date,
@@ -36,6 +40,11 @@ export class AdditionalWorkingDaysService {
           addedBy: { select: { id: true, email: true } },
         },
       });
+      await this.payrollService.recomputePendingPayrollForAttendanceDate(
+        dto.employeeId,
+        date,
+      );
+      return created;
     } catch (err: unknown) {
       if (
         typeof err === 'object' &&
@@ -62,8 +71,8 @@ export class AdditionalWorkingDaysService {
   }
 
   /**
-   * Option A: profile visibility on the AWD tab when reliever check-out completes.
-   * Payroll for these rows stays on RelieverSession (RELIEVER allowance), not AWD.
+   * Profile + payroll: completed reliever duty is an extra duty day (already
+   * approved). Pay is the Reliever allowance at one full duty day per session.
    */
   async upsertFromRelieverSession(params: {
     relieverSessionId: string;
@@ -128,6 +137,10 @@ export class AdditionalWorkingDaysService {
       );
     }
     await this.prisma.additionalWorkingDay.delete({ where: { id } });
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      row.employeeId,
+      row.date,
+    );
     return { message: 'Additional working day deleted' };
   }
 

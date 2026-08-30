@@ -27,7 +27,9 @@ export class AdditionalWorkingDaysController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
     UserRole.ADMIN_OFFICER,
+    UserRole.ADMIN_MANAGER,
   )
   create(
     @Body() dto: CreateAdditionalWorkingDayDto,
@@ -68,6 +70,9 @@ export class AdditionalWorkingDaysController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_OFFICER,
+    UserRole.ADMIN_MANAGER,
   )
   delete(@Param('id') id: string) {
     return this.service.delete(id);

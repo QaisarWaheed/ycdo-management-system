@@ -844,7 +844,7 @@ function RelieverSessionsTab() {
       toast({
         title: 'Reliever checked out',
         description:
-          'Reliever duty recorded. It will appear on the employee profile under Additional working days; pay is via the Reliever allowance.',
+          'Reliever duty recorded. It is listed under Additional working days as extra duty (already approved) and paid on Extra Day.',
       })
       setActionId(null)
     },

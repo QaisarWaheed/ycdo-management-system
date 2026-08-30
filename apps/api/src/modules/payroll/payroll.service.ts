@@ -1621,12 +1621,9 @@ export class PayrollService {
           ...(segmentEndExclusive ? { lt: segmentEndExclusive } : {}),
         },
       },
-      select: { note: true },
+      select: { id: true },
     });
     const dayCount = dayRows.length;
-    const extraDutyCount = dayRows.filter((d) =>
-      (d.note ?? '').toLowerCase().includes('extra duty'),
-    ).length;
 
     const dailyHours = resolveDailyDutyHours(employee);
     const hourlyRate = computeHourlyRate(
@@ -1653,12 +1650,7 @@ export class PayrollService {
       month: 'long',
       year: 'numeric',
     });
-    const label =
-      extraDutyCount > 0 && extraDutyCount === dayCount
-        ? 'Extra Duty / Reliever'
-        : extraDutyCount > 0
-          ? `Additional working days (${extraDutyCount} Extra Duty)`
-          : 'Additional working days';
+    const label = 'Extra duty / additional working days';
     const description = `${label}: ${dayCount} day(s) × ${dailyHours}h = ${hours}h @ PKR ${hourlyRate}/hr (${monthLabel})`;
 
     if (existing) {

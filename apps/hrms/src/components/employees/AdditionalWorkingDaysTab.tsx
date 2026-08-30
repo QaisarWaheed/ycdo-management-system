@@ -49,16 +49,7 @@ export function AdditionalWorkingDaysTab({
 
   const hoursPerDay = dailyDutyHours && dailyDutyHours > 0 ? dailyDutyHours : 8
 
-  const manualRows = useMemo(
-    () => data.filter((row) => !isRelieverRow(row)),
-    [data],
-  )
-  const relieverRows = useMemo(
-    () => data.filter((row) => isRelieverRow(row)),
-    [data],
-  )
-
-  const payableDays = manualRows.length
+  const payableDays = data.length
   const payableHours = useMemo(
     () => payableDays * hoursPerDay,
     [payableDays, hoursPerDay],
@@ -78,6 +69,8 @@ export function AdditionalWorkingDaysTab({
       queryClient.invalidateQueries({
         queryKey: ['additional-working-days', employeeId],
       })
+      queryClient.invalidateQueries({ queryKey: ['payroll-history', employeeId] })
+      queryClient.invalidateQueries({ queryKey: ['payroll'] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -96,6 +89,8 @@ export function AdditionalWorkingDaysTab({
       queryClient.invalidateQueries({
         queryKey: ['additional-working-days', employeeId],
       })
+      queryClient.invalidateQueries({ queryKey: ['payroll-history', employeeId] })
+      queryClient.invalidateQueries({ queryKey: ['payroll'] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -110,10 +105,10 @@ export function AdditionalWorkingDaysTab({
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">
-        HR-added days credit {hoursPerDay} duty hours on payroll as
-        “Additional working days”. Reliever duty appears here automatically when
-        check-out completes; that pay uses the separate Reliever allowance
-        (actual hours worked).
+        HR can add extra duty days here. They are already approved — no second
+        approval. Each day pays {hoursPerDay} duty hours on salary Extra Day.
+        Completed reliever duty is listed automatically and paid the same way
+        (one extra full duty day).
       </p>
 
       {canEdit && (
@@ -193,11 +188,11 @@ export function AdditionalWorkingDaysTab({
                           </TableCell>
                           <TableCell>
                             {fromReliever ? (
-                              <span className="text-sm text-text-secondary">
-                                Reliever allowance
+                              <span className="text-sm">
+                                {hoursPerDay}h extra duty (reliever)
                               </span>
                             ) : (
-                              `${hoursPerDay}h (AWD line)`
+                              `${hoursPerDay}h extra duty`
                             )}
                           </TableCell>
                           <TableCell className="max-w-[280px]">
@@ -231,17 +226,13 @@ export function AdditionalWorkingDaysTab({
                       )
                     })}
                     <TableRow className="bg-surface font-semibold">
-                      <TableCell>Payroll total (manual)</TableCell>
+                      <TableCell>Payroll total (extra duty)</TableCell>
                       <TableCell>
                         {payableDays} day(s) · {payableHours}h
                       </TableCell>
-                      <TableCell colSpan={canEdit ? 3 : 2}>
-                        {relieverRows.length > 0 && (
-                          <span className="font-normal text-text-secondary">
-                            + {relieverRows.length} reliever day(s) listed for
-                            reference
-                          </span>
-                        )}
+                      <TableCell colSpan={canEdit ? 3 : 2} className="font-normal text-text-secondary">
+                        Already approved. Paid on Extra Day when payroll is
+                        pending.
                       </TableCell>
                     </TableRow>
                   </>

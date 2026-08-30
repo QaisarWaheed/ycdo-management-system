@@ -418,9 +418,9 @@ export function MyProfilePage() {
                 <div className="border-b border-border px-6 py-4">
                   <h3 className="font-semibold">Additional working days</h3>
                   <p className="text-sm text-text-secondary">
-                    Extra duty days credited by HR, plus reliever duty from
-                    attendance. HR-added days count as {dutyHours} hours on
-                    payroll; reliever days are paid via the Reliever allowance.
+                    Extra duty days from HR and completed reliever duty. Each
+                    day is already approved and pays {dutyHours} hours on Extra
+                    Day.
                   </p>
                 </div>
                 {loadingAdditionalDays ? (
@@ -476,29 +476,13 @@ export function MyProfilePage() {
                             )
                           })}
                           <TableRow className="bg-muted/40 font-semibold">
-                            <TableCell>Payroll total (manual)</TableCell>
+                            <TableCell>Payroll total (extra duty)</TableCell>
                             <TableCell>
-                              {
-                                additionalDays.filter((r) => !r.relieverSessionId)
-                                  .length
-                              }{' '}
-                              day(s) ·{' '}
-                              {additionalDays.filter((r) => !r.relieverSessionId)
-                                .length * dutyHours}
-                              h
+                              {additionalDays.length} day(s) ·{' '}
+                              {additionalDays.length * dutyHours}h
                             </TableCell>
-                            <TableCell>
-                              {additionalDays.some((r) => r.relieverSessionId) && (
-                                <span className="font-normal text-text-secondary">
-                                  +{' '}
-                                  {
-                                    additionalDays.filter(
-                                      (r) => r.relieverSessionId,
-                                    ).length
-                                  }{' '}
-                                  reliever day(s) for reference
-                                </span>
-                              )}
+                            <TableCell className="font-normal text-text-secondary">
+                              Already approved
                             </TableCell>
                           </TableRow>
                         </>
