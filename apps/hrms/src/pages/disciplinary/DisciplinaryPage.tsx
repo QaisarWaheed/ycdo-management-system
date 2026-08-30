@@ -1034,7 +1034,7 @@ function InquiriesTab({
     (Inquiry & { action: DisciplinaryAction }) | null
   >(null)
   const [employeeId, setEmployeeId] = useState('')
-  const [outcomeFilter, setOutcomeFilter] = useState(ALL)
+  const [outcomeFilter, setOutcomeFilter] = useState('PENDING')
 
   const { data: actions = [], isLoading } = useQuery({
     queryKey: ['disciplinary', 'inquiries', employeeId],

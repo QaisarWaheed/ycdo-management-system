@@ -62,8 +62,8 @@ export function ExecutiveDashboard() {
   })
 
   const { data: disciplinary = [] } = useQuery({
-    queryKey: ['disciplinary', 'open'],
-    queryFn: () => disciplinaryApi.getAll({ status: 'OPEN' }),
+    queryKey: ['disciplinary', 'active'],
+    queryFn: () => disciplinaryApi.getActiveCases(),
   })
 
   const { data: leaves = [] } = useQuery({

@@ -274,8 +274,8 @@ function AdminDashboard() {
     isLoading: loadingDisciplinary,
     isError: errorDisciplinary,
   } = useQuery({
-    queryKey: ['disciplinary', 'open'],
-    queryFn: () => disciplinaryApi.getAll({ status: 'OPEN' }),
+    queryKey: ['disciplinary', 'active'],
+    queryFn: () => disciplinaryApi.getActiveCases(),
   })
 
   const {
@@ -472,8 +472,8 @@ function AdminDashboard() {
           loading={loadingDisciplinary}
           error={errorDisciplinary}
           iconBg="bg-orange-100 text-orange-600"
-          subtitle="Requires action"
-          to="/disciplinary?status=OPEN"
+          subtitle="Open and under inquiry"
+          to="/letters?section=enquiries"
         />
         <StatCard
           label="Due for Suspension"

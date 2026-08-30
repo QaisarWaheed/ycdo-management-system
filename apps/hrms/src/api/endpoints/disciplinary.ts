@@ -4,6 +4,20 @@ import type { DisciplinaryAction, Inquiry } from '@/types'
 export const disciplinaryApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, DisciplinaryAction[]>('/disciplinary', { params }),
+  /** Cases that still need action: not yet started, waiting approval, or under inquiry. */
+  getActiveCases: async () => {
+    const [open, underInquiry] = await Promise.all([
+      api.get<unknown, DisciplinaryAction[]>('/disciplinary', {
+        params: { status: 'OPEN' },
+      }),
+      api.get<unknown, DisciplinaryAction[]>('/disciplinary', {
+        params: { status: 'UNDER_INQUIRY' },
+      }),
+    ])
+    const byId = new Map<string, DisciplinaryAction>()
+    for (const row of [...open, ...underInquiry]) byId.set(row.id, row)
+    return [...byId.values()]
+  },
   getOne: (id: string) => api.get(`/disciplinary/${id}`),
   create: (data: Record<string, unknown>) => api.post('/disciplinary', data),
   startInquiry: (data: Record<string, unknown>) =>
