@@ -357,9 +357,14 @@ export class WhatsAppService {
               {
                 type: 'body',
                 parameters: [
-                  { type: 'text', text: params.employeeName },
                   {
                     type: 'text',
+                    parameter_name: 'employee_name',
+                    text: params.employeeName,
+                  },
+                  {
+                    type: 'text',
+                    parameter_name: 'letter_type',
                     text: whatsappLetterTypeLabel(params.letterType),
                   },
                 ],

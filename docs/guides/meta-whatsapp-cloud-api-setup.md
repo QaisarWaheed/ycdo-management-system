@@ -6,6 +6,7 @@ Step-by-step guide to get credentials for HRMS letter delivery:
 - `WHATSAPP_PHONE_NUMBER_ID`
 - `WHATSAPP_TEMPLATE_NAME` (default `employee_letter_issued`)
 - `WHATSAPP_TEMPLATE_LANG` (default `en`)
+- `WHATSAPP_WEBHOOK_VERIFY_TOKEN` (webhook handshake only)
 
 App in this project: **YCDO_API** (Business Manager: **YCDO Serve Humanity**).
 
@@ -149,8 +150,8 @@ Business-initiated messages (HR sends letter; employee did not message first) **
 | Category | **Utility** |
 | Name | `employee_letter_issued` (lowercase, underscores) |
 | Language | English → usually `en` or `en_US` (**must match env**) |
-| Header | **Document** (PDF) |
-| Body example | `Hello {{1}}, your {{2}} letter is ready. Please find the PDF attached.` |
+| Header | **Image** (JPG of the letter — not Document/PDF) |
+| Body example | `Hello {{employee_name}}, your {{letter_type}} letter from YCDO is ready. Please open the image to read it.` |
 
 4. Submit → wait until status is **Approved**.
 5. Env:
@@ -185,9 +186,38 @@ Then:
 
 If any of token / phone number ID is missing, the app treats WhatsApp as off and records **SKIPPED**.
 
+Also set a webhook verify secret (any long random string you invent — you type the same value in Meta):
+
+```env
+WHATSAPP_WEBHOOK_VERIFY_TOKEN=pick-a-long-random-secret
+```
+
 ---
 
-## Part F — Quick test from Meta (optional)
+## Part F — Webhook (delivery status)
+
+The API already exposes:
+
+| Method | URL |
+|--------|-----|
+| GET (verify) + POST (events) | `https://hrms-api.ycdo.org.pk/whatsapp/webhook` |
+
+This does **not** send letters. It only receives Meta’s delivery receipts (`sent` / `delivered` / `failed`) so Failed WhatsApp can show the real error.
+
+1. Deploy the API with `WHATSAPP_WEBHOOK_VERIFY_TOKEN` set.
+2. In [developers.facebook.com/apps](https://developers.facebook.com/apps) → your app → **WhatsApp** → **Configuration** (or App → **Webhooks**).
+3. Click **Edit** / **Add callback URL**.
+4. Callback URL: `https://hrms-api.ycdo.org.pk/whatsapp/webhook`
+5. Verify token: **exactly** the same string as `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
+6. Verify and save. Meta sends `GET ?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…`. Our API returns the challenge if the token matches.
+7. Subscribe to the **WhatsApp Business Account** field **`messages`** (covers message status updates).
+
+If verify fails with 403: token mismatch or env not loaded — restart API and try again.  
+If Meta cannot reach the URL: API must be publicly HTTPS (CapRover already is).
+
+---
+
+## Part G — Quick test from Meta (optional)
 
 1. API Setup → add your personal WhatsApp as a **test recipient** (while in test mode).
 2. Send sample / `hello_world` or your approved template.
@@ -217,9 +247,11 @@ If any of token / phone number ID is missing, the app treats WhatsApp as off and
 - [ ] System user (Admin) created
 - [ ] System user has Full access on **YCDO_API** and WABA
 - [ ] Permanent token generated with WhatsApp permissions → `WHATSAPP_TOKEN`
-- [ ] Template `employee_letter_issued` **Approved** (document header + body vars)
+- [ ] Template `employee_letter_issued` **Approved** (Image header + body `{{employee_name}}` / `{{letter_type}}`)
 - [ ] `WHATSAPP_TEMPLATE_NAME` / `WHATSAPP_TEMPLATE_LANG` match template
-- [ ] Values in API `.env`; API restarted
+- [ ] Webhook `https://hrms-api.ycdo.org.pk/whatsapp/webhook` verified
+- [ ] `WHATSAPP_WEBHOOK_VERIFY_TOKEN` matches Meta verify token
+- [ ] Values in API env; API restarted
 - [ ] Test letter send; use **Failed WhatsApp** if needed
 
 ---
