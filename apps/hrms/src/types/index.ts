@@ -458,6 +458,7 @@ export interface Letter {
     fullName: string
     employeeCode: string
     phone?: string | null
+    status?: string
     currentDesignation?: string | null
     currentBranch?: { name?: string; abbreviation?: string } | null
   }

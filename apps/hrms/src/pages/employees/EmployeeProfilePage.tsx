@@ -2312,7 +2312,8 @@ export function EmployeeProfilePage() {
                                   </Button>
                                 )}
                                 {letter.letterType === 'APPOINTMENT' &&
-                                  letter.status === 'DRAFT' && (
+                                  letter.status === 'DRAFT' &&
+                                  employee.status !== 'ACTIVE' && (
                                     <Button
                                       size="sm"
                                       disabled={
@@ -2359,6 +2360,24 @@ export function EmployeeProfilePage() {
                                         Return
                                       </Button>
                                     </>
+                                  )}
+                                {letter.letterType === 'APPOINTMENT' &&
+                                  employee.status === 'ACTIVE' &&
+                                  (letter.status === 'DRAFT' ||
+                                    letter.status === 'PENDING_APPROVAL') && (
+                                    <Button
+                                      size="sm"
+                                      disabled={
+                                        sendAppointmentMutation.isPending
+                                      }
+                                      onClick={() =>
+                                        sendAppointmentMutation.mutate(
+                                          letter.id,
+                                        )
+                                      }
+                                    >
+                                      Send
+                                    </Button>
                                   )}
                                 {letter.letterType === 'APPOINTMENT' &&
                                   letter.status === 'APPROVED' && (

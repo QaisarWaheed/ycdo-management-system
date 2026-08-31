@@ -119,7 +119,16 @@ function canIssueApprovedSuspension(letter: Letter) {
 
 function canSendDraftLetter(letter: Letter) {
   if (letter.letterType === 'APPOINTMENT') {
-    return letter.status === 'APPROVED'
+    if (letter.status === 'APPROVED') return true
+    if (
+      letter.employee?.status === 'ACTIVE' &&
+      (letter.status === 'DRAFT' ||
+        letter.status === 'PENDING_APPROVAL' ||
+        letter.status === 'APPROVED')
+    ) {
+      return true
+    }
+    return false
   }
   if (letter.status !== 'DRAFT') return false
   if (letter.letterType === 'SUSPENSION') {
@@ -129,7 +138,11 @@ function canSendDraftLetter(letter: Letter) {
 }
 
 function canSubmitAppointment(letter: Letter) {
-  return letter.letterType === 'APPOINTMENT' && letter.status === 'DRAFT'
+  return (
+    letter.letterType === 'APPOINTMENT' &&
+    letter.status === 'DRAFT' &&
+    letter.employee?.status !== 'ACTIVE'
+  )
 }
 
 function isAppointmentPrintDraft(letter: Letter) {

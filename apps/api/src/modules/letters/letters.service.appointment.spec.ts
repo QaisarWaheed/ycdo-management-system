@@ -1,5 +1,6 @@
 import {
   AppointmentLetterLanguage,
+  EmployeeStatus,
   Gender,
   LetterStatus,
   LetterType,
@@ -122,6 +123,7 @@ describe('LettersService appointment Phase 3A', () => {
           monthlyAllowedLeaves: 2,
           currentBranch: { name: 'Main' },
           currentDepartment: { id: 'dept-1', name: 'OPD' },
+          status: EmployeeStatus.PENDING_APPROVAL,
         }),
       },
       department: {
@@ -413,6 +415,39 @@ describe('LettersService appointment Phase 3A', () => {
     ).rejects.toThrow(/must be approved before it can be sent/);
     expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
     expect(tx.notification.create).not.toHaveBeenCalled();
+  });
+
+  it('issues a DRAFT Appointment when the employee is already Active', async () => {
+    const { service, prisma, tx, whatsappService } = build();
+    prisma.employee.findUnique.mockResolvedValue({
+      id: employeeId,
+      fullName: 'Test Employee',
+      employeeCode: 'E-1',
+      phone: '03001234567',
+      cnic: '12345-1234567-1',
+      gender: Gender.MALE,
+      currentDesignation: 'MEDICAL OFFICER',
+      currentDepartmentId: 'dept-1',
+      dutyStartTime: '09:00',
+      dutyEndTime: '17:00',
+      dutyTotalHours: 8,
+      monthlyAllowedLeaves: 2,
+      currentBranch: { name: 'Main' },
+      currentDepartment: { id: 'dept-1', name: 'OPD' },
+      status: EmployeeStatus.ACTIVE,
+    });
+    jest
+      .spyOn(service, 'getPdf')
+      .mockResolvedValue({ buffer: Buffer.from('pdf'), filename: 'letter.pdf' });
+
+    await service.sendLetter('letter-1', 'user-hr', UserRole.HR_MANAGER);
+
+    expect(tx.letter.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: LetterStatus.SENT }),
+      }),
+    );
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalled();
   });
 
   it('submit for approval keeps DRAFT watermark side-effects off', async () => {

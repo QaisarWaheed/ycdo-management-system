@@ -147,7 +147,7 @@ export const APPOINTMENT_APPROVER_ROLES: UserRole[] = [
 ];
 
 export const APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE =
-  'Appointment letter must be approved before it can be sent.';
+  'Appointment letter must be approved before it can be sent, unless the employee is already Active.';
 
 /** Employment states that must not be overwritten by sending a suspension letter. */
 const TERMINAL_EMPLOYEE_STATUSES: EmployeeStatus[] = [
@@ -502,11 +502,12 @@ export class LettersService {
         },
         { letterNo: existingDraft.letterNo ?? 'PENDING', draft: true },
       );
-      return {
-        letter: existingDraft,
-        previewHtml: prepared.htmlContent,
-        reusedExisting: true,
-      };
+      return this.finalizeGeneratedAppointment(
+        existingDraft,
+        prepared.htmlContent,
+        actingUserId,
+        true,
+      );
     }
 
     const prepared = await this.buildSelectionLetterHtml(
@@ -567,7 +568,12 @@ export class LettersService {
         return record;
       });
 
-      return { letter, previewHtml: htmlContent, reusedExisting: false };
+      return this.finalizeGeneratedAppointment(
+        letter,
+        htmlContent,
+        actingUserId,
+        false,
+      );
     } catch (err) {
       const code =
         err && typeof err === 'object' && 'code' in err
@@ -582,11 +588,55 @@ export class LettersService {
           },
         });
         if (raced) {
-          return { letter: raced, previewHtml: htmlContent, reusedExisting: true };
+          return this.finalizeGeneratedAppointment(
+            raced,
+            htmlContent,
+            actingUserId,
+            true,
+          );
         }
       }
       throw err;
     }
+  }
+
+  private async finalizeGeneratedAppointment(
+    letter: { id: string; employeeId: string; status: LetterStatus },
+    previewHtml: string,
+    actingUserId: string,
+    reusedExisting: boolean,
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: letter.employeeId },
+      select: { status: true },
+    });
+    if (
+      employee?.status !== EmployeeStatus.ACTIVE ||
+      letter.status === LetterStatus.SENT
+    ) {
+      return { letter, previewHtml, reusedExisting };
+    }
+
+    const sent = await this.sendLetter(
+      letter.id,
+      actingUserId,
+      UserRole.SUPER_ADMIN,
+      { skipAccessCheck: true },
+    );
+    return {
+      letter: sent.letter,
+      previewHtml,
+      reusedExisting,
+    };
+  }
+
+  private appointmentStatusesAllowedToSend(
+    employeeStatus: EmployeeStatus | null | undefined,
+  ): LetterStatus[] {
+    if (employeeStatus === EmployeeStatus.ACTIVE) {
+      return APPOINTMENT_OPEN_STATUSES;
+    }
+    return [LetterStatus.APPROVED];
   }
 
   private async generateTemplatedLetter(
@@ -1521,14 +1571,17 @@ export class LettersService {
     letterId: string,
     actingUserId: string,
     actingRole: UserRole,
+    opts?: { skipAccessCheck?: boolean },
   ) {
     const letter = await this.findOne(letterId);
-    await this.accessScopeService.assertEmployeeAccess(
-      actingUserId,
-      actingRole,
-      Permission.LETTERS_GENERATE,
-      letter.employeeId,
-    );
+    if (!opts?.skipAccessCheck) {
+      await this.accessScopeService.assertEmployeeAccess(
+        actingUserId,
+        actingRole,
+        Permission.LETTERS_GENERATE,
+        letter.employeeId,
+      );
+    }
 
     if (letter.status === LetterStatus.REVERSED) {
       throw new BadRequestException('Cannot send a reversed letter');
@@ -1540,11 +1593,19 @@ export class LettersService {
         message: 'Letter already sent to portal',
       };
     }
-    if (
-      letter.letterType === LetterType.APPOINTMENT &&
-      letter.status !== LetterStatus.APPROVED
-    ) {
-      throw new BadRequestException(APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE);
+
+    const employeeStatus = (
+      await this.prisma.employee.findUnique({
+        where: { id: letter.employeeId },
+        select: { status: true },
+      })
+    )?.status;
+
+    if (letter.letterType === LetterType.APPOINTMENT) {
+      const allowed = this.appointmentStatusesAllowedToSend(employeeStatus);
+      if (!allowed.includes(letter.status)) {
+        throw new BadRequestException(APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE);
+      }
     }
 
     const requiresAck = ACKNOWLEDGEMENT_TYPES.includes(letter.letterType);
@@ -1614,7 +1675,9 @@ export class LettersService {
       }
       if (
         current.letterType === LetterType.APPOINTMENT &&
-        current.status !== LetterStatus.APPROVED
+        !this.appointmentStatusesAllowedToSend(employeeStatus).includes(
+          current.status,
+        )
       ) {
         throw new BadRequestException(APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE);
       }
@@ -1642,8 +1705,9 @@ export class LettersService {
           : {};
 
       if (current.letterType === LetterType.APPOINTMENT) {
+        const allowed = this.appointmentStatusesAllowedToSend(employeeStatus);
         const claimed = await tx.letter.updateMany({
-          where: { id: letterId, status: LetterStatus.APPROVED },
+          where: { id: letterId, status: { in: allowed } },
           data: {
             status: LetterStatus.SENT,
             requiresAcknowledgement: requiresAck,
@@ -2272,7 +2336,11 @@ export class LettersService {
       where,
       include: {
         employee: {
-          select: { fullName: true, employeeCode: true },
+          select: {
+            fullName: true,
+            employeeCode: true,
+            status: true,
+          },
         },
         acknowledgement: true,
         replies: {

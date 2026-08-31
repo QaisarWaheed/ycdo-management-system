@@ -161,6 +161,11 @@ describe('LettersService.sendLetter', () => {
       letter: {
         findUnique: jest.fn().mockResolvedValue(letter),
       },
+      employee: {
+        findUnique: jest.fn().mockResolvedValue({
+          status: opts.employeeStatus,
+        }),
+      },
       $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) =>
         fn(tx),
       ),

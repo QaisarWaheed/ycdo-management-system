@@ -258,7 +258,7 @@ export class EmployeeOnboardingService {
           stipendRecord ?? snapshot.basicStipend ?? 0,
         );
 
-        // Appointment letter is created as DRAFT. HR must send explicitly.
+        // Appointment letter is created, then issued if the employee is already Active.
         await this.lettersService.generateSystemLetter({
           employeeId: employee.id,
           letterType: LetterType.APPOINTMENT,
