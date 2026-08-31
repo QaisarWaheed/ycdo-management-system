@@ -65,6 +65,12 @@ export const INQUIRY_OPEN_SUBMIT_ROLES: UserRole[] = [
   UserRole.HR_EXECUTIVE,
 ];
 
+/** Same HR team that starts inquiry, plus IT Admin (status override ops). */
+export const INQUIRY_CLOSE_ROLES: UserRole[] = [
+  ...INQUIRY_OPEN_SUBMIT_ROLES,
+  UserRole.IT_ADMIN,
+];
+
 @Injectable()
 export class InquiryOpeningService {
   constructor(

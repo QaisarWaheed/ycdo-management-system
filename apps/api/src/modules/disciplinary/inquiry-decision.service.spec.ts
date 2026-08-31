@@ -947,6 +947,31 @@ describe('InquiryDecisionService', () => {
     );
   });
 
+  it('lets HR Executive closeInquiry after official opening', async () => {
+    const inquiry = openInquiry({
+      officiallyOpenedAt: new Date('2026-08-01T00:00:00.000Z'),
+    });
+    const { service, tx, prisma } = build(inquiry);
+    prisma.branch.findUnique.mockResolvedValue({
+      id: fromBranch,
+      isActive: true,
+    });
+
+    await service.closeInquiry(
+      inquiryId,
+      {
+        finding: InquiryFinding.NOT_GUILTY,
+        notes: 'English:\nrejoining',
+        closeRecommendation: 'nothing',
+      },
+      'user-exec',
+      UserRole.HR_EXECUTIVE,
+      [UserRole.HR_EXECUTIVE],
+    );
+
+    expect(tx.inquiry.updateMany).toHaveBeenCalled();
+  });
+
   it('closeInquiry rejects before opening approval', async () => {
     const { service } = build(openInquiry({ officiallyOpenedAt: null }));
     await expect(

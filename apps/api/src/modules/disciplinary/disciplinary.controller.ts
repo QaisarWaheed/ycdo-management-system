@@ -30,7 +30,7 @@ import {
 } from './disciplinary.dto';
 import { DisciplinaryService } from './disciplinary.service';
 import { InquiryDecisionService } from './inquiry-decision.service';
-import { InquiryOpeningService } from './inquiry-opening.service';
+import { InquiryOpeningService, INQUIRY_CLOSE_ROLES } from './inquiry-opening.service';
 import { SuspensionRequestService } from './suspension-request.service';
 
 const SUSPENSION_PREPARE_ROLES = [
@@ -228,7 +228,7 @@ export class DisciplinaryController {
   }
 
   @Post('inquiries/:id/close')
-  @Roles(...SUSPENSION_PREPARE_ROLES)
+  @Roles(...INQUIRY_CLOSE_ROLES)
   closeInquiry(
     @Param('id') id: string,
     @Body() dto: CloseInquiryDto,

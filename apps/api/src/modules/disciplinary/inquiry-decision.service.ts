@@ -30,6 +30,7 @@ import {
   SUSPENSION_PREPARE_ROLES,
   SuspensionRequestService,
 } from './suspension-request.service';
+import { INQUIRY_CLOSE_ROLES } from './inquiry-opening.service';
 import {
   expectedFinalLetters,
   ensureInquiryResolvedNotification,
@@ -212,7 +213,7 @@ export class InquiryDecisionService {
     actingRole: UserRole,
     actingRoles?: UserRole[],
   ) {
-    this.assertPrepareRole(actingRole, actingRoles);
+    this.assertCloseRole(actingRole, actingRoles);
     const inquiry = await this.loadInquiry(inquiryId);
     this.assertOfficiallyOpen(inquiry);
     if (
@@ -1104,6 +1105,15 @@ export class InquiryDecisionService {
     if (!eligible.some((row) => row.id === userId)) {
       throw new BadRequestException(
         'Selected approver is not eligible to authorize a final inquiry action.',
+      );
+    }
+  }
+
+  private assertCloseRole(actingRole: UserRole, actingRoles?: UserRole[]) {
+    const roles = actingRoles?.length ? actingRoles : [actingRole];
+    if (!hasAnyRole(roles, INQUIRY_CLOSE_ROLES)) {
+      throw new ForbiddenException(
+        'You are not allowed to close an inquiry.',
       );
     }
   }
