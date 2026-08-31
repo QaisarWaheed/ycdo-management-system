@@ -1,62 +1,40 @@
 <!--
   YCDO — SALARY / STIPEND INCREMENT NOTIFICATION
-  Fixed English notification format (Letter No.2096/YCDO/2026 pattern).
-  Only the figures, date, employee identity, and letter no. are variable —
-  wording around them does not change. Not part of the shared Urdu letter shell.
+  English letterhead: logo left, bismillah top, office block right.
+  Computer-generated — no signature block.
 -->
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<style>
-  @page { size: A4; margin: 20mm 18mm 18mm 18mm; }
-
-  body {
-    font-family: "Times New Roman", "Liberation Serif", Times, Georgia, serif;
-    font-size: 12.5pt;
-    line-height: 1.5;
-    color: #000;
-    margin: 0;
-  }
-
-  .metarow {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 16pt;
-  }
-
-  .recipient div { margin-bottom: 2pt; }
-
+<style>{{{englishLetterStyles}}}
   .title {
     text-align: center;
     font-size: 13pt;
     font-weight: bold;
     text-decoration: underline;
-    margin: 16pt 0 14pt;
+    margin: 12pt 0 10pt;
   }
 
-  p { margin: 0 0 12pt; text-align: justify; }
+  .recipient { margin: 4pt 0 8pt; }
+  .recipient div { margin-bottom: 2pt; }
+
+  p { margin: 0 0 8pt; text-align: justify; }
 
   table.increment-table {
     width: 60%;
     border-collapse: collapse;
-    margin: 4pt 0 16pt;
+    margin: 4pt 0 12pt;
   }
   table.increment-table td {
-    padding: 4pt 8pt;
-    font-size: 12pt;
+    padding: 3pt 8pt;
+    font-size: 11pt;
   }
-
-  .signblock { margin-top: 34pt; }
-  .signblock .name { font-weight: bold; }
 </style>
 </head>
 <body>
 
-<div class="metarow">
-  <span>Letter No. {{letterNo}}</span>
-  <span>Dated: {{issueDate}}</span>
-</div>
+{{> ycdoEnglishLetterHeader}}
 
 <div class="recipient">
   <div>{{employeeName}}</div>
@@ -91,11 +69,6 @@
   Rs.{{newSalary}}/- per month. We expect that your services will be more effective and
   vigilant for our esteemed Organization. Best of Luck for future.
 </p>
-
-<div class="signblock">
-  <div class="name">Coordinator Project</div>
-  <div>YCDO Multan, Pakistan.</div>
-</div>
 
 </body>
 </html>

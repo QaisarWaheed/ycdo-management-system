@@ -3,6 +3,7 @@ import { LetterType } from '@prisma/client';
 import { URDU_LETTER_STYLES } from './urdu-letter-styles';
 import { renderHandlebarsTemplate } from './selection-letter.helper';
 import { YCDO_LOGO_DATA_URI } from './ycdo-logo-base64';
+import { formatDuty12h } from '../../common/duty.util';
 
 export interface LetterRenderVariables {
   letterNo: string;
@@ -289,6 +290,92 @@ export function parseAttendanceRows(raw: unknown): AttendanceRow[] {
   return [];
 }
 
+/** Shared CSS for standalone English letters (appreciation, increment, etc.). */
+export const ENGLISH_LETTER_STYLES = `
+@page { size: A4; margin: 16mm 16mm 18mm 16mm; }
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: "Times New Roman", "Liberation Serif", Times, Georgia, serif;
+  font-size: 11pt;
+  line-height: 1.45;
+  color: #000;
+  margin: 0;
+}
+
+.bismillah {
+  text-align: center;
+  font-size: 13pt;
+  margin-bottom: 6pt;
+}
+
+.letterhead-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12pt;
+  margin-bottom: 8pt;
+}
+
+.letterhead-logo {
+  max-height: 78px;
+  width: auto;
+}
+
+.letterhead-right { text-align: right; }
+
+.letterhead-org .office { font-size: 11pt; }
+.letterhead-org .org-name {
+  font-size: 13pt;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.letterhead-org .loc { font-size: 11pt; }
+
+.letterhead-meta {
+  margin-top: 8pt;
+  font-size: 11pt;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.computer-generated-notice {
+  margin-top: 22pt;
+  padding-top: 8pt;
+  border-top: 1px solid #ccc;
+  text-align: center;
+  font-size: 9.5pt;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #333;
+  line-height: 1.35;
+}
+`;
+
+const YCDO_ENGLISH_LETTER_HEADER = `
+<div class="en-letter-shell">
+  <div class="bismillah">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
+  <div class="letterhead-row">
+    <div>
+      {{#if letterheadLogoUrl}}
+        <img class="letterhead-logo" src="{{letterheadLogoUrl}}" alt="YCDO" />
+      {{/if}}
+    </div>
+    <div class="letterhead-right">
+      <div class="letterhead-org">
+        <div class="office">OFFICE OF THE</div>
+        <div class="org-name">YOUTH COMMUNITY<br/>DEVELOPMENT ORGANIZATION</div>
+        <div class="loc">MULTAN, PAKISTAN</div>
+      </div>
+      <div class="letterhead-meta">
+        <div>Notification: {{letterNo}}</div>
+        <div>Dated: {{issueDate}}</div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
 const YCDO_LETTER_HEADER = `
 <div class="letter-shell-top">
   <div class="bismillah">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
@@ -351,7 +438,7 @@ export const COMPUTER_GENERATED_NOTICE_HTML = `
  * renders the same text via Puppeteer's footer instead.
  */
 export function appendComputerGeneratedNotice(htmlContent: string): string {
-  if (htmlContent.includes('computer-generated-notice')) {
+  if (/class=["']computer-generated-notice["']/.test(htmlContent)) {
     return htmlContent;
   }
   const trimmed = htmlContent.trimEnd();
@@ -381,8 +468,25 @@ let partialsRegistered = false;
 function ensurePartials() {
   if (partialsRegistered) return;
   Handlebars.registerPartial('ycdoLetterHeader', YCDO_LETTER_HEADER);
+  Handlebars.registerPartial('ycdoEnglishLetterHeader', YCDO_ENGLISH_LETTER_HEADER);
   Handlebars.registerPartial('ycdoLetterFooter', YCDO_LETTER_FOOTER);
   partialsRegistered = true;
+}
+
+/** Duty window printed in the transfer table Time column. */
+export function englishTransferTime(vars: Record<string, unknown>): string {
+  const explicit = String(vars.timing ?? '').trim();
+  if (explicit && !/ڈیوٹی/.test(explicit)) return explicit;
+  const start = String(vars.dutyStartTime ?? '').trim();
+  const end = String(vars.dutyEndTime ?? '').trim();
+  if (start && end) {
+    try {
+      return `${formatDuty12h(start)} to ${formatDuty12h(end)}`;
+    } catch {
+      return `${start} to ${end}`;
+    }
+  }
+  return explicit;
 }
 
 export function applyFineUniformWording(html: string): string {
@@ -400,6 +504,7 @@ export function renderLetterHtml(
   return appendComputerGeneratedNotice(
     renderHandlebarsTemplate(applyFineUniformWording(bodyHtml), {
       letterStyles: URDU_LETTER_STYLES,
+      englishLetterStyles: ENGLISH_LETTER_STYLES,
       senderTitle: DEFAULT_SENDER_TITLE,
       orgLine: DEFAULT_ORG_LINE,
       letterheadLogoUrl: process.env.LETTERHEAD_LOGO_URL || YCDO_LOGO_DATA_URI,

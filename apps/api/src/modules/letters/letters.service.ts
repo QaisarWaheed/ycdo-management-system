@@ -68,6 +68,7 @@ import {
   applyFineUniformWording,
   buildLetterRef,
   defaultSubjectFor,
+  englishTransferTime,
   parseAttendanceRows,
   parseViolationLines,
   renderLetterHtml,
@@ -763,7 +764,8 @@ export class LettersService implements OnModuleInit {
         phone: built.phone,
         fileUrl,
         pdfBuffer,
-        filename: `${sanitizeRefForFilename(letterNo)}.pdf`,
+        htmlContent: built.htmlContent,
+        filename: `${sanitizeRefForFilename(letterNo)}.jpg`,
       });
     }
 
@@ -918,7 +920,9 @@ export class LettersService implements OnModuleInit {
       ),
       attendanceRows: parseAttendanceRows(normalized.attendanceRows),
       incrementAmount: String(incrementAmount),
-      timing: String(normalized.timing ?? '').trim() || 'ڈیوٹی روسترکے مطابق',
+      timing: isEnglishLetterType
+        ? englishTransferTime(normalized)
+        : String(normalized.timing ?? '').trim() || 'ڈیوٹی روسترکے مطابق',
     };
 
     const renderBody =
@@ -1857,7 +1861,7 @@ export class LettersService implements OnModuleInit {
         phone,
         fileUrl: updated.fileUrl,
         pdfBuffer: buffer,
-        filename,
+        filename: filename.replace(/\.pdf$/i, '.jpg'),
       });
     } catch (err) {
       console.error(`WhatsApp deliver after send failed for ${letterId}:`, err);

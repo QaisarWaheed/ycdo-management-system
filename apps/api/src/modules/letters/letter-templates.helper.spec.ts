@@ -1,8 +1,11 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   appendComputerGeneratedNotice,
   applyFineUniformWording,
   buildLetterRef,
   COMPUTER_GENERATED_NOTICE,
+  englishTransferTime,
   parseAttendanceRows,
   parseViolationLines,
 } from './letter-templates.helper';
@@ -37,7 +40,14 @@ describe('appendComputerGeneratedNotice', () => {
   it('does not duplicate when already present', () => {
     const once = appendComputerGeneratedNotice('<html><body></body></html>');
     const twice = appendComputerGeneratedNotice(once);
-    expect(twice.match(/computer-generated-notice/g)?.length).toBe(1);
+    expect(twice.match(/class="computer-generated-notice"/g)?.length).toBe(1);
+  });
+
+  it('still appends when only a CSS rule uses the class name', () => {
+    const html = appendComputerGeneratedNotice(
+      '<html><head><style>.computer-generated-notice{color:#333}</style></head><body></body></html>',
+    );
+    expect(html).toContain('class="computer-generated-notice"');
   });
 });
 
@@ -72,6 +82,34 @@ describe('applyFineUniformWording', () => {
   });
 });
 
+describe('English letter templates', () => {
+  const tplDir = path.join(
+    __dirname,
+    '../../../prisma/seeds/templates/letters',
+  );
+
+  it('drop signature blocks from appreciation, increment, and transfer', () => {
+    for (const file of ['APPRECIATION.hbs', 'SALARY_INCREMENT.hbs', 'TRANSFER.hbs']) {
+      const html = fs.readFileSync(path.join(tplDir, file), 'utf8');
+      expect(html).not.toMatch(/class="signblock"/);
+      expect(html).not.toMatch(/Sincerely,/);
+      expect(html).not.toMatch(/Volunteer Signature/);
+    }
+  });
+
+  it('transfer table lists Sr. No., name, designation, branches, and time', () => {
+    const html = fs.readFileSync(path.join(tplDir, 'TRANSFER.hbs'), 'utf8');
+    expect(html).toContain('Sr. No.');
+    expect(html).toContain('Employee Name');
+    expect(html).toContain('Designation');
+    expect(html).toContain('From Branch');
+    expect(html).toContain('To Branch');
+    expect(html).toContain('Time');
+    expect(html).toContain('یا اللہ');
+    expect(html).toContain('NOTIFICATION OF TRANSFER');
+  });
+});
+
 describe('URDU_LETTER_STYLES compact single-page content', () => {
   it('shrinks body content while keeping letterhead and title sizes', () => {
     expect(URDU_LETTER_STYLES).toMatch(/body\s*\{[^}]*font-size:\s*10\.5pt/s);
@@ -85,5 +123,13 @@ describe('URDU_LETTER_STYLES compact single-page content', () => {
     expect(URDU_LETTER_STYLES).toMatch(
       /\.violations \.heading\s*\{[^}]*font-size:\s*12pt/s,
     );
+  });
+});
+
+describe('englishTransferTime', () => {
+  it('formats duty start/end as 12-hour range', () => {
+    expect(
+      englishTransferTime({ dutyStartTime: '08:00', dutyEndTime: '15:00' }),
+    ).toBe('08:00 AM to 03:00 PM');
   });
 });

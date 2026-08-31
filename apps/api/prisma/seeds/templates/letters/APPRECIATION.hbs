@@ -1,83 +1,36 @@
 <!--
   YCDO — LETTER OF APPRECIATION
-  Fixed English format matching the official paper letter. Not part of the
-  shared Urdu letter shell — this is a standalone English document.
+  English letterhead: logo left, bismillah top, office block right.
+  Computer-generated — no signature block.
 -->
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<style>
-  @page { size: A4; margin: 20mm 18mm 18mm 18mm; }
-
-  body {
-    font-family: "Times New Roman", "Liberation Serif", Times, Georgia, serif;
-    font-size: 12.5pt;
-    line-height: 1.5;
-    color: #000;
-    margin: 0;
-  }
-
-  .bismillah { text-align: center; font-size: 13pt; margin-bottom: 8pt; }
-
-  .letterhead-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 6pt;
-  }
-  .letterhead-row img { max-height: 55px; }
-  .letterhead-right { text-align: right; }
-  .letterhead-org {
-    text-align: right;
-  }
-  .letterhead-org .office { font-size: 10.5pt; }
-  .letterhead-org .name { font-size: 13pt; font-weight: bold; }
-  .letterhead-org .loc { font-size: 10.5pt; }
-  .letterhead-meta { margin-top: 6pt; text-align: right; font-size: 11pt; white-space: nowrap; }
-
+<style>{{{englishLetterStyles}}}
   .title {
     text-align: center;
     font-size: 15pt;
     font-weight: bold;
     font-style: italic;
-    margin: 14pt 0 10pt;
+    margin: 12pt 0 8pt;
     border-bottom: 1px solid #000;
-    padding-bottom: 8pt;
+    padding-bottom: 6pt;
   }
 
-  .meta-block { margin: 10pt 0 14pt; }
-  .meta-block .row { margin-bottom: 3pt; }
+  .meta-block { margin: 8pt 0 10pt; }
+  .meta-block .row { margin-bottom: 2pt; }
   .meta-block .label { font-weight: bold; }
 
-  p { margin: 0 0 10pt; text-align: justify; }
+  p { margin: 0 0 8pt; text-align: justify; }
 
-  ol.reference-list { margin: 0 0 12pt; padding-inline-start: 22pt; }
-  ol.reference-list li { margin-bottom: 6pt; text-align: justify; }
-
-  .closing { margin-top: 14pt; }
-  .signblock { margin-top: 28pt; }
-  .signblock .name { font-weight: bold; }
+  ol.reference-list { margin: 0 0 10pt; padding-inline-start: 22pt; }
+  ol.reference-list li { margin-bottom: 5pt; text-align: justify; }
 </style>
 </head>
 <body>
 
-<div class="bismillah">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
-
-<div class="letterhead-row">
-  {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
-  <div class="letterhead-right">
-    <div class="letterhead-org">
-      <div class="office">OFFICE OF THE</div>
-      <div class="name">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
-      <div class="loc">MULTAN, PAKISTAN</div>
-    </div>
-    <div class="letterhead-meta">
-      <div>Letter no: {{letterNo}}</div>
-      <div>Dated: {{issueDate}}</div>
-    </div>
-  </div>
-</div>
+{{> ycdoEnglishLetterHeader}}
 
 <div class="title">LETTER OF APPRECIATION</div>
 
@@ -130,13 +83,6 @@
 </ol>
 
 <p>We extend our best wishes for your continued success and professional growth.</p>
-
-<p class="closing">Sincerely,</p>
-
-<div class="signblock">
-  <div class="name">Chairman Admin Department</div>
-  <div>YCDO Multan, Pakistan</div>
-</div>
 
 </body>
 </html>

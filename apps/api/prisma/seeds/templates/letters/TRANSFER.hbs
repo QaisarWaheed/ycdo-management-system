@@ -1,63 +1,90 @@
-<!-- YCDO — TRANSFER / POSTING NOTIFICATION. Signed twice by Chairman Admin Department. -->
+<!-- YCDO — NOTIFICATION OF TRANSFER. Computer-generated — no signature block. -->
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-  @page { size: A4; margin: 20mm 18mm 18mm 18mm; }
+  @page { size: A4; margin: 16mm 16mm 18mm 16mm; }
+
+  * { box-sizing: border-box; }
 
   body {
     font-family: "Times New Roman", "Liberation Serif", Times, Georgia, serif;
-    font-size: 12.5pt;
-    line-height: 1.5;
+    font-size: 11pt;
+    line-height: 1.45;
     color: #000;
     margin: 0;
   }
 
-  .bismillah { text-align: center; font-size: 13pt; margin-bottom: 8pt; }
-  .letterhead { text-align: center; margin-bottom: 10pt; }
-  .letterhead img { max-height: 60px; }
-  .letterhead .office { font-size: 10.5pt; }
+  .urdu-top-row {
+    display: flex;
+    justify-content: space-between;
+    direction: rtl;
+    font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Urdu Typesetting", serif;
+    font-size: 12pt;
+    margin-bottom: 8pt;
+  }
+
+  .letterhead { text-align: center; margin-bottom: 8pt; }
+  .letterhead img { max-height: 70px; }
+  .letterhead .office { font-size: 11pt; }
   .letterhead .org { font-size: 14pt; font-weight: bold; }
-  .letterhead .loc { font-size: 10.5pt; }
-  .letterhead .title { font-size: 13pt; font-weight: bold; margin-top: 8pt; text-decoration: underline; }
+  .letterhead .loc { font-size: 11pt; }
+  .letterhead .title {
+    font-size: 13pt;
+    font-weight: bold;
+    margin-top: 8pt;
+    text-decoration: underline;
+  }
 
   .metarow {
     display: flex;
     justify-content: space-between;
-    margin: 14pt 0 16pt;
+    margin: 10pt 0 12pt;
+    font-weight: 700;
   }
 
-  p { margin: 0 0 12pt; text-align: justify; }
+  p { margin: 0 0 8pt; text-align: justify; }
 
   table.transfer-table {
     width: 100%;
     border-collapse: collapse;
-    margin: 12pt 0 18pt;
+    margin: 10pt 0 14pt;
   }
   table.transfer-table th, table.transfer-table td {
     border: 1px solid #000;
-    padding: 5pt 7pt;
-    font-size: 11.5pt;
-    text-align: left;
+    padding: 5pt 6pt;
+    font-size: 10.5pt;
+    text-align: center;
   }
-  table.transfer-table th { background: #f2f2f2; font-weight: bold; }
+  table.transfer-table th { font-weight: bold; }
 
-  .cc { margin-top: 16pt; font-size: 11.5pt; }
+  .cc { margin-top: 14pt; font-size: 10.5pt; }
   .cc .cc-title { font-weight: bold; margin-bottom: 4pt; }
   .cc div { margin-bottom: 2pt; }
 
-  .signblock { margin-top: 30pt; }
-  .signblock .name { font-weight: bold; }
-  .notif-even { margin-top: 18pt; font-weight: bold; }
+  .computer-generated-notice {
+    margin-top: 22pt;
+    padding-top: 8pt;
+    border-top: 1px solid #ccc;
+    text-align: center;
+    font-size: 9.5pt;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #333;
+    line-height: 1.35;
+  }
 </style>
 </head>
 <body>
 
-<div class="bismillah">بِسْمِ اللّٰهِ الرَّحْمٰنِ الرَّحِيْمِ</div>
+<div class="urdu-top-row">
+  <span>یا اللہ</span>
+  <span>یا محمد</span>
+  <span>یا علی</span>
+</div>
 
 <div class="letterhead">
-  {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="">{{/if}}
+  {{#if letterheadLogoUrl}}<img src="{{letterheadLogoUrl}}" alt="YCDO">{{/if}}
   <div class="office">OFFICE OF THE</div>
   <div class="org">YOUTH COMMUNITY DEVELOPMENT ORGANIZATION</div>
   <div class="loc">MULTAN, PAKISTAN</div>
@@ -66,7 +93,7 @@
 
 <div class="metarow">
   <span>Dated: {{issueDate}}</span>
-  <span>Notification No: {{letterNo}}</span>
+  <span>Notification: {{letterNo}}</span>
 </div>
 
 <p>
@@ -78,20 +105,22 @@
 <table class="transfer-table">
   <thead>
     <tr>
-      <th>Sr#</th>
+      <th>Sr. No.</th>
       <th>Employee Name</th>
       <th>Designation</th>
-      <th>From Branch/Department</th>
-      <th>To Branch/Department</th>
+      <th>From Branch</th>
+      <th>To Branch</th>
+      <th>Time</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>01</td>
+      <td>1</td>
       <td>{{employeeName}}</td>
       <td>{{targetDesignation}}</td>
       <td>{{#if fromPosting}}{{fromPosting}}{{else}}{{branch}}{{/if}}</td>
       <td>{{toPosting}}</td>
+      <td>{{#if timing}}{{timing}}{{else}}—{{/if}}</td>
     </tr>
   </tbody>
 </table>
@@ -110,32 +139,6 @@
 
 <p>This notification shall take effect immediately.</p>
 
-<table class="transfer-table">
-  <thead>
-    <tr>
-      <th>Duty Hours (per day)</th>
-      <th>Working Hours</th>
-      <th>Allowed Leaves / Month</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>{{#if dutyTotalHours}}{{dutyTotalHours}}{{else}}—{{/if}}</td>
-      <td>{{#if dutyStartTime}}{{dutyStartTime}} To {{dutyEndTime}}{{else}}—{{/if}}</td>
-      <td>{{#if monthlyAllowedLeaves}}{{monthlyAllowedLeaves}}{{else}}—{{/if}}</td>
-    </tr>
-  </tbody>
-</table>
-
-<div class="signblock">
-  <div>By Order of the Chairman Admin Department, YCDO</div>
-  <br/>
-  <div class="name">Chairman Admin Department</div>
-  <div>YCDO Multan, Pakistan</div>
-</div>
-
-<div class="notif-even">Notification No. &amp; Date Even</div>
-
 <div class="cc">
   <div class="cc-title">Copy to:</div>
   <div>1. Chairman Admin Department, YCDO.</div>
@@ -146,11 +149,6 @@
   <div>6. Concerned Department Heads.</div>
   <div>7. Personal File of Employee(s) Concerned.</div>
   <div>8. Office Record.</div>
-</div>
-
-<div class="signblock">
-  <div class="name">Chairman Admin Department</div>
-  <div>YCDO Multan, Pakistan</div>
 </div>
 
 </body>

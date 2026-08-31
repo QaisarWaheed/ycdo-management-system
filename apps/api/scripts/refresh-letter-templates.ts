@@ -45,6 +45,7 @@ const CODES_TO_REFRESH = [
   'APPRECIATION',
   'TRANSFER',
   'FINE',
+  'SALARY_INCREMENT',
 ];
 
 const EN_TITLE_FIXES: Record<string, string> = {

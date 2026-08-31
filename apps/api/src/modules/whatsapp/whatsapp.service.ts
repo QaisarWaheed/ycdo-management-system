@@ -4,8 +4,61 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizePakistanPhone } from './phone.util';
+import { generateJpeg, generateJpegFromPdf } from '../letters/pdf.helper';
 
 const GRAPH_VERSION = 'v21.0';
+
+interface DeliverInput {
+  letterId: string;
+  employeeId: string;
+  employeeName: string;
+  letterType: LetterType;
+  phone?: string | null;
+  fileUrl?: string | null;
+  pdfBuffer?: Buffer;
+  htmlContent?: string;
+  filename?: string;
+}
+
+function jpgFilename(
+  filename: string | undefined,
+  letterType: LetterType,
+  letterId: string,
+): string {
+  const base =
+    filename ?? `${letterType.toLowerCase()}-${letterId.slice(0, 8)}.jpg`;
+  return base.replace(/\.pdf$/i, '.jpg').replace(/\.png$/i, '.jpg');
+}
+
+async function jpegBufferForWhatsApp(input: DeliverInput): Promise<Buffer> {
+  if (input.htmlContent) {
+    return generateJpeg(input.htmlContent);
+  }
+  const pdfBuffer =
+    input.pdfBuffer ??
+    (input.fileUrl ? await loadPdfFile(input.fileUrl) : undefined);
+  if (!pdfBuffer) {
+    throw new Error('No letter file available');
+  }
+  return generateJpegFromPdf(pdfBuffer);
+}
+
+async function loadPdfFile(fileUrl: string): Promise<Buffer> {
+  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+    const res = await fetch(fileUrl);
+    if (!res.ok) {
+      throw new Error(`Failed to download PDF (${res.status})`);
+    }
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  const relative = fileUrl.replace(/^\//, '');
+  const filePath = path.join(process.cwd(), relative);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`PDF file missing: ${fileUrl}`);
+  }
+  return fs.readFileSync(filePath);
+}
 
 function whatsappLetterTypeLabel(letterType: LetterType): string {
   if (letterType === LetterType.SUSPENSION_ELIGIBILITY) {
@@ -16,17 +69,6 @@ function whatsappLetterTypeLabel(letterType: LetterType): string {
   }
   return letterType.replace(/_/g, ' ');
 }
-
-type DeliverInput = {
-  letterId: string;
-  employeeId: string;
-  employeeName: string;
-  letterType: LetterType;
-  phone?: string | null;
-  fileUrl?: string | null;
-  pdfBuffer?: Buffer;
-  filename?: string;
-};
 
 @Injectable()
 export class WhatsAppService {
@@ -61,9 +103,7 @@ export class WhatsAppService {
     }
 
     const phoneE164 = normalizePakistanPhone(input.phone) ?? '';
-    const filename =
-      input.filename ??
-      `${input.letterType.toLowerCase()}-${input.letterId.slice(0, 8)}.pdf`;
+    const filename = jpgFilename(input.filename, input.letterType, input.letterId);
 
     if (!this.isConfigured()) {
       await this.upsertSend(input, {
@@ -83,11 +123,11 @@ export class WhatsAppService {
       return;
     }
 
-    if (!input.fileUrl && !input.pdfBuffer) {
+    if (!input.fileUrl && !input.pdfBuffer && !input.htmlContent) {
       await this.upsertSend(input, {
         phoneE164,
         status: WhatsAppSendStatus.SKIPPED,
-        error: 'No letter PDF available',
+        error: 'No letter file available',
       });
       return;
     }
@@ -99,13 +139,15 @@ export class WhatsAppService {
     });
 
     try {
-      const pdfBuffer =
-        input.pdfBuffer ?? (await this.loadPdfBuffer(input.fileUrl!));
-      const mediaId = await this.uploadMedia(pdfBuffer, filename);
-      const metaMessageId = await this.sendTemplateDocument({
+      const jpegBuffer = await jpegBufferForWhatsApp(input);
+      const mediaId = await this.uploadMedia(
+        jpegBuffer,
+        filename,
+        'image/jpeg',
+      );
+      const metaMessageId = await this.sendTemplateImage({
         phoneE164,
         mediaId,
-        filename,
         employeeName: input.employeeName,
         letterType: input.letterType,
       });
@@ -243,32 +285,19 @@ export class WhatsAppService {
     });
   }
 
-  private async loadPdfBuffer(fileUrl: string): Promise<Buffer> {
-    if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
-      const res = await fetch(fileUrl);
-      if (!res.ok) {
-        throw new Error(`Failed to download PDF (${res.status})`);
-      }
-      return Buffer.from(await res.arrayBuffer());
-    }
-
-    const relative = fileUrl.replace(/^\//, '');
-    const filePath = path.join(process.cwd(), relative);
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`PDF file missing: ${fileUrl}`);
-    }
-    return fs.readFileSync(filePath);
-  }
-
-  private async uploadMedia(pdfBuffer: Buffer, filename: string): Promise<string> {
+  private async uploadMedia(
+    buffer: Buffer,
+    filename: string,
+    mimeType: string,
+  ): Promise<string> {
     const token = process.env.WHATSAPP_TOKEN!;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID!;
     const form = new FormData();
     form.append('messaging_product', 'whatsapp');
-    form.append('type', 'application/pdf');
+    form.append('type', mimeType);
     form.append(
       'file',
-      new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' }),
+      new Blob([new Uint8Array(buffer)], { type: mimeType }),
       filename,
     );
 
@@ -288,10 +317,9 @@ export class WhatsAppService {
     return body.id;
   }
 
-  private async sendTemplateDocument(params: {
+  private async sendTemplateImage(params: {
     phoneE164: string;
     mediaId: string;
-    filename: string;
     employeeName: string;
     letterType: LetterType;
   }): Promise<string | undefined> {
@@ -321,11 +349,8 @@ export class WhatsAppService {
                 type: 'header',
                 parameters: [
                   {
-                    type: 'document',
-                    document: {
-                      id: params.mediaId,
-                      filename: params.filename,
-                    },
+                    type: 'image',
+                    image: { id: params.mediaId },
                   },
                 ],
               },
