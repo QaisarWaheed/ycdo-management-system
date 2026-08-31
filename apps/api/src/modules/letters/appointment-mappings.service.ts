@@ -16,6 +16,7 @@ import {
   isInvalidAppointmentAssignment,
   resolveAppointmentServiceArea,
 } from './appointment-families';
+import { loadOrCreateAppointmentLetterTemplate } from './appointment-template-store';
 import {
   CreateAppointmentMappingDto,
   UpdateAppointmentMappingDto,
@@ -372,12 +373,10 @@ export class AppointmentMappingsService {
     const meta = appointmentFamilyMeta(templateCode);
     if (meta) language = meta.language;
 
-    const template = await this.prisma.letterTemplate.findFirst({
-      where: { code: templateCode, active: true },
-    });
-    if (!template) {
-      throw new NotFoundException(`Appointment template ${templateCode} is not seeded.`);
-    }
+    const template = await loadOrCreateAppointmentLetterTemplate(
+      this.prisma as never,
+      templateCode,
+    );
 
     const variables = {
       ...buildOrgVariables(),
@@ -457,14 +456,7 @@ export class AppointmentMappingsService {
         'Only active Appointment family templates (APPT_*) can be mapped. Fixture and SELECTION_LETTER templates are not allowed.',
       );
     }
-    const template = await this.prisma.letterTemplate.findFirst({
-      where: { code, active: true },
-    });
-    if (!template) {
-      throw new BadRequestException(
-        `Template ${code} is missing or inactive.`,
-      );
-    }
+    await loadOrCreateAppointmentLetterTemplate(this.prisma as never, code);
     return code;
   }
 

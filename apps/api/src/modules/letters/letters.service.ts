@@ -3,7 +3,9 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import {
   AppointmentLetterLanguage,
@@ -89,6 +91,10 @@ import {
 } from './appointment-validation';
 import { isInvalidAppointmentAssignment } from './appointment-families';
 import { APPOINTMENT_INVALID_ASSIGNMENT_MESSAGE } from './appointment-families';
+import {
+  ensureAppointmentFamilyTemplates,
+  loadOrCreateAppointmentLetterTemplate,
+} from './appointment-template-store';
 import {
   applyAppointmentDraftWatermark,
   stripAppointmentDraftWatermark,
@@ -187,12 +193,32 @@ const ACKNOWLEDGEMENT_TYPES: LetterType[] = [
 ];
 
 @Injectable()
-export class LettersService {
+export class LettersService implements OnModuleInit {
+  private readonly logger = new Logger(LettersService.name);
+
   constructor(
     private prisma: PrismaService,
     private accessScopeService: AccessScopeService,
     private whatsappService: WhatsAppService,
   ) {}
+
+  async onModuleInit() {
+    try {
+      const { created } = await ensureAppointmentFamilyTemplates(
+        this.prisma as never,
+      );
+      if (created.length) {
+        this.logger.log(
+          `Created missing Appointment templates: ${created.join(', ')}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        'Failed to ensure Appointment letter templates on boot',
+        err instanceof Error ? err.stack : err,
+      );
+    }
+  }
 
   async nextLetterNo(): Promise<string> {
     const rows = await this.prisma.$queryRaw<{ nextval: bigint }[]>`
@@ -1081,11 +1107,19 @@ export class LettersService {
       designationTitle: snapshot.currentDesignation,
     });
 
-    const template = await this.prisma.letterTemplate.findFirst({
-      where: { code: mapping.templateCode, active: true },
-    });
-
-    if (!template) {
+    let template: {
+      code: string;
+      bodyHtml: string;
+      bodyHtmlEn: string | null;
+      requiredVars: string[];
+      version: number;
+    };
+    try {
+      template = await loadOrCreateAppointmentLetterTemplate(
+        this.prisma as never,
+        mapping.templateCode,
+      );
+    } catch {
       throw new NotFoundException(
         `Appointment template ${mapping.templateCode} is not seeded.`,
       );
