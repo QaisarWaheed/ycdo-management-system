@@ -1,6 +1,10 @@
 /**
  * Shared CSS for Urdu RTL letters matching ycdo-warning-letter.pdf shell.
  * Injected into every Urdu Handlebars template as {{{letterStyles}}}.
+ *
+ * Body/content is compact so warning, fine, advice, and similar short letters
+ * stay on one A4 page. Headings (letterhead, English title, violation heading)
+ * keep their larger sizes.
  */
 export const URDU_LETTER_STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap');
@@ -12,8 +16,8 @@ export const URDU_LETTER_STYLES = `
 body {
   font-family: 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', 'Jameel Noori Nastaleeq',
     'Urdu Typesetting', 'Segoe UI', Tahoma, Arial, sans-serif;
-  font-size: 12.5pt;
-  line-height: 1.9;
+  font-size: 10.5pt;
+  line-height: 1.7;
   color: #000;
   margin: 0;
   padding: 0;
@@ -48,14 +52,14 @@ body {
 .letter-shell-top {
   direction: ltr;
   text-align: left;
-  margin-bottom: 10pt;
+  margin-bottom: 6pt;
 }
 
 .bismillah {
   direction: rtl;
   text-align: center;
   font-size: 13pt;
-  margin-bottom: 8pt;
+  margin-bottom: 6pt;
 }
 
 .letterhead-row {
@@ -63,7 +67,7 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12pt;
-  margin-bottom: 10pt;
+  margin-bottom: 6pt;
 }
 
 .letterhead-right {
@@ -111,7 +115,7 @@ body {
   text-align: center;
   direction: ltr;
   font-family: 'Times New Roman', Times, Georgia, serif;
-  margin: 6pt 0 8pt;
+  margin: 4pt 0 6pt;
 }
 
 .notification-block .en-title {
@@ -123,14 +127,17 @@ body {
 /* ── Urdu meta (RTL) ── */
 .meta-block {
   text-align: right;
-  font-size: 12pt;
-  line-height: 1.75;
-  margin-bottom: 10pt;
+  font-size: 10.5pt;
+  line-height: 1.6;
+  margin-bottom: 6pt;
 }
 
-.meta-block .row { margin: 0 0 3pt; }
+.meta-block .row { margin: 0 0 2pt; }
 .meta-block .label { font-weight: 700; }
-.meta-block .row.subject-row { text-align: center; }
+.meta-block .row.subject-row {
+  text-align: center;
+  font-size: 12pt;
+}
 
 /* Designation + branch together as one bold, isolated LTR unit so the two
    embedded English runs never get reordered relative to each other by the
@@ -144,23 +151,25 @@ body {
 }
 
 .salutation {
-  margin: 8pt 0 10pt;
+  margin: 4pt 0 6pt;
   font-weight: 700;
   text-align: right;
 }
 
 .body p {
-  margin: 0 0 10pt;
+  margin: 0 0 6pt;
   text-align: justify;
+  font-size: 10.5pt;
 }
 
 .violations {
-  margin: 10pt 0 14pt;
+  margin: 6pt 0 8pt;
 }
 
 .violations .heading {
   font-weight: 700;
-  margin-bottom: 8pt;
+  font-size: 12pt;
+  margin-bottom: 6pt;
 }
 
 .violations ol {
@@ -169,43 +178,54 @@ body {
 }
 
 .violations li {
-  margin-bottom: 6pt;
+  margin-bottom: 3pt;
   text-align: right;
 }
 
 .attendance-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 12pt 0;
+  margin: 8pt 0;
   direction: rtl;
   text-align: center;
-  font-size: 11pt;
+  font-size: 10pt;
 }
 
 .attendance-table th,
 .attendance-table td {
   border: 1px solid #333;
-  padding: 6pt 8pt;
+  padding: 4pt 6pt;
 }
 
 .attendance-table th { background: #f3f3f3; }
 
 .blessing {
   text-align: center;
-  margin: 16pt 0 8pt;
+  margin: 8pt 0 4pt;
   font-weight: 700;
+  font-size: 12pt;
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
 .closing {
-  margin-top: 8pt;
+  margin-top: 4pt;
   text-align: left;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  page-break-before: avoid;
+  break-before: avoid;
 }
 
 .signature {
-  margin-top: 28pt;
+  margin-top: 14pt;
   text-align: left;
-  font-size: 12pt;
-  line-height: 1.7;
+  font-size: 10.5pt;
+  line-height: 1.55;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  page-break-before: avoid;
+  break-before: avoid;
 }
 
 .fill-line {

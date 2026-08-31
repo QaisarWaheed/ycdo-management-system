@@ -6,6 +6,7 @@ import {
   parseAttendanceRows,
   parseViolationLines,
 } from './letter-templates.helper';
+import { URDU_LETTER_STYLES } from './urdu-letter-styles';
 import { LetterType } from '@prisma/client';
 
 describe('buildLetterRef', () => {
@@ -68,5 +69,21 @@ describe('applyFineUniformWording', () => {
     expect(
       applyFineUniformWording('آئندہ آپ کی ڈیوٹی کے دوران یونیفارم لازمی پہنیں'),
     ).toBe('آئندہ آپ ڈیوٹی کے دوران یونیفارم لازمی پہنیں');
+  });
+});
+
+describe('URDU_LETTER_STYLES compact single-page content', () => {
+  it('shrinks body content while keeping letterhead and title sizes', () => {
+    expect(URDU_LETTER_STYLES).toMatch(/body\s*\{[^}]*font-size:\s*10\.5pt/s);
+    expect(URDU_LETTER_STYLES).toMatch(/\.body p\s*\{[^}]*font-size:\s*10\.5pt/s);
+    expect(URDU_LETTER_STYLES).toMatch(
+      /\.notification-block \.en-title\s*\{[^}]*font-size:\s*16pt/s,
+    );
+    expect(URDU_LETTER_STYLES).toMatch(
+      /\.letterhead-org \.org-name\s*\{[^}]*font-size:\s*13pt/,
+    );
+    expect(URDU_LETTER_STYLES).toMatch(
+      /\.violations \.heading\s*\{[^}]*font-size:\s*12pt/s,
+    );
   });
 });
