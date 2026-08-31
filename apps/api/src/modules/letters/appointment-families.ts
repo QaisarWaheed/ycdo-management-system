@@ -268,6 +268,26 @@ export function isLegacyAppointmentTemplateCode(
   return (LEGACY_APPOINTMENT_TEMPLATE_CODES as readonly string[]).includes(code);
 }
 
+/** Live mappings may still store the old Urdu family codes. Preview/generate use English. */
+export const LEGACY_TO_CURRENT_APPOINTMENT_TEMPLATE: Record<
+  (typeof LEGACY_APPOINTMENT_TEMPLATE_CODES)[number],
+  AppointmentTemplateCode
+> = {
+  APPT_CLINICAL_SUPPORT_UR: 'APPT_CLINICAL_SUPPORT_EN',
+  APPT_PHARMACY_SUPPORT_UR: 'APPT_PHARMACY_SUPPORT_EN',
+  APPT_LAB_SUPPORT_UR: 'APPT_LAB_SUPPORT_EN',
+  APPT_MEDICINE_SUPPORT_UR: 'APPT_MEDICINE_SUPPORT_EN',
+  APPT_SURGICAL_SUPPORT_UR: 'APPT_SURGICAL_SUPPORT_EN',
+  APPT_VTI_UR: 'APPT_VTI_EN',
+};
+
+export function canonicalizeAppointmentTemplateCode(code: string): string {
+  if (isLegacyAppointmentTemplateCode(code)) {
+    return LEGACY_TO_CURRENT_APPOINTMENT_TEMPLATE[code];
+  }
+  return code;
+}
+
 export function appointmentFamilyMeta(code: string) {
   if (isAppointmentTemplateCode(code)) return FAMILY_BY_CODE[code];
   if (isLegacyAppointmentTemplateCode(code)) return LEGACY_FAMILY_BY_CODE[code];

@@ -2,6 +2,8 @@ import { AppointmentLetterLanguage, Prisma } from '@prisma/client';
 import { BadRequestException } from '@nestjs/common';
 import {
   APPOINTMENT_INVALID_ASSIGNMENT_MESSAGE,
+  appointmentTemplateLanguage,
+  canonicalizeAppointmentTemplateCode,
   isInvalidAppointmentAssignment,
 } from './appointment-families';
 
@@ -28,6 +30,28 @@ type MappingDb = {
 
 function failClosed(message = APPOINTMENT_MAPPING_MISSING_MESSAGE): never {
   throw new BadRequestException(message);
+}
+
+function resolvedMapping(
+  row: {
+    id: string;
+    templateCode: string;
+    language: AppointmentLetterLanguage;
+  },
+  match: AppointmentMappingResolved['match'],
+  departmentId: string | null,
+  designationId: string | null,
+): AppointmentMappingResolved {
+  const templateCode = canonicalizeAppointmentTemplateCode(row.templateCode);
+  return {
+    mappingId: row.id,
+    templateCode,
+    language:
+      appointmentTemplateLanguage(templateCode) ?? row.language,
+    match,
+    departmentId,
+    designationId,
+  };
 }
 
 /**
@@ -63,14 +87,7 @@ export async function resolveAppointmentTemplateMapping(
       },
     });
     if (exact) {
-      return {
-        mappingId: exact.id,
-        templateCode: exact.templateCode,
-        language: exact.language,
-        match: 'EXACT',
-        departmentId,
-        designationId: designation.id,
-      };
+      return resolvedMapping(exact, 'EXACT', departmentId, designation.id);
     }
   }
 
@@ -83,14 +100,7 @@ export async function resolveAppointmentTemplateMapping(
       },
     });
     if (dept) {
-      return {
-        mappingId: dept.id,
-        templateCode: dept.templateCode,
-        language: dept.language,
-        match: 'DEPARTMENT',
-        departmentId,
-        designationId: null,
-      };
+      return resolvedMapping(dept, 'DEPARTMENT', departmentId, null);
     }
   }
 
@@ -102,14 +112,7 @@ export async function resolveAppointmentTemplateMapping(
     },
   });
   if (global) {
-    return {
-      mappingId: global.id,
-      templateCode: global.templateCode,
-      language: global.language,
-      match: 'GLOBAL',
-      departmentId: null,
-      designationId: null,
-    };
+    return resolvedMapping(global, 'GLOBAL', null, null);
   }
 
   failClosed();

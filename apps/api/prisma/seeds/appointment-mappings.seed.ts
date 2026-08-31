@@ -3,6 +3,7 @@ import { APPOINTMENT_MAPPING_SPECS } from '../../src/modules/letters/appointment
 import {
   UNMAPPED_APPOINTMENT_DESIGNATIONS,
   appointmentTemplateLanguage,
+  LEGACY_TO_CURRENT_APPOINTMENT_TEMPLATE,
 } from '../../src/modules/letters/appointment-families';
 
 async function findDepartment(
@@ -36,6 +37,19 @@ export async function seedAppointmentTemplateMappings(prisma: PrismaClient) {
     },
     data: { active: false },
   });
+
+  for (const [from, to] of Object.entries(
+    LEGACY_TO_CURRENT_APPOINTMENT_TEMPLATE,
+  )) {
+    await prisma.appointmentTemplateMapping.updateMany({
+      where: { templateCode: from },
+      data: {
+        templateCode: to,
+        language: AppointmentLetterLanguage.EN,
+        active: true,
+      },
+    });
+  }
 
   let created = 0;
   let updated = 0;

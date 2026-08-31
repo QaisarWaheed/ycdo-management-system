@@ -63,6 +63,27 @@ describe('resolveAppointmentTemplateMapping', () => {
     expect(result.templateCode).toBe('APPOINTMENT_FIXTURE_UR');
   });
 
+  it('rewrites a stored Lab Support Urdu mapping to the English family', async () => {
+    const result = await resolveAppointmentTemplateMapping(
+      db({
+        designationId: 'des-lab',
+        mappings: [
+          {
+            id: 'map-lab',
+            departmentId: 'dept-lab',
+            designationId: 'des-lab',
+            language: AppointmentLetterLanguage.UR,
+            templateCode: 'APPT_LAB_SUPPORT_UR',
+          },
+        ],
+      }),
+      { departmentId: 'dept-lab', designationTitle: 'LAB STAFF' },
+    );
+    expect(result.match).toBe('EXACT');
+    expect(result.templateCode).toBe('APPT_LAB_SUPPORT_EN');
+    expect(result.language).toBe(AppointmentLetterLanguage.EN);
+  });
+
   it('uses department fallback then global, and fails closed', async () => {
     const dept = await resolveAppointmentTemplateMapping(
       db({
