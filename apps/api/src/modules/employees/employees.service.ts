@@ -17,14 +17,18 @@ import {
 } from '../../common/duty.util';
 import {
   ChangeType,
+  DisciplinaryStatus,
+  DisciplinaryType,
   EmployeeOnboardingStatus,
   EmployeeStatus,
+  InquiryOutcome,
   LetterStatus,
   LetterType,
   LeaveStatus,
   MaritalStatus,
   Prisma,
   StaffType,
+  SuspensionRequestStatus,
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -63,7 +67,10 @@ import {
 import {
   buildEffectiveRoles,
   canAssignRoles,
+  canOverrideSuspendedStatus,
+  hasAnyRole,
 } from '../../common/user-roles.util';
+import { suspensionInquiryReinstatementData } from '../attendance/suspension-watch-baseline.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 
@@ -1143,8 +1150,32 @@ export class EmployeesService {
     });
   }
 
-  async changeStatus(id: string, dto: ChangeStatusDto) {
+  async changeStatus(
+    id: string,
+    dto: ChangeStatusDto,
+    actor?: { id: string; role?: UserRole | string; roles?: UserRole[] },
+  ) {
     const employee = await this.findOne(id);
+    const actorRoles = [
+      ...(actor?.roles ?? []),
+      ...(actor?.role ? [actor.role] : []),
+    ] as UserRole[];
+    const privilegedOverride = canOverrideSuspendedStatus(actor);
+    const itAdminOverrideOnly =
+      hasAnyRole(actorRoles, [UserRole.IT_ADMIN]) &&
+      !hasAnyRole(actorRoles, [
+        UserRole.SUPER_ADMIN,
+        UserRole.HR_MANAGER,
+        UserRole.HR_EXECUTIVE,
+        UserRole.HR_ADMIN_MANAGER,
+        UserRole.HR_OPERATIONS_MANAGER,
+      ]);
+
+    if (itAdminOverrideOnly && employee.status !== EmployeeStatus.SUSPENDED) {
+      throw new ForbiddenException(
+        'IT Admin can only use Change Status to take a staff member off Suspended.',
+      );
+    }
 
     if (employee.status === EmployeeStatus.DISMISSED) {
       throw new BadRequestException(
@@ -1164,6 +1195,12 @@ export class EmployeesService {
       );
     }
 
+    if (dto.status === EmployeeStatus.DISMISSED) {
+      throw new BadRequestException(
+        'Dismissed cannot be set from Change Status.',
+      );
+    }
+
     if (dto.status === EmployeeStatus.SUSPENDED) {
       throw new BadRequestException(
         'Status does not become Suspended from Change Status. Open inquiry from Letters → Watchlist (Start Inquiry). The employee stays Active until inquiry opening is approved.',
@@ -1172,10 +1209,11 @@ export class EmployeesService {
 
     if (
       employee.status === EmployeeStatus.SUSPENDED &&
-      dto.status === EmployeeStatus.ACTIVE
+      dto.status === EmployeeStatus.ACTIVE &&
+      !privilegedOverride
     ) {
       throw new BadRequestException(
-        'A suspended employee cannot be set ACTIVE from Change Status. Complete the inquiry finding, approval, and reinstatement workflow.',
+        'A suspended employee cannot be set ACTIVE from Change Status. Complete the inquiry, or ask Super Admin / IT Admin to override.',
       );
     }
 
@@ -1200,13 +1238,98 @@ export class EmployeesService {
       }
     }
 
-    return this.prisma.employee.update({
-      where: { id },
-      data: { status: dto.status },
-      include: {
-        currentBranch: { select: { name: true, address: true } },
-        currentDepartment: { select: { name: true } },
-      },
+    const leavingSuspension =
+      employee.status === EmployeeStatus.SUSPENDED && privilegedOverride;
+
+    const data: Prisma.EmployeeUpdateInput =
+      leavingSuspension && dto.status === EmployeeStatus.ACTIVE
+        ? suspensionInquiryReinstatementData()
+        : { status: dto.status };
+
+    if (!leavingSuspension) {
+      return this.prisma.employee.update({
+        where: { id },
+        data,
+        include: {
+          currentBranch: { select: { name: true, address: true } },
+          currentDepartment: { select: { name: true } },
+        },
+      });
+    }
+
+    const now = new Date();
+    const resolution = `Withdrawn by Super Admin / IT Admin status override (${dto.status}). ${dto.reason.trim()}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.employee.update({
+        where: { id },
+        data,
+        include: {
+          currentBranch: { select: { name: true, address: true } },
+          currentDepartment: { select: { name: true } },
+        },
+      });
+
+      const openCases = await tx.disciplinaryAction.findMany({
+        where: {
+          employeeId: id,
+          type: DisciplinaryType.SUSPENSION,
+          status: {
+            in: [DisciplinaryStatus.OPEN, DisciplinaryStatus.UNDER_INQUIRY],
+          },
+        },
+        select: { id: true },
+      });
+
+      if (openCases.length > 0) {
+        const caseIds = openCases.map((row) => row.id);
+        await tx.disciplinaryAction.updateMany({
+          where: { id: { in: caseIds } },
+          data: {
+            status: DisciplinaryStatus.DISMISSED,
+            resolvedAt: now,
+            resolution,
+          },
+        });
+        await tx.inquiry.updateMany({
+          where: { disciplinaryActionId: { in: caseIds } },
+          data: {
+            closedAt: now,
+            outcome: InquiryOutcome.DISMISSED,
+            notes: resolution,
+          },
+        });
+        await tx.suspensionRequest.updateMany({
+          where: {
+            disciplinaryActionId: { in: caseIds },
+            status: {
+              in: [
+                SuspensionRequestStatus.DRAFT,
+                SuspensionRequestStatus.PENDING_APPROVAL,
+              ],
+            },
+          },
+          data: { status: SuspensionRequestStatus.CANCELLED },
+        });
+      }
+
+      if (actor?.id) {
+        await tx.auditLog.create({
+          data: {
+            userId: actor.id,
+            action: 'EMPLOYEE_STATUS_OVERRIDE',
+            entity: 'Employee',
+            entityId: id,
+            changes: {
+              from: employee.status,
+              to: dto.status,
+              reason: dto.reason.trim(),
+            },
+          },
+        });
+      }
+
+      return updated;
     });
   }
 

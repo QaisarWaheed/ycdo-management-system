@@ -50,12 +50,21 @@ export function EmployeesListPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const returnTo = `${location.pathname}${location.search}`
-  const { user, hasPermission } = useAuth()
+  const { user, hasPermission, hasRole } = useAuth()
   const isMedicineManager = isMedicineManagerRole(user?.role)
   const canCreateEmployee =
     !isMedicineManager && hasPermission('EMPLOYEES_CREATE')
   const canManageEmployee =
     !isMedicineManager && hasPermission('EMPLOYEES_EDIT')
+  const isItStatusOverrideOnly =
+    hasRole(['IT_ADMIN']) &&
+    !hasRole([
+      'SUPER_ADMIN',
+      'HR_MANAGER',
+      'HR_EXECUTIVE',
+      'HR_ADMIN_MANAGER',
+      'HR_OPERATIONS_MANAGER',
+    ])
   const [search, setSearch] = useState('')
   const [employeeFilters, setEmployeeFilters] = useState(() =>
     createEmployeeFilters(user),
@@ -324,16 +333,19 @@ export function EmployeesListPage() {
                                 Edit
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                setStatusDialog({
-                                  id: emp.id,
-                                  status: emp.status,
-                                })
-                              }
-                            >
-                              Change Status
-                            </DropdownMenuItem>
+                            {(!isItStatusOverrideOnly ||
+                              emp.status === 'SUSPENDED') && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setStatusDialog({
+                                    id: emp.id,
+                                    status: emp.status,
+                                  })
+                                }
+                              >
+                                Change Status
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => setLetterDialog(emp.id)}

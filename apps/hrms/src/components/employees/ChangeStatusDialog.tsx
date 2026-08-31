@@ -14,23 +14,36 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { toast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 import {
   enumValueToLabel,
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
 import { EMPLOYEE_STATUSES, type EmployeeStatus } from '@/types'
 
-function statusesForChange(currentStatus: string): EmployeeStatus[] {
+const OVERRIDE_ROLES = ['SUPER_ADMIN', 'IT_ADMIN'] as const
+
+function statusesForChange(
+  currentStatus: string,
+  canOverrideSuspension: boolean,
+): EmployeeStatus[] {
   return EMPLOYEE_STATUSES.filter((s) => {
     if (
       s === currentStatus ||
       s === 'DISMISSED' ||
-      s === 'ON_LEAVE' ||
-      s === 'PENDING_APPROVAL'
+      s === 'PENDING_APPROVAL' ||
+      s === 'SUSPENDED'
     ) {
       return false
     }
-    if (s === 'SUSPENDED') return false
+    if (s === 'ON_LEAVE') return false
+    if (
+      currentStatus === 'SUSPENDED' &&
+      s === 'ACTIVE' &&
+      !canOverrideSuspension
+    ) {
+      return false
+    }
     return true
   })
 }
@@ -49,10 +62,15 @@ export function ChangeStatusDialog({
   currentStatus,
 }: ChangeStatusDialogProps) {
   const queryClient = useQueryClient()
+  const { hasRole } = useAuth()
+  const canOverrideSuspension = hasRole([...OVERRIDE_ROLES])
   const [status, setStatus] = useState<EmployeeStatus>('ACTIVE')
   const [reason, setReason] = useState('')
 
-  const availableStatuses = statusesForChange(currentStatus)
+  const availableStatuses = statusesForChange(
+    currentStatus,
+    canOverrideSuspension,
+  )
   const statusOptions = availableStatuses.map(enumValueToLabel)
   const isDismissed = currentStatus === 'DISMISSED'
   const isPendingApproval = currentStatus === 'PENDING_APPROVAL'
@@ -60,11 +78,11 @@ export function ChangeStatusDialog({
 
   useEffect(() => {
     if (open) {
-      const next = statusesForChange(currentStatus)
+      const next = statusesForChange(currentStatus, canOverrideSuspension)
       if (next.length > 0) setStatus(next[0])
       setReason('')
     }
-  }, [open, currentStatus])
+  }, [open, currentStatus, canOverrideSuspension])
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -72,6 +90,7 @@ export function ChangeStatusDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee', employeeId] })
       queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['disciplinary'] })
       onOpenChange(false)
       setReason('')
       toast({ title: 'Employee status updated' })
@@ -109,10 +128,25 @@ export function ChangeStatusDialog({
             </p>
           )}
 
+          {currentStatus === 'SUSPENDED' && !canOverrideSuspension && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              Active is not available here. Complete the inquiry, or ask Super
+              Admin / IT Admin to override to Active.
+            </p>
+          )}
+
           {currentStatus === 'ACTIVE' && (
             <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
               Suspended is not set from here. Use Letters → Watchlist → Start
               Inquiry. They stay Active until inquiry opening is approved.
+            </p>
+          )}
+
+          {currentStatus === 'SUSPENDED' && canOverrideSuspension && (
+            <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+              Super Admin / IT Admin override. This does not run inquiry close or
+              letters. Open suspension inquiries are withdrawn. The reason is
+              stored in the audit log.
             </p>
           )}
 

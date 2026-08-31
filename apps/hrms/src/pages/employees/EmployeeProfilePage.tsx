@@ -1086,6 +1086,7 @@ export function EmployeeProfilePage() {
   const canEditPayroll = isHrTeam || isItTeam
 
   const canHrJobActions = isHrTeam
+  const canOverrideSuspendedStatus = hasRole([...IT_PROFILE_ROLES])
 
   const canEditBranchDuty =
     canHrJobActions && user?.employeeId !== employee.id
@@ -1439,7 +1440,10 @@ export function EmployeeProfilePage() {
                 Generate Letter
               </Button>
             )}
-            {canHrJobActions && employee.status !== 'PENDING_APPROVAL' && (
+            {(canHrJobActions ||
+              (canOverrideSuspendedStatus &&
+                employee.status === 'SUSPENDED')) &&
+              employee.status !== 'PENDING_APPROVAL' && (
               <Button
                 variant="outline"
                 className="w-full"

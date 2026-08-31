@@ -46,3 +46,22 @@ export function canAssignRoles(effectiveRoles: UserRole[]): boolean {
 export function canAccessHrms(effectiveRoles: UserRole[]): boolean {
   return effectiveRoles.some((role) => role !== UserRole.EMPLOYEE);
 }
+
+/** Super Admin / IT Admin may leave Suspended from Change Status without inquiry close. */
+export const SUSPENSION_STATUS_OVERRIDE_ROLES: UserRole[] = [
+  UserRole.SUPER_ADMIN,
+  UserRole.IT_ADMIN,
+];
+
+export function canOverrideSuspendedStatus(
+  actor?: {
+    role?: UserRole | string;
+    roles?: Array<UserRole | string>;
+  },
+): boolean {
+  const roles = [
+    ...(actor?.roles ?? []),
+    ...(actor?.role ? [actor.role] : []),
+  ] as UserRole[];
+  return hasAnyRole(roles, SUSPENSION_STATUS_OVERRIDE_ROLES);
+}

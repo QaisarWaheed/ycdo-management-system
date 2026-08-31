@@ -277,9 +277,13 @@ export class EmployeesController {
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
-  changeStatus(@Param('id') id: string, @Body() dto: ChangeStatusDto) {
-    return this.employeesService.changeStatus(id, dto);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.IT_ADMIN)
+  changeStatus(
+    @Param('id') id: string,
+    @Body() dto: ChangeStatusDto,
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
+  ) {
+    return this.employeesService.changeStatus(id, dto, user);
   }
 
   @Patch(':id/branch-duty')

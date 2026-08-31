@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { EmployeeStatus } from '@prisma/client';
 
 jest.mock('../letters/letters.service', () => ({
@@ -28,6 +28,7 @@ describe('EmployeesService.changeStatus', () => {
       letter: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      $transaction: jest.fn(),
     };
     const service = new EmployeesService(
       prisma as never,
@@ -91,7 +92,128 @@ describe('EmployeesService.changeStatus', () => {
         status: EmployeeStatus.ACTIVE,
         reason: 'Reinstated after review',
       }),
-    ).rejects.toThrow(/inquiry finding/i);
+    ).rejects.toThrow(/Super Admin \/ IT Admin/i);
+
+    expect(prisma.employee.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects SUSPENDED → ACTIVE for HR even when an actor is passed', async () => {
+    const { service, prisma } = build(EmployeeStatus.SUSPENDED);
+
+    await expect(
+      service.changeStatus(
+        'emp-1',
+        { status: EmployeeStatus.ACTIVE, reason: 'HR fix' },
+        { id: 'hr-1', role: 'HR_MANAGER', roles: ['HR_MANAGER' as never] },
+      ),
+    ).rejects.toThrow(/Super Admin \/ IT Admin/i);
+
+    expect(prisma.employee.update).not.toHaveBeenCalled();
+  });
+
+  it('lets Super Admin override SUSPENDED → ACTIVE and withdraws open inquiries', async () => {
+    const { service, prisma } = build(EmployeeStatus.SUSPENDED);
+    const tx = {
+      employee: prisma.employee,
+      disciplinaryAction: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'case-1' }]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      inquiry: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      suspensionRequest: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    prisma.$transaction = jest.fn(async (fn: (t: typeof tx) => unknown) =>
+      fn(tx),
+    );
+
+    const result = await service.changeStatus(
+      'emp-1',
+      { status: EmployeeStatus.ACTIVE, reason: 'HR opened inquiry by mistake' },
+      {
+        id: 'sa-1',
+        role: 'SUPER_ADMIN',
+        roles: ['SUPER_ADMIN' as never],
+      },
+    );
+
+    expect(result.status).toBe(EmployeeStatus.ACTIVE);
+    expect(prisma.employee.update.mock.calls[0][0].data).toEqual(
+      expect.objectContaining({
+        status: EmployeeStatus.ACTIVE,
+        suspensionWatchBaselineOn: expect.any(Date),
+      }),
+    );
+    expect(tx.disciplinaryAction.updateMany).toHaveBeenCalled();
+    expect(tx.inquiry.updateMany).toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'EMPLOYEE_STATUS_OVERRIDE',
+        }),
+      }),
+    );
+  });
+
+  it('rejects IT Admin Change Status when the employee is not Suspended', async () => {
+    const { service, prisma } = build(EmployeeStatus.ACTIVE);
+
+    await expect(
+      service.changeStatus(
+        'emp-1',
+        { status: EmployeeStatus.ON_REST, reason: 'IT change' },
+        { id: 'it-1', role: 'IT_ADMIN', roles: ['IT_ADMIN' as never] },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(prisma.employee.update).not.toHaveBeenCalled();
+  });
+
+  it('lets IT Admin override SUSPENDED → TERMINATED', async () => {
+    const { service, prisma } = build(EmployeeStatus.SUSPENDED);
+    const tx = {
+      employee: prisma.employee,
+      disciplinaryAction: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn(),
+      },
+      inquiry: { updateMany: jest.fn() },
+      suspensionRequest: { updateMany: jest.fn() },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+    };
+    prisma.$transaction = jest.fn(async (fn: (t: typeof tx) => unknown) =>
+      fn(tx),
+    );
+
+    const result = await service.changeStatus(
+      'emp-1',
+      { status: EmployeeStatus.TERMINATED, reason: 'Ops override' },
+      { id: 'it-1', role: 'IT_ADMIN', roles: ['IT_ADMIN' as never] },
+    );
+
+    expect(result.status).toBe(EmployeeStatus.TERMINATED);
+    expect(prisma.employee.update.mock.calls[0][0].data).toEqual({
+      status: EmployeeStatus.TERMINATED,
+    });
+    expect(tx.disciplinaryAction.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('still rejects ACTIVE → SUSPENDED for Super Admin', async () => {
+    const { service, prisma } = build(EmployeeStatus.ACTIVE);
+
+    await expect(
+      service.changeStatus(
+        'emp-1',
+        { status: EmployeeStatus.SUSPENDED, reason: 'Manual suspend' },
+        {
+          id: 'sa-1',
+          role: 'SUPER_ADMIN',
+          roles: ['SUPER_ADMIN' as never],
+        },
+      ),
+    ).rejects.toThrow(/Watchlist/i);
 
     expect(prisma.employee.update).not.toHaveBeenCalled();
   });
