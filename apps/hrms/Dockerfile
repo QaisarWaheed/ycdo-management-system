@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package.json ./
 
 # Install ALL deps including devDependencies (PostCSS, Tailwind, etc.)
-RUN npm install
+RUN npm install --no-audit --no-fund
 
 COPY vite.config.ts ./
 COPY tsconfig*.json ./

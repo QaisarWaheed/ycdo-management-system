@@ -2006,6 +2006,8 @@ export function EmployeeProfilePage() {
         <TabsContent value="payroll" className="space-y-4">
           <EmployeePayrollTab
             employeeId={id}
+            employeeName={employee.fullName}
+            employeeCode={employee.employeeCode}
             joiningDate={employee.joiningDate}
             stipendRecords={(employee.stipendRecords ?? []) as StipendRecord[]}
             canEdit={canEditPayroll}

@@ -1137,7 +1137,6 @@ function InquiriesTab({
               paginated.map((inquiry) => {
                 const action = inquiry.action
                 const warning = inquiryDeadlineWarning(inquiry)
-                const officiallyOpen = !!inquiry.officiallyOpenedAt
                 return (
                   <TableRow
                     key={inquiry.id || inquiry.action.id}
