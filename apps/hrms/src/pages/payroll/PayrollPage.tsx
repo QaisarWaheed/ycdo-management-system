@@ -21,6 +21,11 @@ import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { PKRInput } from '@/components/common/PKRInput'
 import { PayslipDocument } from '@/components/payroll/PayslipDocument'
+import {
+  buildMonthlyPayrollReportRows,
+  PayrollReportPrintSection,
+  PrintPayrollReportButton,
+} from '@/components/payroll/PayrollReportPrint'
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
 import {
   buildPayslipSlipFromEntry,
@@ -825,9 +830,40 @@ function MonthlyPayrollTab() {
     },
   })
 
+  const printSubtitle = useMemo(() => {
+    const branchLabel = branchId
+      ? formatBranchLabel(
+          branches.find((b) => b.id === branchId) ?? { name: branchId },
+        )
+      : 'All Branches'
+    const departmentLabel = departmentId
+      ? (departments.find((d) => d.id === departmentId)?.name ?? 'Department')
+      : 'All Departments'
+    return [
+      format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy'),
+      branchLabel,
+      departmentLabel,
+      designationFilter || 'All Designations',
+      statusFilter !== ALL ? statusFilter : 'All Statuses',
+    ].join(' · ')
+  }, [
+    monthYear,
+    branchId,
+    branches,
+    departmentId,
+    departments,
+    designationFilter,
+    statusFilter,
+  ])
+
+  const monthlyReportRows = useMemo(
+    () => buildMonthlyPayrollReportRows(entries),
+    [entries],
+  )
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="no-print flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <MonthYearPicker value={monthYear} onChange={setMonthYear} />
 
@@ -920,6 +956,7 @@ function MonthlyPayrollTab() {
           <Button variant="outline" onClick={() => setCreateSingleOpen(true)}>
             Add entry for employee
           </Button>
+          <PrintPayrollReportButton disabled={entries.length === 0} />
           <Button
             className="bg-primary hover:bg-primary-dark"
             onClick={() => setConfirmGenerate(true)}
@@ -929,6 +966,7 @@ function MonthlyPayrollTab() {
         </div>
       </div>
 
+      <div className="no-print">
       <TableRecordCount count={total} label="payroll entry" />
 
       <div className="rounded-lg border border-border bg-white">
@@ -1058,6 +1096,16 @@ function MonthlyPayrollTab() {
           onPageChange={setPage}
         />
       </div>
+      </div>
+
+      <PayrollReportPrintSection
+        id="monthly-payroll-print"
+        title="Monthly Payroll Report"
+        subtitle={printSubtitle}
+        rows={monthlyReportRows}
+        variant="monthly"
+        footer={`Total entries: ${entries.length}`}
+      />
 
       <PayrollDetailDialog
         entry={viewEntry}

@@ -7,6 +7,12 @@ import { incentivesApi } from '@/api/endpoints/incentives'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { EditPayrollDialog } from '@/components/employees/EditPayrollDialog'
 import { StatusBadge } from '@/components/employees/StatusBadge'
+import {
+  buildHistoryPayrollReportRows,
+  PayrollReportPrintSection,
+  PrintPayrollReportButton,
+} from '@/components/payroll/PayrollReportPrint'
+import { PayslipViewDialog } from '@/components/payroll/PayslipViewDialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -43,6 +49,8 @@ function money(value: number | string | null | undefined): string {
 
 type EmployeePayrollTabProps = {
   employeeId: string
+  employeeName?: string
+  employeeCode?: string
   joiningDate: string
   stipendRecords?: StipendRecord[]
   canEdit?: boolean
@@ -51,6 +59,8 @@ type EmployeePayrollTabProps = {
 
 export function EmployeePayrollTab({
   employeeId,
+  employeeName,
+  employeeCode,
   joiningDate,
   stipendRecords = [],
   canEdit = false,
@@ -58,6 +68,7 @@ export function EmployeePayrollTab({
 }: EmployeePayrollTabProps) {
   const [editOpen, setEditOpen] = useState(false)
   const [historyPage, setHistoryPage] = useState(0)
+  const [viewEntry, setViewEntry] = useState<PayrollEntry | null>(null)
 
   const latestStipend = stipendRecords[0]
 
@@ -96,6 +107,17 @@ export function EmployeePayrollTab({
   const totalHistoryPages = Math.ceil(
     (payrollHistory as PayrollEntry[]).length / PAGE_SIZE,
   )
+
+  const historyReportRows = useMemo(
+    () =>
+      buildHistoryPayrollReportRows(
+        payrollHistory as PayrollEntry[],
+        MONTHS,
+      ),
+    [payrollHistory],
+  )
+
+  const printSubtitle = [employeeName, employeeCode].filter(Boolean).join(' · ')
 
   return (
     <div className="space-y-6">
@@ -268,31 +290,36 @@ export function EmployeePayrollTab({
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-lg">Payroll History</CardTitle>
-          {totalHistoryPages > 1 && (
-            <div className="flex items-center gap-2 text-sm">
-              <button
-                type="button"
-                className="text-primary disabled:opacity-40"
-                disabled={historyPage === 0}
-                onClick={() => setHistoryPage((p) => p - 1)}
-              >
-                Previous
-              </button>
-              <span className="text-text-secondary">
-                Page {historyPage + 1} of {totalHistoryPages}
-              </span>
-              <button
-                type="button"
-                className="text-primary disabled:opacity-40"
-                disabled={historyPage >= totalHistoryPages - 1}
-                onClick={() => setHistoryPage((p) => p + 1)}
-              >
-                Next
-              </button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <PrintPayrollReportButton
+              disabled={payrollHistory.length === 0}
+            />
+            {totalHistoryPages > 1 && (
+              <div className="flex items-center gap-2 text-sm">
+                <button
+                  type="button"
+                  className="text-primary disabled:opacity-40"
+                  disabled={historyPage === 0}
+                  onClick={() => setHistoryPage((p) => p - 1)}
+                >
+                  Previous
+                </button>
+                <span className="text-text-secondary">
+                  Page {historyPage + 1} of {totalHistoryPages}
+                </span>
+                <button
+                  type="button"
+                  className="text-primary disabled:opacity-40"
+                  disabled={historyPage >= totalHistoryPages - 1}
+                  onClick={() => setHistoryPage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {loadingPayroll ? (
@@ -302,6 +329,7 @@ export function EmployeePayrollTab({
               ))}
             </div>
           ) : (
+            <div className="no-print">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -312,12 +340,13 @@ export function EmployeePayrollTab({
                   <TableHead>Deductions</TableHead>
                   <TableHead>Net</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="w-[100px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {historySlice.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-text-secondary">
+                    <TableCell colSpan={8} className="text-text-secondary">
                       No payroll history
                     </TableCell>
                   </TableRow>
@@ -358,15 +387,43 @@ export function EmployeePayrollTab({
                         <TableCell>
                           <StatusBadge status={entry.status} />
                         </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setViewEntry(entry)}
+                          >
+                            View
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     )
                   })
                 )}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
+
+      <PayrollReportPrintSection
+        id="employee-payroll-history-print"
+        title="Payroll History"
+        subtitle={printSubtitle || undefined}
+        rows={historyReportRows}
+        footer={`Total records: ${payrollHistory.length}`}
+      />
+
+      <PayslipViewDialog
+        entry={viewEntry}
+        open={!!viewEntry}
+        onOpenChange={(open) => !open && setViewEntry(null)}
+        employee={{
+          fullName: employeeName,
+          employeeCode,
+        }}
+      />
 
       <Card>
         <CardHeader>

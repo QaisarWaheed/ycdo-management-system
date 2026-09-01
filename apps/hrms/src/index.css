@@ -101,4 +101,46 @@
     color: #666;
     text-transform: uppercase;
   }
+
+  .payroll-report-print {
+    font-size: 11px;
+    color: #000;
+  }
+
+  .payroll-report-print-header {
+    text-align: center;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #000;
+    padding-bottom: 10px;
+  }
+
+  .payroll-report-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .payroll-report-table th,
+  .payroll-report-table td {
+    border: 1px solid #333;
+    padding: 6px 8px;
+    vertical-align: top;
+    word-wrap: break-word;
+  }
+
+  .payroll-report-table th {
+    background: #f0f0f0;
+    font-weight: 600;
+  }
+
+  .payroll-report-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .payroll-report-print-footer {
+    margin-top: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
 }

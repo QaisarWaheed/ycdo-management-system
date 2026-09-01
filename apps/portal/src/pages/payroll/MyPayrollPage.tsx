@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, formatDistanceToNow } from 'date-fns'
 import { Printer } from 'lucide-react'
@@ -8,6 +8,11 @@ import { payrollApi } from '@/api/endpoints/payroll'
 import { stipendReceiptsApi } from '@/api/endpoints/stipendReceipts'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { PayslipDocument } from '@/components/payroll/PayslipDocument'
+import {
+  buildHistoryPayrollReportRows,
+  PayrollReportPrintSection,
+  PrintPayrollReportButton,
+} from '@/components/payroll/PayrollReportPrint'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -434,6 +439,15 @@ export function MyPayrollPage() {
       new Date(a.year, a.month - 1).getTime(),
   )
 
+  const historyReportRows = useMemo(
+    () => buildHistoryPayrollReportRows(history as PayrollEntry[]),
+    [history],
+  )
+
+  const printSubtitle = employee
+    ? [employee.fullName, employee.employeeCode].filter(Boolean).join(' · ')
+    : undefined
+
   return (
     <div className="space-y-6">
       <div>
@@ -519,8 +533,11 @@ export function MyPayrollPage() {
       </div>
 
       <div>
-        <h2 className="mb-3 text-lg font-semibold">Payroll History</h2>
-        <div className="rounded-lg border border-border bg-white">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Payroll History</h2>
+          <PrintPayrollReportButton disabled={sortedHistory.length === 0} />
+        </div>
+        <div className="no-print rounded-lg border border-border bg-white">
           <Table>
             <TableHeader>
               <TableRow>
@@ -588,6 +605,14 @@ export function MyPayrollPage() {
           </Table>
         </div>
       </div>
+
+      <PayrollReportPrintSection
+        id="portal-payroll-history-print"
+        title="My Payroll History"
+        subtitle={printSubtitle}
+        rows={historyReportRows}
+        footer={`Total records: ${sortedHistory.length}`}
+      />
 
       <PayslipDialog
         entry={viewEntry}
