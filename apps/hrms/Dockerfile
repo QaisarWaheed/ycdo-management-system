@@ -1,10 +1,10 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 
 # Install ALL deps including devDependencies (PostCSS, Tailwind, etc.)
-RUN npm install
+RUN npm ci
 
 COPY vite.config.ts ./
 COPY tsconfig*.json ./

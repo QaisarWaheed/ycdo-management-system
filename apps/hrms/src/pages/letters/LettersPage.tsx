@@ -122,9 +122,7 @@ function canSendDraftLetter(letter: Letter) {
     if (letter.status === 'APPROVED') return true
     if (
       letter.employee?.status === 'ACTIVE' &&
-      (letter.status === 'DRAFT' ||
-        letter.status === 'PENDING_APPROVAL' ||
-        letter.status === 'APPROVED')
+      (letter.status === 'DRAFT' || letter.status === 'PENDING_APPROVAL')
     ) {
       return true
     }

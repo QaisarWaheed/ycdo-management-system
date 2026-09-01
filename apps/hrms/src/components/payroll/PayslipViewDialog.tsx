@@ -17,17 +17,19 @@ type PayslipViewDialogProps = {
   entry: PayrollEntry | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  employee?: Pick<
-    Employee,
-    | 'fullName'
-    | 'employeeCode'
-    | 'cnic'
-    | 'currentDesignation'
-    | 'dutyStartTime'
-    | 'dutyEndTime'
-    | 'dutyTotalHours'
-    | 'currentBranch'
-    | 'currentDepartment'
+  employee?: Partial<
+    Pick<
+      Employee,
+      | 'fullName'
+      | 'employeeCode'
+      | 'cnic'
+      | 'currentDesignation'
+      | 'dutyStartTime'
+      | 'dutyEndTime'
+      | 'dutyTotalHours'
+      | 'currentBranch'
+      | 'currentDepartment'
+    >
   > | null
 }
 
@@ -60,13 +62,16 @@ export function PayslipViewDialog({
           cnic: fromEntry?.cnic ?? employee?.cnic,
           currentDesignation:
             fromEntry?.currentDesignation ?? employee?.currentDesignation,
-          dutyStartTime: fromEntry?.dutyStartTime ?? employee?.dutyStartTime,
-          dutyEndTime: fromEntry?.dutyEndTime ?? employee?.dutyEndTime,
+          dutyStartTime: employee?.dutyStartTime,
+          dutyEndTime: employee?.dutyEndTime,
           dutyTotalHours:
             fromEntry?.dutyTotalHours ?? employee?.dutyTotalHours,
-          currentBranch: fromEntry?.currentBranch ?? employee?.currentBranch,
+          currentBranch:
+            fromEntry?.currentBranch ?? employee?.currentBranch ?? undefined,
           currentDepartment:
-            fromEntry?.currentDepartment ?? employee?.currentDepartment,
+            fromEntry?.currentDepartment ??
+            employee?.currentDepartment ??
+            undefined,
         },
       },
     })
