@@ -31,11 +31,11 @@
     "@radix-ui/react-tabs": "^1.1.15",
     "@radix-ui/react-toast": "^1.2.17",
     "@tanstack/react-query": "^5.101.0",
-    "@tiptap/extension-text-align": "^3.30.0",
-    "@tiptap/extension-underline": "^3.30.0",
-    "@tiptap/pm": "^3.30.0",
-    "@tiptap/react": "^3.30.0",
-    "@tiptap/starter-kit": "^3.30.0",
+    "@tiptap/extension-text-align": "3.30.0",
+    "@tiptap/extension-underline": "3.30.0",
+    "@tiptap/pm": "3.30.0",
+    "@tiptap/react": "3.30.0",
+    "@tiptap/starter-kit": "3.30.0",
     "axios": "^1.18.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -49,6 +49,13 @@
     "tailwindcss-animate": "^1.0.7",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
+  },
+  "overrides": {
+    "@tiptap/core": "3.30.0",
+    "@tiptap/pm": "3.30.0",
+    "@tiptap/extension-text": "3.30.0",
+    "@tiptap/extension-bubble-menu": "3.30.0",
+    "@tiptap/extension-floating-menu": "3.30.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
