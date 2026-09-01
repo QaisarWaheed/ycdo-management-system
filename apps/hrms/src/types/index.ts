@@ -283,6 +283,8 @@ export interface Employee {
   shiftId?: string | null
   /** Reliever-only doctors/staff: no regular duty attendance. */
   relieverOnly?: boolean
+  /** Paid weekly rest: 0=Sunday … 6=Saturday. Empty = seven-day week. */
+  weeklyOffWeekdays?: number[]
   dutyStartTime?: string | null
   dutyEndTime?: string | null
   dutyTotalHours?: number | null

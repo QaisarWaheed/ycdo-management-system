@@ -37,6 +37,7 @@ import { CnicInput } from '@/components/common/CnicInput'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { EmployeeLocationFields } from '@/components/employees/EmployeeLocationFields'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
+import { WeeklyOffDaysChecklist } from '@/components/employees/WeeklyOffDaysChecklist'
 import { isValidDutyTotalHours } from '@/lib/dutyHours'
 import { findDepartmentByName } from '@/lib/inlineMasterData'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
@@ -328,6 +329,7 @@ const step2BaseSchema = z.object({
   dutyStartTime: z.string().optional(),
   dutyEndTime: z.string().optional(),
   monthlyAllowedLeaves: z.number().int().min(0).max(31).optional().nullable(),
+  weeklyOffWeekdays: z.array(z.number().int().min(0).max(6)).optional(),
 })
 
 const dutyTimeRefine = (data: {
@@ -824,6 +826,7 @@ function EmployeeCreatePageForm() {
       dutyStartTime: '',
       dutyEndTime: '',
       monthlyAllowedLeaves: undefined,
+      weeklyOffWeekdays: [],
     },
   })
 
@@ -918,6 +921,7 @@ function EmployeeCreatePageForm() {
         dutyStartTime: '',
         dutyEndTime: '',
         monthlyAllowedLeaves: undefined,
+        weeklyOffWeekdays: [],
       })
     }
   }, [prefill, form1, form2])
@@ -2011,6 +2015,16 @@ function EmployeeCreatePageForm() {
                 onEndTimeChange={(value) =>
                   form2.setValue('dutyEndTime', value)
                 }
+              />
+              <FormField
+                control={form2.control}
+                name="weeklyOffWeekdays"
+                render={({ field }) => (
+                  <WeeklyOffDaysChecklist
+                    value={field.value ?? []}
+                    onChange={field.onChange}
+                  />
+                )}
               />
               <FormField
                 control={form2.control}

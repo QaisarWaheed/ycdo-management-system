@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { normalizeDesignationName } from '../../common/org-structure';
 import { inferShiftNameFromDuty } from '../../common/shift-inference.util';
+import { normalizeWeeklyOffWeekdays } from '../attendance/weekly-off.util';
 import {
   DUTY_FILTER_GRACE_MINUTES,
   getDutyWindow,
@@ -272,6 +273,7 @@ export class EmployeesService {
           email: loginEmail,
           staffType,
           relieverOnly: dto.relieverOnly ?? false,
+          weeklyOffWeekdays: this.parseWeeklyOffWeekdays(dto.weeklyOffWeekdays),
           shiftId: resolvedShiftId,
           dutyStartTime: syncedDutyStart,
           dutyEndTime: syncedDutyEnd,
@@ -963,6 +965,11 @@ export class EmployeesService {
     if (sanitizedDto.monthlyAllowedLeaves !== undefined) {
       data.monthlyAllowedLeaves = sanitizedDto.monthlyAllowedLeaves;
     }
+    if (sanitizedDto.weeklyOffWeekdays !== undefined) {
+      data.weeklyOffWeekdays = this.parseWeeklyOffWeekdays(
+        sanitizedDto.weeklyOffWeekdays,
+      );
+    }
     if (sanitizedDto.province !== undefined) data.province = sanitizedDto.province;
     if (sanitizedDto.city !== undefined) data.city = sanitizedDto.city;
     if (sanitizedDto.permanentProvince !== undefined) {
@@ -1345,6 +1352,16 @@ export class EmployeesService {
     return shift;
   }
 
+  private parseWeeklyOffWeekdays(raw?: number[] | null): number[] {
+    try {
+      return normalizeWeeklyOffWeekdays(raw);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Invalid weekly off days',
+      );
+    }
+  }
+
   private normalizeOptionalDuty(
     value?: string | null,
   ): string | undefined {
@@ -1634,6 +1651,11 @@ export class EmployeesService {
       }
       if (dto.monthlyAllowedLeaves !== undefined) {
         data.monthlyAllowedLeaves = dto.monthlyAllowedLeaves;
+      }
+      if (dto.weeklyOffWeekdays !== undefined) {
+        data.weeklyOffWeekdays = this.parseWeeklyOffWeekdays(
+          dto.weeklyOffWeekdays,
+        );
       }
       if (dto.relieverOnly !== undefined) {
         data.relieverOnly = dto.relieverOnly;

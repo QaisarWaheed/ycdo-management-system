@@ -89,6 +89,7 @@ import {
   pakistanYearMonthFromDate,
   PRE_JOIN_UNMARKED_NOTE,
 } from './attendance-calendar.util';
+import { isWeeklyOffDate } from './weekly-off.util';
 import {
   calculateLateMinutesFromCheckIn,
   DEFAULT_DUTY_START,
@@ -1971,6 +1972,7 @@ export class AttendanceService {
         dutyEndTime: true,
         dutyTotalHours: true,
         joiningDate: true,
+        weeklyOffWeekdays: true,
         shift: { select: { startTime: true, endTime: true, name: true } },
       },
     });
@@ -1978,6 +1980,9 @@ export class AttendanceService {
     const eligible: typeof employees = [];
     for (const employee of employees) {
       if (isPreJoinAttendanceDate(dateOnly, employee.joiningDate)) {
+        continue;
+      }
+      if (isWeeklyOffDate(employee.weeklyOffWeekdays, dateOnly)) {
         continue;
       }
 
@@ -2146,12 +2151,16 @@ export class AttendanceService {
         dutyStartTime: true,
         dutyEndTime: true,
         joiningDate: true,
+        weeklyOffWeekdays: true,
         shift: { select: { startTime: true, endTime: true } },
       },
     });
 
     for (const employee of employees) {
       if (isPreJoinAttendanceDate(date, employee.joiningDate)) {
+        continue;
+      }
+      if (isWeeklyOffDate(employee.weeklyOffWeekdays, date)) {
         continue;
       }
 
@@ -2233,6 +2242,7 @@ export class AttendanceService {
         dutyStartTime: true,
         dutyEndTime: true,
         joiningDate: true,
+        weeklyOffWeekdays: true,
         shift: { select: { startTime: true, endTime: true } },
       },
     });
@@ -2297,6 +2307,7 @@ export class AttendanceService {
       (date) =>
         !existingKeys.has(date.getTime()) &&
         !coveredByLeave(date) &&
+        !isWeeklyOffDate(employee.weeklyOffWeekdays, date) &&
         hasDutyStartedForAttendanceDate(date, dutyStart, now),
     );
     if (missing.length === 0) return;
@@ -3096,7 +3107,7 @@ export class AttendanceService {
         relieverOnly: false,
         shiftId: { not: null },
       },
-      select: { id: true, currentBranchId: true },
+      select: { id: true, currentBranchId: true, weeklyOffWeekdays: true },
     });
 
     const existingLogs = await this.prisma.attendanceLog.findMany({
@@ -3107,7 +3118,9 @@ export class AttendanceService {
     const loggedEmployeeIds = new Set(existingLogs.map((log) => log.employeeId));
 
     const absentEmployees = activeEmployees.filter(
-      (emp) => !loggedEmployeeIds.has(emp.id),
+      (emp) =>
+        !loggedEmployeeIds.has(emp.id) &&
+        !isWeeklyOffDate(emp.weeklyOffWeekdays, dateOnly),
     );
 
     if (absentEmployees.length === 0) {

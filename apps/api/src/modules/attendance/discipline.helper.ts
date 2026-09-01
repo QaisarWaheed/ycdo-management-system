@@ -27,6 +27,7 @@ import {
   parseTimeToMinutes,
   toPakistanMinutesOfDay,
 } from './attendance-late.util';
+import { isWeeklyOffDate } from './weekly-off.util';
 import { isTemporaryAutoCheckoutEnabled } from './temporary-auto-checkout';
 
 /**
@@ -123,6 +124,14 @@ export async function applyDisciplineRules(
   const lateMinutes = options.lateMinutes ?? 0;
   const dutyStartTimeSnapshot = options.dutyStartTimeSnapshot ?? null;
   const skipLetters = options.skipLetters === true;
+
+  const employee = await tx.employee.findUnique({
+    where: { id: employeeId },
+    select: { weeklyOffWeekdays: true },
+  });
+  if (employee && isWeeklyOffDate(employee.weeklyOffWeekdays, date)) {
+    return status;
+  }
 
   // Late > 1 hour is recorded as HALF_DAY for attendance display only.
   // Pay is reduced naturally by unpaid hours; cash penalties apply only at

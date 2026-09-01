@@ -236,6 +236,8 @@ model Employee {
   dutyEndTime            String?
   /// Daily duty length in hours; half-hour steps (e.g. 6.5).
   dutyTotalHours         Float?
+  /// Paid weekly rest: JS weekday 0=Sun … 6=Sat (Pakistan calendar). Empty = seven-day week.
+  weeklyOffWeekdays      Int[]          @default([])
   /// Monthly paid leave allowance. Null/omitted uses the runtime default of 2 days (not unlimited).
   monthlyAllowedLeaves   Int?
   /// Pakistan calendar date: LATE/UA on this day or later count toward the next Near/Due cycle after a closed suspension inquiry reinstatement. Null = full current month.

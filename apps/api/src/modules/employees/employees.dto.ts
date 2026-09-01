@@ -234,6 +234,15 @@ export class CreateEmployeeDto {
   @IsBoolean()
   relieverOnly?: boolean;
 
+  /** Paid weekly rest weekdays: 0=Sunday … 6=Saturday. Empty = no weekly off. */
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(6, { each: true })
+  weeklyOffWeekdays?: number[];
+
   @IsOptional()
   @IsString()
   @Matches(/^\d{2}:\d{2}$/, { message: 'Time format must be HH:MM' })
@@ -507,6 +516,15 @@ export class UpdateBranchDutyDto {
   @IsOptional()
   @IsBoolean()
   relieverOnly?: boolean;
+
+  /** Paid weekly rest weekdays: 0=Sunday … 6=Saturday. Empty = no weekly off. */
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(6, { each: true })
+  weeklyOffWeekdays?: number[];
 }
 
 export class ActiveShiftQueryDto {

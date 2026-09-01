@@ -5,6 +5,7 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { employeesApi } from '@/api/endpoints/employees'
 import { SearchableSelect } from '@/components/common/SearchableSelect'
 import { DutyHoursFields } from '@/components/employees/DutyHoursFields'
+import { WeeklyOffDaysChecklist } from '@/components/employees/WeeklyOffDaysChecklist'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -50,6 +51,9 @@ export function UpdateBranchDutyDialog({
   const [monthlyAllowedLeaves, setMonthlyAllowedLeaves] = useState<
     number | ''
   >(employee.monthlyAllowedLeaves ?? '')
+  const [weeklyOffWeekdays, setWeeklyOffWeekdays] = useState<number[]>(
+    employee.weeklyOffWeekdays ?? [],
+  )
 
   useEffect(() => {
     if (open) {
@@ -60,6 +64,7 @@ export function UpdateBranchDutyDialog({
       setDutyEndTime(employee.dutyEndTime ?? '')
       setRelieverOnly(Boolean(employee.relieverOnly))
       setMonthlyAllowedLeaves(employee.monthlyAllowedLeaves ?? '')
+      setWeeklyOffWeekdays(employee.weeklyOffWeekdays ?? [])
     }
   }, [open, employee])
 
@@ -87,6 +92,7 @@ export function UpdateBranchDutyDialog({
         relieverOnly,
         monthlyAllowedLeaves:
           monthlyAllowedLeaves === '' ? null : Number(monthlyAllowedLeaves),
+        weeklyOffWeekdays,
       }),
     onSuccess: () => {
       toast({ title: 'Branch and duty time updated' })
@@ -191,6 +197,11 @@ export function UpdateBranchDutyDialog({
               onEndTimeChange={setDutyEndTime}
             />
           )}
+
+          <WeeklyOffDaysChecklist
+            value={weeklyOffWeekdays}
+            onChange={setWeeklyOffWeekdays}
+          />
 
           <div className="space-y-1">
             <Label htmlFor="monthlyAllowedLeaves">Allow leave / month</Label>

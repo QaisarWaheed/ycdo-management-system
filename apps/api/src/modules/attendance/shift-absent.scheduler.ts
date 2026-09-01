@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollService } from '../payroll/payroll.service';
 import { applyDisciplineRules, reverseAbsenceDeductionForDate } from './discipline.helper';
+import { isWeeklyOffDate } from './weekly-off.util';
 import { is24HourShift, is24HourShiftRecord } from './attendance-biometric.util';
 import {
   AUTO_UNMARKED_NOTE,
@@ -73,6 +74,9 @@ export class ShiftAbsentScheduler {
         if (isPreJoinAttendanceDate(attendanceDate, employee.joiningDate)) {
           continue;
         }
+        if (isWeeklyOffDate(employee.weeklyOffWeekdays, attendanceDate)) {
+          continue;
+        }
 
         const existing = await this.prisma.attendanceLog.findUnique({
           where: {
@@ -124,6 +128,9 @@ export class ShiftAbsentScheduler {
 
       const attendanceDate = getShiftAttendanceDate(now, dutyStart);
       if (isPreJoinAttendanceDate(attendanceDate, employee.joiningDate)) {
+        continue;
+      }
+      if (isWeeklyOffDate(employee.weeklyOffWeekdays, attendanceDate)) {
         continue;
       }
 
@@ -374,6 +381,9 @@ export class ShiftAbsentScheduler {
 
     for (const employee of employees) {
       if (isPreJoinAttendanceDate(date, employee.joiningDate)) {
+        continue;
+      }
+      if (isWeeklyOffDate(employee.weeklyOffWeekdays, date)) {
         continue;
       }
 

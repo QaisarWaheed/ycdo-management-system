@@ -90,6 +90,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { formatEmployeeShiftDisplay } from '@/lib/dutyTimes'
+import { formatWeeklyOffWeekdays } from '@/lib/weeklyOffDays'
 import { formatDateTimeTime } from '@/lib/timeFormat'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { letterTypeLabel } from '@/lib/letterFieldConfig'
@@ -1245,6 +1246,10 @@ export function EmployeeProfilePage() {
             <div className="print-label">Duty Hours</div>
             {formatEmployeeShiftDisplay(employee)}
           </div>
+          <div className="print-field">
+            <div className="print-label">Weekly Off</div>
+            {formatWeeklyOffWeekdays(employee.weeklyOffWeekdays)}
+          </div>
         </div>
 
         <h3 className="mb-2 font-semibold">Payroll Summary</h3>
@@ -1364,6 +1369,9 @@ export function EmployeeProfilePage() {
                 ? 'Reliever only (no regular duty)'
                 : formatEmployeeShiftDisplay(employee)}
             </span>
+          </p>
+          <p className="text-sm text-text-secondary">
+            Weekly off: {formatWeeklyOffWeekdays(employee.weeklyOffWeekdays)}
           </p>
           <div className="w-full space-y-2 text-left text-sm">
             <p>
