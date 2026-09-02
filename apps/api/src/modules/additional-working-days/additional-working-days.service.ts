@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollService } from '../payroll/payroll.service';
-import { assertEmployeeEligibleForAttendance } from '../attendance/attendance-eligibility.util';
+import { assertEmployeeEligibleForRelieverAttendance } from '../attendance/attendance-eligibility.util';
 import { CreateAdditionalWorkingDayDto } from './additional-working-days.dto';
 
 export const RELIEVER_AWD_NOTE = 'Reliever duty';
@@ -24,7 +24,7 @@ export class AdditionalWorkingDaysService {
     if (!employee) {
       throw new NotFoundException(`Employee with id ${dto.employeeId} not found`);
     }
-    assertEmployeeEligibleForAttendance(employee);
+    assertEmployeeEligibleForRelieverAttendance(employee.status);
 
     const date = this.toDateOnly(dto.date);
 
@@ -98,7 +98,7 @@ export class AdditionalWorkingDaysService {
         `Employee with id ${params.employeeId} not found`,
       );
     }
-    assertEmployeeEligibleForAttendance(employee);
+    assertEmployeeEligibleForRelieverAttendance(employee.status);
 
     try {
       return await this.prisma.additionalWorkingDay.create({

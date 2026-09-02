@@ -36,7 +36,7 @@ describe('AdditionalWorkingDaysService eligibility', () => {
     expect(prisma.additionalWorkingDay.create).not.toHaveBeenCalled();
   });
 
-  it('upsertFromRelieverSession rejects APPOINTED before creating a row', async () => {
+  it('upsertFromRelieverSession allows APPOINTED staff (reliever / raw mazdoor)', async () => {
     const prisma = {
       employee: {
         findUnique: jest.fn().mockResolvedValue({
@@ -45,13 +45,12 @@ describe('AdditionalWorkingDaysService eligibility', () => {
       },
       additionalWorkingDay: {
         findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'awd-1' }),
       },
     };
+    const recompute = jest.fn().mockResolvedValue(undefined);
     const service = new AdditionalWorkingDaysService(prisma as never, {
-      recomputePendingPayrollForAttendanceDate: jest
-        .fn()
-        .mockResolvedValue(undefined),
+      recomputePendingPayrollForAttendanceDate: recompute,
     } as never);
 
     await expect(
@@ -61,8 +60,8 @@ describe('AdditionalWorkingDaysService eligibility', () => {
         date: new Date(Date.UTC(2026, 7, 20)),
         addedById: 'user-1',
       }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    expect(prisma.additionalWorkingDay.create).not.toHaveBeenCalled();
+    ).resolves.toEqual({ id: 'awd-1' });
+    expect(prisma.additionalWorkingDay.create).toHaveBeenCalled();
   });
 
   it('upsertFromRelieverSession returns an existing row without re-checking create', async () => {

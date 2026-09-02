@@ -14,9 +14,11 @@ import {
   isOnDutyAt,
   hoursBetweenDutyTimes,
   normalizeDutyTimeToHhMm,
+  resolveAttendanceDutyTimes,
   workedMinutes,
 } from '../../common/duty.util';
 import {
+  AttendanceStatus,
   ChangeType,
   DisciplinaryStatus,
   DisciplinaryType,
@@ -1541,14 +1543,27 @@ export class EmployeesService {
         checkIn: { not: null },
         checkOut: { not: null },
       },
-      select: { checkIn: true, checkOut: true, date: true },
+      select: {
+        checkIn: true,
+        checkOut: true,
+        date: true,
+        status: true,
+        dutyStartTimeSnapshot: true,
+        dutyEndTimeSnapshot: true,
+      },
     });
+
+    const nonWorkStatuses = new Set<AttendanceStatus>([
+      AttendanceStatus.ON_LEAVE,
+      AttendanceStatus.ABSENT,
+      AttendanceStatus.UNINFORMED_ABSENT,
+      AttendanceStatus.HOLIDAY,
+    ]);
 
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    const win = getDutyWindow(employee);
     let totalMinutes = 0;
     let thisMonthMinutes = 0;
     let anomalies = 0;
@@ -1556,6 +1571,13 @@ export class EmployeesService {
 
     for (const log of logs) {
       if (!log.checkIn || !log.checkOut) continue;
+      if (log.status && nonWorkStatuses.has(log.status)) continue;
+
+      const dayDuty = resolveAttendanceDutyTimes(log, employee);
+      const win = getDutyWindow({
+        dutyStartTime: dayDuty.dutyStartTime,
+        dutyEndTime: dayDuty.dutyEndTime,
+      });
       const { minutes, anomalous } = workedMinutes(
         log.checkIn,
         log.checkOut,

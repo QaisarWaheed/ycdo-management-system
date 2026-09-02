@@ -1524,6 +1524,17 @@ export class AttendanceService {
       if (dto.status === AttendanceStatus.SWAP_COVERED) {
         data.lateMinutes = 0;
       }
+      if (
+        dto.status === AttendanceStatus.ON_LEAVE &&
+        dto.checkIn === undefined &&
+        dto.checkOut === undefined
+      ) {
+        data.checkIn = null;
+        data.checkOut = null;
+        data.lateMinutes = 0;
+        data.overtimeMinutes = 0;
+        data.overtimePending = false;
+      }
     }
     if (dto.checkIn !== undefined) {
       data.checkIn = dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : null;
@@ -2763,6 +2774,12 @@ export class AttendanceService {
     }
     assertEmployeeEligibleForRelieverAttendance(employee.status);
 
+    await this.reconcileRelieverDutyAttendance(
+      dto.employeeId,
+      dateOnly,
+      employee.currentBranchId,
+    );
+
     const openSession = await this.prisma.relieverSession.findFirst({
       where: {
         employeeId: dto.employeeId,
@@ -3058,6 +3075,52 @@ export class AttendanceService {
     );
 
     return result;
+  }
+
+  private async reconcileRelieverDutyAttendance(
+    employeeId: string,
+    dateOnly: Date,
+    branchId: string,
+  ) {
+    const ownLeave = await this.prisma.leaveRecord.findFirst({
+      where: {
+        employeeId,
+        leaveType: { not: LeaveType.SHORT_LEAVE },
+        status: LeaveStatus.APPROVED,
+        startDate: { lte: dateOnly },
+        endDate: { gte: dateOnly },
+      },
+      select: { id: true },
+    });
+    if (ownLeave) {
+      throw new BadRequestException(
+        'Cannot start reliever duty on a day you are on approved leave',
+      );
+    }
+
+    const log = await this.prisma.attendanceLog.findUnique({
+      where: {
+        employeeId_date_type: {
+          employeeId,
+          date: dateOnly,
+          type: AttendanceLogType.REGULAR,
+        },
+      },
+    });
+    if (!log || log.status !== AttendanceStatus.ON_LEAVE) {
+      return;
+    }
+
+    await this.prisma.attendanceLog.update({
+      where: { id: log.id },
+      data: {
+        status: AttendanceStatus.PRESENT,
+        source: AttendanceSource.MANUAL,
+        note: log.note?.trim()
+          ? `${log.note.trim()} · Reliever duty`
+          : 'Reliever duty',
+      },
+    });
   }
 
   private async findRelieverAssignment(employeeId: string, dateOnly: Date) {

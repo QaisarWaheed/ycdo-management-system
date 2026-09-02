@@ -49,7 +49,9 @@ export function AdditionalWorkingDaysTab({
 
   const hoursPerDay = dailyDutyHours && dailyDutyHours > 0 ? dailyDutyHours : 8
 
-  const payableDays = data.length
+  const payableManualDays = data.filter((row) => !isRelieverRow(row)).length
+  const relieverDays = data.filter((row) => isRelieverRow(row)).length
+  const payableDays = payableManualDays + relieverDays
   const payableHours = useMemo(
     () => payableDays * hoursPerDay,
     [payableDays, hoursPerDay],
