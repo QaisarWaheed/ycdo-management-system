@@ -13,10 +13,13 @@ import { isWeeklyOffDate } from './weekly-off.util';
 import { is24HourShift, is24HourShiftRecord } from './attendance-biometric.util';
 import {
   AUTO_UNMARKED_NOTE,
-  isPreJoinAttendanceDate,
   isUninformedUpgradeNote,
 } from './attendance-calendar.util';
-import { ATTENDANCE_ELIGIBLE_STATUS_WHERE } from './attendance-eligibility.util';
+import {
+  isOperationalAttendanceDate,
+  isSchedulerAttendanceEligible,
+  schedulerAttendanceCandidateWhere,
+} from '../employees/status-effective.util';
 import {
   getShiftAttendanceDate,
   minutesSinceShiftStart,
@@ -57,7 +60,7 @@ export class ShiftAbsentScheduler {
     const employees = await this.prisma.employee.findMany({
       where: {
         relieverOnly: false,
-        ...ATTENDANCE_ELIGIBLE_STATUS_WHERE,
+        ...schedulerAttendanceCandidateWhere(),
       },
       include: { shift: true },
     });
@@ -71,7 +74,9 @@ export class ShiftAbsentScheduler {
 
       if (is24h) {
         const attendanceDate = toPakistanDateOnly(now);
-        if (isPreJoinAttendanceDate(attendanceDate, employee.joiningDate)) {
+        if (
+          !isSchedulerAttendanceEligible(employee, attendanceDate)
+        ) {
           continue;
         }
         if (isWeeklyOffDate(employee.weeklyOffWeekdays, attendanceDate)) {
@@ -127,7 +132,7 @@ export class ShiftAbsentScheduler {
       }
 
       const attendanceDate = getShiftAttendanceDate(now, dutyStart);
-      if (isPreJoinAttendanceDate(attendanceDate, employee.joiningDate)) {
+      if (!isSchedulerAttendanceEligible(employee, attendanceDate)) {
         continue;
       }
       if (isWeeklyOffDate(employee.weeklyOffWeekdays, attendanceDate)) {
@@ -201,7 +206,13 @@ export class ShiftAbsentScheduler {
     for (const log of unmarkedLogs) {
       if (!isUninformedUpgradeNote(log.note)) continue;
 
-      if (isPreJoinAttendanceDate(log.date, log.employee.joiningDate)) {
+      if (
+        !isOperationalAttendanceDate(log.date, {
+          status: log.employee.status,
+          statusEffectiveFrom: log.employee.statusEffectiveFrom,
+          joiningDate: log.employee.joiningDate,
+        })
+      ) {
         continue;
       }
 
@@ -373,14 +384,14 @@ export class ShiftAbsentScheduler {
       where: {
         shiftId,
         relieverOnly: false,
-        ...ATTENDANCE_ELIGIBLE_STATUS_WHERE,
+        ...schedulerAttendanceCandidateWhere(),
       },
     });
 
     let marked = 0;
 
     for (const employee of employees) {
-      if (isPreJoinAttendanceDate(date, employee.joiningDate)) {
+      if (!isSchedulerAttendanceEligible(employee, date)) {
         continue;
       }
       if (isWeeklyOffDate(employee.weeklyOffWeekdays, date)) {

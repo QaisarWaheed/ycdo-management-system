@@ -124,7 +124,12 @@ import {
   assertEmployeeEligibleForBiometricAttendance,
   assertEmployeeEligibleForManualAttendance,
   assertEmployeeEligibleForRelieverAttendance,
+  type EmployeeAttendanceContext,
 } from './attendance-eligibility.util';
+import {
+  isSchedulerAttendanceEligible,
+  schedulerAttendanceCandidateWhere,
+} from '../employees/status-effective.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
 const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
@@ -163,6 +168,18 @@ export class AttendanceService {
     private additionalWorkingDaysService: AdditionalWorkingDaysService,
   ) {}
 
+  private employeeAttendanceContext(employee: {
+    status: EmployeeStatus;
+    statusEffectiveFrom?: Date | null;
+    joiningDate?: Date | null;
+  }): EmployeeAttendanceContext {
+    return {
+      status: employee.status,
+      statusEffectiveFrom: employee.statusEffectiveFrom ?? null,
+      joiningDate: employee.joiningDate,
+    };
+  }
+
   /**
    * Fires the centralized PENDING-payroll recompute hook (see
    * PayrollService.recomputePendingPayrollForAttendanceDate) for a
@@ -199,7 +216,10 @@ export class AttendanceService {
       );
     }
 
-    assertEmployeeEligibleForBiometricAttendance(employee.status);
+    assertEmployeeEligibleForBiometricAttendance(
+      employee.status,
+      this.employeeAttendanceContext(employee),
+    );
 
     if (!dto.punchType) {
       throw new BadRequestException(
@@ -295,7 +315,10 @@ export class AttendanceService {
       );
     }
 
-    assertEmployeeEligibleForBiometricAttendance(employee.status);
+    assertEmployeeEligibleForBiometricAttendance(
+      employee.status,
+      this.employeeAttendanceContext(employee),
+    );
 
     const device = await this.prisma.biometricDevice.findUnique({
       where: { deviceId: dto.deviceId },
@@ -1127,7 +1150,10 @@ export class AttendanceService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    assertEmployeeEligibleForBiometricAttendance(employee.status);
+    assertEmployeeEligibleForBiometricAttendance(
+      employee.status,
+      this.employeeAttendanceContext(employee),
+    );
 
     const checkTime = new Date();
     const twentyFourHour = is24HourShift(employee);
@@ -1179,7 +1205,10 @@ export class AttendanceService {
       );
     }
 
-    assertEmployeeEligibleForManualAttendance(employee.status);
+    assertEmployeeEligibleForManualAttendance(
+      employee.status,
+      this.employeeAttendanceContext(employee),
+    );
 
     if (isMedicineManagerRole(actingUser.role)) {
       if (!assertEmployeeInMedicineScope(employee)) {
@@ -1475,7 +1504,11 @@ export class AttendanceService {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
 
-    assertEmployeeEligibleForAttendanceRecord(log.employee.status);
+    assertEmployeeEligibleForAttendanceRecord(
+      log.employee.status,
+      this.employeeAttendanceContext(log.employee),
+      log.date,
+    );
 
     await this.accessScopeService.assertEmployeeAccess(
       actingUser.id,
@@ -1970,14 +2003,14 @@ export class AttendanceService {
 
     const employees = await this.prisma.employee.findMany({
       where: {
-        status: {
-          in: [...ATTENDANCE_ELIGIBLE_STATUSES, EmployeeStatus.APPOINTED],
-        },
         relieverOnly: false,
+        ...schedulerAttendanceCandidateWhere(),
         ...(employeeWhere ?? {}),
       },
       select: {
         id: true,
+        status: true,
+        statusEffectiveFrom: true,
         currentBranchId: true,
         dutyStartTime: true,
         dutyEndTime: true,
@@ -1990,7 +2023,7 @@ export class AttendanceService {
 
     const eligible: typeof employees = [];
     for (const employee of employees) {
-      if (isPreJoinAttendanceDate(dateOnly, employee.joiningDate)) {
+      if (!isSchedulerAttendanceEligible(employee, dateOnly)) {
         continue;
       }
       if (isWeeklyOffDate(employee.weeklyOffWeekdays, dateOnly)) {
@@ -2153,11 +2186,14 @@ export class AttendanceService {
     const employees = await this.prisma.employee.findMany({
       where: {
         shiftId,
-        status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        relieverOnly: false,
+        ...schedulerAttendanceCandidateWhere(),
         ...(employeeWhere ?? {}),
       },
       select: {
         id: true,
+        status: true,
+        statusEffectiveFrom: true,
         currentBranchId: true,
         dutyStartTime: true,
         dutyEndTime: true,
@@ -2168,7 +2204,7 @@ export class AttendanceService {
     });
 
     for (const employee of employees) {
-      if (isPreJoinAttendanceDate(date, employee.joiningDate)) {
+      if (!isSchedulerAttendanceEligible(employee, date)) {
         continue;
       }
       if (isWeeklyOffDate(employee.weeklyOffWeekdays, date)) {
@@ -2772,7 +2808,11 @@ export class AttendanceService {
     if (!employee) {
       throw new NotFoundException(`Employee with id ${dto.employeeId} not found`);
     }
-    assertEmployeeEligibleForRelieverAttendance(employee.status);
+    assertEmployeeEligibleForRelieverAttendance(
+      employee.status,
+      this.employeeAttendanceContext(employee),
+      dateOnly,
+    );
 
     await this.reconcileRelieverDutyAttendance(
       dto.employeeId,
@@ -3350,7 +3390,10 @@ export class AttendanceService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    assertEmployeeEligibleForBiometricAttendance(employee.status);
+    assertEmployeeEligibleForBiometricAttendance(
+      employee.status,
+      this.employeeAttendanceContext(employee),
+    );
 
     const branchLocation = employee.currentBranch.location;
     if (!branchLocation) {
@@ -3498,7 +3541,10 @@ export class AttendanceService {
       throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    assertEmployeeEligibleForBiometricAttendance(employee.status);
+    assertEmployeeEligibleForBiometricAttendance(
+      employee.status,
+      this.employeeAttendanceContext(employee),
+    );
 
     const branchLocation = employee.currentBranch.location;
     if (!branchLocation) {
@@ -3937,7 +3983,10 @@ export class AttendanceService {
       );
     }
 
-    assertEmployeeEligibleForAttendanceRecord(employee.status);
+    assertEmployeeEligibleForAttendanceRecord(
+      employee.status,
+      this.employeeAttendanceContext(employee),
+    );
 
     if (!employee.currentBranchId && !existing) {
       throw new BadRequestException(

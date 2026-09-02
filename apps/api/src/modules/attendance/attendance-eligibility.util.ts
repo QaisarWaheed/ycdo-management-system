@@ -1,5 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import { EmployeeStatus } from '@prisma/client';
+import { toPakistanDateOnly } from './attendance-late.util';
+import {
+  isExitEmployeeStatus,
+  isOperationalAttendanceDate,
+} from '../employees/status-effective.util';
 
 export const ATTENDANCE_PENDING_APPROVAL_MESSAGE =
   'Attendance cannot be marked while the employee is pending executive onboarding approval.';
@@ -13,6 +18,12 @@ export const ATTENDANCE_ELIGIBLE_STATUSES: EmployeeStatus[] = [
 export const ATTENDANCE_ELIGIBLE_STATUS_WHERE = {
   status: { in: ATTENDANCE_ELIGIBLE_STATUSES },
 } as const;
+
+export type EmployeeAttendanceContext = {
+  status: EmployeeStatus;
+  statusEffectiveFrom?: Date | null;
+  joiningDate?: Date | null;
+};
 
 const BIOMETRIC_ATTENDANCE_STATUSES: ReadonlySet<EmployeeStatus> = new Set([
   EmployeeStatus.ACTIVE,
@@ -60,51 +71,117 @@ function rejectPendingApproval(status: EmployeeStatus): void {
   }
 }
 
+function assertOperationalForDate(
+  context: EmployeeAttendanceContext,
+  date: Date = new Date(),
+): void {
+  if (!isOperationalAttendanceDate(date, context)) {
+    throw new BadRequestException(
+      'Employee is not eligible for attendance on this date',
+    );
+  }
+}
+
+function isNoticePeriodExit(context: EmployeeAttendanceContext, date: Date): boolean {
+  return (
+    isExitEmployeeStatus(context.status) &&
+    !!context.statusEffectiveFrom &&
+    toPakistanDateOnly(date).getTime() <
+      toPakistanDateOnly(context.statusEffectiveFrom).getTime()
+  );
+}
+
 export function assertEmployeeEligibleForBiometricAttendance(
   status: EmployeeStatus,
+  context?: EmployeeAttendanceContext,
+  date: Date = new Date(),
 ): void {
   rejectPendingApproval(status);
-  if (!BIOMETRIC_ATTENDANCE_STATUSES.has(status)) {
-    throw new BadRequestException('Employee is not active');
+  if (context) {
+    assertOperationalForDate(context, date);
   }
+  if (BIOMETRIC_ATTENDANCE_STATUSES.has(status)) return;
+  if (context && isNoticePeriodExit(context, date)) return;
+  throw new BadRequestException('Employee is not active');
 }
 
 export function assertEmployeeEligibleForManualAttendance(
   status: EmployeeStatus,
+  context?: EmployeeAttendanceContext,
+  date: Date = new Date(),
 ): void {
   rejectPendingApproval(status);
-  if (!MANUAL_ATTENDANCE_STATUSES.has(status)) {
-    throw new BadRequestException('Employee is not active');
+  if (context) {
+    assertOperationalForDate(context, date);
   }
+  if (MANUAL_ATTENDANCE_STATUSES.has(status)) return;
+  if (context && isNoticePeriodExit(context, date)) return;
+  throw new BadRequestException('Employee is not active');
 }
 
 export function assertEmployeeEligibleForRelieverAttendance(
   status: EmployeeStatus,
+  context?: EmployeeAttendanceContext,
+  date: Date = new Date(),
 ): void {
   rejectPendingApproval(status);
-  if (!RELIEVER_ATTENDANCE_STATUSES.has(status)) {
-    throw new BadRequestException('Reliever employee is not active');
+  if (context) {
+    assertOperationalForDate(context, date);
   }
+  if (RELIEVER_ATTENDANCE_STATUSES.has(status)) return;
+  if (context && isNoticePeriodExit(context, date)) return;
+  throw new BadRequestException('Reliever employee is not active');
 }
 
 export function assertEmployeeEligibleForAttendanceRecord(
   status: EmployeeStatus,
+  context?: EmployeeAttendanceContext,
+  date: Date = new Date(),
 ): void {
   rejectPendingApproval(status);
+  if (context) {
+    assertOperationalForDate(context, date);
+  }
   if (status === EmployeeStatus.SUSPENDED) {
     throw new BadRequestException(
       'Attendance is locked while the employee is suspended.',
     );
   }
-  if (!HR_ATTENDANCE_CORRECTION_STATUSES.has(status)) {
-    throw new BadRequestException('Employee is not eligible for attendance');
-  }
+  if (HR_ATTENDANCE_CORRECTION_STATUSES.has(status)) return;
+  if (context && isNoticePeriodExit(context, date)) return;
+  throw new BadRequestException('Employee is not eligible for attendance');
 }
 
 export function assertEmployeeEligibleForAttendance(employee: {
   status: EmployeeStatus;
+  statusEffectiveFrom?: Date | null;
+  joiningDate?: Date | null;
 }): void {
+  rejectPendingApproval(employee.status);
+  if (employee.status === EmployeeStatus.APPOINTED) {
+    throw new BadRequestException(
+      attendanceLockMessage(EmployeeStatus.APPOINTED),
+    );
+  }
+
+  const context: EmployeeAttendanceContext = {
+    status: employee.status,
+    statusEffectiveFrom: employee.statusEffectiveFrom,
+    joiningDate: employee.joiningDate,
+  };
+  const today = new Date();
+
+  if (isNoticePeriodExit(context, today)) {
+    return;
+  }
+
   if (!isEmployeeEligibleForAttendance(employee.status)) {
     throw new BadRequestException(attendanceLockMessage(employee.status));
+  }
+
+  if (!isOperationalAttendanceDate(today, context)) {
+    throw new BadRequestException(
+      'Employee is not eligible for attendance on this date',
+    );
   }
 }

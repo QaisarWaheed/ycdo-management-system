@@ -167,6 +167,10 @@ model Employee {
   address             String?
   joiningDate         DateTime
   status              EmployeeStatus @default(ACTIVE)
+  /// First calendar day the current status applies for attendance/payroll
+  /// (exit/rest/dismiss: first non-working day; Active return: first paid day).
+  /// Null = immediate / no pending transition.
+  statusEffectiveFrom DateTime?
   currentBranchId     String
   currentDepartmentId String?
   currentDesignation  String?

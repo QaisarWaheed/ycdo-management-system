@@ -25,6 +25,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { hasAnyRole } from '../../common/user-roles.util';
 import { LettersService } from '../letters/letters.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import {
+  buildStatusEffectiveFromUpdate,
+  syncEmployeePortalAccess,
+} from '../employees/status-effective.util';
 import { suspensionInquiryReinstatementData } from '../attendance/suspension-watch-baseline.util';
 import {
   SUSPENSION_PREPARE_ROLES,
@@ -208,6 +212,7 @@ export class InquiryDecisionService {
       destinationBranchId?: string;
       finalAction?: InquiryFinalAction;
       fineAmount?: number;
+      statusEffectiveFrom?: string;
     },
     actingUserId: string,
     actingRole: UserRole,
@@ -290,6 +295,7 @@ export class InquiryDecisionService {
         } as never,
         actingUserId,
         now,
+        dto.statusEffectiveFrom,
       );
     });
     await this.generatePostApplyLetters(
@@ -531,6 +537,7 @@ export class InquiryDecisionService {
     inquiry: Awaited<ReturnType<InquiryDecisionService['loadInquiry']>>,
     actingUserId: string,
     now: Date,
+    statusEffectiveFromInput?: string | null,
   ) {
     const employee = inquiry.disciplinaryAction.employee;
     const finding = inquiry.finding;
@@ -559,7 +566,7 @@ export class InquiryDecisionService {
       result.employeeStatus = EmployeeStatus.ACTIVE;
       await tx.employee.update({
         where: { id: employee.id },
-        data: suspensionInquiryReinstatementData(now),
+        data: suspensionInquiryReinstatementData(now, statusEffectiveFromInput),
       });
       await tx.user.updateMany({
         where: { employeeId: employee.id },
@@ -580,12 +587,16 @@ export class InquiryDecisionService {
       result.employeeStatus = EmployeeStatus.DISMISSED;
       await tx.employee.update({
         where: { id: employee.id },
-        data: { status: EmployeeStatus.DISMISSED },
+        data: {
+          status: EmployeeStatus.DISMISSED,
+          statusEffectiveFrom: buildStatusEffectiveFromUpdate(
+            EmployeeStatus.DISMISSED,
+            statusEffectiveFromInput,
+            now,
+          ),
+        },
       });
-      await tx.user.updateMany({
-        where: { employeeId: employee.id },
-        data: { isActive: false },
-      });
+      await syncEmployeePortalAccess(tx, employee.id, EmployeeStatus.DISMISSED);
       await this.audit(tx, actingUserId, 'EMPLOYEE_DISMISSED', employee.id, {
         inquiryId: inquiry.id,
       });
@@ -594,12 +605,16 @@ export class InquiryDecisionService {
       result.employeeStatus = EmployeeStatus.TERMINATED;
       await tx.employee.update({
         where: { id: employee.id },
-        data: { status: EmployeeStatus.TERMINATED },
+        data: {
+          status: EmployeeStatus.TERMINATED,
+          statusEffectiveFrom: buildStatusEffectiveFromUpdate(
+            EmployeeStatus.TERMINATED,
+            statusEffectiveFromInput,
+            now,
+          ),
+        },
       });
-      await tx.user.updateMany({
-        where: { employeeId: employee.id },
-        data: { isActive: false },
-      });
+      await syncEmployeePortalAccess(tx, employee.id, EmployeeStatus.TERMINATED);
       await this.audit(tx, actingUserId, 'EMPLOYEE_TERMINATED', employee.id, {
         inquiryId: inquiry.id,
       });
@@ -608,8 +623,16 @@ export class InquiryDecisionService {
       result.employeeStatus = EmployeeStatus.ON_REST;
       await tx.employee.update({
         where: { id: employee.id },
-        data: { status: EmployeeStatus.ON_REST },
+        data: {
+          status: EmployeeStatus.ON_REST,
+          statusEffectiveFrom: buildStatusEffectiveFromUpdate(
+            EmployeeStatus.ON_REST,
+            statusEffectiveFromInput,
+            now,
+          ),
+        },
       });
+      await syncEmployeePortalAccess(tx, employee.id, EmployeeStatus.ON_REST);
       await this.audit(tx, actingUserId, 'EMPLOYEE_RESTED', employee.id, {
         inquiryId: inquiry.id,
       });
@@ -627,7 +650,7 @@ export class InquiryDecisionService {
       result.employeeStatus = EmployeeStatus.ACTIVE;
       await tx.employee.update({
         where: { id: employee.id },
-        data: suspensionInquiryReinstatementData(now),
+        data: suspensionInquiryReinstatementData(now, statusEffectiveFromInput),
       });
       await tx.user.updateMany({
         where: { employeeId: employee.id },

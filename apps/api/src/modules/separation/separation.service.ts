@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LettersService } from '../letters/letters.service';
 import { PayrollService } from '../payroll/payroll.service';
 import { PromotionDto, ResignationDto } from './separation.dto';
+import { effectiveFromAfterLastWorkingDay, syncEmployeePortalAccess } from '../employees/status-effective.util';
 
 @Injectable()
 export class SeparationService {
@@ -37,6 +38,7 @@ export class SeparationService {
     }
 
     const lastWorkingDate = new Date(dto.lastWorkingDate);
+    const statusEffectiveFrom = effectiveFromAfterLastWorkingDay(lastWorkingDate);
     const totalExperience = this.calculateExperience(
       employee.joiningDate,
       lastWorkingDate,
@@ -45,8 +47,13 @@ export class SeparationService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.employee.update({
         where: { id: dto.employeeId },
-        data: { status: EmployeeStatus.RESIGNED },
+        data: {
+          status: EmployeeStatus.RESIGNED,
+          statusEffectiveFrom,
+        },
       });
+
+      await syncEmployeePortalAccess(tx, dto.employeeId, EmployeeStatus.RESIGNED);
 
       await tx.notification.create({
         data: {

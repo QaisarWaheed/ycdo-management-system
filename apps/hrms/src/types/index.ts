@@ -258,6 +258,8 @@ export interface Employee {
   hideProfilePhoto?: boolean
   hasPrivatePhoto?: boolean
   status: EmployeeStatus
+  /** First day the current status applies for attendance/payroll. */
+  statusEffectiveFrom?: string | null
   joiningDate: string
   currentDesignation: string | null
   currentBranchId?: string

@@ -25,10 +25,15 @@ describe('EmployeesService.changeStatus', () => {
           }),
         ),
       },
+      user: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       letter: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
-      $transaction: jest.fn(),
+      $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      ),
     };
     const service = new EmployeesService(
       prisma as never,
@@ -72,16 +77,17 @@ describe('EmployeesService.changeStatus', () => {
       reason: 'Rest day assignment',
     });
 
+    expect(prisma.$transaction).toHaveBeenCalled();
     expect(prisma.employee.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'emp-1' },
-        data: { status: EmployeeStatus.ON_REST },
+        data: expect.objectContaining({
+          status: EmployeeStatus.ON_REST,
+          statusEffectiveFrom: expect.any(Date),
+        }),
       }),
     );
     expect(result.status).toBe(EmployeeStatus.ON_REST);
-    expect(prisma.employee.update.mock.calls[0][0].data).toEqual({
-      status: EmployeeStatus.ON_REST,
-    });
   });
 
   it('rejects SUSPENDED → ACTIVE from Change Status', async () => {
@@ -115,6 +121,7 @@ describe('EmployeesService.changeStatus', () => {
     const { service, prisma } = build(EmployeeStatus.SUSPENDED);
     const tx = {
       employee: prisma.employee,
+      user: prisma.user,
       disciplinaryAction: {
         findMany: jest.fn().mockResolvedValue([{ id: 'case-1' }]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -175,6 +182,7 @@ describe('EmployeesService.changeStatus', () => {
     const { service, prisma } = build(EmployeeStatus.SUSPENDED);
     const tx = {
       employee: prisma.employee,
+      user: prisma.user,
       disciplinaryAction: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn(),
@@ -194,9 +202,12 @@ describe('EmployeesService.changeStatus', () => {
     );
 
     expect(result.status).toBe(EmployeeStatus.TERMINATED);
-    expect(prisma.employee.update.mock.calls[0][0].data).toEqual({
-      status: EmployeeStatus.TERMINATED,
-    });
+    expect(prisma.employee.update.mock.calls[0][0].data).toEqual(
+      expect.objectContaining({
+        status: EmployeeStatus.TERMINATED,
+        statusEffectiveFrom: expect.any(Date),
+      }),
+    );
     expect(tx.disciplinaryAction.updateMany).not.toHaveBeenCalled();
   });
 
@@ -302,6 +313,7 @@ describe('EmployeesService.changeStatus', () => {
       });
       expect(prisma.employee.update.mock.calls[0][0].data).toEqual({
         status: EmployeeStatus.ACTIVE,
+        statusEffectiveFrom: null,
       });
       prisma.employee.update.mockClear();
     }

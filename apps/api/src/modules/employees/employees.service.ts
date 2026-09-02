@@ -74,6 +74,10 @@ import {
   hasAnyRole,
 } from '../../common/user-roles.util';
 import { suspensionInquiryReinstatementData } from '../attendance/suspension-watch-baseline.util';
+import {
+  buildStatusEffectiveFromUpdate,
+  syncEmployeePortalAccess,
+} from './status-effective.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 
@@ -1252,17 +1256,29 @@ export class EmployeesService {
 
     const data: Prisma.EmployeeUpdateInput =
       leavingSuspension && dto.status === EmployeeStatus.ACTIVE
-        ? suspensionInquiryReinstatementData()
-        : { status: dto.status };
+        ? suspensionInquiryReinstatementData(new Date(), dto.statusEffectiveFrom)
+        : {
+            status: dto.status,
+            statusEffectiveFrom: buildStatusEffectiveFromUpdate(
+              dto.status,
+              dto.statusEffectiveFrom,
+            ),
+          };
+
+    const include = {
+      currentBranch: { select: { name: true, address: true } },
+      currentDepartment: { select: { name: true } },
+    } as const;
 
     if (!leavingSuspension) {
-      return this.prisma.employee.update({
-        where: { id },
-        data,
-        include: {
-          currentBranch: { select: { name: true, address: true } },
-          currentDepartment: { select: { name: true } },
-        },
+      return this.prisma.$transaction(async (tx) => {
+        const updated = await tx.employee.update({
+          where: { id },
+          data,
+          include,
+        });
+        await syncEmployeePortalAccess(tx, id, dto.status);
+        return updated;
       });
     }
 
@@ -1273,11 +1289,10 @@ export class EmployeesService {
       const updated = await tx.employee.update({
         where: { id },
         data,
-        include: {
-          currentBranch: { select: { name: true, address: true } },
-          currentDepartment: { select: { name: true } },
-        },
+        include,
       });
+
+      await syncEmployeePortalAccess(tx, id, dto.status);
 
       const openCases = await tx.disciplinaryAction.findMany({
         where: {

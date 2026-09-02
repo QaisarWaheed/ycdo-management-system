@@ -34,6 +34,7 @@ describe('suspensionInquiryReinstatementData', () => {
     const now = new Date('2026-08-20T10:00:00+05:00');
     const data = suspensionInquiryReinstatementData(now);
     expect(data.status).toBe(EmployeeStatus.ACTIVE);
+    expect(data.statusEffectiveFrom).toBeNull();
     expect(data.suspensionWatchBaselineOn).toEqual(
       new Date(Date.UTC(2026, 7, 20)),
     );

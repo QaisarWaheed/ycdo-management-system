@@ -41,6 +41,10 @@ import {
   PRE_JOIN_UNMARKED_NOTE,
 } from '../attendance/attendance-calendar.util';
 import {
+  isPostExitAttendanceDate,
+  isPreActiveAttendanceDate,
+} from '../employees/status-effective.util';
+import {
   parseAttendanceDateTime,
   toPakistanDateOnly,
 } from '../attendance/attendance-late.util';
@@ -1372,6 +1376,8 @@ export class PayrollService {
       dutyEndTime?: string | null;
       monthlyAllowedLeaves?: number | null;
       joiningDate?: Date | null;
+      status?: EmployeeStatus;
+      statusEffectiveFrom?: Date | null;
       shift?: { startTime: string; endTime: string } | null;
     },
     forceNonActiveOverride: boolean | undefined,
@@ -1502,6 +1508,8 @@ export class PayrollService {
       segmentEndExclusive,
       monthEnd,
       options.backfillFromAttendance,
+      employee.status,
+      employee.statusEffectiveFrom,
     );
     await this.syncFineLetterDeductions(
       entry.id,
@@ -1681,6 +1689,41 @@ export class PayrollService {
     return isPreJoinAttendanceDate(date, joiningDate);
   }
 
+  private skipStatusTransitionPayrollDay(
+    date: Date,
+    employee: {
+      joiningDate?: Date | null;
+      status?: EmployeeStatus;
+      statusEffectiveFrom?: Date | null;
+    },
+    backfillFromAttendance?: boolean,
+  ): boolean {
+    if (this.skipPreJoinPayrollDay(date, employee.joiningDate, backfillFromAttendance)) {
+      return true;
+    }
+    if (
+      employee.status &&
+      isPostExitAttendanceDate(
+        date,
+        employee.status,
+        employee.statusEffectiveFrom,
+      )
+    ) {
+      return true;
+    }
+    if (
+      employee.status &&
+      isPreActiveAttendanceDate(
+        date,
+        employee.status,
+        employee.statusEffectiveFrom,
+      )
+    ) {
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Keeps HALF_DAY / ABSENT / UNINFORMED_ABSENT / elapsed-UNMARKED
    * deduction rows in sync with this segment's attendance logs so generate
@@ -1697,6 +1740,8 @@ export class PayrollService {
     segmentEndExclusive: Date | null,
     monthEnd: Date,
     backfillFromAttendance?: boolean,
+    employeeStatus?: EmployeeStatus,
+    statusEffectiveFrom?: Date | null,
   ) {
     const logs = await this.prisma.attendanceLog.findMany({
       where: {
@@ -1719,7 +1764,15 @@ export class PayrollService {
 
     for (const log of logs) {
       if (
-        this.skipPreJoinPayrollDay(log.date, joiningDate, backfillFromAttendance)
+        this.skipStatusTransitionPayrollDay(
+          log.date,
+          {
+            joiningDate,
+            status: employeeStatus,
+            statusEffectiveFrom,
+          },
+          backfillFromAttendance,
+        )
       ) {
         continue;
       }
@@ -3201,6 +3254,8 @@ export class PayrollService {
         dutyEndTime?: string | null;
         monthlyAllowedLeaves?: number | null;
         joiningDate?: Date | null;
+        status?: EmployeeStatus;
+        statusEffectiveFrom?: Date | null;
         shift?: { startTime: string; endTime: string } | null;
       };
       existingDeductions: Array<{ amount: unknown }>;
@@ -3285,9 +3340,9 @@ export class PayrollService {
 
     for (const log of logs) {
       if (
-        this.skipPreJoinPayrollDay(
+        this.skipStatusTransitionPayrollDay(
           log.date,
-          context.employee.joiningDate,
+          context.employee,
           context.backfillFromAttendance,
         )
       ) {

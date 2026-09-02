@@ -10,6 +10,7 @@ import { EmployeeStatus, User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isPortalBlockedEmployeeStatus } from '../employees/status-effective.util';
 import {
   buildEffectiveRoles,
   canAccessHrms,
@@ -246,6 +247,26 @@ export class AuthService {
 
   /** Suspended employees keep portal access; legacy rows may have isActive=false. */
   private async assertLoginAllowed(user: User, client?: string) {
+    if (client === 'portal' && user.employeeId) {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: user.employeeId },
+        select: { status: true },
+      });
+      if (employee && isPortalBlockedEmployeeStatus(employee.status)) {
+        throw new UnauthorizedException(
+          'Employee portal access is disabled for your current employment status.',
+        );
+      }
+      if (employee?.status === EmployeeStatus.SUSPENDED) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { isActive: true },
+        });
+        user.isActive = true;
+        return;
+      }
+    }
+
     if (user.isActive) return;
 
     if (client === 'portal' && user.employeeId) {

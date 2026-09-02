@@ -344,6 +344,11 @@ export class ChangeStatusDto {
   @IsString()
   @IsNotEmpty()
   reason: string;
+
+  /** Optional. Exit/rest/dismiss: first non-working day. Active return: first paid day. Blank = today. */
+  @IsOptional()
+  @IsDateString()
+  statusEffectiveFrom?: string;
 }
 
 export class TransferDto {

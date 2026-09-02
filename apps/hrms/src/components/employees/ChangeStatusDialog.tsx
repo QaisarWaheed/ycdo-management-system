@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { toast } from '@/hooks/use-toast'
@@ -20,6 +21,17 @@ import {
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
 import { EMPLOYEE_STATUSES, type EmployeeStatus } from '@/types'
+
+const EXIT_STATUSES: EmployeeStatus[] = [
+  'RESIGNED',
+  'TERMINATED',
+  'ON_REST',
+  'DISMISSED',
+]
+
+function usesEffectiveFrom(status: EmployeeStatus): boolean {
+  return status === 'ACTIVE' || EXIT_STATUSES.includes(status)
+}
 
 const OVERRIDE_ROLES = ['SUPER_ADMIN', 'IT_ADMIN'] as const
 
@@ -66,6 +78,7 @@ export function ChangeStatusDialog({
   const canOverrideSuspension = hasRole([...OVERRIDE_ROLES])
   const [status, setStatus] = useState<EmployeeStatus>('ACTIVE')
   const [reason, setReason] = useState('')
+  const [statusEffectiveFrom, setStatusEffectiveFrom] = useState('')
 
   const availableStatuses = statusesForChange(
     currentStatus,
@@ -81,12 +94,24 @@ export function ChangeStatusDialog({
       const next = statusesForChange(currentStatus, canOverrideSuspension)
       if (next.length > 0) setStatus(next[0])
       setReason('')
+      setStatusEffectiveFrom('')
     }
   }, [open, currentStatus, canOverrideSuspension])
 
+  const showEffectiveFrom = usesEffectiveFrom(status)
+  const effectiveFromHint = EXIT_STATUSES.includes(status)
+    ? 'Last working day is the day before this date. Leave blank for immediate effect (today).'
+    : 'First paid/active day. Leave blank for immediate effect (today).'
+
   const mutation = useMutation({
     mutationFn: () =>
-      employeesApi.changeStatus(employeeId, { status, reason: reason.trim() }),
+      employeesApi.changeStatus(employeeId, {
+        status,
+        reason: reason.trim(),
+        ...(showEffectiveFrom && statusEffectiveFrom.trim()
+          ? { statusEffectiveFrom: statusEffectiveFrom.trim() }
+          : {}),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee', employeeId] })
       queryClient.invalidateQueries({ queryKey: ['employees'] })
@@ -179,6 +204,24 @@ export function ChangeStatusDialog({
               disabled={statusLocked}
             />
           </div>
+
+          {showEffectiveFrom && (
+            <div className="space-y-2">
+              <Label htmlFor="status-effective-from">Effective from (optional)</Label>
+              <Input
+                id="status-effective-from"
+                type="date"
+                value={statusEffectiveFrom}
+                onChange={(e) => setStatusEffectiveFrom(e.target.value)}
+                disabled={statusLocked}
+              />
+              <p className="text-xs text-text-secondary">{effectiveFromHint}</p>
+              <p className="text-xs text-amber-800">
+                Portal login stops immediately when you save. Attendance and salary follow
+                this date.
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

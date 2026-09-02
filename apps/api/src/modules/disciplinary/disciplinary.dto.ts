@@ -220,6 +220,11 @@ export class CloseInquiryDto {
   @IsOptional()
   @Type(() => Number)
   fineAmount?: number;
+
+  /** Optional. Exit/rest/dismiss: first non-working day. Active return: first paid day. Blank = today. */
+  @IsOptional()
+  @IsDateString()
+  statusEffectiveFrom?: string;
 }
 
 export class StartDueInquiryDto {

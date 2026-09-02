@@ -41,6 +41,7 @@ export function CloseInquiryDialog({
   const [finalAction, setFinalAction] = useState('FINE_AND_REINSTATE')
   const [destinationBranchId, setDestinationBranchId] = useState('')
   const [fineAmount, setFineAmount] = useState('')
+  const [statusEffectiveFrom, setStatusEffectiveFrom] = useState('')
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
@@ -60,6 +61,7 @@ export function CloseInquiryDialog({
     setFinalAction(inquiry.finalAction ?? 'FINE_AND_REINSTATE')
     setDestinationBranchId(inquiry.destinationBranchId ?? '')
     setFineAmount(inquiry.fineAmount != null ? String(inquiry.fineAmount) : '')
+    setStatusEffectiveFrom('')
   }, [open, inquiry])
 
   const combinedNotes = [
@@ -81,6 +83,7 @@ export function CloseInquiryDialog({
           finding === 'GUILTY' && finalAction === 'FINE_AND_REINSTATE'
             ? Number(fineAmount)
             : undefined,
+        statusEffectiveFrom: statusEffectiveFrom.trim() || undefined,
       }),
     onSuccess: () => {
       toast({
@@ -205,6 +208,19 @@ export function CloseInquiryDialog({
               />
             </div>
           )}
+          <div className="space-y-1">
+            <Label>Effective from (optional)</Label>
+            <Input
+              type="date"
+              value={statusEffectiveFrom}
+              onChange={(e) => setStatusEffectiveFrom(e.target.value)}
+            />
+            <p className="text-xs text-text-secondary">
+              Exit/rest/dismiss: last working day is the day before this date.
+              Reinstate: first paid day. Blank = today. Portal login stops
+              immediately; attendance and salary follow this date.
+            </p>
+          </div>
         </div>
         <DialogFooter>
           <Button
