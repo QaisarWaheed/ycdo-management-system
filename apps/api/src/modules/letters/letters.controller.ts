@@ -333,6 +333,7 @@ export class LettersController {
   @Get()
   @Roles(
     UserRole.SUPER_ADMIN,
+    UserRole.IT_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
