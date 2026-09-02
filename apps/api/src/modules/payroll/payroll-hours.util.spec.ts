@@ -5,6 +5,7 @@ import {
   leaveCreditMinutes,
   payableMinutesWithinDutyWindow,
   resolveDailyDutyHours,
+  resolveManualAllowancePay,
   splitPaidUnpaidLeaveDays,
   unpaidLeaveDeductionAmount,
 } from './payroll-hours.util';
@@ -199,5 +200,29 @@ describe('payroll-hours.util', () => {
     expect(split.paidLeaveDays).toBe(2);
     expect(split.unpaidLeaveDays).toBe(3);
     expect(unpaidLeaveDeductionAmount(3, 30000, 30)).toBe(3000);
+  });
+
+  it('pays extra hours from hourly rate and ignores a client-supplied amount', () => {
+    expect(
+      resolveManualAllowancePay({ hours: 4, amount: 9999, hourlyRate: 125 }),
+    ).toEqual({ hours: 4, amount: 500 });
+  });
+
+  it('keeps a lump-sum amount when no hours are given', () => {
+    expect(
+      resolveManualAllowancePay({ hours: undefined, amount: 1500, hourlyRate: 125 }),
+    ).toEqual({ hours: null, amount: 1500 });
+  });
+
+  it('rejects extra hours when hourly rate is unavailable', () => {
+    expect(() =>
+      resolveManualAllowancePay({ hours: 2, hourlyRate: 0 }),
+    ).toThrow('HOURLY_RATE_UNAVAILABLE');
+  });
+
+  it('rejects an allowance with neither hours nor amount', () => {
+    expect(() =>
+      resolveManualAllowancePay({ hourlyRate: 125 }),
+    ).toThrow('HOURS_OR_AMOUNT_REQUIRED');
   });
 });

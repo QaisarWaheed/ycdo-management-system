@@ -218,9 +218,11 @@ function AddDeductionForm({
 
 function AddAllowanceForm({
   payrollEntryId,
+  hourlyRate,
   onSuccess,
 }: {
   payrollEntryId: string
+  hourlyRate?: number
   onSuccess: () => void
 }) {
   const [type, setType] = useState<AllowanceType>('CUSTOM')
@@ -228,14 +230,20 @@ function AddAllowanceForm({
   const [hours, setHours] = useState<number | undefined>()
   const [amount, setAmount] = useState(0)
 
+  const hasHours = hours != null && hours > 0
+  const calculatedAmount =
+    hasHours && hourlyRate && hourlyRate > 0
+      ? Math.round(hours * hourlyRate * 100) / 100
+      : null
+  const canSubmit = hasHours || amount > 0
+
   const mutation = useMutation({
     mutationFn: () =>
       payrollApi.addAllowance({
         payrollEntryId,
         type,
         description: description || undefined,
-        hours,
-        amount,
+        ...(hasHours ? { hours } : { amount }),
       }),
     onSuccess: () => {
       toast({ title: 'Allowance added' })
@@ -283,20 +291,33 @@ function AddAllowanceForm({
         <Input value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       <div className="space-y-2">
-        <Label>Hours (optional)</Label>
+        <Label>Hours</Label>
         <Input
           type="number"
+          min={0}
+          step="0.01"
           value={hours ?? ''}
           onChange={(e) =>
             setHours(e.target.value ? Number(e.target.value) : undefined)
           }
         />
       </div>
-      <div className="space-y-2">
-        <Label>Amount</Label>
-        <PKRInput value={amount} onChange={setAmount} />
-      </div>
-      <Button type="submit" disabled={mutation.isPending || amount <= 0} size="sm">
+      {hasHours ? (
+        <p className="text-sm">
+          Amount:{' '}
+          <strong>
+            {calculatedAmount != null
+              ? formatPKR(calculatedAmount)
+              : 'calculated automatically'}
+          </strong>
+        </p>
+      ) : (
+        <div className="space-y-2">
+          <Label>Amount</Label>
+          <PKRInput value={amount} onChange={setAmount} />
+        </div>
+      )}
+      <Button type="submit" disabled={mutation.isPending || !canSubmit} size="sm">
         {mutation.isPending ? 'Adding...' : 'Add Allowance'}
       </Button>
     </form>
@@ -588,7 +609,11 @@ function PayrollDetailDialog({
               </strong>
             </p>
             {entry.status === 'PENDING' && (
-              <AddAllowanceForm payrollEntryId={entry.id} onSuccess={refresh} />
+              <AddAllowanceForm
+                payrollEntryId={entry.id}
+                hourlyRate={data.hourlyBreakdown?.hourlyRate}
+                onSuccess={refresh}
+              />
             )}
           </TabsContent>
 

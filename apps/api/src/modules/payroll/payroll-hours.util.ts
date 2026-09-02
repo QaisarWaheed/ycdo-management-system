@@ -255,6 +255,32 @@ export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/** Extra hours use hourly rate; lump-sum CUSTOM keeps a typed amount. */
+export function resolveManualAllowancePay(input: {
+  hours?: number | null;
+  amount?: number | null;
+  hourlyRate: number;
+}): { hours: number | null; amount: number } {
+  const hours =
+    input.hours != null && Number.isFinite(input.hours) && input.hours > 0
+      ? input.hours
+      : null;
+  if (hours != null) {
+    if (!(input.hourlyRate > 0)) {
+      throw new Error('HOURLY_RATE_UNAVAILABLE');
+    }
+    return { hours, amount: roundMoney(hours * input.hourlyRate) };
+  }
+  if (
+    input.amount != null &&
+    Number.isFinite(input.amount) &&
+    input.amount > 0
+  ) {
+    return { hours: null, amount: roundMoney(input.amount) };
+  }
+  throw new Error('HOURS_OR_AMOUNT_REQUIRED');
+}
+
 export function roundHoursFromMinutes(minutes: number): number {
   return Math.round((minutes / 60) * 100) / 100;
 }

@@ -91,16 +91,17 @@ export class AddAllowanceDto {
   @IsString()
   description?: string;
 
-  @Type(() => Number)
-  @IsNumber()
-  @IsPositive()
-  @IsNotEmpty()
-  amount: number;
-
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @IsPositive()
   hours?: number;
+
+  @ValidateIf((o: AddAllowanceDto) => o.hours == null)
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  amount?: number;
 }
 
 export class ApplyOvertimeDto {

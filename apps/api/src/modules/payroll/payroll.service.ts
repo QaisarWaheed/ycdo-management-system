@@ -73,6 +73,7 @@ import {
   leaveCreditMinutes,
   payableMinutesWithinDutyWindow,
   resolveDailyDutyHours,
+  resolveManualAllowancePay,
   roundMoney,
   splitPaidUnpaidLeaveDays,
   unpaidLeaveDeductionAmount,
@@ -2229,6 +2230,17 @@ export class PayrollService {
   async addAllowance(dto: AddAllowanceDto) {
     const entry = await this.prisma.payrollEntry.findUnique({
       where: { id: dto.payrollEntryId },
+      include: {
+        stipendRecord: {
+          include: {
+            employee: {
+              include: {
+                shift: { select: { startTime: true, endTime: true } },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!entry) {
@@ -2246,21 +2258,44 @@ export class PayrollService {
       );
     }
 
+    const pkg = stipendRecordToPackage(entry.stipendRecord);
+    const hourlyRate = computeHourlyRate(
+      pkg.basicStipend,
+      resolveDailyDutyHours(entry.stipendRecord.employee),
+      daysInPayrollMonth(entry.year, entry.month),
+    );
+
+    let pay: { hours: number | null; amount: number };
+    try {
+      pay = resolveManualAllowancePay({
+        hours: dto.hours,
+        amount: dto.amount,
+        hourlyRate,
+      });
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      throw new BadRequestException(
+        code === 'HOURLY_RATE_UNAVAILABLE'
+          ? 'Cannot calculate extra hours: hourly rate is 0 for this payroll entry'
+          : 'Provide hours or a lump-sum amount',
+      );
+    }
+
     await this.prisma.allowance.create({
       data: {
         payrollEntryId: dto.payrollEntryId,
         type: dto.type,
         description: dto.description,
-        amount: dto.amount,
-        hours: dto.hours,
+        amount: pay.amount,
+        hours: pay.hours,
       },
     });
 
     return this.prisma.payrollEntry.update({
       where: { id: dto.payrollEntryId },
       data: {
-        totalAllowances: Number(entry.totalAllowances) + dto.amount,
-        netStipend: Number(entry.netStipend) + dto.amount,
+        totalAllowances: Number(entry.totalAllowances) + pay.amount,
+        netStipend: Number(entry.netStipend) + pay.amount,
       },
       include: { deductions: true, allowances: true },
     });
