@@ -114,10 +114,11 @@ export async function generateJpeg(htmlContent: string): Promise<Buffer> {
     await page.addStyleTag({
       content: 'html, body { background: #fff !important; }',
     });
+    // First A4 page only — never Chrome chrome / full-page scroll.
     const jpeg = await page.screenshot({
       type: 'jpeg',
-      quality: 82,
-      fullPage: true,
+      quality: 85,
+      clip: { x: 0, y: 0, width: 794, height: 1123 },
     });
     return Buffer.from(jpeg);
   } finally {
@@ -125,7 +126,15 @@ export async function generateJpeg(htmlContent: string): Promise<Buffer> {
   }
 }
 
-/** Fallback when only a stored PDF exists (WhatsApp resend). */
+const PDF_VIEWER_HIDE_CHROME = `
+  #sidenav-container, #toolbarContainer, #toolbar, #sidebarContainer,
+  #secondaryToolbar, #titlebar, viewer-pdf-toolbar, cr-toolbar {
+    display: none !important;
+  }
+  html, body { background: #fff !important; margin: 0 !important; overflow: hidden !important; }
+`;
+
+/** Last resort when HTML cannot be rebuilt. Never screenshot the PDF viewer UI. */
 export async function generateJpegFromPdf(pdfBuffer: Buffer): Promise<Buffer> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'letter-jpg-'));
   const pdfPath = path.join(tmpDir, 'letter.pdf');
@@ -143,11 +152,19 @@ export async function generateJpegFromPdf(pdfBuffer: Buffer): Promise<Buffer> {
       waitUntil: 'networkidle0',
       timeout: 20000,
     });
-    const jpeg = await page.screenshot({
-      type: 'jpeg',
-      quality: 82,
-      fullPage: true,
-    });
+    await page.addStyleTag({ content: PDF_VIEWER_HIDE_CHROME });
+    await new Promise((r) => setTimeout(r, 400));
+    const target =
+      (await page.$('.page canvas')) ??
+      (await page.$('#viewer .page')) ??
+      (await page.$('embed'));
+    const jpeg = target
+      ? await target.screenshot({ type: 'jpeg', quality: 85 })
+      : await page.screenshot({
+          type: 'jpeg',
+          quality: 85,
+          clip: { x: 0, y: 0, width: 794, height: 1123 },
+        });
     return Buffer.from(jpeg);
   } finally {
     await browser.close();

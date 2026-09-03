@@ -429,6 +429,24 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     expect((result as any).segments).toHaveLength(1);
   });
 
+  it('payroll generate/refresh writes overtime from attendance hours without applyOvertime', async () => {
+    const db = new FakeDb();
+    seedEmployee(db);
+    seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
+    seedFullMonthPresent(db);
+    seedOvertime(db, 10, 120);
+    const service = makeService(db);
+
+    await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
+
+    const entry = [...db.payrollEntries.values()][0];
+    const ot = [...db.allowances.values()].find(
+      (a) => a.payrollEntryId === entry.id && a.type === AllowanceType.OVERTIME,
+    );
+    expect(ot?.hours).toBe(2);
+    expect(ot?.amount).toBe(200);
+  });
+
   // J. Overtime dated BEFORE the increment is attributed only to the OLD
   // segment's rate/entry.
   it('J: overtime before the increment is attributed to the OLD segment only', async () => {

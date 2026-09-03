@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LetterType, WhatsAppSendStatus } from '@prisma/client';
+import { LetterStatus, LetterType, WhatsAppSendStatus } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
-import { normalizePakistanPhone } from './phone.util';
+import { normalizePakistanPhone, isOnWhatsAppAllowlist } from './phone.util';
 import { generateJpeg, generateJpegFromPdf } from '../letters/pdf.helper';
+import { rebuildStoredLetterHtml } from '../letters/letter-html.rebuild';
+import { sequencedLetterLabel } from './whatsapp-letter-label.util';
 
 const GRAPH_VERSION = 'v21.0';
 
@@ -30,9 +32,21 @@ function jpgFilename(
   return base.replace(/\.pdf$/i, '.jpg').replace(/\.png$/i, '.jpg');
 }
 
-async function jpegBufferForWhatsApp(input: DeliverInput): Promise<Buffer> {
-  if (input.htmlContent) {
-    return generateJpeg(input.htmlContent);
+async function jpegBufferForWhatsApp(
+  prisma: PrismaService,
+  input: DeliverInput,
+): Promise<Buffer> {
+  let html = input.htmlContent;
+  if (!html) {
+    const letter = await prisma.letter.findUnique({
+      where: { id: input.letterId },
+    });
+    if (letter) {
+      html = (await rebuildStoredLetterHtml(prisma, letter)) ?? undefined;
+    }
+  }
+  if (html) {
+    return generateJpeg(html);
   }
   const pdfBuffer =
     input.pdfBuffer ??
@@ -58,16 +72,6 @@ async function loadPdfFile(fileUrl: string): Promise<Buffer> {
     throw new Error(`PDF file missing: ${fileUrl}`);
   }
   return fs.readFileSync(filePath);
-}
-
-function whatsappLetterTypeLabel(letterType: LetterType): string {
-  if (letterType === LetterType.SUSPENSION_ELIGIBILITY) {
-    return 'Eligibility for Suspension notice (not a suspension)';
-  }
-  if (letterType === LetterType.NEAR_SUSPENSION_WARNING) {
-    return 'Warning of approaching suspension (not a suspension)';
-  }
-  return letterType.replace(/_/g, ' ');
 }
 
 @Injectable()
@@ -123,6 +127,15 @@ export class WhatsAppService {
       return;
     }
 
+    if (!isOnWhatsAppAllowlist(phoneE164)) {
+      await this.upsertSend(input, {
+        phoneE164,
+        status: WhatsAppSendStatus.SKIPPED,
+        error: 'Not on WhatsApp test allowlist',
+      });
+      return;
+    }
+
     if (!input.fileUrl && !input.pdfBuffer && !input.htmlContent) {
       await this.upsertSend(input, {
         phoneE164,
@@ -139,7 +152,7 @@ export class WhatsAppService {
     });
 
     try {
-      const jpegBuffer = await jpegBufferForWhatsApp(input);
+      const jpegBuffer = await jpegBufferForWhatsApp(this.prisma, input);
       const mediaId = await this.uploadMedia(
         jpegBuffer,
         filename,
@@ -149,7 +162,14 @@ export class WhatsAppService {
         phoneE164,
         mediaId,
         employeeName: input.employeeName,
-        letterType: input.letterType,
+        letterDetail: sequencedLetterLabel(
+          input.letterType,
+          await this.letterSequence(
+            input.employeeId,
+            input.letterType,
+            input.letterId,
+          ),
+        ),
       });
 
       await this.upsertSend(input, {
@@ -317,11 +337,28 @@ export class WhatsAppService {
     return body.id;
   }
 
+  private async letterSequence(
+    employeeId: string,
+    letterType: LetterType,
+    letterId: string,
+  ): Promise<number> {
+    const previousSent = await this.prisma.letter.count({
+      where: {
+        employeeId,
+        letterType,
+        reversedAt: null,
+        status: LetterStatus.SENT,
+        id: { not: letterId },
+      },
+    });
+    return previousSent + 1;
+  }
+
   private async sendTemplateImage(params: {
     phoneE164: string;
     mediaId: string;
     employeeName: string;
-    letterType: LetterType;
+    letterDetail: string;
   }): Promise<string | undefined> {
     const token = process.env.WHATSAPP_TOKEN!;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID!;
@@ -365,7 +402,7 @@ export class WhatsAppService {
                   {
                     type: 'text',
                     parameter_name: 'letter_type',
-                    text: whatsappLetterTypeLabel(params.letterType),
+                    text: params.letterDetail,
                   },
                 ],
               },
@@ -402,6 +439,10 @@ export class WhatsAppService {
     if (!phoneE164) {
       this.logger.warn(`WhatsApp text skipped (${input.context}): no phone`);
       return { sent: false, skippedReason: 'no_phone' };
+    }
+    if (!isOnWhatsAppAllowlist(phoneE164)) {
+      this.logger.warn(`WhatsApp text skipped (${input.context}): not on allowlist`);
+      return { sent: false, skippedReason: 'not_on_allowlist' };
     }
 
     const token = process.env.WHATSAPP_TOKEN!;

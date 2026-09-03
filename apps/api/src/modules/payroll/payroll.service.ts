@@ -412,7 +412,7 @@ export class PayrollService {
    * No recursion risk: recomputeEmployeeMonth's entire call graph
    * (computeHourlyBreakdown, computeMonthlyUnpaidLeaveDates,
    * upsertAdditionalWorkingDaysAllowanceRow, upsertUnpaidLeaveDeductionRow,
-   * upsertRelieverAllowanceRow) only ever READS AttendanceLog — none of
+   * upsertRelieverAllowanceRow, upsertOvertimeAllowanceRow) only ever READS AttendanceLog — none of
    * it writes to AttendanceLog or calls back into any attendance/leave/
    * swap service — so this can never trigger another attendance mutation
    * or another recompute cycle.
@@ -1479,6 +1479,16 @@ export class PayrollService {
       segmentStart,
       segmentEndExclusive,
     );
+    await this.upsertOvertimeAllowanceRow(
+      entry.id,
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      employee,
+      contractualBasic,
+      segmentStart,
+      segmentEndExclusive,
+    );
 
     if (entry.status === PayrollStatus.PENDING) {
       const repairStats = await this.prisma.$transaction(
@@ -1674,6 +1684,87 @@ export class PayrollService {
       data: {
         payrollEntryId,
         type: AllowanceType.ADDITIONAL_WORKING_DAYS,
+        hours,
+        amount,
+        description,
+      },
+    });
+  }
+
+  /**
+   * Same pattern as extra-duty / reliever: attendance OT hours × hourly
+   * rate, one OVERTIME row per payroll entry. Called on generate/refresh
+   * so HR typing extra hours on attendance updates pending payroll.
+   */
+  private async upsertOvertimeAllowanceRow(
+    payrollEntryId: string,
+    employeeId: string,
+    month: number,
+    year: number,
+    employee: {
+      dutyTotalHours?: number | null;
+      dutyStartTime?: string | null;
+      dutyEndTime?: string | null;
+      shift?: { startTime: string; endTime: string } | null;
+    },
+    contractualBasic: number,
+    segmentStart: Date,
+    segmentEndExclusive: Date | null,
+  ) {
+    const daysInMonth = daysInPayrollMonth(year, month);
+    const { monthEnd } = this.pakistanMonthWindow(year, month);
+    const otLogs = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId,
+        overtimeMinutes: { gt: 0 },
+        date: {
+          gte: segmentStart,
+          lte: monthEnd,
+          ...(segmentEndExclusive ? { lt: segmentEndExclusive } : {}),
+        },
+      },
+      select: { overtimeMinutes: true },
+    });
+    const minutes = otLogs.reduce((sum, log) => sum + log.overtimeMinutes, 0);
+    const dailyHours = resolveDailyDutyHours(employee);
+    const hourlyRate = computeHourlyRate(
+      contractualBasic,
+      dailyHours,
+      daysInMonth,
+    );
+    const hours = roundMoney(minutes / 60);
+    const amount = roundMoney(hours * hourlyRate);
+
+    const existing = await this.keepSingleAllowance(
+      payrollEntryId,
+      AllowanceType.OVERTIME,
+    );
+
+    if (minutes <= 0 || amount <= 0) {
+      if (existing) {
+        await this.prisma.allowance.delete({ where: { id: existing.id } });
+      }
+      return;
+    }
+
+    const monthLabel = new Date(year, month - 1, 1).toLocaleString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+    const description = `Overtime ${hours}h @ PKR ${hourlyRate}/hr (${monthLabel})`;
+
+    if (existing) {
+      await this.prisma.allowance.update({
+        where: { id: existing.id },
+        data: { hours, amount, description },
+      });
+      return;
+    }
+
+    await this.prisma.allowance.create({
+      data: {
+        payrollEntryId,
+        type: AllowanceType.OVERTIME,
         hours,
         amount,
         description,

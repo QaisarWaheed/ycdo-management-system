@@ -1885,6 +1885,13 @@ export function EmployeeProfilePage() {
                   label: 'Additional working days',
                   value: additionalWorkingDaysInMonth,
                 },
+                {
+                  label: 'Overtime hours',
+                  value:
+                    Math.round(
+                      ((attendanceSummary?.overtimeMinutes ?? 0) / 60) * 100,
+                    ) / 100,
+                },
               ].map((item) => (
                 <Card key={item.label}>
                   <CardContent className="p-4 text-center">
@@ -1943,6 +1950,7 @@ export function EmployeeProfilePage() {
                       <TableHead>Check Out</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Late Min</TableHead>
+                      <TableHead>Extra hours</TableHead>
                       <TableHead>Source</TableHead>
                       {canUpdateAttendance && <TableHead>Actions</TableHead>}
                     </TableRow>
@@ -1951,7 +1959,7 @@ export function EmployeeProfilePage() {
                     {attendanceLogs.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={canUpdateAttendance ? 7 : 6}
+                          colSpan={canUpdateAttendance ? 8 : 7}
                           className="text-text-secondary"
                         >
                           No attendance records
@@ -1980,6 +1988,11 @@ export function EmployeeProfilePage() {
                             />
                           </TableCell>
                           <TableCell>{log.lateMinutes ?? 0}</TableCell>
+                          <TableCell>
+                            {(log.overtimeMinutes ?? 0) > 0
+                              ? `${Math.round(((log.overtimeMinutes ?? 0) / 60) * 100) / 100}h`
+                              : '—'}
+                          </TableCell>
                           <TableCell>{log.source ?? '—'}</TableCell>
                           {canUpdateAttendance && (
                             <TableCell>

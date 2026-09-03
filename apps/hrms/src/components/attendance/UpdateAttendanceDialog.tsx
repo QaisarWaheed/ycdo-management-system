@@ -414,6 +414,12 @@ export function UpdateAttendanceDialog({
                   )
                 }
               />
+              {typeof overtimeMinutes === 'number' && overtimeMinutes > 0 ? (
+                <p className="text-xs text-text-secondary">
+                  {Math.round((overtimeMinutes / 60) * 100) / 100} extra hours —
+                  paid on pending payroll at the hourly rate
+                </p>
+              ) : null}
               {!canEditOvertime && (
                 <p className="text-xs text-text-secondary">
                   Only HR, IT, or Super Admin can update overtime minutes

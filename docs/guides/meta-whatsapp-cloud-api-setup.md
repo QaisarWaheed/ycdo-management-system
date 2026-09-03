@@ -138,32 +138,52 @@ Treat like a password. Never commit to git.
 
 ## Part D — Message template (required for letters)
 
-Business-initiated messages (HR sends letter; employee did not message first) **must** use an **approved** template.
+Business-initiated messages (HR sends a letter; the employee did not message first) **must** use an **approved** template.
 
-1. Open **WhatsApp Manager** → **Message templates**  
-   (from Business Suite, or App → WhatsApp → Message templates).
-2. **Create template**.
-3. Recommended settings for this app:
+1. Open **WhatsApp Manager** → **Message templates**.
+2. **Create template** with these exact settings (copy/paste).
 
 | Setting | Value |
-|---------|--------|
+|--------|--------|
 | Category | **Utility** |
-| Name | `employee_letter_issued` (lowercase, underscores) |
-| Language | English → usually `en` or `en_US` (**must match env**) |
-| Header | **Image** (JPG of the letter — not Document/PDF) |
-| Body example | `Hello {{employee_name}}, your {{letter_type}} letter from YCDO is ready. Please open the image to read it.` |
+| Name | `employee_letter_issued` |
+| Language | English — `en` (if Meta only offers `en_US`, use that and set `WHATSAPP_TEMPLATE_LANG=en_US`) |
+| Header | **Image** (not Document / PDF) |
+| Footer (optional) | `Youth Community Development Organization, Multan` |
+| Buttons | None |
 
-4. Submit → wait until status is **Approved**.
-5. Env:
+**Body** (named variables — must match the API):
+
+```
+YCDO official letter
+
+Assalamu Alaikum {{employee_name}},
+
+This is your {{letter_type}}. Please open the attached image, read it carefully, and keep it for your records.
+
+For questions, contact your branch HR office.
+```
+
+**Samples for Meta review** (required when you submit):
+
+| Variable | Sample |
+|----------|--------|
+| `employee_name` | Qaiser Waheed |
+| `letter_type` | 2nd Letter Of Warning |
+
+**Header sample image:** upload a **clean A4 scan/JPG of a letter only** (white page, YCDO letterhead). Do not upload a browser/PDF-viewer screenshot.
+
+3. Submit → wait until status is **Approved**.
+4. Env (must match name + language **exactly**):
 
 ```env
 WHATSAPP_TEMPLATE_NAME=employee_letter_issued
 WHATSAPP_TEMPLATE_LANG=en
 ```
 
-If Meta shows language code `en_US`, set `WHATSAPP_TEMPLATE_LANG=en_US`. Name and language must match the approved template **exactly**.
+If this template is already **In review**, you can edit the body to the text above before it is approved. If it is already **Approved**, create a new template (e.g. `ycdo_official_letter`) with the same body and update `WHATSAPP_TEMPLATE_NAME`.
 
-Rejects: fix wording/category and resubmit.
+Rejects: keep it Utility (not Marketing), no promotional wording, no missing sample values.
 
 ---
 
@@ -176,6 +196,8 @@ WHATSAPP_TOKEN=
 WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_TEMPLATE_NAME=employee_letter_issued
 WHATSAPP_TEMPLATE_LANG=en
+# Testing: only these numbers receive WhatsApp. Remove when going live.
+WHATSAPP_ALLOWLIST=03001234567,03331112222
 ```
 
 Then:

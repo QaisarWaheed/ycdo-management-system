@@ -76,6 +76,7 @@ import {
   templateCodeForLetterType,
 } from './letter-templates.helper';
 import { generatePdf } from './pdf.helper';
+import { rebuildStoredLetterHtml } from './letter-html.rebuild';
 import { APPOINTMENT_CHAIRMAN_ADMIN_NAME } from './appointment-signatory';
 import { resolveAppointmentTemplateMapping } from './appointment-template-mapping';
 import { resolveAppointmentServiceArea } from './appointment-families';
@@ -109,8 +110,6 @@ import {
   scheduleFromDuty,
   SelectionLetterVariables,
 } from './selection-letter.helper';
-
-const SELECTION_TEMPLATE_CODE = 'SELECTION_LETTER';
 
 /** System watchlist notices: auto SENT; not creatable from Generate Letter. */
 const SYSTEM_GENERATED_LETTER_TYPES: LetterType[] = [
@@ -1851,7 +1850,7 @@ export class LettersService implements OnModuleInit {
 
     // Best-effort WhatsApp after portal publish
     try {
-      const { buffer, filename } = await this.getPdf(letterId);
+      const { buffer, filename, htmlContent } = await this.getPdf(letterId);
       const phone = updated.employee?.phone ?? null;
       await this.whatsappService.deliverAfterLetterGenerated({
         letterId,
@@ -1861,6 +1860,7 @@ export class LettersService implements OnModuleInit {
         phone,
         fileUrl: updated.fileUrl,
         pdfBuffer: buffer,
+        htmlContent,
         filename: filename.replace(/\.pdf$/i, '.jpg'),
       });
     } catch (err) {
@@ -2567,7 +2567,7 @@ export class LettersService implements OnModuleInit {
       employeeId?: string | null;
       portalOnly?: boolean;
     },
-  ) {
+  ): Promise<{ buffer: Buffer; filename: string; htmlContent?: string }> {
     const letter = await this.findOne(letterId, actor);
 
     // Always rebuild from the stored letter number so download / WhatsApp
@@ -2594,7 +2594,7 @@ export class LettersService implements OnModuleInit {
     id: string;
     letterNo: string | null;
     fileUrl: string | null;
-  }): Promise<{ buffer: Buffer; filename: string }> {
+  }): Promise<{ buffer: Buffer; filename: string; htmlContent?: string }> {
     if (!letter.fileUrl) {
       throw new NotFoundException('PDF file not found for this letter');
     }
@@ -2645,90 +2645,12 @@ export class LettersService implements OnModuleInit {
     letterNo: string | null;
     variables: Prisma.JsonValue | null;
     content: Prisma.JsonValue;
-  }): Promise<{ buffer: Buffer; filename: string } | null> {
-    const storedVars =
-      letter.variables &&
-      typeof letter.variables === 'object' &&
-      !Array.isArray(letter.variables)
-        ? (letter.variables as Record<string, unknown>)
-        : null;
-
-    const content =
-      letter.content &&
-      typeof letter.content === 'object' &&
-      !Array.isArray(letter.content)
-        ? (letter.content as Record<string, unknown>)
-        : {};
-
-    const letterNo =
-      letter.letterNo ??
-      storedVars?.letterNo?.toString() ??
-      `REISSUE-${letter.id.slice(0, 8)}`;
-
+  }): Promise<{ buffer: Buffer; filename: string; htmlContent?: string } | null> {
     try {
-      let htmlContent: string;
+      const htmlContent = await rebuildStoredLetterHtml(this.prisma, letter);
+      if (!htmlContent) return null;
 
-      if (letter.letterType === LetterType.APPOINTMENT) {
-        const code = String(letter.templateCode ?? SELECTION_TEMPLATE_CODE);
-        const template = await this.prisma.letterTemplate.findFirst({
-          where: { code, active: true },
-        });
-        if (!template || !storedVars) return null;
-        const bodyHtml =
-          storedVars.appointmentLanguage === 'EN' && template.bodyHtmlEn
-            ? template.bodyHtmlEn
-            : template.bodyHtml;
-        htmlContent = renderHandlebarsTemplate(bodyHtml, {
-          ...storedVars,
-          letterNo: String(letterNo),
-          chairmanAdminName: APPOINTMENT_CHAIRMAN_ADMIN_NAME,
-        } as SelectionLetterVariables);
-        if (letter.status !== LetterStatus.SENT) {
-          htmlContent = applyAppointmentDraftWatermark(htmlContent);
-        } else {
-          htmlContent = stripAppointmentDraftWatermark(htmlContent);
-        }
-      } else {
-        const code = templateCodeForLetterType(letter.letterType);
-        const template = await this.prisma.letterTemplate.findFirst({
-          where: { code, active: true },
-        });
-        if (!template) return null;
-
-        const merged: Record<string, unknown> = {
-          ...content,
-          ...(storedVars ?? {}),
-          letterNo: String(letterNo),
-        };
-
-        // Ensure list fields are real arrays for Handlebars.
-        merged.violations = parseViolationLines(
-          merged.violations ?? merged.warningReason,
-        );
-        merged.attendanceRows = parseAttendanceRows(merged.attendanceRows);
-
-        if (!merged.issueDate) {
-          merged.issueDate = formatIssueDatePkt();
-        }
-        if (!merged.subject) {
-          merged.subject = defaultSubjectFor(letter.letterType);
-        }
-        if (!merged.senderTitle) {
-          merged.senderTitle = DEFAULT_SENDER_TITLE;
-        }
-        merged.letterNo = String(letterNo);
-        merged.letterRef = buildLetterRef(
-          letter.letterType,
-          String(letterNo),
-          template.letterCode,
-        );
-        const enHeader = LETTER_TYPE_EN_HEADER[letter.letterType];
-        merged.enTitle = merged.enTitle ?? enHeader.title;
-        merged.enPrescribed = merged.enPrescribed ?? enHeader.prescribed;
-        merged.enSubtitle = merged.enSubtitle ?? enHeader.subtitle;
-
-        htmlContent = renderLetterHtml(template.bodyHtml, merged);
-      }
+      const letterNo = letter.letterNo ?? `REISSUE-${letter.id.slice(0, 8)}`;
 
       const pdfBuffer = await generatePdf(htmlContent);
       const fileUrl = await this.persistPdf(
@@ -2743,7 +2665,7 @@ export class LettersService implements OnModuleInit {
       });
 
       const filename = `${sanitizeRefForFilename(String(letterNo))}.pdf`;
-      return { buffer: pdfBuffer, filename };
+      return { buffer: pdfBuffer, filename, htmlContent };
     } catch (err) {
       console.error(`Failed to regenerate PDF for letter ${letter.id}:`, err);
       return null;
