@@ -523,7 +523,7 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
 
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
 
-    expect(db.payrollEntries.size).toBe(1);
+    expect(db.payrollEntries.size).toBe(2);
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
     const newOt = [...db.allowances.values()].find((a) => a.payrollEntryId === newEntry.id && a.type === AllowanceType.OVERTIME);
     expect(newOt?.amount).toBe(112.5);
@@ -546,7 +546,7 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     expect(
       [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
-    ).toBeUndefined();
+    ).toBeDefined();
 
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
 
@@ -576,7 +576,7 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
 
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
 
-    expect(db.payrollEntries.size).toBe(1);
+    expect(db.payrollEntries.size).toBe(2);
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
     const newOtAllowances = [...db.allowances.values()].filter((a) => a.payrollEntryId === newEntry.id && a.type === AllowanceType.OVERTIME);
     expect(newOtAllowances).toHaveLength(1);
@@ -614,7 +614,7 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
 
   // Q. Regression: Steps 1-3 behavior (single-segment PRESENT floor,
   // half-open boundary) is untouched by the overtime changes.
-  it('Q: Steps 1-3 basic-stipend segmentation behavior is unaffected by the overtime changes', async () => {
+  it('Q: mid-month stipend change keeps both contractual Basic periods', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -625,9 +625,9 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     expect(
       [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
-    ).toBeUndefined();
+    ).toBeDefined();
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(newEntry.basicStipend).toBe(27900);
+    expect(newEntry.basicStipend).toBe(15300);
   });
 
   // R. Regression: headcount/segment count remains correct after applying
@@ -645,6 +645,6 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
     await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
 
-    expect(db.payrollEntries.size).toBe(1);
+    expect(db.payrollEntries.size).toBe(2);
   });
 });

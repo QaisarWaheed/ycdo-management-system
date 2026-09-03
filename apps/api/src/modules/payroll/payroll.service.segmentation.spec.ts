@@ -417,8 +417,8 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     expect(db.payrollEntries.size).toBe(1);
   });
 
-  // B. Two stipend segments: both PENDING PayrollEntry rows discovered/refreshed.
-  it('B: createOrGetEntry keeps only the active stipend row, not a closed-package duplicate', async () => {
+  // B. Two stipend segments: both contractual periods kept.
+  it('B: createOrGetEntry keeps closed + active rows for mid-month stipend change', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -427,16 +427,15 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const service = makeService(db);
 
     const primary = await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    expect(db.payrollEntries.size).toBe(1);
+    expect(db.payrollEntries.size).toBe(2);
     expect(primary.stipendRecordId).toBe(newSr.id);
-    expect(
-      [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
-    ).toBeUndefined();
+    const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(newEntry.basicStipend).toBe(27900);
+    expect(oldEntry.basicStipend).toBe(11200);
+    expect(newEntry.basicStipend).toBe(15300);
   });
 
-  it('C: a later createOrGetEntry still does not recreate the closed-package row', async () => {
+  it('C: a later createOrGetEntry does not duplicate segment rows', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -446,13 +445,13 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
 
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    expect(db.payrollEntries.size).toBe(1);
+    expect(db.payrollEntries.size).toBe(2);
     expect(
       [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
-    ).toBeUndefined();
+    ).toBeDefined();
   });
 
-  it('D: three overlapping segments produce only the active payroll row', async () => {
+  it('D: three overlapping segments produce a payroll row per contractual period', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const AUG_10 = new Date(Date.UTC(2026, 7, 10));
@@ -464,7 +463,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const service = makeService(db);
 
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    expect(db.payrollEntries.size).toBe(1);
+    expect(db.payrollEntries.size).toBe(3);
     const e3 = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === sr3.id)!;
     expect(e3.basicStipend).toBeGreaterThan(0);
   });
@@ -481,12 +480,11 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     await service.recomputeEmployeeMonth({ employeeId: EMP_ID, month: 8, year: 2026 });
-    expect(db.payrollEntries.size).toBe(1);
+    expect(db.payrollEntries.size).toBe(2);
   });
 
-  // F. PROCESSED old segment + PENDING new segment: old byte-for-byte
-  // unchanged, new recomputes.
-  it('F: generate still only keeps the active PENDING row', async () => {
+  // F. Mid-month stipend change keeps both contractual periods.
+  it('F: generate keeps closed + active PENDING rows for mid-month stipend change', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -495,7 +493,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const service = makeService(db);
 
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    expect(db.payrollEntries.size).toBe(1);
+    expect(db.payrollEntries.size).toBe(2);
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
     expect(newEntry.status).toBe(PayrollStatus.PENDING);
   });
@@ -576,11 +574,11 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
     const newReliever = [...db.allowances.values()].find((a) => a.payrollEntryId === newEntry.id && a.type === 'RELIEVER');
     expect(newReliever).toBeDefined();
-    // One completed session = one extra full duty day (default 8h), not overlap minutes (4h).
-    expect(newReliever!.hours).toBe(8);
+    // Final policy: partial reliever = actual approved hours, not a forced full day.
+    expect(newReliever!.hours).toBe(4);
   });
 
-  it('L: month payroll is the active package only', async () => {
+  it('L: month payroll combines contractual segments (old + new)', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -590,12 +588,13 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
 
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     const total = [...db.payrollEntries.values()].reduce((sum, e) => sum + e.basicStipend, 0);
-    expect(db.payrollEntries.size).toBe(1);
-    expect(total).toBe(27900);
+    expect(db.payrollEntries.size).toBe(2);
+    // 14/31*24800 + 17/31*27900 = 11200 + 15300
+    expect(total).toBe(26500);
   });
 
-  // M. Step 1 PRESENT/SWAP_COVERED floor still works (through the full orchestration).
-  it('M: PRESENT/SWAP_COVERED still earn a full-day floor when computed through createOrGetEntry', async () => {
+  // M. PRESENT floor still works; Basic is contractual full month.
+  it('M: PRESENT/SWAP_COVERED still earn a full-day floor; Basic remains contractual full month', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -607,12 +606,12 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const service = makeService(db);
 
     const entry = await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    expect(entry.basicStipend).toBe(800);
-    expect(entry.netStipend).toBe(800);
+    expect(entry.basicStipend).toBe(24800);
+    expect(entry.netStipend).toBe(24800);
   });
 
-  // N. Step 2 half-open boundary still works (through the full orchestration).
-  it('N: the transition date is attributed to the new segment only, end to end', async () => {
+  // N. half-open boundary; both segments retained.
+  it('N: the transition date is attributed to the new segment; both segments are kept', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -626,11 +625,10 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     }
     const service = makeService(db);
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    expect(
-      [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
-    ).toBeUndefined();
+    const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(newEntry.basicStipend).toBe(1800);
+    expect(oldEntry.basicStipend).toBe(11200); // Aug 1–14
+    expect(newEntry.basicStipend).toBe(15300); // Aug 15–31
   });
 
   // O. monthly summary unique employee count still correct.
@@ -643,12 +641,8 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const service = makeService(db);
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
 
-    // getMonthlyPayrollSummary issues a richer Prisma query (nested
-    // stipendRecord.employee filters) this fake doesn't model — assert
-    // directly against the dedup logic's own data source instead: two
-    // PayrollEntry rows, one distinct employeeId.
     const entries = [...db.payrollEntries.values()];
-    expect(entries.length).toBe(1);
+    expect(entries.length).toBe(2);
     const distinctEmployeeIds = new Set(
       entries.map((e) => db.stipendRecords.get(e.stipendRecordId)!.employeeId),
     );
@@ -667,10 +661,11 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const results = await service.recomputeEmployeeMonth({ employeeId: EMP_ID, month: 8, year: 2026 });
     expect(db.payrollEntries.size).toBe(0); // nothing created
     expect(results.every((r) => r.status === 'NO_EXISTING_ENTRY')).toBe(true);
+    expect(results).toHaveLength(2);
 
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     const resultsAfter = await service.recomputeEmployeeMonth({ employeeId: EMP_ID, month: 8, year: 2026 });
-    expect(resultsAfter.filter((r) => r.status === 'RECOMPUTED')).toHaveLength(1);
-    expect(db.payrollEntries.size).toBe(1);
+    expect(resultsAfter.filter((r) => r.status === 'RECOMPUTED')).toHaveLength(2);
+    expect(db.payrollEntries.size).toBe(2);
   });
 });

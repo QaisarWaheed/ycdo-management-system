@@ -133,11 +133,9 @@ export async function applyDisciplineRules(
     return status;
   }
 
-  // Late > 1 hour is recorded as HALF_DAY for attendance display only.
-  // Pay is reduced naturally by unpaid hours; cash penalties apply only at
-  // the monthly-cycle 3rd/6th occurrence (Fine) or 9th (Suspension) via
-  // applyLateDiscipline.
-  if (status === AttendanceStatus.LATE && lateMinutes > 60) {
+  // Late > 120 minutes is HALF_DAY (final policy). Cash half-day deduction
+  // is separate from the late-occurrence cycle (3rd/6th fine / 9th suspension).
+  if (status === AttendanceStatus.LATE && lateMinutes > 120) {
     await applyLateDiscipline(
       tx,
       employeeId,
@@ -864,17 +862,15 @@ async function applyLateDiscipline(
     return;
   }
 
-  // 3rd or 6th this month -> Fine letter. Cash deduction waits until HR
-  // Send, unless this is a letter-less repair path (skipLetters / flag off).
+  // 3rd or 6th this month -> 1-day financial fine from the confirmed
+  // attendance violation (letter is documentation only — never the trigger).
   const deductionAmount = dailyStipendRate(basicStipend, date);
   const monthLabel = date.toLocaleString('en-US', {
     month: 'long',
     year: 'numeric',
   });
 
-  if (!shouldIssueLetters) {
-    await applyLateArrivalFineDeduction(tx, employeeId, date, lateCount);
-  }
+  await applyLateArrivalFineDeduction(tx, employeeId, date, lateCount);
 
   if (shouldIssueLetters) {
     await issueLateLetterIfNotAlready(
@@ -1751,14 +1747,14 @@ export async function applyMissingCheckoutDiscipline(
     year: 'numeric',
   });
 
-  if (!AUTO_DISCIPLINE.lettersAndSuspendEnabled) {
-    await applyMissingCheckoutFineDeduction(
-      tx,
-      employeeId,
-      date,
-      missingCount,
-    );
-  }
+  // Financial fine from the confirmed missing-checkout occurrence — letter
+  // is documentation only and must not gate the payroll deduction.
+  await applyMissingCheckoutFineDeduction(
+    tx,
+    employeeId,
+    date,
+    missingCount,
+  );
 
   if (AUTO_DISCIPLINE.lettersAndSuspendEnabled) {
     await issueMissingCheckoutLetterIfNotAlready(

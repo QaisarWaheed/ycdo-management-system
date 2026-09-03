@@ -746,15 +746,15 @@ export class AttendanceService {
   }
 
   /**
-   * Biometric/portal check-in status. Late > 60 minutes is HALF_DAY for
-   * display (same rule applyDisciplineRules used to apply before the write).
+   * Biometric/portal check-in status. Late > 120 minutes is HALF_DAY
+   * (final payroll/attendance policy).
    */
   private statusForBiometricCheckIn(
     lateMinutes: number,
     employee: { dutyStartTime?: string | null },
   ): AttendanceStatus {
     const status = determineBiometricCheckInStatus(lateMinutes, employee, 0);
-    if (status === AttendanceStatus.LATE && lateMinutes > 60) {
+    if (status === AttendanceStatus.LATE && lateMinutes > 120) {
       return AttendanceStatus.HALF_DAY;
     }
     return status;
@@ -1696,7 +1696,7 @@ export class AttendanceService {
       data.overtimePending = false;
     }
 
-    // HR status override can leave status=LATE while lateMinutes > 60;
+    // HR status override can leave status=LATE while lateMinutes > 120;
     // the auto-recompute path already writes HALF_DAY via statusFromLateMinutes.
     // Discipline (letters, fines, half-day deduction) is applied once post-write
     // by reconcileAttendanceFinancialConsequences — not pre-write here. Running
@@ -1704,7 +1704,7 @@ export class AttendanceService {
     // and could abort the transaction (500) while leaving the row unchanged.
     if (
       data.status === AttendanceStatus.LATE &&
-      ((data.lateMinutes as number | undefined) ?? 0) > 60
+      ((data.lateMinutes as number | undefined) ?? 0) > 120
     ) {
       data.status = AttendanceStatus.HALF_DAY;
     }
@@ -3458,7 +3458,7 @@ export class AttendanceService {
         checkTime,
         employee.shift,
       ));
-      if (status === AttendanceStatus.LATE && lateMinutes > 60) {
+      if (status === AttendanceStatus.LATE && lateMinutes > 120) {
         status = AttendanceStatus.HALF_DAY;
       }
     }

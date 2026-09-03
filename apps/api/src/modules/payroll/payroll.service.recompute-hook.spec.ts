@@ -380,39 +380,27 @@ function seedPresentDay(db: FakeDb, day: number, status: AttendanceStatus = Atte
 const AUG_15 = new Date(Date.UTC(2026, 7, 15, 0, 0, 0));
 
 describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
-  // 1. Attendance appearing mid-month adds that day's basic.
-  it('1: PENDING basic grows when a PRESENT log appears', async () => {
+  // 1. Final policy: Basic is contractual calendar amount, not attendance-grown.
+  it('1: PENDING Basic stays full contractual stipend independent of attendance logs', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
     seedPayrollEntry(db, sr.id, 8, 2026, PayrollStatus.PENDING, { basicStipend: 0, netStipend: 0 });
-    // No attendance logs at all yet — every day contributes 0.
     const service = makeService(db);
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
     const before = [...db.payrollEntries.values()][0];
-    expect(before.basicStipend).toBe(0);
+    expect(before.basicStipend).toBe(24800);
 
-    // Now the day is marked PRESENT (simulating markManual's write already
-    // having committed) and the hook fires again.
     seedPresentDay(db, 10);
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
     const after = [...db.payrollEntries.values()][0];
-    expect(after.basicStipend).toBe(800);
+    expect(after.basicStipend).toBe(24800);
   });
 
-  // 2. PRESENT -> ABSENT automatically reconciles PENDING payroll.
-  // Note: under the established Step 1-3 policy, ABSENT gets the SAME
-  // full-day policy-credit floor as PRESENT (the financial consequence of
-  // an absence is the discipline deduction, not a basicStipend cut) — so
-  // basicStipend is expected to stay the SAME here, not drop. This proves
-  // the hook correctly reconciles the recompute for the new status
-  // without introducing a double-count or miscalculation, which is the
-  // meaningful thing to verify at this (payroll-only, discipline-free)
-  // layer — the deduction side is discipline.helper.ts's job and is
-  // covered by the existing discipline suites (see Steps 4-6).
-  it('2: PRESENT -> ABSENT recomputes cleanly and basicStipend stays correctly floored (no double-credit, no miscalculation)', async () => {
+  // 2. PRESENT -> ABSENT: Basic unchanged (attendance consequences are deductions).
+  it('2: PRESENT -> ABSENT recomputes cleanly and basicStipend stays contractual (no attendance shrink)', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -429,7 +417,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     const afterAbsent = [...db.payrollEntries.values()][0].basicStipend;
 
     expect(afterAbsent).toBe(afterPresent);
-    expect(afterAbsent).toBe(800);
+    expect(afterAbsent).toBe(24800);
   });
 
   // 3. Historical August correction made later recomputes August, not the
@@ -449,7 +437,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     // never a wall-clock "now".
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
-    expect(db.payrollEntries.get(augEntry.id)!.basicStipend).toBe(800);
+    expect(db.payrollEntries.get(augEntry.id)!.basicStipend).toBe(24800);
     expect(db.payrollEntries.get(sepEntry.id)!.basicStipend).toBe(12345);
   });
 
@@ -499,7 +487,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     expect(db.payrollEntries.get(entry.id)).toEqual(before);
   });
 
-  it('6b: PRESENT -> HALF_DAY reduces unpaid basic', async () => {
+  it('6b: PRESENT -> HALF_DAY keeps contractual Basic (half-day is a deduction)', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -508,12 +496,12 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     const service = makeService(db);
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
-    expect([...db.payrollEntries.values()][0].basicStipend).toBe(800);
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(24800);
 
     db.attendanceLogs.find((l) => l.date.getTime() === augustDate(10).getTime())!.status =
       AttendanceStatus.HALF_DAY;
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
-    expect([...db.payrollEntries.values()][0].basicStipend).toBe(800);
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(24800);
   });
 
   // 7. PAID payroll remains financially unchanged.
@@ -584,13 +572,10 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(5)); // OLD segment's window
 
-    // OLD segment: 14 days (Aug 1-14) * 8h * 100/hr = 11200.
+    // OLD segment: 14/31 * 24800 = 11200
     expect(db.payrollEntries.get(oldEntry.id)!.basicStipend).toBe(11200);
-    // NEW segment: 17 days (Aug 15-31) * 8h * 112.5/hr = 15300 — recomputed
-    // too (recomputeEmployeeMonth refreshes every overlapping PENDING
-    // segment together), but correctly unaffected by the Aug 5 correction
-    // since that date falls outside its own window.
-    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(27900);
+    // NEW segment: 17/31 * 27900 = 15300
+    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300);
   });
 
   // Additional: hook never even queries StipendRecord/AttendanceLog beyond

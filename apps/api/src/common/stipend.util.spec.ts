@@ -57,17 +57,27 @@ describe('prorateContractualBasicForPayrollSegment', () => {
     ).toBe(11200); // 24800 * 14 / 31
   });
 
+  it('stops Basic on the day before statusEffectiveFrom (last working day)', () => {
+    // Effective From = 20 Aug → last working day 19 Aug → Aug 1–19 = 19 days
+    expect(
+      prorateContractualBasicForPayrollSegment({
+        contractualBasic: 31000,
+        ...august2026,
+        segmentStart: new Date(Date.UTC(2026, 7, 1)),
+        segmentEndExclusive: null,
+        employmentEndExclusive: new Date(Date.UTC(2026, 7, 20)),
+      }),
+    ).toBe(19000);
+  });
+
   it('uses 31 calendar days for August 2026', () => {
     expect(daysInPayrollMonth(2026, 8)).toBe(31);
   });
 });
 
 describe('basicStipendFromCreditedDays', () => {
-  it('pays 28/31 of monthly basic when 28 attendance days are credited', () => {
+  it('remains available for diagnostics but is not the payroll Basic path', () => {
     expect(basicStipendFromCreditedDays(100000, 28, 2026, 8)).toBe(90322.58);
-  });
-
-  it('pays a full month when credited days cover the calendar month', () => {
     expect(basicStipendFromCreditedDays(30000, 31, 2026, 8)).toBe(30000);
   });
 });

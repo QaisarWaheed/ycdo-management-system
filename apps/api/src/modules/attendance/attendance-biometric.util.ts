@@ -190,7 +190,8 @@ export function determineBiometricCheckInStatus(
     return AttendanceStatus.PRESENT;
   }
 
-  if (lateMinutes > 60 && employee.dutyStartTime && sessionMinutes >= 240) {
+  // Final policy: more than 120 minutes late → HALF_DAY.
+  if (lateMinutes > 120) {
     return AttendanceStatus.HALF_DAY;
   }
 

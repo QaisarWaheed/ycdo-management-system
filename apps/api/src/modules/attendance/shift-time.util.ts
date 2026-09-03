@@ -45,10 +45,16 @@ export function getShiftAttendanceDate(
   return pkToday;
 }
 
+/**
+ * Final payroll/attendance policy: more than 120 minutes late → HALF_DAY
+ * (0.5-day stipend deduction). Between 1 and 120 inclusive → LATE.
+ */
+export const HALF_DAY_LATE_THRESHOLD_MINUTES = 120;
+
 export function statusFromLateMinutes(
   lateMinutes: number,
 ): 'PRESENT' | 'LATE' | 'HALF_DAY' {
-  if (lateMinutes > 60) return 'HALF_DAY';
+  if (lateMinutes > HALF_DAY_LATE_THRESHOLD_MINUTES) return 'HALF_DAY';
   if (lateMinutes > 0) return 'LATE';
   return 'PRESENT';
 }

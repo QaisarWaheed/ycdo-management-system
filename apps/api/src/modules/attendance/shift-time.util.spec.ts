@@ -1,7 +1,20 @@
 import {
   getShiftAttendanceDate,
   hasDutyStartedForAttendanceDate,
+  statusFromLateMinutes,
+  HALF_DAY_LATE_THRESHOLD_MINUTES,
 } from './shift-time.util';
+
+describe('statusFromLateMinutes (final payroll policy)', () => {
+  it('uses >120 minutes as HALF_DAY threshold', () => {
+    expect(HALF_DAY_LATE_THRESHOLD_MINUTES).toBe(120);
+    expect(statusFromLateMinutes(0)).toBe('PRESENT');
+    expect(statusFromLateMinutes(1)).toBe('LATE');
+    expect(statusFromLateMinutes(60)).toBe('LATE');
+    expect(statusFromLateMinutes(120)).toBe('LATE');
+    expect(statusFromLateMinutes(121)).toBe('HALF_DAY');
+  });
+});
 
 describe('hasDutyStartedForAttendanceDate', () => {
   const aug19 = new Date(Date.UTC(2026, 7, 19));

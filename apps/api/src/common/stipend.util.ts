@@ -44,11 +44,69 @@ function roundStipendMoney(value: number): number {
 }
 
 /**
- * Contractual Basic Stipend for a payroll stipend segment: calendar days
- * this segment covers in the payroll month ÷ calendar days in the month.
- * Attendance logs are not an input — missing future/unmarked days do not
- * shrink this figure. A segment covering the whole month returns the full
- * assigned monthly stipend.
+ * Calendar days a payroll stipend segment is payable in a month.
+ * Attendance logs are never an input — Basic / fixed-package proration
+ * uses only contractual bounds:
+ *   start = later of segmentStart and employmentStart (joiningDate)
+ *   end exclusive = earlier of segmentEndExclusive and employmentEndExclusive
+ *     (statusEffectiveFrom: last working day is the day before)
+ */
+export function payrollSegmentPayableDays(input: {
+  year: number;
+  month: number;
+  segmentStart: Date;
+  segmentEndExclusive: Date | null;
+  monthEnd: Date;
+  employmentStart?: Date | null;
+  /** Exclusive end (e.g. statusEffectiveFrom). Last payable day is the day before. */
+  employmentEndExclusive?: Date | null;
+}): number {
+  const daysInMonth = daysInPayrollMonth(input.year, input.month);
+  if (daysInMonth <= 0) return 0;
+
+  let start = utcDateOnly(input.segmentStart);
+  if (input.employmentStart) {
+    const join = utcDateOnly(input.employmentStart);
+    if (join.getTime() > start.getTime()) {
+      start = join;
+    }
+  }
+
+  const monthEnd = utcDateOnly(input.monthEnd);
+  let endExclusive: Date | null = null;
+  if (input.segmentEndExclusive) {
+    endExclusive = utcDateOnly(input.segmentEndExclusive);
+  }
+  if (input.employmentEndExclusive) {
+    const empEnd = utcDateOnly(input.employmentEndExclusive);
+    if (!endExclusive || empEnd.getTime() < endExclusive.getTime()) {
+      endExclusive = empEnd;
+    }
+  }
+
+  let endInclusive = monthEnd;
+  if (endExclusive) {
+    endInclusive = new Date(endExclusive.getTime() - 24 * 60 * 60 * 1000);
+    if (endInclusive.getTime() > monthEnd.getTime()) {
+      endInclusive = monthEnd;
+    }
+  }
+  if (endInclusive.getTime() < start.getTime()) {
+    return 0;
+  }
+
+  return (
+    Math.round(
+      (endInclusive.getTime() - start.getTime()) / (24 * 60 * 60 * 1000),
+    ) + 1
+  );
+}
+
+/**
+ * Contractual Basic Stipend for a payroll stipend segment: payable calendar
+ * days ÷ calendar days in the month. Attendance logs are not an input —
+ * missing future/unmarked days do not shrink this figure. A segment covering
+ * the whole month returns the full assigned monthly stipend.
  */
 export function prorateContractualBasicForPayrollSegment(input: {
   contractualBasic: number;
@@ -59,6 +117,8 @@ export function prorateContractualBasicForPayrollSegment(input: {
   monthEnd: Date;
   /** Employee.joiningDate — Basic starts on the later of this and segmentStart. */
   employmentStart?: Date | null;
+  /** statusEffectiveFrom — Basic ends the day before (last working day). */
+  employmentEndExclusive?: Date | null;
 }): number {
   const daysInMonth = daysInPayrollMonth(input.year, input.month);
   const contractual = Number(input.contractualBasic);
@@ -66,33 +126,31 @@ export function prorateContractualBasicForPayrollSegment(input: {
     return 0;
   }
 
-  let start = utcDateOnly(input.segmentStart);
-  if (input.employmentStart) {
-    const join = utcDateOnly(input.employmentStart);
-    if (join.getTime() > start.getTime()) {
-      start = join;
-    }
-  }
-  const monthEnd = utcDateOnly(input.monthEnd);
-  let endInclusive = monthEnd;
-  if (input.segmentEndExclusive) {
-    const exclusive = utcDateOnly(input.segmentEndExclusive);
-    endInclusive = new Date(exclusive.getTime() - 24 * 60 * 60 * 1000);
-    if (endInclusive.getTime() > monthEnd.getTime()) {
-      endInclusive = monthEnd;
-    }
-  }
-  if (endInclusive.getTime() < start.getTime()) {
-    return 0;
-  }
-
-  const segmentDays =
-    Math.round((endInclusive.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) +
-    1;
+  const segmentDays = payrollSegmentPayableDays(input);
+  if (segmentDays <= 0) return 0;
   if (segmentDays >= daysInMonth) {
     return roundStipendMoney(contractual);
   }
   return roundStipendMoney((contractual * segmentDays) / daysInMonth);
+}
+
+/** Prorate a monthly package amount (allowance/reward/fuel) over payable segment days. */
+export function prorateMonthlyPackageAmount(input: {
+  monthlyAmount: number;
+  year: number;
+  month: number;
+  segmentStart: Date;
+  segmentEndExclusive: Date | null;
+  monthEnd: Date;
+  employmentStart?: Date | null;
+  employmentEndExclusive?: Date | null;
+}): number {
+  const amount = Number(input.monthlyAmount);
+  if (!Number.isFinite(amount) || amount === 0) return 0;
+  return prorateContractualBasicForPayrollSegment({
+    ...input,
+    contractualBasic: amount,
+  });
 }
 
 /**

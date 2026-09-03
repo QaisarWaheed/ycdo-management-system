@@ -3,7 +3,8 @@ import {
   dailyStipendRate,
   daysInPayrollMonth,
   stipendRecordToPackage,
-  basicStipendFromCreditedDays,
+  prorateContractualBasicForPayrollSegment,
+  prorateMonthlyPackageAmount,
 } from '../../common/stipend.util';
 import {
   getDutyWindow,
@@ -41,6 +42,7 @@ import {
   PRE_JOIN_UNMARKED_NOTE,
 } from '../attendance/attendance-calendar.util';
 import {
+  isExitEmployeeStatus,
   isPostExitAttendanceDate,
   isPreActiveAttendanceDate,
 } from '../employees/status-effective.util';
@@ -67,6 +69,7 @@ import {
 import {
   buildHourlyPayrollBreakdown,
   computeHourlyRate,
+  computeRelieverPayableMinutes,
   DEFAULT_MONTHLY_ALLOWED_LEAVES,
   dateKey,
   hoursFromDutyWindow,
@@ -150,16 +153,12 @@ export class PayrollService {
       }
     }
 
-    // Discover EVERY StipendRecord overlapping this month, not only the
-    // currently-active one — see findOverlappingStipendRecords. The
-    // "active" record (effectiveTo: null, or the most recent if somehow
-    // none is null) remains the one this call creates/refreshes AND
-    // returns, preserving this method's existing single-entry return
-    // contract exactly (callers like applyOvertime rely on getting back
-    // one entry). Every OTHER overlapping segment is also refreshed as a
-    // side effect so historical PENDING rows never go stale/orphaned
-    // again — see recomputeEmployeeMonth for the explicit,
-    // return-everything version of this same loop.
+    // Discover EVERY StipendRecord overlapping this month. Create/refresh
+    // each overlapping PENDING segment so mid-month stipend changes keep
+    // separate contractual periods (calendar-prorated Basic + allowances).
+    // Fixed monthly package deductions apply once on the package-bearing
+    // segment only (active open record, else newest closed). Return the
+    // package-bearing entry to preserve this method's single-entry contract.
     const { records: overlappingStipendRecords, backfillFromAttendance } =
       await this.resolveStipendRecordsForPayrollMonth(
         dto.employeeId,
@@ -174,6 +173,7 @@ export class PayrollService {
     const activeStipendRecord =
       overlappingStipendRecords.find((r) => r.effectiveTo === null) ??
       overlappingStipendRecords[overlappingStipendRecords.length - 1];
+    const packageBearingId = activeStipendRecord.id;
 
     const existingActiveEntry = await this.prisma.payrollEntry.findUnique({
       where: {
@@ -190,7 +190,7 @@ export class PayrollService {
       (existingActiveEntry.status === PayrollStatus.PROCESSED ||
         existingActiveEntry.status === PayrollStatus.PAID)
     ) {
-      await this.pruneStaleClosedSegmentPayrollEntries(
+      await this.pruneDuplicateOpenActivePayrollEntries(
         dto.employeeId,
         dto.month,
         dto.year,
@@ -224,28 +224,43 @@ export class PayrollService {
       employee.monthlyAllowedLeaves,
     );
 
-    const segmentBackfillOptions = {
-      backfillFromJoining:
-        !backfillFromAttendance && activeStipendRecord.effectiveTo == null,
-      backfillFromAttendance,
-    };
-    const primaryResult = await this.upsertPayrollEntryForStipendSegment(
-      activeStipendRecord,
-      dto,
-      employee,
-      forceNonActive && !defaultEligible ? true : undefined,
-      unpaidLeaveDatesForMonth,
-      true,
-      segmentBackfillOptions,
-    );
+    let primaryResult: Awaited<
+      ReturnType<PayrollService['upsertPayrollEntryForStipendSegment']>
+    > | null = null;
 
-    await this.pruneStaleClosedSegmentPayrollEntries(
+    for (const stipendRecord of overlappingStipendRecords) {
+      const refreshed = await this.upsertPayrollEntryForStipendSegment(
+        stipendRecord,
+        dto,
+        employee,
+        forceNonActive && !defaultEligible && stipendRecord.id === packageBearingId
+          ? true
+          : undefined,
+        unpaidLeaveDatesForMonth,
+        stipendRecord.id === packageBearingId,
+        {
+          backfillFromJoining:
+            !backfillFromAttendance && stipendRecord.effectiveTo == null,
+          backfillFromAttendance,
+        },
+      );
+      if (stipendRecord.id === packageBearingId) {
+        primaryResult = refreshed;
+      }
+    }
+
+    await this.pruneDuplicateOpenActivePayrollEntries(
       dto.employeeId,
       dto.month,
       dto.year,
       overlappingStipendRecords,
     );
 
+    if (!primaryResult) {
+      throw new NotFoundException(
+        `Failed to create payroll entry for ${employee.fullName} (${employee.employeeCode})`,
+      );
+    }
     return primaryResult;
   }
 
@@ -371,7 +386,7 @@ export class PayrollService {
       });
     }
 
-    await this.pruneStaleClosedSegmentPayrollEntries(
+    await this.pruneDuplicateOpenActivePayrollEntries(
       dto.employeeId,
       dto.month,
       dto.year,
@@ -1100,11 +1115,12 @@ export class PayrollService {
   }
 
   /**
-   * One unpaid payroll slip per employee/month: the currently-active stipend.
-   * Closed or superseded packages in the same month are leftover increment
-   * rows and must not stay beside the current package.
+   * Keep at most one open (effectiveTo: null) stipend's PENDING payroll row
+   * per employee/month when duplicate open packages exist. Closed overlapping
+   * segments are intentionally retained so mid-month stipend changes keep
+   * separate contractual Basic/allowance periods.
    */
-  private async pruneStaleClosedSegmentPayrollEntries(
+  private async pruneDuplicateOpenActivePayrollEntries(
     employeeId: string,
     month: number,
     year: number,
@@ -1114,41 +1130,23 @@ export class PayrollService {
       effectiveTo: Date | null;
     }>,
   ) {
-    const staleSegmentIds = new Set<string>();
-
     const activeSegments = overlappingStipendRecords.filter(
       (r) => r.effectiveTo === null,
     );
-    const newestActive =
-      activeSegments.length > 0
-        ? activeSegments[activeSegments.length - 1]
-        : null;
+    if (activeSegments.length <= 1) return;
 
-    if (activeSegments.length > 1) {
-      const keepActive = activeSegments[activeSegments.length - 1]!;
-      for (const segment of activeSegments) {
-        if (segment.id !== keepActive.id) {
-          staleSegmentIds.add(segment.id);
-        }
-      }
-    }
-
-    if (newestActive) {
-      for (const segment of overlappingStipendRecords) {
-        if (segment.id !== newestActive.id) {
-          staleSegmentIds.add(segment.id);
-        }
-      }
-    }
-
-    if (staleSegmentIds.size === 0) return;
+    const keepActive = activeSegments[activeSegments.length - 1]!;
+    const staleSegmentIds = activeSegments
+      .filter((segment) => segment.id !== keepActive.id)
+      .map((segment) => segment.id);
+    if (staleSegmentIds.length === 0) return;
 
     const staleEntries = await this.prisma.payrollEntry.findMany({
       where: {
         month,
         year,
         status: PayrollStatus.PENDING,
-        stipendRecordId: { in: [...staleSegmentIds] },
+        stipendRecordId: { in: staleSegmentIds },
         stipendRecord: { employeeId },
       },
       select: { id: true },
@@ -1166,6 +1164,25 @@ export class PayrollService {
       });
       await this.prisma.payrollEntry.delete({ where: { id: entry.id } });
     }
+  }
+
+  /** @deprecated Alias kept for any residual call sites during rollout. */
+  private async pruneStaleClosedSegmentPayrollEntries(
+    employeeId: string,
+    month: number,
+    year: number,
+    overlappingStipendRecords: Array<{
+      id: string;
+      effectiveFrom: Date;
+      effectiveTo: Date | null;
+    }>,
+  ) {
+    return this.pruneDuplicateOpenActivePayrollEntries(
+      employeeId,
+      month,
+      year,
+      overlappingStipendRecords,
+    );
   }
 
   /** One history row per calendar month; drops stale segments, sums real increments. */
@@ -1717,6 +1734,7 @@ export class PayrollService {
       where: {
         employeeId,
         overtimeMinutes: { gt: 0 },
+        overtimePending: false,
         date: {
           gte: segmentStart,
           lte: monthEnd,
@@ -1725,7 +1743,10 @@ export class PayrollService {
       },
       select: { overtimeMinutes: true },
     });
-    const minutes = otLogs.reduce((sum, log) => sum + log.overtimeMinutes, 0);
+    const minutes = otLogs.reduce(
+      (sum, log) => sum + (Number(log.overtimeMinutes) || 0),
+      0,
+    );
     const dailyHours = resolveDailyDutyHours(employee);
     const hourlyRate = computeHourlyRate(
       contractualBasic,
@@ -2180,9 +2201,23 @@ export class PayrollService {
       dailyHours,
       daysInMonth,
     );
-    // Each completed reliever session is one extra full duty day (double duty),
-    // same unit as manual Additional Working Days.
-    const hours = roundMoney(sessions.length * dailyHours);
+    const scheduledMinutes = Math.round(dailyHours * 60);
+    let payableMinutes = 0;
+    for (const session of sessions) {
+      if (!session.checkOut) continue;
+      const extraMinutes = computeRelieverPayableMinutes(employee, {
+        checkIn: session.checkIn,
+        checkOut: session.checkOut,
+        totalMinutes: session.totalMinutes,
+      });
+      // Full duty day (or more) → 1 additional daily stipend; partial → hours.
+      if (extraMinutes >= scheduledMinutes) {
+        payableMinutes += scheduledMinutes;
+      } else {
+        payableMinutes += Math.max(0, extraMinutes);
+      }
+    }
+    const hours = roundMoney(payableMinutes / 60);
     const amount = roundMoney(hours * hourlyRate);
 
     const existing = await this.keepSingleAllowance(
@@ -2201,7 +2236,7 @@ export class PayrollService {
       month: 'long',
       year: 'numeric',
     });
-    const description = `Reliever extra duty: ${sessions.length} full day(s) (${hours}h @ PKR ${hourlyRate}/hr, ${monthLabel})`;
+    const description = `Reliever extra duty: ${sessions.length} session(s), ${hours}h @ PKR ${hourlyRate}/hr (${monthLabel})`;
 
     if (existing) {
       await this.prisma.allowance.update({
@@ -3613,14 +3648,50 @@ export class PayrollService {
       }
     }
 
-    const applyPackage = context.applyContractualPackage !== false;
-    const fixedAllowances = applyPackage
-      ? (pkg.allowances || 0) +
-        (pkg.reward || 0) +
-        (pkg.progressReward || 0) +
-        (pkg.fuelAllowance || 0)
-      : 0;
-    const fixedPackageDeductions = applyPackage
+    const applyPackageDeductions = context.applyContractualPackage !== false;
+    // Fixed monthly allowances are always prorated across the contractual
+    // segment they belong to (never zeroed on closed segments, never doubled).
+    const monthlyFixedAllowances =
+      (pkg.allowances || 0) +
+      (pkg.reward || 0) +
+      (pkg.progressReward || 0) +
+      (pkg.fuelAllowance || 0);
+    const employmentEndExclusive =
+      context.employee.status &&
+      isExitEmployeeStatus(context.employee.status) &&
+      context.employee.statusEffectiveFrom
+        ? context.employee.statusEffectiveFrom
+        : null;
+    // Contractual Basic/allowance bounds use stipend effectiveFrom/To only —
+    // never the attendance backfill window (backfillFromJoining expands log
+    // reads for a lone active package, but must not rewrite mid-month
+    // stipend change Basic into a full-month figure on the new package).
+    const { monthStart: contractualMonthStart } = this.pakistanMonthWindow(
+      year,
+      month,
+    );
+    const contractualSegmentStart =
+      context.stipendRecord.effectiveFrom.getTime() >
+      contractualMonthStart.getTime()
+        ? context.stipendRecord.effectiveFrom
+        : contractualMonthStart;
+    const contractualSegmentEndExclusive =
+      context.stipendRecord.effectiveTo ?? null;
+    const fixedAllowances = prorateMonthlyPackageAmount({
+      monthlyAmount: monthlyFixedAllowances,
+      year,
+      month,
+      segmentStart: contractualSegmentStart,
+      segmentEndExclusive: contractualSegmentEndExclusive,
+      monthEnd,
+      employmentStart: context.backfillFromAttendance
+        ? null
+        : context.employee.joiningDate,
+      employmentEndExclusive,
+    });
+    // Fixed monthly package deductions (health/loan/advance/fine) apply once
+    // per employee/month on the package-bearing segment only.
+    const fixedPackageDeductions = applyPackageDeductions
       ? (pkg.loanDeduction || 0) +
         (pkg.advanceDeduction || 0) +
         (pkg.fineDeduction || 0) +
@@ -3635,12 +3706,20 @@ export class PayrollService {
       0,
     );
 
-    const payrollBasicStipend = basicStipendFromCreditedDays(
-      pkg.basicStipend,
-      creditedAttendanceDays,
+    // Final policy: Basic is contractual calendar proration only — attendance
+    // never shrinks Basic. Attendance consequences live under deductions.
+    const payrollBasicStipend = prorateContractualBasicForPayrollSegment({
+      contractualBasic: pkg.basicStipend,
       year,
       month,
-    );
+      segmentStart: contractualSegmentStart,
+      segmentEndExclusive: contractualSegmentEndExclusive,
+      monthEnd,
+      employmentStart: context.backfillFromAttendance
+        ? null
+        : context.employee.joiningDate,
+      employmentEndExclusive,
+    });
 
     return buildHourlyPayrollBreakdown({
       contractualBasicStipend: pkg.basicStipend,
