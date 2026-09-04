@@ -39,7 +39,13 @@ export interface PayslipSlipData {
     tax: number
     auditDifference: number
     staffPendingMed: number
+    other: number
   }
+  deductionItems: Array<{
+    reason: string
+    description: string | null
+    amount: number
+  }>
   earningsTotal: number
   deductionsTotal: number
   netPay: number
@@ -143,6 +149,26 @@ export function buildPayslipSlipFromEntry(data: {
       (d) => d.reason === 'DISCIPLINARY_FINE' || d.reason === 'LATE_ARRIVAL',
     )
     .reduce((s, d) => s + money(d.amount), 0)
+  const categorizedDeductions = new Set(
+    deductions.filter(
+      (d) =>
+        d.reason === 'UNINFORMED_ABSENCE' ||
+        d.reason === 'UNPAID_LEAVE' ||
+        d.reason === 'HALF_DAY' ||
+        (d.reason === 'OTHER' &&
+          (d.description ?? '').startsWith('Unmarked day')) ||
+        d.reason === 'DISCIPLINARY_FINE' ||
+        d.reason === 'LATE_ARRIVAL',
+    ),
+  )
+  const otherDeduction = deductions
+    .filter((d) => !categorizedDeductions.has(d))
+    .reduce((s, d) => s + money(d.amount), 0)
+  const deductionItems = deductions.map((d) => ({
+    reason: d.reason,
+    description: d.description ?? null,
+    amount: money(d.amount),
+  }))
 
   const payPeriod = new Date(data.year, data.month - 1, 1).toLocaleString(
     'en-US',
@@ -171,6 +197,7 @@ export function buildPayslipSlipFromEntry(data: {
     tax: 0,
     auditDifference: 0,
     staffPendingMed: 0,
+    other: otherDeduction,
   }
 
   const earningsTotal =
@@ -223,6 +250,7 @@ export function buildPayslipSlipFromEntry(data: {
     presence: 0,
     earnings,
     deductions: deductionsBlock,
+    deductionItems,
     earningsTotal,
     deductionsTotal,
     netPay,

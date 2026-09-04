@@ -614,7 +614,7 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
 
   // Q. Regression: Steps 1-3 behavior (single-segment PRESENT floor,
   // half-open boundary) is untouched by the overtime changes.
-  it('Q: mid-month stipend change keeps both contractual Basic periods', async () => {
+  it('Q: mid-month stipend change — new package earns the whole month\'s hours, old segment earns 0', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -623,11 +623,15 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     const service = makeService(db);
 
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    expect(
-      [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
-    ).toBeDefined();
+    const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id);
+    expect(oldEntry).toBeDefined();
+    // Policy (2026-09-04): rule 5 (unchanged) still forbids dual-paying a
+    // month across old + new segments. The closed old segment earns 0 Basic
+    // hourly; only the active new segment earns Basic, for the full month's
+    // worked/credited hours.
+    expect(oldEntry!.basicStipend).toBe(0);
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(newEntry.basicStipend).toBe(15300);
+    expect(newEntry.basicStipend).toBe(27900);
   });
 
   // R. Regression: headcount/segment count remains correct after applying

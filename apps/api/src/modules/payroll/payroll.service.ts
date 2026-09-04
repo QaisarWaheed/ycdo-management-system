@@ -3,7 +3,6 @@ import {
   dailyStipendRate,
   daysInPayrollMonth,
   stipendRecordToPackage,
-  prorateContractualBasicForPayrollSegment,
   prorateMonthlyPackageAmount,
 } from '../../common/stipend.util';
 import {
@@ -3000,6 +2999,24 @@ export class PayrollService {
       )
       .reduce((sum, d) => sum + Number(d.amount), 0);
 
+    const categorizedDeductionIds = new Set(
+      deductions
+        .filter(
+          (d) =>
+            d.reason === DeductionType.UNINFORMED_ABSENCE ||
+            d.reason === DeductionType.UNPAID_LEAVE ||
+            d.reason === DeductionType.HALF_DAY ||
+            (d.reason === DeductionType.OTHER &&
+              (d.description ?? '').startsWith('Unmarked day')) ||
+            d.reason === DeductionType.DISCIPLINARY_FINE ||
+            d.reason === DeductionType.LATE_ARRIVAL,
+        )
+        .map((d) => d),
+    );
+    const otherDeduction = deductions
+      .filter((d) => !categorizedDeductionIds.has(d))
+      .reduce((sum, d) => sum + Number(d.amount), 0);
+
     const extraDutyAmount = allowances
       .filter(
         (a) =>
@@ -3049,7 +3066,14 @@ export class PayrollService {
       tax: 0,
       auditDifference: 0,
       staffPendingMed: 0,
+      other: otherDeduction,
     };
+
+    const deductionItems = deductions.map((d) => ({
+      reason: d.reason,
+      description: d.description ?? null,
+      amount: Number(d.amount) || 0,
+    }));
 
     const earningsTotal = computeEarningsTotal(earnings);
     const deductionsTotal = computeDeductionsTotal(deductionsBlock);
@@ -3079,6 +3103,7 @@ export class PayrollService {
       presence: presenceDays,
       earnings,
       deductions: deductionsBlock,
+      deductionItems,
       earningsTotal,
       deductionsTotal,
       netPay: Number(entry.netStipend) || 0,
@@ -3666,16 +3691,6 @@ export class PayrollService {
       year,
       month,
     );
-    let contractualSegmentStart =
-      context.stipendRecord.effectiveFrom.getTime() >
-      contractualMonthStart.getTime()
-        ? context.stipendRecord.effectiveFrom
-        : contractualMonthStart;
-    if (context.backfillContractualFromEmployment) {
-      contractualSegmentStart = contractualMonthStart;
-    }
-    const contractualSegmentEndExclusive =
-      context.stipendRecord.effectiveTo ?? null;
     const fixedAllowances = applyPackageDeductions
       ? prorateMonthlyPackageAmount({
           monthlyAmount: monthlyFixedAllowances,
@@ -3707,23 +3722,25 @@ export class PayrollService {
       0,
     );
 
-    // Final policy: Basic is contractual calendar proration only — attendance
-    // never shrinks Basic. Attendance consequences live under deductions.
-    const payrollBasicStipend = prorateContractualBasicForPayrollSegment({
-      contractualBasic: pkg.basicStipend,
-      year,
-      month,
-      segmentStart: contractualSegmentStart,
-      segmentEndExclusive: contractualSegmentEndExclusive,
-      monthEnd,
-      employmentStart: context.backfillFromAttendance
-        ? null
-        : context.employee.joiningDate,
-      employmentEndExclusive,
-    });
-
+    // Policy (2026-09-04 override, supersedes rulebook rule 4/invariant 45 —
+    // explicit user decision): Basic Stipend itself is earned on an hourly
+    // basis — contractual monthly rate × (worked + paid-leave + policy-credit
+    // minutes) / scheduled minutes for the full month. Join/leave proration
+    // is absorbed into this same ratio (attendance logs don't exist outside
+    // the employment period, so payable minutes are already bounded by it)
+    // rather than a separate calendar-day proration on top of it.
+    // See buildHourlyPayrollBreakdown's hourlyBasicEarned for the formula.
+    //
+    // Mid-month PACKAGE CHANGE (not join/leave) is a separate case, still
+    // governed by unchanged rulebook rule 5: a package change applies to the
+    // whole month, and there must be no dual-paid segments. A closed
+    // increment segment (applyPackageDeductions false — same flag that
+    // already zeroes its fixedAllowances/fixedPackageDeductions above) must
+    // not also earn hours-based Basic, or the month gets paid twice across
+    // the old + new segment. Only the active/open segment earns Basic, using
+    // the month's full worked/credited hours.
     return buildHourlyPayrollBreakdown({
-      contractualBasicStipend: pkg.basicStipend,
+      contractualBasicStipend: applyPackageDeductions ? pkg.basicStipend : 0,
       dailyDutyHours,
       daysInMonth,
       workedMinutes: workedMins,
@@ -3734,7 +3751,6 @@ export class PayrollService {
       fixedPackageDeductions,
       disciplineDeductions,
       extraAllowances,
-      payrollBasicStipend,
     });
   }
 

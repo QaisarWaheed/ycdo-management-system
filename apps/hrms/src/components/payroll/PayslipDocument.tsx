@@ -70,7 +70,10 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
       slip.deductions.fine +
       slip.deductions.health +
       (slip.deductions.providentFund ?? 0) +
-      (slip.deductions.tax ?? 0)
+      (slip.deductions.tax ?? 0) +
+      (slip.deductions.other ?? 0)
+
+  const deductionItems = slip.deductionItems ?? []
 
   return (
     <div className="print-content mx-auto max-w-[820px] overflow-x-auto bg-white p-2 text-black sm:p-4">
@@ -162,11 +165,47 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
                 amount={slip.deductions.providentFund ?? 0}
               />
               <MoneyRow label="Tax" amount={slip.deductions.tax ?? 0} />
+              <MoneyRow label="Other" amount={slip.deductions.other ?? 0} />
               <MoneyRow label="Deduction" amount={deductionsTotal} bold />
               <MoneyRow label="Net Pay" amount={netPay} bold />
             </tbody>
           </table>
         </div>
+
+        {deductionItems.length > 0 && (
+          <div className="mt-3">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-black/5">
+                  <th className="border border-black/30 px-2 py-1 text-left text-xs font-semibold">
+                    Deduction Reason
+                  </th>
+                  <th className="border border-black/30 px-2 py-1 text-left text-xs font-semibold">
+                    Description
+                  </th>
+                  <th className="border border-black/30 px-2 py-1 text-right text-xs font-semibold">
+                    Amount
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {deductionItems.map((d, i) => (
+                  <tr key={i}>
+                    <td className="border border-black/30 px-2 py-1 text-xs">
+                      {d.reason.replace(/_/g, ' ')}
+                    </td>
+                    <td className="border border-black/30 px-2 py-1 text-xs">
+                      {d.description || '—'}
+                    </td>
+                    <td className="border border-black/30 px-2 py-1 text-right text-xs tabular-nums">
+                      {fmtAmount(d.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <p className="mt-3 text-xs text-black/70">
           Paid Through: {slip.paidThrough || 'Nil'}

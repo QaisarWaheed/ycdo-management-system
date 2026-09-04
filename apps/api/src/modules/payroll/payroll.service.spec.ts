@@ -323,7 +323,10 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
       existingDeductions: [{ amount: 50000 }],
     });
     expect(b.hourlyBasicEarned).toBe(800);
-    expect(b.payrollBasicStipend).toBe(24800);
+    // Policy (2026-09-04): Basic is earned hourly — payrollBasicStipend
+    // equals hourlyBasicEarned, it is never overridden to the full
+    // contractual amount.
+    expect(b.payrollBasicStipend).toBe(800);
     expect(b.netStipend).toBe(0);
   });
 
@@ -796,18 +799,19 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     );
   }
 
-  it('A: full-month open segment pays full contractual basic even before month end', async () => {
+  it('A: full-month open segment earns Basic proportional to logged present days', async () => {
     const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
     const b = await computeBreakdown(logs, {
       stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
     });
     expect(b.creditedAttendanceDays).toBe(28);
-    // Attendance must not shrink Basic — full calendar month while segment is open.
-    expect(b.payrollBasicStipend).toBe(100000);
-    expect(b.netStipend).toBe(100000);
+    // Policy (2026-09-04 override, supersedes rulebook rule 4/invariant 45):
+    // Basic is earned hourly — 28 logged present days out of 31 scheduled.
+    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 28) / 31));
+    expect(b.netStipend).toBe(roundMoney((100000 * 28) / 31));
   });
 
-  it('B: different packages still pay full contractual basic for an open full-month segment', async () => {
+  it('B: different packages still scale by the same worked-hours fraction', async () => {
     const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
     const b25 = await computeBreakdown(logs, {
       stipendRecord: { basicStipend: 25000, effectiveFrom: FAR_PAST, effectiveTo: null },
@@ -815,11 +819,11 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     const b18 = await computeBreakdown(logs, {
       stipendRecord: { basicStipend: 18000, effectiveFrom: FAR_PAST, effectiveTo: null },
     });
-    expect(b25.payrollBasicStipend).toBe(25000);
-    expect(b18.payrollBasicStipend).toBe(18000);
+    expect(b25.payrollBasicStipend).toBe(roundMoney((25000 * 28) / 31));
+    expect(b18.payrollBasicStipend).toBe(roundMoney((18000 * 28) / 31));
   });
 
-  it('C: adding later PRESENT logs does not change contractual Basic for an open segment', async () => {
+  it('C: adding later PRESENT logs increases hourly-earned Basic for an open segment', async () => {
     const through28 = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
     const full = logsForDays(Array.from({ length: 31 }, (_, i) => i + 1));
     const stipend = {
@@ -827,12 +831,12 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     };
     const before = await computeBreakdown(through28, stipend);
     const after = await computeBreakdown(full, stipend);
-    expect(before.payrollBasicStipend).toBe(100000);
+    expect(before.payrollBasicStipend).toBe(roundMoney((100000 * 28) / 31));
     expect(after.payrollBasicStipend).toBe(100000);
     expect(after.creditedAttendanceDays).toBe(31);
   });
 
-  it('D: ABSENT / UNMARKED / LATE keep full Basic; deductions stay separate', async () => {
+  it('D: ABSENT / UNMARKED / LATE still earn policy-credit hours; deductions stay separate', async () => {
     const logs = [
       ...logsForDays([1, 2], AttendanceStatus.ABSENT),
       ...logsForDays([3], AttendanceStatus.UNMARKED),
@@ -844,33 +848,35 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
       existingDeductions: [{ amount: 6451.61 }],
     });
     expect(b.creditedAttendanceDays).toBe(28);
-    expect(b.payrollBasicStipend).toBe(100000);
+    const expectedBasic = roundMoney((100000 * 28) / 31);
+    expect(b.payrollBasicStipend).toBe(expectedBasic);
     expect(b.disciplineDeductions).toBe(6451.61);
-    expect(b.netStipend).toBe(roundMoney(100000 - 6451.61));
+    expect(b.netStipend).toBe(roundMoney(expectedBasic - 6451.61));
   });
 
-  it('E: mid-month stipend start prorates Basic by calendar days in the segment', async () => {
+  it('E: mid-month stipend start — Basic earns only for the days actually logged', async () => {
     const aug15 = new Date(Date.UTC(2026, 7, 15));
     const fewLogs = logsForDays([15, 16]);
     const b = await computeBreakdown(fewLogs, {
       stipendRecord: { basicStipend: 100000, effectiveFrom: aug15, effectiveTo: null },
     });
     expect(b.creditedAttendanceDays).toBe(2);
-    // Aug 15–31 = 17 calendar days, independent of how many logs exist.
-    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 17) / 31));
+    // Only 2 logged present days out of 31 scheduled days in the month —
+    // hourly-earned Basic, not a calendar-day segment proration.
+    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 2) / 31));
   });
 
-  it('E2: mid-month joiningDate prorates Basic from joining through month end', async () => {
+  it('E2: mid-month joiningDate — Basic earns only for the days actually logged', async () => {
     const fewLogs = logsForDays([15, 16]);
     const b = await computeBreakdown(fewLogs, {
       stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
       employee: { joiningDate: new Date(Date.UTC(2026, 7, 15)) },
     });
     expect(b.creditedAttendanceDays).toBe(2);
-    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 17) / 31));
+    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 2) / 31));
   });
 
-  it('E3: active package still prorates Basic from contractual effectiveFrom (not attendance backfill)', async () => {
+  it('E3: backfilled attendance earns Basic hourly across all logged days, regardless of package effectiveFrom', async () => {
     const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
     const { service } = makeService(logs);
     const b = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
@@ -886,11 +892,13 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
       backfillFromJoining: true,
     });
     expect(b.creditedAttendanceDays).toBe(28);
-    // Aug 28–31 = 4 contractual days even if attendance backfill reads earlier logs.
-    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 4) / 31));
+    // With backfill, attendance is read from joiningDate, so all 28 logged
+    // present days count toward hourly-earned Basic — not bounded to the
+    // package's own effectiveFrom window.
+    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 28) / 31));
   });
 
-  it('E4: only/oldest open package pays full-month Basic when joining is before the month', async () => {
+  it('E4: oldest open package with attendance backfill earns Basic hourly too', async () => {
     const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
     const { service } = makeService(logs);
     const b = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
@@ -907,11 +915,13 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
       backfillFromJoining: true,
       backfillContractualFromEmployment: true,
     });
-    expect(b.payrollBasicStipend).toBe(30000);
+    // Allowances still follow the calendar-month fixed-package rule (rule 11);
+    // only Basic itself is hourly-earned.
+    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 28) / 31));
     expect(b.fixedAllowances).toBe(5000);
   });
 
-  it('fixed allowances are the full monthly package on the active salary; hourly rate stays on basic', async () => {
+  it('fixed allowances are the full monthly package on the active salary; Basic is hourly-earned within the package window', async () => {
     const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
     const { service } = makeService(logs);
     const b = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
@@ -929,7 +939,9 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     });
     expect(b.hourlyRate).toBe(computeHourlyRate(30000, 8, 31));
     expect(b.hourlyRate).not.toBe(computeHourlyRate(35000, 8, 31));
-    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 4) / 31));
+    // Without backfill, attendance is bounded to the package's own window
+    // (Aug 28–31); only day 28 has a logged present day in that window.
+    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 1) / 31));
     expect(b.fixedAllowances).toBe(5000);
   });
 
@@ -1010,13 +1022,14 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     expect(newSeg.payrollBasicStipend).toBe(15300); // 17/31 * 27900
   });
 
-  it('SHORT_LEAVE does not shrink contractual Basic', async () => {
+  it('SHORT_LEAVE is credited for its actual worked hours', async () => {
     const logs = logsForDays([3], AttendanceStatus.SHORT_LEAVE);
     const b = await computeBreakdown(logs, {
       stipendRecord: { basicStipend: 24800, effectiveFrom: FAR_PAST, effectiveTo: null },
     });
     expect(b.creditedAttendanceDays).toBe(1);
-    expect(b.payrollBasicStipend).toBe(24800);
+    // 1 logged day out of 31 scheduled days — hourly-earned Basic.
+    expect(b.payrollBasicStipend).toBe(roundMoney(24800 / 31));
   });
 
   it('I: net is payroll basic + allowances − deductions', async () => {
@@ -1026,7 +1039,8 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
       existingDeductions: [{ amount: 5000 }],
       existingAllowances: [{ amount: 2000 }],
     });
-    expect(b.payrollBasicStipend).toBe(100000);
-    expect(b.netStipend).toBe(97000);
+    const expectedBasic = roundMoney(100000 / 31);
+    expect(b.payrollBasicStipend).toBe(expectedBasic);
+    expect(b.netStipend).toBe(roundMoney(expectedBasic + 2000 - 5000));
   });
 });

@@ -43,7 +43,15 @@ export interface PayslipSlipData {
     tax: number;
     auditDifference: number;
     staffPendingMed: number;
+    /** Catch-all for deduction reasons not covered by the fixed categories above, so nothing is silently dropped from the printed total. */
+    other: number;
   };
+  /** Every individual deduction row (reason + description + amount) so the payslip can show why pay was reduced, not just bucketed totals. */
+  deductionItems: Array<{
+    reason: string;
+    description: string | null;
+    amount: number;
+  }>;
   earningsTotal: number;
   deductionsTotal: number;
   netPay: number;
@@ -117,7 +125,8 @@ export function computeDeductionsTotal(
     deductions.providentFund +
     deductions.tax +
     deductions.auditDifference +
-    deductions.staffPendingMed
+    deductions.staffPendingMed +
+    deductions.other
   );
 }
 
