@@ -755,6 +755,14 @@ export interface PayrollEntry {
     }
   }
   slip?: PayslipSlipData
+  attendance?: {
+    present: number
+    absent: number
+    onLeave: number
+    late: number
+    overtimeHours: number
+    extraWorkingDays: number
+  }
 }
 
 export interface PayrollSummaryEmployee {

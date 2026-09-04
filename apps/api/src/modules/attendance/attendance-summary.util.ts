@@ -44,3 +44,36 @@ export function summarizeAttendanceLogs(
     totalLateMinutes: logs.reduce((sum, log) => sum + log.lateMinutes, 0),
   };
 }
+
+/** Counts finance uses on Monthly Payroll (same status buckets as the profile cards). */
+export type PayrollAttendanceReport = {
+  present: number;
+  absent: number;
+  onLeave: number;
+  late: number;
+  overtimeHours: number;
+  extraWorkingDays: number;
+};
+
+export function toPayrollAttendanceReport(
+  summary: AttendanceMonthSummary,
+  extraWorkingDays = 0,
+): PayrollAttendanceReport {
+  return {
+    present: summary.present + summary.swapCovered,
+    absent: summary.absent + summary.uninformedAbsent,
+    onLeave: summary.onLeave,
+    late: summary.late,
+    overtimeHours: Math.round((summary.overtimeMinutes / 60) * 100) / 100,
+    extraWorkingDays,
+  };
+}
+
+export const EMPTY_PAYROLL_ATTENDANCE_REPORT: PayrollAttendanceReport = {
+  present: 0,
+  absent: 0,
+  onLeave: 0,
+  late: 0,
+  overtimeHours: 0,
+  extraWorkingDays: 0,
+};

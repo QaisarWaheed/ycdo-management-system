@@ -138,6 +138,16 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .payroll-report-print--monthly .payroll-report-table {
+    table-layout: auto;
+    font-size: 10px;
+  }
+
+  .payroll-report-print--monthly .payroll-report-table th,
+  .payroll-report-print--monthly .payroll-report-table td {
+    padding: 4px 5px;
+  }
+
   .payroll-report-print-footer {
     margin-top: 12px;
     font-size: 11px;

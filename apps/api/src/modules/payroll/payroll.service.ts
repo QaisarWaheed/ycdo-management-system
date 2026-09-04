@@ -42,6 +42,11 @@ import {
   PRE_JOIN_UNMARKED_NOTE,
 } from '../attendance/attendance-calendar.util';
 import {
+  EMPTY_PAYROLL_ATTENDANCE_REPORT,
+  summarizeAttendanceLogs,
+  toPayrollAttendanceReport,
+} from '../attendance/attendance-summary.util';
+import {
   isExitEmployeeStatus,
   isPostExitAttendanceDate,
   isPreActiveAttendanceDate,
@@ -2954,12 +2959,20 @@ export class PayrollService {
       leaveSplit,
     });
 
-    return {
-      ...current,
-      totalRelieverHours: Math.round((totalRelieverMinutes / 60) * 100) / 100,
-      hourlyBreakdown: breakdown,
-      slip,
-    };
+    const [withAttendance] = await this.attachPayrollAttendanceReport(
+      [
+        {
+          ...current,
+          totalRelieverHours:
+            Math.round((totalRelieverMinutes / 60) * 100) / 100,
+          hourlyBreakdown: breakdown,
+          slip,
+        },
+      ],
+      entry.month,
+      entry.year,
+    );
+    return withAttendance;
   }
 
   private buildPayslipSlipData(input: {
@@ -3838,7 +3851,7 @@ export class PayrollService {
 
     where.OR = eligibilityOr;
 
-    return this.prisma.payrollEntry.findMany({
+    const entries = await this.prisma.payrollEntry.findMany({
       where,
       include: {
         deductions: true,
@@ -3871,6 +3884,86 @@ export class PayrollService {
         },
       },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
+    });
+
+    if (!query.month || entries.length === 0) {
+      return entries;
+    }
+
+    return this.attachPayrollAttendanceReport(entries, query.month, year);
+  }
+
+  private async attachPayrollAttendanceReport<
+    T extends {
+      stipendRecord?: { employee?: { id?: string } | null } | null;
+    },
+  >(entries: T[], month: number, year: number): Promise<
+    Array<T & { attendance: ReturnType<typeof toPayrollAttendanceReport> }>
+  > {
+    const employeeIds = [
+      ...new Set(
+        entries
+          .map((e) => e.stipendRecord?.employee?.id)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    if (employeeIds.length === 0) {
+      return entries.map((e) => ({
+        ...e,
+        attendance: EMPTY_PAYROLL_ATTENDANCE_REPORT,
+      }));
+    }
+
+    const { monthStart, monthEnd } = this.pakistanMonthWindow(year, month);
+    const [logs, awdRows] = await Promise.all([
+      this.prisma.attendanceLog.findMany({
+        where: {
+          employeeId: { in: employeeIds },
+          type: AttendanceLogType.REGULAR,
+          date: { gte: monthStart, lte: monthEnd },
+        },
+        select: {
+          employeeId: true,
+          status: true,
+          overtimeMinutes: true,
+          lateMinutes: true,
+        },
+      }),
+      this.prisma.additionalWorkingDay.findMany({
+        where: {
+          employeeId: { in: employeeIds },
+          date: { gte: monthStart, lte: monthEnd },
+        },
+        select: { employeeId: true },
+      }),
+    ]);
+
+    const logsByEmployee = new Map<string, typeof logs>();
+    for (const log of logs) {
+      const list = logsByEmployee.get(log.employeeId) ?? [];
+      list.push(log);
+      logsByEmployee.set(log.employeeId, list);
+    }
+    const awdByEmployee = new Map<string, number>();
+    for (const row of awdRows) {
+      awdByEmployee.set(
+        row.employeeId,
+        (awdByEmployee.get(row.employeeId) ?? 0) + 1,
+      );
+    }
+
+    return entries.map((entry) => {
+      const employeeId = entry.stipendRecord?.employee?.id;
+      if (!employeeId) {
+        return { ...entry, attendance: EMPTY_PAYROLL_ATTENDANCE_REPORT };
+      }
+      return {
+        ...entry,
+        attendance: toPayrollAttendanceReport(
+          summarizeAttendanceLogs(logsByEmployee.get(employeeId) ?? []),
+          awdByEmployee.get(employeeId) ?? 0,
+        ),
+      };
     });
   }
 
@@ -3912,7 +4005,12 @@ export class PayrollService {
       throw new NotFoundException(`Payroll entry with id ${entryId} not found`);
     }
 
-    return entry;
+    const [withAttendance] = await this.attachPayrollAttendanceReport(
+      [entry],
+      entry.month,
+      entry.year,
+    );
+    return withAttendance;
   }
 
   async getEmployeePayrollHistory(employeeId: string) {

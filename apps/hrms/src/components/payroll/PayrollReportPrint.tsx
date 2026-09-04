@@ -7,6 +7,12 @@ export type PayrollReportRow = {
   employee?: string
   employeeCode?: string
   period: string
+  present?: string
+  absent?: string
+  onLeave?: string
+  late?: string
+  overtime?: string
+  extraWorkingDays?: string
   basic: string
   deductions: string
   allowances: string
@@ -47,6 +53,12 @@ export function buildMonthlyPayrollReportRows(
       employee: emp?.fullName ?? '—',
       employeeCode: emp?.employeeCode ?? '',
       period: `${entry.month}/${entry.year}`,
+      present: String(entry.attendance?.present ?? 0),
+      absent: String(entry.attendance?.absent ?? 0),
+      onLeave: String(entry.attendance?.onLeave ?? 0),
+      late: String(entry.attendance?.late ?? 0),
+      overtime: String(entry.attendance?.overtimeHours ?? 0),
+      extraWorkingDays: String(entry.attendance?.extraWorkingDays ?? 0),
       basic: formatPKR(entry.basicStipend),
       deductions: formatPKR(Math.max(0, Number(entry.totalDeductions))),
       allowances: formatPKR(entry.totalAllowances),
@@ -125,7 +137,14 @@ export function PayrollReportPrintSection({
   const isMonthly = variant === 'monthly'
 
   return (
-    <div id={id} className="payroll-report-print hidden print:block print-content">
+    <div
+      id={id}
+      className={
+        isMonthly
+          ? 'payroll-report-print payroll-report-print--monthly hidden print:block print-content'
+          : 'payroll-report-print hidden print:block print-content'
+      }
+    >
       <div className="payroll-report-print-header">
         <h2 className="text-xl font-bold">YCDO Central Hospital</h2>
         <p className="text-lg font-semibold">{title}</p>
@@ -139,6 +158,16 @@ export function PayrollReportPrintSection({
         <thead>
           <tr>
             {isMonthly ? <th>Employee</th> : <th>Period</th>}
+            {isMonthly ? (
+              <>
+                <th className="num">Present</th>
+                <th className="num">Absent</th>
+                <th className="num">On leave</th>
+                <th className="num">Late</th>
+                <th className="num">OT hrs</th>
+                <th className="num">Extra days</th>
+              </>
+            ) : null}
             <th className="num">Basic</th>
             {isMonthly ? (
               <>
@@ -159,7 +188,7 @@ export function PayrollReportPrintSection({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={isMonthly ? 6 : 7} className="text-center">
+              <td colSpan={isMonthly ? 12 : 7} className="text-center">
                 No payroll records
               </td>
             </tr>
@@ -176,6 +205,16 @@ export function PayrollReportPrintSection({
                 ) : (
                   <td>{row.period}</td>
                 )}
+                {isMonthly ? (
+                  <>
+                    <td className="num">{row.present ?? '0'}</td>
+                    <td className="num">{row.absent ?? '0'}</td>
+                    <td className="num">{row.onLeave ?? '0'}</td>
+                    <td className="num">{row.late ?? '0'}</td>
+                    <td className="num">{row.overtime ?? '0'}</td>
+                    <td className="num">{row.extraWorkingDays ?? '0'}</td>
+                  </>
+                ) : null}
                 <td className="num">{row.basic}</td>
                 {isMonthly ? (
                   <>
@@ -198,6 +237,9 @@ export function PayrollReportPrintSection({
       </table>
 
       {footer ? <p className="payroll-report-print-footer">{footer}</p> : null}
+      {isMonthly ? (
+        <style>{`@media print { @page { size: A4 landscape; margin: 10mm; } }`}</style>
+      ) : null}
     </div>
   )
 }

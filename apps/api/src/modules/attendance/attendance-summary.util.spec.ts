@@ -1,5 +1,8 @@
 import { AttendanceStatus } from '@prisma/client';
-import { summarizeAttendanceLogs } from './attendance-summary.util';
+import {
+  summarizeAttendanceLogs,
+  toPayrollAttendanceReport,
+} from './attendance-summary.util';
 
 describe('summarizeAttendanceLogs', () => {
   it('counts every attendance status separately, including short leave', () => {
@@ -45,6 +48,28 @@ describe('summarizeAttendanceLogs', () => {
     expect(summary.shortLeave).toBe(1);
     expect(summary.halfDay).toBe(1);
     expect(summary.onLeave).toBe(1);
+  });
+
+  it('maps profile summary into finance payroll columns', () => {
+    const report = toPayrollAttendanceReport(
+      summarizeAttendanceLogs([
+        { status: AttendanceStatus.PRESENT, overtimeMinutes: 90, lateMinutes: 0 },
+        { status: AttendanceStatus.SWAP_COVERED, overtimeMinutes: 0, lateMinutes: 0 },
+        { status: AttendanceStatus.ABSENT, overtimeMinutes: 0, lateMinutes: 0 },
+        { status: AttendanceStatus.UNINFORMED_ABSENT, overtimeMinutes: 0, lateMinutes: 0 },
+        { status: AttendanceStatus.ON_LEAVE, overtimeMinutes: 0, lateMinutes: 0 },
+        { status: AttendanceStatus.LATE, overtimeMinutes: 0, lateMinutes: 15 },
+      ]),
+      2,
+    );
+    expect(report).toEqual({
+      present: 2,
+      absent: 2,
+      onLeave: 1,
+      late: 1,
+      overtimeHours: 1.5,
+      extraWorkingDays: 2,
+    });
   });
 
   it('returns zeros for an empty month', () => {

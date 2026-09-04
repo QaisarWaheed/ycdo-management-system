@@ -391,6 +391,24 @@ function PayrollDetailDialog({
         </DialogHeader>
 
         <div className={detailTab === 'payslip' ? 'hidden' : undefined}>
+        {data.attendance && (
+          <div className="mb-4 grid grid-cols-3 gap-2 rounded-lg border border-border bg-surface p-3 text-sm no-print sm:grid-cols-6">
+            {[
+              ['Present', data.attendance.present],
+              ['Absent', data.attendance.absent],
+              ['On leave', data.attendance.onLeave],
+              ['Late', data.attendance.late],
+              ['Overtime', `${data.attendance.overtimeHours} hrs`],
+              ['Extra days', data.attendance.extraWorkingDays],
+            ].map(([label, value]) => (
+              <div key={label} className="text-center">
+                <p className="text-lg font-semibold tabular-nums">{value}</p>
+                <p className="text-xs text-text-secondary">{label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {data.hourlyBreakdown && (
           <div className="mb-4 space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm no-print">
             <p className="font-semibold">Basic stipend (attendance days)</p>
@@ -994,11 +1012,21 @@ function MonthlyPayrollTab() {
       <div className="no-print">
       <TableRecordCount count={total} label="payroll entry" />
 
-      <div className="rounded-lg border border-border bg-white">
+      <div className="overflow-x-auto rounded-lg border border-border bg-white">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
+              <TableHead className="whitespace-nowrap text-right" title="Present + swap covered">
+                Present
+              </TableHead>
+              <TableHead className="whitespace-nowrap text-right" title="Absent + uninformed absent">
+                Absent
+              </TableHead>
+              <TableHead className="whitespace-nowrap text-right">On leave</TableHead>
+              <TableHead className="whitespace-nowrap text-right">Late</TableHead>
+              <TableHead className="whitespace-nowrap text-right">OT hrs</TableHead>
+              <TableHead className="whitespace-nowrap text-right">Extra days</TableHead>
               <TableHead>Basic Stipend</TableHead>
               <TableHead>Deductions</TableHead>
               <TableHead>Allowances</TableHead>
@@ -1011,7 +1039,7 @@ function MonthlyPayrollTab() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(7)].map((__, j) => (
+                  {[...Array(13)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -1020,7 +1048,7 @@ function MonthlyPayrollTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={13} className="h-32 text-center text-text-secondary">
                   No payroll entries for this period
                 </TableCell>
               </TableRow>
@@ -1044,6 +1072,24 @@ function MonthlyPayrollTab() {
                           </Badge>
                         ) : null}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {entry.attendance?.present ?? 0}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {entry.attendance?.absent ?? 0}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {entry.attendance?.onLeave ?? 0}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {entry.attendance?.late ?? 0}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {entry.attendance?.overtimeHours ?? 0}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {entry.attendance?.extraWorkingDays ?? 0}
                     </TableCell>
                     <TableCell>{formatPKR(entry.basicStipend)}</TableCell>
                     <TableCell
@@ -1113,14 +1159,14 @@ function MonthlyPayrollTab() {
             )}
           </TableBody>
         </Table>
-
-        <TablePagination
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          onPageChange={setPage}
-        />
       </div>
+
+      <TablePagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        onPageChange={setPage}
+      />
       </div>
 
       <PayrollReportPrintSection
@@ -1129,7 +1175,7 @@ function MonthlyPayrollTab() {
         subtitle={printSubtitle}
         rows={monthlyReportRows}
         variant="monthly"
-        footer={`Total entries: ${entries.length}`}
+        footer={`Total entries: ${entries.length}. Attendance is the full month (same counts on every stipend row for that employee).`}
       />
 
       <PayrollDetailDialog
