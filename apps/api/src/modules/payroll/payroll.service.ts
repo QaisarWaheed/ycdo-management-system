@@ -49,6 +49,8 @@ import {
 import {
   aggregateMonthlyPayrollByEmployee,
   aggregatePayrollHistoryByMonth as aggregatePayrollHistoryByMonthUtil,
+  keepPayrollSegmentsForMonth,
+  mergePayrollSegments,
   toUtcMonthStart,
 } from './payroll-aggregate.util';
 import {
@@ -2814,6 +2816,27 @@ export class PayrollService {
         stipendRecord: entry.stipendRecord,
       };
     }
+
+    // Mirror the Payroll tab/History aggregation: when a mid-month raise or
+    // package edit produced multiple stipend segments for this employee in
+    // this month, merge them so the detail view and payslip show the same
+    // totals as everywhere else instead of just this one segment.
+    const siblingEntries = await this.prisma.payrollEntry.findMany({
+      where: {
+        month: entry.month,
+        year: entry.year,
+        stipendRecord: { employeeId: entry.stipendRecord.employeeId },
+      },
+      include: { deductions: true, allowances: true, stipendRecord: true },
+    });
+    const segmentsForMerge = siblingEntries.map((seg) =>
+      seg.id === current.id ? current : seg,
+    );
+    const kept = keepPayrollSegmentsForMonth(segmentsForMerge);
+    current =
+      kept.length > 0
+        ? { ...mergePayrollSegments(kept), stipendRecord: entry.stipendRecord }
+        : current;
 
     const employee = entry.stipendRecord.employee;
     const breakdown = await this.computeHourlyBreakdown(
