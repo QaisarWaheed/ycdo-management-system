@@ -60,6 +60,7 @@ import {
   RebuildPayrollDto,
   ResetUnpaidPayrollDto,
   SalaryIncrementDto,
+  UpdateActiveStipendDto,
   UpdatePayrollStatusDto,
 } from './payroll.dto';
 import {
@@ -242,6 +243,10 @@ export class PayrollService {
           backfillFromJoining:
             !backfillFromAttendance && stipendRecord.effectiveTo == null,
           backfillFromAttendance,
+          backfillContractualFromEmployment:
+            !backfillFromAttendance &&
+            stipendRecord.effectiveTo == null &&
+            overlappingStipendRecords[0]?.id === stipendRecord.id,
         },
       );
       if (stipendRecord.id === packageBearingId) {
@@ -377,6 +382,10 @@ export class PayrollService {
           backfillFromJoining:
             !backfillFromAttendance && stipendRecord.effectiveTo == null,
           backfillFromAttendance,
+          backfillContractualFromEmployment:
+            !backfillFromAttendance &&
+            stipendRecord.effectiveTo == null &&
+            overlappingStipendRecords[0]?.id === stipendRecord.id,
         },
       );
       results.push({
@@ -1185,7 +1194,7 @@ export class PayrollService {
     );
   }
 
-  /** One history row per calendar month; drops stale segments, sums real increments. */
+  /** One history row per calendar month; drops leftover duplicate segments, sums real increments. */
   private aggregatePayrollHistoryByMonth<
     T extends {
       id: string;
@@ -1222,6 +1231,7 @@ export class PayrollService {
             (b.stipendRecord?.effectiveFrom?.getTime() ?? 0),
         );
       const newestActive = active[active.length - 1];
+      const newestActiveFrom = newestActive?.stipendRecord?.effectiveFrom;
 
       const kept = group.filter((e) => {
         const sr = e.stipendRecord;
@@ -1229,8 +1239,16 @@ export class PayrollService {
         if (sr.effectiveTo == null) {
           return !newestActive || e.id === newestActive.id;
         }
-        // A closed package next to an active one is the extra increment row.
-        if (newestActive) return false;
+        // Keep closed packages that started before the current open one
+        // (real mid-month increment). Drop closed leftovers that started
+        // on/after the open package's effectiveFrom.
+        if (
+          newestActiveFrom &&
+          sr.effectiveFrom &&
+          sr.effectiveFrom.getTime() >= newestActiveFrom.getTime()
+        ) {
+          return false;
+        }
         return true;
       });
 
@@ -1404,6 +1422,7 @@ export class PayrollService {
     options: {
       backfillFromJoining?: boolean;
       backfillFromAttendance?: boolean;
+      backfillContractualFromEmployment?: boolean;
     } = {},
   ) {
     let entry = await this.prisma.payrollEntry.findUnique({
@@ -1442,6 +1461,8 @@ export class PayrollService {
           applyContractualPackage,
           backfillFromJoining: options.backfillFromJoining,
           backfillFromAttendance: options.backfillFromAttendance,
+          backfillContractualFromEmployment:
+            options.backfillContractualFromEmployment,
         },
       );
       const createdTotals = this.clampPayrollTotals(initialBreakdown);
@@ -1564,6 +1585,8 @@ export class PayrollService {
         applyContractualPackage,
         backfillFromJoining: options.backfillFromJoining,
         backfillFromAttendance: options.backfillFromAttendance,
+        backfillContractualFromEmployment:
+          options.backfillContractualFromEmployment,
       },
     );
     const totals = this.clampPayrollTotals(breakdown);
@@ -3429,6 +3452,12 @@ export class PayrollService {
       /** Payable attendance exists before the stipend package's
        * effectiveFrom (joining date set after work started). */
       backfillFromAttendance?: boolean;
+      /** Oldest/only open package in the month: Basic starts at
+       * month-start/joining, not a late stipend.effectiveFrom. Must stay
+       * false on a mid-month increment's NEW segment so the closed prior
+       * package still owns the earlier Basic days. Allowances do not use
+       * this flag — they are the full monthly package on the active slip. */
+      backfillContractualFromEmployment?: boolean;
       /** Pakistan business date for diagnostics/tests; basic pay is always
        * derived from logged attendance only (no future-day credit). */
       asOf?: Date;
@@ -3649,8 +3678,11 @@ export class PayrollService {
     }
 
     const applyPackageDeductions = context.applyContractualPackage !== false;
-    // Fixed monthly allowances are always prorated across the contractual
-    // segment they belong to (never zeroed on closed segments, never doubled).
+    // Fixed monthly allowances (and reward/fuel) are added on the active
+    // salary only. OT and attendance deductions stay on Basic. A late
+    // stipend.effectiveFrom must not shrink this package — only joining /
+    // exit dates do. Closed increment segments get 0 so the amount is not
+    // counted twice.
     const monthlyFixedAllowances =
       (pkg.allowances || 0) +
       (pkg.reward || 0) +
@@ -3662,33 +3694,38 @@ export class PayrollService {
       context.employee.statusEffectiveFrom
         ? context.employee.statusEffectiveFrom
         : null;
-    // Contractual Basic/allowance bounds use stipend effectiveFrom/To only —
-    // never the attendance backfill window (backfillFromJoining expands log
-    // reads for a lone active package, but must not rewrite mid-month
-    // stipend change Basic into a full-month figure on the new package).
+    // Contractual Basic bounds use stipend effectiveFrom/To, except the
+    // oldest/only open package (backfillContractualFromEmployment), which
+    // starts at month-start/joining so a late package date does not wipe
+    // earlier days. Mid-month increment NEW segments must not get that flag.
     const { monthStart: contractualMonthStart } = this.pakistanMonthWindow(
       year,
       month,
     );
-    const contractualSegmentStart =
+    let contractualSegmentStart =
       context.stipendRecord.effectiveFrom.getTime() >
       contractualMonthStart.getTime()
         ? context.stipendRecord.effectiveFrom
         : contractualMonthStart;
+    if (context.backfillContractualFromEmployment) {
+      contractualSegmentStart = contractualMonthStart;
+    }
     const contractualSegmentEndExclusive =
       context.stipendRecord.effectiveTo ?? null;
-    const fixedAllowances = prorateMonthlyPackageAmount({
-      monthlyAmount: monthlyFixedAllowances,
-      year,
-      month,
-      segmentStart: contractualSegmentStart,
-      segmentEndExclusive: contractualSegmentEndExclusive,
-      monthEnd,
-      employmentStart: context.backfillFromAttendance
-        ? null
-        : context.employee.joiningDate,
-      employmentEndExclusive,
-    });
+    const fixedAllowances = applyPackageDeductions
+      ? prorateMonthlyPackageAmount({
+          monthlyAmount: monthlyFixedAllowances,
+          year,
+          month,
+          segmentStart: contractualMonthStart,
+          segmentEndExclusive: null,
+          monthEnd,
+          employmentStart: context.backfillFromAttendance
+            ? null
+            : context.employee.joiningDate,
+          employmentEndExclusive,
+        })
+      : 0;
     // Fixed monthly package deductions (health/loan/advance/fine) apply once
     // per employee/month on the package-bearing segment only.
     const fixedPackageDeductions = applyPackageDeductions
@@ -4184,6 +4221,103 @@ export class PayrollService {
 
       return newRecord;
     });
+  }
+
+  /**
+   * Correct the currently-open stipend amounts without opening a new
+   * package. Edit Payroll must use this for ordinary corrections so a
+   * save does not start a mid-month increment from "today".
+   */
+  async updateActiveStipend(dto: UpdateActiveStipendDto, actingUserId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+      include: {
+        stipendRecords: {
+          where: { effectiveTo: null },
+          orderBy: { effectiveFrom: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException(
+        `Employee with id ${dto.employeeId} not found`,
+      );
+    }
+
+    const activeStipendRecord = employee.stipendRecords[0];
+    if (!activeStipendRecord) {
+      throw new NotFoundException(
+        `No active stipend record found for employee ${dto.employeeId}`,
+      );
+    }
+
+    const lumpsumTotal = calculateLumpsumTotal({
+      basicStipend: dto.basicStipend,
+      allowances: dto.allowances,
+      reward: dto.reward,
+      progressReward: dto.progressReward,
+      fuelAllowance: dto.fuelAllowance,
+      loanDeduction: dto.loanDeduction,
+      advanceDeduction: dto.advanceDeduction,
+      fineDeduction: dto.fineDeduction,
+      healthDeduction: dto.healthDeduction,
+    });
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const record = await tx.stipendRecord.update({
+        where: { id: activeStipendRecord.id },
+        data: {
+          basicStipend: dto.basicStipend,
+          allowances: dto.allowances ?? 0,
+          reward: dto.reward ?? 0,
+          progressReward: dto.progressReward ?? 0,
+          fuelAllowance: dto.fuelAllowance ?? 0,
+          loanDeduction: dto.loanDeduction ?? 0,
+          advanceDeduction: dto.advanceDeduction ?? 0,
+          fineDeduction: dto.fineDeduction ?? 0,
+          healthDeduction: dto.healthDeduction ?? 0,
+          lumpsumTotal,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'STIPEND_PACKAGE_CORRECTED',
+          entity: 'StipendRecord',
+          entityId: record.id,
+          changes: {
+            previousBasicStipend: Number(activeStipendRecord.basicStipend),
+            newBasicStipend: dto.basicStipend,
+            lumpsumTotal,
+            reason: dto.reason?.trim() || null,
+            effectiveFromUnchanged: activeStipendRecord.effectiveFrom,
+          },
+        },
+      });
+
+      return record;
+    });
+
+    const pendingMonths = await this.prisma.payrollEntry.findMany({
+      where: {
+        status: PayrollStatus.PENDING,
+        stipendRecord: { employeeId: dto.employeeId },
+      },
+      select: { month: true, year: true },
+      distinct: ['month', 'year'],
+    });
+    for (const row of pendingMonths) {
+      await this.recomputeEmployeeMonth({
+        employeeId: dto.employeeId,
+        month: row.month,
+        year: row.year,
+      });
+    }
+
+    return updated;
   }
 
   private validateStatusTransition(

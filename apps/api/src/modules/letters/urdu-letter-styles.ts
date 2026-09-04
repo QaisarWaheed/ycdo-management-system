@@ -2,9 +2,8 @@
  * Shared CSS for Urdu RTL letters matching ycdo-warning-letter.pdf shell.
  * Injected into every Urdu Handlebars template as {{{letterStyles}}}.
  *
- * Body/content is compact so warning, fine, advice, and similar short letters
- * stay on one A4 page. Headings (letterhead, English title, violation heading)
- * keep their larger sizes.
+ * Body/content stays readable: Nastaliq needs extra line-height so rows
+ * do not collide. Short letters still typically fit one A4 page.
  */
 export const URDU_LETTER_STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Naskh+Arabic:wght@400;700&display=swap');
@@ -17,7 +16,7 @@ body {
   font-family: 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', 'Jameel Noori Nastaleeq',
     'Urdu Typesetting', 'Segoe UI', Tahoma, Arial, sans-serif;
   font-size: 10.5pt;
-  line-height: 1.7;
+  line-height: 2.2;
   color: #000;
   margin: 0;
   padding: 0;
@@ -128,11 +127,11 @@ body {
 .meta-block {
   text-align: right;
   font-size: 10.5pt;
-  line-height: 1.6;
-  margin-bottom: 6pt;
+  line-height: 2.1;
+  margin-bottom: 8pt;
 }
 
-.meta-block .row { margin: 0 0 2pt; }
+.meta-block .row { margin: 0 0 4pt; }
 .meta-block .label { font-weight: 700; }
 .meta-block .row.subject-row {
   text-align: center;
@@ -157,9 +156,10 @@ body {
 }
 
 .body p {
-  margin: 0 0 6pt;
+  margin: 0 0 10pt;
   text-align: justify;
   font-size: 10.5pt;
+  line-height: 2.25;
 }
 
 .violations {
@@ -178,8 +178,9 @@ body {
 }
 
 .violations li {
-  margin-bottom: 3pt;
+  margin-bottom: 8pt;
   text-align: right;
+  line-height: 2.25;
 }
 
 .attendance-table {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
@@ -101,6 +101,7 @@ export function EditPayrollDialog({
   latestStipend,
   onSuccess,
 }: EditPayrollDialogProps) {
+  const [isIncrement, setIsIncrement] = useState(false)
   const originalJoiningDate = toDateInput(joiningDate)
 
   const form = useForm<EditPayrollFormValues>({
@@ -123,13 +124,16 @@ export function EditPayrollDialog({
     form.reset({
       joiningDate: originalJoiningDate,
       ...stipendDefaults,
-      effectiveFrom: toDateInput(new Date().toISOString()),
+      effectiveFrom: '',
       reason: '',
     })
+    setIsIncrement(false)
   }, [open, originalJoiningDate, latestStipend, form])
 
   const mutation = useMutation({
-    mutationFn: async (values: EditPayrollFormValues) => {
+    mutationFn: async (
+      values: EditPayrollFormValues & { isIncrement?: boolean },
+    ) => {
       const joiningChanged = values.joiningDate !== originalJoiningDate
       const stipendUpdate =
         latestStipend != null && stipendChanged(values, latestStipend)
@@ -139,14 +143,7 @@ export function EditPayrollDialog({
       }
 
       if (stipendUpdate) {
-        if (!values.effectiveFrom?.trim()) {
-          throw new Error('Effective date is required when updating stipend')
-        }
-        if (!values.reason?.trim()) {
-          throw new Error('Reason is required when updating stipend')
-        }
-
-        await payrollApi.increment({
+        const packageValues = {
           employeeId,
           basicStipend: values.basicStipend,
           allowances: values.allowances,
@@ -157,9 +154,27 @@ export function EditPayrollDialog({
           advanceDeduction: values.advanceDeduction,
           fineDeduction: values.fineDeduction,
           healthDeduction: values.healthDeduction,
-          effectiveFrom: values.effectiveFrom,
-          reason: values.reason.trim(),
-        })
+        }
+
+        if (values.isIncrement) {
+          if (!values.effectiveFrom?.trim()) {
+            throw new Error('Effective date is required for a salary increment')
+          }
+          if (!values.reason?.trim()) {
+            throw new Error('Reason is required for a salary increment')
+          }
+
+          await payrollApi.increment({
+            ...packageValues,
+            effectiveFrom: values.effectiveFrom,
+            reason: values.reason.trim(),
+          })
+        } else {
+          await payrollApi.updateActiveStipend({
+            ...packageValues,
+            reason: values.reason?.trim() || 'Correct current stipend package',
+          })
+        }
       }
 
       if (joiningChanged) {
@@ -198,7 +213,9 @@ export function EditPayrollDialog({
 
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
+            onSubmit={form.handleSubmit((values) =>
+              mutation.mutate({ ...values, isIncrement })
+            )}
             className="space-y-6"
           >
             <FormField
@@ -223,41 +240,76 @@ export function EditPayrollDialog({
 
             {latestStipend ? (
               <>
+                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-text-secondary">
+                  Saving updates the current package only. That does not
+                  split this month. Tick salary increment only when pay
+                  actually changes from a chosen date (prefer the 1st of
+                  a month).
+                </p>
                 <StipendPackageFields control={form.control} watch={form.watch} />
 
-                <FormField
-                  control={form.control}
-                  name="effectiveFrom"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Stipend Effective From</FormLabel>
-                      <FormControl>
-                        <DateInput
-                          value={field.value ?? ''}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          name={field.name}
-                          ref={field.ref}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={isIncrement}
+                    onChange={(e) => setIsIncrement(e.target.checked)}
+                  />
+                  <span>
+                    This is a salary increment from a new date (starts a
+                    new package)
+                  </span>
+                </label>
 
-                <FormField
-                  control={form.control}
-                  name="reason"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Reason for Stipend Change</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="e.g. Annual increment" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {isIncrement ? (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="effectiveFrom"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Increment starts on</FormLabel>
+                          <FormControl>
+                            <DateInput
+                              value={field.value ?? ''}
+                              onChange={field.onChange}
+                              onBlur={field.onBlur}
+                              name={field.name}
+                              ref={field.ref}
+                            />
+                          </FormControl>
+                          {field.value && !field.value.endsWith('-01') ? (
+                            <p className="text-xs text-amber-800">
+                              A date that is not the 1st splits that
+                              month&apos;s basic. Use the 1st unless pay
+                              really changes mid-month.
+                            </p>
+                          ) : (
+                            <p className="text-xs text-text-secondary">
+                              Prefer the 1st of the month so the whole
+                              month uses the new package.
+                            </p>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="reason"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Reason for increment</FormLabel>
+                          <FormControl>
+                            <Input {...field} placeholder="e.g. Annual increment" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                ) : null}
               </>
             ) : (
               <p className="text-sm text-text-secondary">

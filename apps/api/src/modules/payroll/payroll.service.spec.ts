@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { AttendanceStatus } from '@prisma/client';
+import { AttendanceStatus, PayrollStatus } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 import { computeHourlyRate, roundMoney, roundHoursFromMinutes } from './payroll-hours.util';
 
@@ -888,6 +888,109 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     expect(b.creditedAttendanceDays).toBe(28);
     // Aug 28–31 = 4 contractual days even if attendance backfill reads earlier logs.
     expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 4) / 31));
+  });
+
+  it('E4: only/oldest open package pays full-month Basic when joining is before the month', async () => {
+    const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
+    const { service } = makeService(logs);
+    const b = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
+      stipendRecord: {
+        basicStipend: 30000,
+        allowances: 5000,
+        effectiveFrom: new Date(Date.UTC(2026, 7, 28)),
+        effectiveTo: null,
+      },
+      employee: { ...EMPLOYEE, joiningDate: new Date(Date.UTC(2021, 1, 21)) },
+      existingDeductions: [],
+      existingAllowances: [],
+      asOf: new Date(Date.UTC(2026, 8, 1)),
+      backfillFromJoining: true,
+      backfillContractualFromEmployment: true,
+    });
+    expect(b.payrollBasicStipend).toBe(30000);
+    expect(b.fixedAllowances).toBe(5000);
+  });
+
+  it('fixed allowances are the full monthly package on the active salary; hourly rate stays on basic', async () => {
+    const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
+    const { service } = makeService(logs);
+    const b = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
+      stipendRecord: {
+        basicStipend: 30000,
+        allowances: 5000,
+        effectiveFrom: new Date(Date.UTC(2026, 7, 28)),
+        effectiveTo: null,
+      },
+      employee: { ...EMPLOYEE, joiningDate: new Date(Date.UTC(2021, 1, 21)) },
+      existingDeductions: [],
+      existingAllowances: [],
+      applyContractualPackage: true,
+      asOf: new Date(Date.UTC(2026, 8, 1)),
+    });
+    expect(b.hourlyRate).toBe(computeHourlyRate(30000, 8, 31));
+    expect(b.hourlyRate).not.toBe(computeHourlyRate(35000, 8, 31));
+    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 4) / 31));
+    expect(b.fixedAllowances).toBe(5000);
+  });
+
+  it('closed increment segment does not carry the current allowance package', async () => {
+    const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
+    const { service } = makeService(logs);
+    const b = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
+      stipendRecord: {
+        basicStipend: 30000,
+        allowances: 5000,
+        effectiveFrom: FAR_PAST,
+        effectiveTo: new Date(Date.UTC(2026, 7, 28)),
+      },
+      employee: { ...EMPLOYEE, joiningDate: new Date(Date.UTC(2021, 1, 21)) },
+      existingDeductions: [],
+      existingAllowances: [],
+      applyContractualPackage: false,
+      asOf: new Date(Date.UTC(2026, 8, 1)),
+    });
+    expect(b.fixedAllowances).toBe(0);
+  });
+
+  it('history sums a closed prior package with the current open segment', () => {
+    const { service } = makeService([]);
+    const merged = (service as any).aggregatePayrollHistoryByMonth([
+      {
+        id: 'new-aug',
+        month: 8,
+        year: 2026,
+        basicStipend: 3870.97,
+        totalAllowances: 677.42,
+        totalDeductions: 0,
+        netStipend: 4548.39,
+        status: PayrollStatus.PENDING,
+        stipendRecord: {
+          effectiveFrom: new Date(Date.UTC(2026, 7, 28)),
+          effectiveTo: null,
+        },
+        deductions: [],
+        allowances: [],
+      },
+      {
+        id: 'old-aug',
+        month: 8,
+        year: 2026,
+        basicStipend: 26129.03,
+        totalAllowances: 4354.84,
+        totalDeductions: 0,
+        netStipend: 30483.87,
+        status: PayrollStatus.PENDING,
+        stipendRecord: {
+          effectiveFrom: new Date(Date.UTC(2021, 1, 21)),
+          effectiveTo: new Date(Date.UTC(2026, 7, 28)),
+        },
+        deductions: [],
+        allowances: [],
+      },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].basicStipend).toBe(30000);
+    expect(merged[0].netStipend).toBe(35032.26);
   });
 
   it('F: closed vs open stipend segments prorate Basic by each contractual window', async () => {

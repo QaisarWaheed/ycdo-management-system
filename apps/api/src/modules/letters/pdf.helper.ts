@@ -112,7 +112,13 @@ export async function generateJpeg(htmlContent: string): Promise<Buffer> {
     await page.emulateMediaType('print');
     await openLetterHtml(page, htmlContent);
     await page.addStyleTag({
-      content: 'html, body { background: #fff !important; }',
+      content: `
+        html, body { background: #fff !important; }
+        body {
+          padding: 14mm !important;
+          box-sizing: border-box !important;
+        }
+      `,
     });
     // First A4 page only — never Chrome chrome / full-page scroll.
     const jpeg = await page.screenshot({

@@ -124,6 +124,11 @@ describe('URDU_LETTER_STYLES compact single-page content', () => {
       /\.violations \.heading\s*\{[^}]*font-size:\s*12pt/s,
     );
   });
+
+  it('gives Urdu body lines extra leading so Nastaliq rows do not collide', () => {
+    expect(URDU_LETTER_STYLES).toMatch(/body\s*\{[^}]*line-height:\s*2\.2/s);
+    expect(URDU_LETTER_STYLES).toMatch(/\.body p\s*\{[^}]*line-height:\s*2\.25/s);
+  });
 });
 
 describe('englishTransferTime', () => {

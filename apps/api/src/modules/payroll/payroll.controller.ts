@@ -25,6 +25,7 @@ import {
   RebuildPayrollDto,
   ResetUnpaidPayrollDto,
   SalaryIncrementDto,
+  UpdateActiveStipendDto,
   UpdatePayrollStatusDto,
 } from './payroll.dto';
 import { PayrollService } from './payroll.service';
@@ -262,5 +263,14 @@ export class PayrollController {
     @CurrentUser() user: { id: string },
   ) {
     return this.payrollService.salaryIncrement(dto, user.id);
+  }
+
+  @Patch('stipend')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  updateActiveStipend(
+    @Body() dto: UpdateActiveStipendDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.payrollService.updateActiveStipend(dto, user.id);
   }
 }

@@ -1476,6 +1476,13 @@ function StipendIncrementTab() {
           </p>
         )}
 
+        <p className="text-sm text-text-secondary">
+          This tab starts a new package from the date below. To correct
+          amounts without splitting a month, use the employee profile →
+          Edit Payroll (leave increment unticked). Prefer the 1st of the
+          month.
+        </p>
+
         <FormField
           control={form.control}
           name="effectiveFrom"

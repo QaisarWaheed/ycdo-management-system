@@ -108,6 +108,12 @@ export const payrollApi = {
   increment: (data: StipendIncrementPayload) =>
     api.post('/payroll/increment', data),
 
+  updateActiveStipend: (
+    data: Omit<StipendIncrementPayload, 'effectiveFrom' | 'reason'> & {
+      reason?: string
+    },
+  ) => api.patch('/payroll/stipend', data),
+
   getOvertimePreview: (employeeId: string, month: number, year: number) =>
     api.get<unknown, OvertimePreview>(
       `/payroll/overtime-preview/${employeeId}`,
