@@ -363,6 +363,15 @@ export class UpdateActiveStipendDto {
   @Min(0)
   healthDeduction?: number;
 
+  /**
+   * Optional correction of the open package start date (e.g. move a raise
+   * entered mid-month back to the 1st). Does not create a new package.
+   * Prior package closed on the old start date is closed on this date instead.
+   */
+  @IsOptional()
+  @IsDateString()
+  effectiveFrom?: string;
+
   @IsOptional()
   @IsString()
   reason?: string;

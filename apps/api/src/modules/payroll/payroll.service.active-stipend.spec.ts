@@ -27,6 +27,7 @@ describe('PayrollService.updateActiveStipend', () => {
       lumpsumTotal: 37000,
     });
     const stipendCreate = jest.fn();
+    const stipendUpdateMany = jest.fn();
     const auditCreate = jest.fn();
     const prisma = {
       employee: {
@@ -35,12 +36,20 @@ describe('PayrollService.updateActiveStipend', () => {
           stipendRecords: [active],
         }),
       },
-      stipendRecord: { update: stipendUpdate, create: stipendCreate },
+      stipendRecord: {
+        update: stipendUpdate,
+        create: stipendCreate,
+        updateMany: stipendUpdateMany,
+      },
       auditLog: { create: auditCreate },
       payrollEntry: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: async (fn: (tx: unknown) => unknown) =>
         fn({
-          stipendRecord: { update: stipendUpdate, create: stipendCreate },
+          stipendRecord: {
+            update: stipendUpdate,
+            create: stipendCreate,
+            updateMany: stipendUpdateMany,
+          },
           auditLog: { create: auditCreate },
         }),
     };
@@ -57,6 +66,7 @@ describe('PayrollService.updateActiveStipend', () => {
     );
 
     expect(stipendCreate).not.toHaveBeenCalled();
+    expect(stipendUpdateMany).not.toHaveBeenCalled();
     expect(stipendUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'sr-open' },
@@ -74,6 +84,81 @@ describe('PayrollService.updateActiveStipend', () => {
           status: PayrollStatus.PENDING,
           stipendRecord: { employeeId: 'emp-1' },
         },
+      }),
+    );
+  });
+
+  it('moves open package start date and prior seam without creating a new package', async () => {
+    const previousFrom = new Date('2026-08-28T00:00:00.000Z');
+    const monthStart = new Date('2026-08-01T00:00:00.000Z');
+    const active = {
+      id: 'sr-open',
+      basicStipend: 30000,
+      allowances: 5000,
+      effectiveFrom: previousFrom,
+    };
+    const stipendUpdate = jest.fn().mockResolvedValue({
+      ...active,
+      effectiveFrom: monthStart,
+      lumpsumTotal: 35000,
+    });
+    const stipendCreate = jest.fn();
+    const stipendUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const auditCreate = jest.fn();
+    const prisma = {
+      employee: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'emp-1',
+          stipendRecords: [active],
+        }),
+      },
+      stipendRecord: {
+        update: stipendUpdate,
+        create: stipendCreate,
+        updateMany: stipendUpdateMany,
+      },
+      auditLog: { create: auditCreate },
+      payrollEntry: { findMany: jest.fn().mockResolvedValue([]) },
+      $transaction: async (fn: (tx: unknown) => unknown) =>
+        fn({
+          stipendRecord: {
+            update: stipendUpdate,
+            create: stipendCreate,
+            updateMany: stipendUpdateMany,
+          },
+          auditLog: { create: auditCreate },
+        }),
+    };
+    const service = new PayrollService(prisma as never, {} as never);
+
+    await service.updateActiveStipend(
+      {
+        employeeId: 'emp-1',
+        basicStipend: 30000,
+        allowances: 5000,
+        effectiveFrom: '2026-08-01',
+        reason: 'Management order — raise from month day 1',
+      },
+      'user-1',
+    );
+
+    expect(stipendCreate).not.toHaveBeenCalled();
+    expect(stipendUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          employeeId: 'emp-1',
+          id: { not: 'sr-open' },
+          effectiveTo: previousFrom,
+        }),
+        data: { effectiveTo: monthStart },
+      }),
+    );
+    expect(stipendUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'sr-open' },
+        data: expect.objectContaining({
+          effectiveFrom: monthStart,
+        }),
       }),
     );
   });

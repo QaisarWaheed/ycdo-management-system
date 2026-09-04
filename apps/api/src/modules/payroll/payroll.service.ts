@@ -47,6 +47,11 @@ import {
   toPayrollAttendanceReport,
 } from '../attendance/attendance-summary.util';
 import {
+  aggregateMonthlyPayrollByEmployee,
+  aggregatePayrollHistoryByMonth as aggregatePayrollHistoryByMonthUtil,
+  toUtcMonthStart,
+} from './payroll-aggregate.util';
+import {
   isExitEmployeeStatus,
   isPostExitAttendanceDate,
   isPreActiveAttendanceDate,
@@ -1218,84 +1223,7 @@ export class PayrollService {
       allowances?: unknown[];
     },
   >(entries: T[]): T[] {
-    const byMonth = new Map<string, T[]>();
-    for (const entry of entries) {
-      const key = `${entry.year}-${entry.month}`;
-      const bucket = byMonth.get(key) ?? [];
-      bucket.push(entry);
-      byMonth.set(key, bucket);
-    }
-
-    const merged: T[] = [];
-    for (const group of byMonth.values()) {
-      const active = group
-        .filter((e) => e.stipendRecord?.effectiveTo == null)
-        .sort(
-          (a, b) =>
-            (a.stipendRecord?.effectiveFrom?.getTime() ?? 0) -
-            (b.stipendRecord?.effectiveFrom?.getTime() ?? 0),
-        );
-      const newestActive = active[active.length - 1];
-      const newestActiveFrom = newestActive?.stipendRecord?.effectiveFrom;
-
-      const kept = group.filter((e) => {
-        const sr = e.stipendRecord;
-        if (!sr) return true;
-        if (sr.effectiveTo == null) {
-          return !newestActive || e.id === newestActive.id;
-        }
-        // Keep closed packages that started before the current open one
-        // (real mid-month increment). Drop closed leftovers that started
-        // on/after the open package's effectiveFrom.
-        if (
-          newestActiveFrom &&
-          sr.effectiveFrom &&
-          sr.effectiveFrom.getTime() >= newestActiveFrom.getTime()
-        ) {
-          return false;
-        }
-        return true;
-      });
-
-      if (kept.length === 0) continue;
-      if (kept.length === 1) {
-        merged.push(kept[0]!);
-        continue;
-      }
-
-      const primary =
-        kept.find((e) => e.stipendRecord?.effectiveTo == null) ?? kept[0]!;
-
-      const statusRank = (s: PayrollStatus) =>
-        s === PayrollStatus.PAID ? 3 : s === PayrollStatus.PROCESSED ? 2 : 1;
-
-      merged.push({
-        ...primary,
-        basicStipend: roundMoney(
-          kept.reduce((sum, e) => sum + Number(e.basicStipend), 0),
-        ),
-        totalAllowances: roundMoney(
-          kept.reduce((sum, e) => sum + Number(e.totalAllowances), 0),
-        ),
-        totalDeductions: roundMoney(
-          kept.reduce((sum, e) => sum + Number(e.totalDeductions), 0),
-        ),
-        netStipend: roundMoney(
-          kept.reduce((sum, e) => sum + Number(e.netStipend), 0),
-        ),
-        status: kept.reduce<T>(
-          (best, e) =>
-            statusRank(e.status) > statusRank(best.status) ? e : best,
-          kept[0]!,
-        ).status,
-        deductions: kept.flatMap((e) => e.deductions ?? []),
-        allowances: kept.flatMap((e) => e.allowances ?? []),
-      });
-    }
-
-    return merged.sort((a, b) =>
-      a.year !== b.year ? b.year - a.year : b.month - a.month,
-    );
+    return aggregatePayrollHistoryByMonthUtil(entries);
   }
 
   /**
@@ -3890,7 +3818,13 @@ export class PayrollService {
       return entries;
     }
 
-    return this.attachPayrollAttendanceReport(entries, query.month, year);
+    const withAttendance = await this.attachPayrollAttendanceReport(
+      entries,
+      query.month,
+      year,
+    );
+    // One row per employee — same month totals as profile Payroll History.
+    return aggregateMonthlyPayrollByEmployee(withAttendance);
   }
 
   private async attachPayrollAttendanceReport<
@@ -4257,7 +4191,10 @@ export class PayrollService {
       );
     }
 
-    const effectiveFrom = new Date(dto.effectiveFrom);
+    const effectiveFrom = toUtcMonthStart(new Date(dto.effectiveFrom));
+    if (Number.isNaN(effectiveFrom.getTime())) {
+      throw new BadRequestException('effectiveFrom is not a valid date');
+    }
     const previousSalary = Number(activeStipendRecord.basicStipend);
     const lumpsumTotal = calculateLumpsumTotal({
       basicStipend: dto.basicStipend,
@@ -4363,7 +4300,39 @@ export class PayrollService {
       healthDeduction: dto.healthDeduction,
     });
 
+    const previousEffectiveFrom = activeStipendRecord.effectiveFrom;
+    const nextEffectiveFrom = dto.effectiveFrom
+      ? new Date(dto.effectiveFrom)
+      : null;
+    const effectiveFromChanging =
+      !!nextEffectiveFrom &&
+      nextEffectiveFrom.getTime() !== previousEffectiveFrom.getTime();
+
+    if (effectiveFromChanging && nextEffectiveFrom) {
+      if (Number.isNaN(nextEffectiveFrom.getTime())) {
+        throw new BadRequestException('effectiveFrom is not a valid date');
+      }
+      if (nextEffectiveFrom.getTime() > Date.now() + 24 * 60 * 60 * 1000) {
+        throw new BadRequestException(
+          'effectiveFrom cannot be more than one day in the future',
+        );
+      }
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
+      if (effectiveFromChanging && nextEffectiveFrom) {
+        // Keep half-open chain: prior package closed exactly when the open
+        // package started. Moving the raise to day-1 moves that seam too.
+        await tx.stipendRecord.updateMany({
+          where: {
+            employeeId: dto.employeeId,
+            id: { not: activeStipendRecord.id },
+            effectiveTo: previousEffectiveFrom,
+          },
+          data: { effectiveTo: nextEffectiveFrom },
+        });
+      }
+
       const record = await tx.stipendRecord.update({
         where: { id: activeStipendRecord.id },
         data: {
@@ -4377,6 +4346,9 @@ export class PayrollService {
           fineDeduction: dto.fineDeduction ?? 0,
           healthDeduction: dto.healthDeduction ?? 0,
           lumpsumTotal,
+          ...(effectiveFromChanging && nextEffectiveFrom
+            ? { effectiveFrom: nextEffectiveFrom }
+            : {}),
         },
       });
 
@@ -4391,7 +4363,10 @@ export class PayrollService {
             newBasicStipend: dto.basicStipend,
             lumpsumTotal,
             reason: dto.reason?.trim() || null,
-            effectiveFromUnchanged: activeStipendRecord.effectiveFrom,
+            previousEffectiveFrom,
+            newEffectiveFrom: effectiveFromChanging
+              ? nextEffectiveFrom
+              : previousEffectiveFrom,
           },
         },
       });

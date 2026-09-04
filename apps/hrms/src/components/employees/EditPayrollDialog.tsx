@@ -75,7 +75,7 @@ function stipendValuesFromRecord(record: StipendRecord) {
   }
 }
 
-function stipendChanged(
+function stipendAmountsChanged(
   values: EditPayrollFormValues,
   record: StipendRecord,
 ): boolean {
@@ -93,6 +93,18 @@ function stipendChanged(
   )
 }
 
+function firstOfMonthIso(isoDate: string): string {
+  if (!isoDate || isoDate.length < 7) return isoDate
+  return `${isoDate.slice(0, 7)}-01`
+}
+
+function firstOfCurrentMonthIso(): string {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}-01`
+}
+
 export function EditPayrollDialog({
   open,
   onOpenChange,
@@ -103,13 +115,14 @@ export function EditPayrollDialog({
 }: EditPayrollDialogProps) {
   const [isIncrement, setIsIncrement] = useState(false)
   const originalJoiningDate = toDateInput(joiningDate)
+  const originalEffectiveFrom = toDateInput(latestStipend?.effectiveFrom)
 
   const form = useForm<EditPayrollFormValues>({
     resolver: zodResolver(editPayrollSchema),
     defaultValues: {
       joiningDate: originalJoiningDate,
       ...DEFAULT_STIPEND_VALUES,
-      effectiveFrom: '',
+      effectiveFrom: originalEffectiveFrom,
       reason: '',
     },
   })
@@ -124,7 +137,7 @@ export function EditPayrollDialog({
     form.reset({
       joiningDate: originalJoiningDate,
       ...stipendDefaults,
-      effectiveFrom: '',
+      effectiveFrom: toDateInput(latestStipend?.effectiveFrom),
       reason: '',
     })
     setIsIncrement(false)
@@ -135,14 +148,19 @@ export function EditPayrollDialog({
       values: EditPayrollFormValues & { isIncrement?: boolean },
     ) => {
       const joiningChanged = values.joiningDate !== originalJoiningDate
-      const stipendUpdate =
-        latestStipend != null && stipendChanged(values, latestStipend)
+      const amountsChanged =
+        latestStipend != null && stipendAmountsChanged(values, latestStipend)
+      const effectiveFromChanged =
+        latestStipend != null &&
+        !!values.effectiveFrom?.trim() &&
+        values.effectiveFrom.trim() !== originalEffectiveFrom
+      const stipendUpdate = amountsChanged || effectiveFromChanged
 
       if (!joiningChanged && !stipendUpdate) {
         throw new Error('No changes to save')
       }
 
-      if (stipendUpdate) {
+      if (stipendUpdate && latestStipend) {
         const packageValues = {
           employeeId,
           basicStipend: values.basicStipend,
@@ -157,7 +175,10 @@ export function EditPayrollDialog({
         }
 
         if (values.isIncrement) {
-          if (!values.effectiveFrom?.trim()) {
+          const snapped = firstOfMonthIso(
+            values.effectiveFrom?.trim() || firstOfCurrentMonthIso(),
+          )
+          if (!snapped) {
             throw new Error('Effective date is required for a salary increment')
           }
           if (!values.reason?.trim()) {
@@ -166,13 +187,20 @@ export function EditPayrollDialog({
 
           await payrollApi.increment({
             ...packageValues,
-            effectiveFrom: values.effectiveFrom,
+            effectiveFrom: snapped,
             reason: values.reason.trim(),
           })
         } else {
           await payrollApi.updateActiveStipend({
             ...packageValues,
-            reason: values.reason?.trim() || 'Correct current stipend package',
+            ...(effectiveFromChanged
+              ? { effectiveFrom: values.effectiveFrom!.trim() }
+              : {}),
+            reason:
+              values.reason?.trim() ||
+              (effectiveFromChanged
+                ? 'Correct package effective date (management order: from month day 1)'
+                : 'Correct current stipend package'),
           })
         }
       }
@@ -203,6 +231,8 @@ export function EditPayrollDialog({
       })
     },
   })
+
+  const watchedEffectiveFrom = form.watch('effectiveFrom')
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -241,10 +271,12 @@ export function EditPayrollDialog({
             {latestStipend ? (
               <>
                 <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-text-secondary">
-                  Saving updates the current package only. That does not
-                  split this month. Tick salary increment only when pay
-                  actually changes from a chosen date (prefer the 1st of
-                  a month).
+                  Saving updates the current package only. Tick salary
+                  increment only when pay changes from a new month — the
+                  start date is always the <strong>1st</strong> of that
+                  month (mid-month dates are snapped to the 1st). To fix a
+                  raise saved mid-month, change &quot;Package starts on&quot;
+                  to the 1st without ticking increment.
                 </p>
                 <StipendPackageFields control={form.control} watch={form.watch} />
 
@@ -253,63 +285,122 @@ export function EditPayrollDialog({
                     type="checkbox"
                     className="mt-1"
                     checked={isIncrement}
-                    onChange={(e) => setIsIncrement(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setIsIncrement(checked)
+                      if (checked) {
+                        form.setValue(
+                          'effectiveFrom',
+                          firstOfCurrentMonthIso(),
+                          { shouldDirty: true },
+                        )
+                      } else {
+                        form.setValue(
+                          'effectiveFrom',
+                          originalEffectiveFrom,
+                          { shouldDirty: true },
+                        )
+                      }
+                    }}
                   />
                   <span>
-                    This is a salary increment from a new date (starts a
-                    new package)
+                    This is a salary increment from a new month (starts a
+                    new package on the 1st)
                   </span>
                 </label>
 
-                {isIncrement ? (
-                  <>
-                    <FormField
-                      control={form.control}
-                      name="effectiveFrom"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Increment starts on</FormLabel>
-                          <FormControl>
-                            <DateInput
-                              value={field.value ?? ''}
-                              onChange={field.onChange}
-                              onBlur={field.onBlur}
-                              name={field.name}
-                              ref={field.ref}
-                            />
-                          </FormControl>
-                          {field.value && !field.value.endsWith('-01') ? (
-                            <p className="text-xs text-amber-800">
-                              A date that is not the 1st splits that
-                              month&apos;s basic. Use the 1st unless pay
-                              really changes mid-month.
-                            </p>
-                          ) : (
-                            <p className="text-xs text-text-secondary">
-                              Prefer the 1st of the month so the whole
-                              month uses the new package.
-                            </p>
-                          )}
-                          <FormMessage />
-                        </FormItem>
+                <FormField
+                  control={form.control}
+                  name="effectiveFrom"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {isIncrement
+                          ? 'Increment month (always the 1st)'
+                          : 'Package starts on'}
+                      </FormLabel>
+                      <FormControl>
+                        <DateInput
+                          value={field.value ?? ''}
+                          onChange={(v) => {
+                            if (isIncrement && v) {
+                              field.onChange(firstOfMonthIso(v))
+                            } else {
+                              field.onChange(v)
+                            }
+                          }}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      {isIncrement ? (
+                        <p className="text-xs text-text-secondary">
+                          Pick any day in the target month — the system
+                          uses the 1st so the whole month uses the new
+                          package.
+                        </p>
+                      ) : field.value && !field.value.endsWith('-01') ? (
+                        <div className="space-y-1">
+                          <p className="text-xs text-amber-800">
+                            A date that is not the 1st splits that
+                            month&apos;s basic on regenerate. Use the 1st
+                            unless correcting intentionally.
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              form.setValue(
+                                'effectiveFrom',
+                                firstOfMonthIso(field.value ?? ''),
+                                { shouldDirty: true },
+                              )
+                            }
+                          >
+                            Move to 1st of this month
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-text-secondary">
+                          Prefer the 1st of the month so Monthly Payroll
+                          matches this package for the whole month.
+                        </p>
                       )}
-                    />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-                    <FormField
-                      control={form.control}
-                      name="reason"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Reason for increment</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="e.g. Annual increment" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </>
-                ) : null}
+                {(isIncrement ||
+                  (watchedEffectiveFrom &&
+                    watchedEffectiveFrom !== originalEffectiveFrom)) && (
+                  <FormField
+                    control={form.control}
+                    name="reason"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          {isIncrement
+                            ? 'Reason for increment'
+                            : 'Reason for date/package correction'}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder={
+                              isIncrement
+                                ? 'e.g. Annual increment'
+                                : 'e.g. Management order — raise from month day 1'
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </>
             ) : (
               <p className="text-sm text-text-secondary">

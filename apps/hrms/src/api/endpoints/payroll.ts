@@ -111,6 +111,8 @@ export const payrollApi = {
   updateActiveStipend: (
     data: Omit<StipendIncrementPayload, 'effectiveFrom' | 'reason'> & {
       reason?: string
+      /** Correct open package start date without creating a new package. */
+      effectiveFrom?: string
     },
   ) => api.patch('/payroll/stipend', data),
 

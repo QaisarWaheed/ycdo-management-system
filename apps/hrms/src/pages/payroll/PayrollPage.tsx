@@ -1361,6 +1361,18 @@ function MonthlyPayrollTab() {
 
 const stipendFieldSchema = z.number().min(0)
 
+function firstOfMonthIso(isoDate: string): string {
+  if (!isoDate || isoDate.length < 7) return isoDate
+  return `${isoDate.slice(0, 7)}-01`
+}
+
+function firstOfCurrentMonthIso(): string {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}-01`
+}
+
 const incrementSchema = z.object({
   employeeId: z.string().min(1, 'Employee is required'),
   basicStipend: z.number().positive('Stipend must be greater than 0'),
@@ -1386,7 +1398,7 @@ function StipendIncrementTab() {
     defaultValues: {
       employeeId: '',
       ...DEFAULT_STIPEND_VALUES,
-      effectiveFrom: '',
+      effectiveFrom: firstOfCurrentMonthIso(),
       reason: '',
     },
   })
@@ -1427,13 +1439,17 @@ function StipendIncrementTab() {
   }, [currentLumpsum, newLumpsum])
 
   const mutation = useMutation({
-    mutationFn: (values: IncrementFormValues) => payrollApi.increment(values),
+    mutationFn: (values: IncrementFormValues) =>
+      payrollApi.increment({
+        ...values,
+        effectiveFrom: firstOfMonthIso(values.effectiveFrom),
+      }),
     onSuccess: () => {
       toast({ title: 'Stipend package updated successfully' })
       form.reset({
         employeeId: '',
         ...DEFAULT_STIPEND_VALUES,
-        effectiveFrom: '',
+        effectiveFrom: firstOfCurrentMonthIso(),
         reason: '',
       })
       setCurrentLumpsum(null)
@@ -1523,10 +1539,10 @@ function StipendIncrementTab() {
         )}
 
         <p className="text-sm text-text-secondary">
-          This tab starts a new package from the date below. To correct
-          amounts without splitting a month, use the employee profile →
-          Edit Payroll (leave increment unticked). Prefer the 1st of the
-          month.
+          Increments always start on the <strong>1st</strong> of the chosen
+          month (mid-month dates are snapped). To correct amounts without
+          a new package, use the employee profile → Edit Payroll (leave
+          increment unticked).
         </p>
 
         <FormField
@@ -1534,16 +1550,19 @@ function StipendIncrementTab() {
           name="effectiveFrom"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Effective From</FormLabel>
+              <FormLabel>Effective month (always the 1st)</FormLabel>
               <FormControl>
                 <DateInput
                   value={field.value ?? ''}
-                  onChange={field.onChange}
+                  onChange={(v) => field.onChange(firstOfMonthIso(v))}
                   onBlur={field.onBlur}
                   name={field.name}
                   ref={field.ref}
                 />
               </FormControl>
+              <p className="text-xs text-text-secondary">
+                Pick any day in the target month — the system uses the 1st.
+              </p>
               <FormMessage />
             </FormItem>
           )}
