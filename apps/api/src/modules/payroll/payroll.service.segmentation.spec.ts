@@ -431,8 +431,12 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     expect(primary.stipendRecordId).toBe(newSr.id);
     const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(oldEntry.basicStipend).toBe(11200);
-    expect(newEntry.basicStipend).toBe(15300);
+    // 2026-09-04 rewrite: a mid-month PACKAGE CHANGE (not join/leave) uses
+    // the NEW package's Basic for the whole month, no blending — the
+    // closed OLD segment earns 0 (applyPackageDeductions=false), see
+    // payroll_rulebook.md "Mid-month package/salary change".
+    expect(oldEntry.basicStipend).toBe(0);
+    expect(newEntry.basicStipend).toBe(27900);
   });
 
   it('C: a later createOrGetEntry does not duplicate segment rows', async () => {
@@ -532,30 +536,31 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     expect(newAllowances.find((a) => a.type === 'ADDITIONAL_WORKING_DAYS')).toBeDefined();
   });
 
-  it('I: unpaid-leave days on the active package still create one UNPAID_LEAVE deduction', async () => {
+  it('I: unpaid-leave days beyond quota reduce Basic via payableDays, with no separate UNPAID_LEAVE deduction row', async () => {
+    // 2026-09-04 rewrite: unpaid leave beyond the monthly quota is handled
+    // ENTIRELY by excluding that day from payableDays (Basic loses its
+    // share automatically) — the old separate UNPAID_LEAVE PayrollDeduction
+    // row is removed so the same day is never double-charged. See
+    // payroll_rulebook.md "Unpaid leave beyond quota".
     const db = new FakeDb();
     seedEmployee(db, { monthlyAllowedLeaves: 2 });
-    seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
-    const newSr = seedStipend(db, 27900, AUG_15, null);
-    seedFullMonthPresent(db, [1, 2]);
-    for (const day of [5, 6]) {
-      db.attendanceLogs.push({
-        employeeId: EMP_ID, type: AttendanceLogType.REGULAR, date: augustDate(day),
-        checkIn: null, checkOut: null, status: AttendanceStatus.ON_LEAVE, note: null,
-        dutyStartTimeSnapshot: null, dutyEndTimeSnapshot: null,
-      });
+    seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
+    seedFullMonthPresent(db);
+    // Days 1-2 are within the 2-day monthly quota (paid); day 3 is a 3rd
+    // ON_LEAVE day beyond quota (unpaid).
+    for (const day of [1, 2, 3]) {
+      const log = db.attendanceLogs.find((l) => l.date.getTime() === augustDate(day).getTime())!;
+      log.status = AttendanceStatus.ON_LEAVE;
+      log.checkIn = null;
+      log.checkOut = null;
     }
-    db.attendanceLogs.push({
-      employeeId: EMP_ID, type: AttendanceLogType.REGULAR, date: augustDate(20),
-      checkIn: null, checkOut: null, status: AttendanceStatus.ON_LEAVE, note: null,
-      dutyStartTimeSnapshot: null, dutyEndTimeSnapshot: null,
-    });
     const service = makeService(db);
 
-    await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
-    const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    const newDeductions = [...db.deductions.values()].filter((d) => d.payrollEntryId === newEntry.id);
-    expect(newDeductions.find((d) => d.reason === 'UNPAID_LEAVE')).toBeDefined();
+    const entry = await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
+    const deductions = [...db.deductions.values()].filter((d) => d.payrollEntryId === entry.id);
+    expect(deductions.find((d) => d.reason === 'UNPAID_LEAVE')).toBeUndefined();
+    // 30 payable days / 31 (1 unpaid day excluded) * 24800
+    expect(entry.basicStipend).toBeCloseTo((24800 * 30) / 31, 2);
   });
 
   it('J: a RelieverSession in the active window is credited once on that row', async () => {
@@ -589,8 +594,9 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     const total = [...db.payrollEntries.values()].reduce((sum, e) => sum + e.basicStipend, 0);
     expect(db.payrollEntries.size).toBe(2);
-    // 14/31*24800 + 17/31*27900 = 11200 + 15300
-    expect(total).toBe(26500);
+    // 2026-09-04 rewrite: a mid-month PACKAGE CHANGE uses the NEW package's
+    // Basic for the whole month, no blending — closed OLD segment earns 0.
+    expect(total).toBe(27900);
   });
 
   // M. PRESENT floor still works; Basic is contractual full month.
@@ -627,8 +633,14 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    expect(oldEntry.basicStipend).toBe(11200); // Aug 1–14
-    expect(newEntry.basicStipend).toBe(15300); // Aug 15–31
+    // 2026-09-04 rule: mid-month PACKAGE CHANGE — the closed OLD segment
+    // earns 0 (no blending), and the active NEW segment is widened to the
+    // whole month (backfillFromJoining), earning the full contractual
+    // amount: Aug 14 and 15 are logged PRESENT, and the remaining 29
+    // elapsed August days gap-fill (no log, but within employment) —
+    // 31/31 payable days, capped at the full 27900.
+    expect(oldEntry.basicStipend).toBe(0);
+    expect(newEntry.basicStipend).toBe(27900);
   });
 
   // O. monthly summary unique employee count still correct.

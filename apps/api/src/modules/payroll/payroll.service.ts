@@ -82,7 +82,6 @@ import {
   buildHourlyPayrollBreakdown,
   computeHourlyRate,
   computeRelieverPayableMinutes,
-  DEFAULT_MONTHLY_ALLOWED_LEAVES,
   dateKey,
   hoursFromDutyWindow,
   leaveCreditMinutes,
@@ -91,7 +90,6 @@ import {
   resolveManualAllowancePay,
   roundMoney,
   splitPaidUnpaidLeaveDays,
-  unpaidLeaveDeductionAmount,
   type HourlyPayrollBreakdown,
 } from './payroll-hours.util';
 import {
@@ -106,7 +104,14 @@ import {
 } from './payslip-slip.util';
 import ExcelJS from 'exceljs';
 
-const UNPAID_LEAVE_DESC_PREFIX = 'Unpaid leave';
+const PK_OFFSET_MS = 5 * 60 * 60 * 1000;
+/** Pakistan calendar date (midnight UTC of the PK day) for a given instant
+ * — used to decide whether a segment date has actually elapsed yet, so an
+ * in-progress month's gap-day crediting never reaches into the future. */
+function pakistanDateOnly(d: Date): Date {
+  const pk = new Date(d.getTime() + PK_OFFSET_MS);
+  return new Date(Date.UTC(pk.getUTCFullYear(), pk.getUTCMonth(), pk.getUTCDate()));
+}
 
 @Injectable()
 export class PayrollService {
@@ -1349,6 +1354,7 @@ export class PayrollService {
       status?: EmployeeStatus;
       statusEffectiveFrom?: Date | null;
       shift?: { startTime: string; endTime: string } | null;
+      weeklyOffWeekdays?: number[] | null;
     },
     forceNonActiveOverride: boolean | undefined,
     unpaidLeaveDatesForMonth: Date[],
@@ -1381,6 +1387,9 @@ export class PayrollService {
     const markForced =
       forceNonActiveOverride === true ? true : entry?.forcedNonActive === true;
     const contractualBasic = Number(stipendRecord.basicStipend);
+    const unpaidLeaveDateKeys = new Set(
+      unpaidLeaveDatesForMonth.map((d) => dateKey(d)),
+    );
 
     if (!entry) {
       const initialBreakdown = await this.computeHourlyBreakdown(
@@ -1397,6 +1406,7 @@ export class PayrollService {
           backfillFromAttendance: options.backfillFromAttendance,
           backfillContractualFromEmployment:
             options.backfillContractualFromEmployment,
+          unpaidLeaveDateKeys,
         },
       );
       const createdTotals = this.clampPayrollTotals(initialBreakdown);
@@ -1521,6 +1531,7 @@ export class PayrollService {
         backfillFromAttendance: options.backfillFromAttendance,
         backfillContractualFromEmployment:
           options.backfillContractualFromEmployment,
+        unpaidLeaveDateKeys,
       },
     );
     const totals = this.clampPayrollTotals(breakdown);
@@ -2060,51 +2071,31 @@ export class PayrollService {
    * `unpaidLeaveDaysInSegment` count the caller passes in, already
    * filtered to this segment.
    */
+  /**
+   * 2026-09-04 day-based Basic rewrite: unpaid leave beyond the monthly
+   * quota is now handled ENTIRELY by excluding those calendar days from
+   * payableDays in computeHourlyBreakdown (Basic = contractualBasic ×
+   * payableDays / daysInMonth). A separate UNPAID_LEAVE PayrollDeduction
+   * row on top of that would double-charge the same day. This method is
+   * kept only to delete any stale UNPAID_LEAVE row left over from a
+   * PENDING month generated before this change, so recompute stays
+   * idempotent (no duplicate/left-behind deduction rows).
+   */
   private async upsertUnpaidLeaveDeductionRow(
     payrollEntryId: string,
-    month: number,
-    year: number,
-    unpaidLeaveDaysInSegment: number,
-    monthlyAllowedLeaves: number | null | undefined,
-    contractualBasic: number,
+    _month: number,
+    _year: number,
+    _unpaidLeaveDaysInSegment: number,
+    _monthlyAllowedLeaves: number | null | undefined,
+    _contractualBasic: number,
   ) {
-    const daysInMonth = daysInPayrollMonth(year, month);
-    const amount = unpaidLeaveDeductionAmount(
-      unpaidLeaveDaysInSegment,
-      contractualBasic,
-      daysInMonth,
-    );
-
     const existing = await this.keepSingleDeduction(
       payrollEntryId,
       DeductionType.UNPAID_LEAVE,
     );
-
-    if (unpaidLeaveDaysInSegment <= 0 || amount <= 0) {
-      if (existing) {
-        await this.prisma.payrollDeduction.delete({ where: { id: existing.id } });
-      }
-      return;
-    }
-
-    const description = `${UNPAID_LEAVE_DESC_PREFIX} (${unpaidLeaveDaysInSegment} day(s) beyond allowance of ${monthlyAllowedLeaves ?? DEFAULT_MONTHLY_ALLOWED_LEAVES})`;
-
     if (existing) {
-      await this.prisma.payrollDeduction.update({
-        where: { id: existing.id },
-        data: { amount, description },
-      });
-      return;
+      await this.prisma.payrollDeduction.delete({ where: { id: existing.id } });
     }
-
-    await this.prisma.payrollDeduction.create({
-      data: {
-        payrollEntryId,
-        reason: DeductionType.UNPAID_LEAVE,
-        amount,
-        description,
-      },
-    });
   }
 
   /**
@@ -2770,6 +2761,10 @@ export class PayrollService {
                 dutyEndTime: true,
                 dutyTotalHours: true,
                 monthlyAllowedLeaves: true,
+                joiningDate: true,
+                status: true,
+                statusEffectiveFrom: true,
+                weeklyOffWeekdays: true,
                 currentBranch: {
                   select: {
                     id: true,
@@ -2838,6 +2833,17 @@ export class PayrollService {
         : current;
 
     const employee = entry.stipendRecord.employee;
+    // Same unpaidLeaveDateKeys the persisted totals were computed with
+    // (createOrGetEntry above, when PENDING) — recomputed here too so this
+    // purely-for-display breakdown never disagrees with what was actually
+    // saved (the same class of tab/modal/payslip mismatch bug fixed
+    // 2026-09-04 for the old hourly formula).
+    const unpaidLeaveDatesForBreakdown = await this.computeMonthlyUnpaidLeaveDates(
+      entry.stipendRecord.employeeId,
+      entry.month,
+      entry.year,
+      employee.monthlyAllowedLeaves,
+    );
     const breakdown = await this.computeHourlyBreakdown(
       entry.stipendRecord.employeeId,
       entry.month,
@@ -2847,6 +2853,9 @@ export class PayrollService {
         employee,
         existingDeductions: current.deductions ?? [],
         existingAllowances: current.allowances ?? [],
+        unpaidLeaveDateKeys: new Set(
+          unpaidLeaveDatesForBreakdown.map((d) => dateKey(d)),
+        ),
       },
     );
 
@@ -3430,9 +3439,22 @@ export class PayrollService {
         status?: EmployeeStatus;
         statusEffectiveFrom?: Date | null;
         shift?: { startTime: string; endTime: string } | null;
+        weeklyOffWeekdays?: number[] | null;
       };
       existingDeductions: Array<{ amount: unknown }>;
       existingAllowances: Array<{ amount: unknown }>;
+      /** Calendar dates (as dateKey strings) this employee is ON_LEAVE
+       * beyond the monthly paid-leave quota — see computeMonthlyUnpaidLeaveDates
+       * / splitPaidUnpaidLeaveDays. These do NOT count toward payableDays
+       * under the day-based Basic formula (2026-09-04 rewrite): unpaid
+       * leave is now handled solely by excluding the day here, never by a
+       * separate UNPAID_LEAVE PayrollDeduction (removed — see
+       * upsertUnpaidLeaveDeductionRow), so this must be the only place the
+       * day is dropped or the day would silently just not get paid without
+       * a visible reason, which is fine, but double-dropping (deduction +
+       * exclusion) is not.
+       */
+      unpaidLeaveDateKeys?: Set<string>;
       /** Full contractual allowances/health apply on exactly one segment
        * per month (the currently-active stipend), so a mid-month increment
        * cannot double-count the package. Historical closed segments get 0. */
@@ -3447,8 +3469,10 @@ export class PayrollService {
        * package still owns the earlier Basic days. Allowances do not use
        * this flag — they are the full monthly package on the active slip. */
       backfillContractualFromEmployment?: boolean;
-      /** Pakistan business date for diagnostics/tests; basic pay is always
-       * derived from logged attendance only (no future-day credit). */
+      /** Pakistan "as of" instant used as the elapsed-day cutoff for the
+       * gap-day credit pass below (a segment date is only gap-filled once
+       * it is strictly before this date) — defaults to the real current
+       * time in production, overridable by tests for determinism. */
       asOf?: Date;
     },
   ): Promise<HourlyPayrollBreakdown> {
@@ -3543,11 +3567,22 @@ export class PayrollService {
       const dayDutyMinutes = Math.round(hoursFromDutyWindow(dayWin) * 60);
 
       if (log.status === AttendanceStatus.ON_LEAVE) {
-        // Paid AND unpaid REGULAR leave days both earn full duty credit
-        // here — an unpaid day loses its pay entirely through the explicit
-        // UNPAID_LEAVE deduction (upsertUnpaidLeaveDeductionRow) instead.
-        // Zeroing credit here too would double the loss: no credit here
-        // AND a full day's deduction there for the same single day.
+        // 2026-09-04: paid ON_LEAVE (within monthly quota) earns full day
+        // credit; unpaid ON_LEAVE (beyond quota) does NOT — the day-based
+        // Basic formula excludes it from payableDays directly, replacing
+        // the old separate UNPAID_LEAVE PayrollDeduction row (removed, see
+        // upsertUnpaidLeaveDeductionRow) which would now double-charge the
+        // same day if this credit were still added unconditionally.
+        if (!context.unpaidLeaveDateKeys?.has(dateKey(log.date))) {
+          policyCreditMins += dayDutyMinutes;
+          creditedAttendanceDays += 1;
+        }
+        continue;
+      }
+
+      if (log.status === AttendanceStatus.HOLIDAY) {
+        // Company holiday: always payable, full day, whether or not a
+        // checkIn/checkOut pair exists on the row.
         policyCreditMins += dayDutyMinutes;
         creditedAttendanceDays += 1;
         continue;
@@ -3666,6 +3701,55 @@ export class PayrollService {
       }
     }
 
+    // Gap days: any segment date with no AttendanceLog row at all.
+    // Two kinds, both handled in one pass:
+    //  (a) Weekly Off — the attendance scheduler deliberately never writes
+    //      a row for a weekly-off weekday (see shift-absent.scheduler.ts's
+    //      isWeeklyOffDate guard), so these are a calendar fact, always
+    //      fully payable, no log required.
+    //  (b) True data gaps — an ELAPSED day within employment with no log
+    //      row at all is a data-quality bug, not a deliberate calendar
+    //      fact. Per rulebook rule 51 ("future dates must never be treated
+    //      as UNMARKED") a day is only elapsed once it is strictly before
+    //      the current Pakistan calendar date; such a day is credited the
+    //      same as an explicit UNMARKED status row (payable, flagged) so a
+    //      missing log never silently shrinks Basic below what the day
+    //      itself would have earned had it been logged. A day that has not
+    //      happened yet (today or later) is simply not evaluated at all —
+    //      it contributes neither credit nor exclusion, so an in-progress
+    //      month's ratio only ever reflects days that have actually
+    //      occurred.
+    {
+      const loggedDateKeys = new Set(logs.map((l) => dateKey(l.date)));
+      const segmentEndInclusive = segmentEndExclusive
+        ? new Date(
+            Math.min(
+              segmentEndExclusive.getTime() - 24 * 60 * 60 * 1000,
+              monthEnd.getTime(),
+            ),
+          )
+        : monthEnd;
+      const todayPk = pakistanDateOnly(context.asOf ?? new Date());
+      for (
+        let d = new Date(segmentStart);
+        d.getTime() <= segmentEndInclusive.getTime();
+        d = new Date(d.getTime() + 24 * 60 * 60 * 1000)
+      ) {
+        if (d.getTime() >= todayPk.getTime()) break; // not yet elapsed
+        if (
+          this.skipStatusTransitionPayrollDay(
+            d,
+            context.employee,
+            context.backfillFromAttendance,
+          )
+        ) {
+          continue;
+        }
+        if (loggedDateKeys.has(dateKey(d))) continue;
+        creditedAttendanceDays += 1;
+      }
+    }
+
     const applyPackageDeductions = context.applyContractualPackage !== false;
     // Fixed monthly allowances (and reward/fuel) are added on the active
     // salary only. OT and attendance deductions stay on Basic. A late
@@ -3722,23 +3806,33 @@ export class PayrollService {
       0,
     );
 
-    // Policy (2026-09-04 override, supersedes rulebook rule 4/invariant 45 —
-    // explicit user decision): Basic Stipend itself is earned on an hourly
-    // basis — contractual monthly rate × (worked + paid-leave + policy-credit
-    // minutes) / scheduled minutes for the full month. Join/leave proration
-    // is absorbed into this same ratio (attendance logs don't exist outside
-    // the employment period, so payable minutes are already bounded by it)
-    // rather than a separate calendar-day proration on top of it.
-    // See buildHourlyPayrollBreakdown's hourlyBasicEarned for the formula.
+    // Policy (2026-09-04 rewrite — fixes production bug where a stale
+    // employee.dutyTotalHours (8h) disagreeing with a 12h actual duty
+    // window inflated Basic past the whole monthly contract): Basic
+    // Stipend is day-based, not minute-based —
+    //   Basic = contractualBasic × (payableDays / daysInMonth)
+    // hard-capped so it can never exceed contractualBasic for the month
+    // (see buildHourlyPayrollBreakdown's dayRatio clamp). payableDays here
+    // is `creditedAttendanceDays`, which already counts one full day per
+    // qualifying attendance status (PRESENT, SWAP_COVERED, LATE, HALF_DAY,
+    // elapsed UNMARKED, ABSENT, UNINFORMED_ABSENT, SHORT_LEAVE, paid
+    // ON_LEAVE, HOLIDAY, and — via the weekly-off supplement above —
+    // Weekly Off days with no log row at all), REGARDLESS of whether a
+    // separate PayrollDeduction line item also financially penalizes that
+    // day (those are unchanged and additive, not a reduction of
+    // payableDays). Mid-month join/leave proration is naturally absorbed
+    // because attendance logs (and the weekly-off supplement's date range)
+    // don't exist outside the employment period, so payableDays is already
+    // bounded by it.
     //
     // Mid-month PACKAGE CHANGE (not join/leave) is a separate case, still
     // governed by unchanged rulebook rule 5: a package change applies to the
     // whole month, and there must be no dual-paid segments. A closed
     // increment segment (applyPackageDeductions false — same flag that
     // already zeroes its fixedAllowances/fixedPackageDeductions above) must
-    // not also earn hours-based Basic, or the month gets paid twice across
-    // the old + new segment. Only the active/open segment earns Basic, using
-    // the month's full worked/credited hours.
+    // not also earn day-based Basic, or the month gets paid twice across
+    // the old + new segment. Only the active/open segment earns Basic,
+    // using the month's full payableDays.
     return buildHourlyPayrollBreakdown({
       contractualBasicStipend: applyPackageDeductions ? pkg.basicStipend : 0,
       dailyDutyHours,
@@ -3746,6 +3840,7 @@ export class PayrollService {
       workedMinutes: workedMins,
       paidLeaveMinutes: paidLeaveMins,
       policyCreditMinutes: policyCreditMins,
+      payableDays: applyPackageDeductions ? creditedAttendanceDays : 0,
       creditedAttendanceDays,
       fixedAllowances,
       fixedPackageDeductions,

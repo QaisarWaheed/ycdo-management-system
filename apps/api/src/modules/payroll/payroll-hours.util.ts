@@ -58,21 +58,34 @@ export function hoursFromDutyWindow(win: DutyWindow | null): number {
   return Math.round((minutes / 60) * 100) / 100;
 }
 
+/**
+ * Single source of truth for daily duty hours used by every payroll MONEY
+ * calculation (Basic, hourly rate, daily rate/fines). The shift start/end
+ * window is authoritative — `employee.dutyTotalHours` is a separate,
+ * possibly-stale field (set once, not kept in sync with shift changes) and
+ * must NEVER be trusted for money math: mixing "money computed against the
+ * window" with "denominator computed against dutyTotalHours" is exactly
+ * what let a 12h-shift employee's Basic exceed her contractual package
+ * when her stale dutyTotalHours said 8h (see 2026-09-04 bugfix). Kept as
+ * the fallback ONLY when no window can be resolved at all (no shift, no
+ * duty start/end configured).
+ */
 export function resolveDailyDutyHours(employee: {
   dutyTotalHours?: number | null;
   dutyStartTime?: string | null;
   dutyEndTime?: string | null;
   shift?: { startTime: string; endTime: string } | null;
 }): number {
-  if (employee.dutyTotalHours && employee.dutyTotalHours > 0) {
-    return employee.dutyTotalHours;
-  }
-
   const win = getDutyWindow({
     dutyStartTime: employee.dutyStartTime ?? employee.shift?.startTime,
     dutyEndTime: employee.dutyEndTime ?? employee.shift?.endTime,
   });
-  return hoursFromDutyWindow(win);
+  if (win) return hoursFromDutyWindow(win);
+
+  if (employee.dutyTotalHours && employee.dutyTotalHours > 0) {
+    return employee.dutyTotalHours;
+  }
+  return 8;
 }
 
 export function computeHourlyRate(
@@ -240,6 +253,16 @@ export function computeRelieverPayableMinutes(
   return Math.max(0, session.totalMinutes - overlap.minutes);
 }
 
+/**
+ * @deprecated Superseded 2026-09-04 by the day-based capped Basic formula
+ * (see payroll_rulebook.md "CURRENT rule: Basic is day-based and hard-capped
+ * at the contractual monthly amount"). Unpaid leave beyond quota is now
+ * handled ONLY by excluding that day from payableDays passed into
+ * buildDayBasedPayrollBreakdown — creating a separate deduction line item
+ * for it as well would double-charge the same day. Kept only so any
+ * remaining historical callers/tests do not silently break; do not call
+ * this for new PayrollDeduction rows.
+ */
 export function unpaidLeaveDeductionAmount(
   unpaidLeaveDays: number,
   contractualBasic: number,
@@ -292,6 +315,18 @@ export function buildHourlyPayrollBreakdown(input: {
   workedMinutes: number;
   paidLeaveMinutes: number;
   policyCreditMinutes: number;
+  /**
+   * Full days (each = 1, regardless of the day's actual clocked minutes)
+   * that count toward Basic Stipend under the day-based formula:
+   * Basic = contractualBasic × (payableDays / daysInMonth), hard-capped at
+   * contractualBasic. This REPLACES the old hourly-minutes ratio — mixing
+   * a per-day duty window (numerator) against a month-wide dailyDutyHours
+   * denominator (frequently sourced from a stale employee.dutyTotalHours)
+   * had no cap and could push Basic past the whole contract. Falls back to
+   * deriving whole days from worked/paid-leave/policy-credit minutes ÷
+   * dailyDutyHours when not supplied, for callers that only have minutes.
+   */
+  payableDays?: number;
   creditedAttendanceDays?: number;
   fixedAllowances: number;
   fixedPackageDeductions: number;
@@ -309,19 +344,36 @@ export function buildHourlyPayrollBreakdown(input: {
   const payableMinutes =
     input.workedMinutes + input.paidLeaveMinutes + input.policyCreditMinutes;
   const payableHours = roundHoursFromMinutes(payableMinutes);
-  const scheduledMinutes = input.daysInMonth * input.dailyDutyHours * 60;
-  const hourlyBasicEarned =
-    scheduledMinutes > 0
-      ? roundMoney(
-          (input.contractualBasicStipend * payableMinutes) / scheduledMinutes,
-        )
+
+  // Day-based Basic (see payableDays doc above). When the caller has not
+  // yet been migrated to pass payableDays explicitly, derive whole days
+  // from minutes ÷ the day's own duty length — kept only as a bridge, not
+  // used by the payroll.service.ts money path any more.
+  const dailyDutyMinutes = input.dailyDutyHours * 60;
+  const payableDays =
+    input.payableDays != null
+      ? input.payableDays
+      : dailyDutyMinutes > 0
+        ? payableMinutes / dailyDutyMinutes
+        : 0;
+  const dayRatio =
+    input.daysInMonth > 0
+      ? Math.min(1, Math.max(0, payableDays / input.daysInMonth))
       : 0;
+  const hourlyBasicEarned = roundMoney(
+    input.contractualBasicStipend * dayRatio,
+  );
   const payrollBasicStipend = roundMoney(
     Math.max(
       0,
-      input.payrollBasicStipend != null
-        ? input.payrollBasicStipend
-        : hourlyBasicEarned,
+      Math.min(
+        input.contractualBasicStipend > 0
+          ? input.contractualBasicStipend
+          : Infinity,
+        input.payrollBasicStipend != null
+          ? input.payrollBasicStipend
+          : hourlyBasicEarned,
+      ),
     ),
   );
   const netStipend = roundMoney(

@@ -472,7 +472,12 @@ describe('PayrollService.recomputeMonthAll', () => {
   });
 
   // D. Multi-segment PENDING employee recomputes once at employee level.
-  it('D: a multi-segment PENDING employee keeps only the active payroll row', async () => {
+  // The closed old segment's PayrollEntry row is intentionally RETAINED
+  // (pruneDuplicateOpenActivePayrollEntries only removes duplicate OPEN
+  // segments, per its own doc comment — closed segments stay for audit
+  // history), but per the 2026-09-04 rule its Basic is zeroed since the
+  // active new segment now owns the whole month's Basic instead.
+  it('D: a multi-segment PENDING employee keeps both rows; the closed segment is zeroed, the active one gets the full month', async () => {
     const db = new FakeDb();
     seedEmployee(db, 'e1');
     const oldSr = seedStipend(db, 'e1', 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -486,7 +491,7 @@ describe('PayrollService.recomputeMonthAll', () => {
 
     expect(result.totalEmployeesInScope).toBe(1);
     expect(result.employeesProcessed).toBe(1);
-    expect(db.payrollEntries.get(oldEntry.id)).toBeUndefined();
+    expect(db.payrollEntries.get(oldEntry.id)!.basicStipend).toBe(0);
     expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(27900);
   });
 
@@ -621,7 +626,12 @@ describe('PayrollService.recomputeMonthAll', () => {
     const sr = seedStipend(db, 'e1', 24800, new Date(Date.UTC(2000, 0, 1)), null);
     seedPayrollEntry(db, sr.id, PayrollStatus.PENDING);
     seedFullMonthPresent(db, 'e1', [1, 2]);
-    // 3 ON_LEAVE days -> allowance 2 -> 1 unpaid leave day (deduction row).
+    // 3 ON_LEAVE days -> allowance 2 -> 1 unpaid leave day. 2026-09-04
+    // rewrite: the unpaid day beyond quota is excluded from payableDays
+    // (Basic loses its share) — it no longer creates a separate
+    // UNPAID_LEAVE PayrollDeduction row (removed to avoid double-charging
+    // the same day), so idempotency is checked on ADDITIONAL_WORKING_DAYS
+    // only, plus asserting no stray UNPAID_LEAVE row ever appears.
     for (const day of [5, 6, 7]) {
       db.attendanceLogs.push({
         employeeId: 'e1', type: AttendanceLogType.REGULAR, date: augustDate(day),
@@ -638,8 +648,8 @@ describe('PayrollService.recomputeMonthAll', () => {
 
     const unpaidLeaveDeds = [...db.deductions.values()].filter((d) => d.reason === 'UNPAID_LEAVE');
     const awdAllowances = [...db.allowances.values()].filter((a) => a.type === 'ADDITIONAL_WORKING_DAYS');
-    expect(unpaidLeaveDeds).toHaveLength(1); // never duplicated across 3 runs
-    expect(awdAllowances).toHaveLength(1);
+    expect(unpaidLeaveDeds).toHaveLength(0); // no longer created at all
+    expect(awdAllowances).toHaveLength(1); // never duplicated across 3 runs
   });
 
   // L. Explicit confirmation required for apply.

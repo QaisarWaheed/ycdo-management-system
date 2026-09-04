@@ -572,10 +572,11 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(5)); // OLD segment's window
 
-    // OLD segment: 14/31 * 24800 = 11200
-    expect(db.payrollEntries.get(oldEntry.id)!.basicStipend).toBe(11200);
-    // NEW segment: 17/31 * 27900 = 15300
-    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(15300);
+    // 2026-09-04 rule: a mid-month package change pays the new rate for
+    // the WHOLE month, no blending — the closed OLD segment earns 0 Basic
+    // and the active NEW segment earns the full contractual amount.
+    expect(db.payrollEntries.get(oldEntry.id)!.basicStipend).toBe(0);
+    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(27900);
   });
 
   // Additional: hook never even queries StipendRecord/AttendanceLog beyond

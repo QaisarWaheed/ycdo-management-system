@@ -199,14 +199,17 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
     const logs = [buildLog(3, AttendanceStatus.HALF_DAY)];
     const b = await computeBreakdown(logs);
     expect(b.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
-    expect(b.hourlyBasicEarned).toBe(800);
+    // 2026-09-04 day-based rewrite: the other 30 unlogged August days are
+    // true gap days (elapsed, in-employment, no log at all) and are now
+    // credited too, capping Basic at the full contractual amount.
+    expect(b.hourlyBasicEarned).toBe(24800);
   });
 
   it('UNMARKED still earns a full scheduled-day of basic; the 1-day cut is a PayrollDeduction', async () => {
     const logs = [buildLog(3, AttendanceStatus.UNMARKED)];
     const b = await computeBreakdown(logs);
     expect(b.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
-    expect(b.hourlyBasicEarned).toBe(800);
+    expect(b.hourlyBasicEarned).toBe(24800);
   });
 
   it('does not backfill when multiple stipend segments overlap the month', async () => {
@@ -262,7 +265,9 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
       backfillFromJoining: true,
     });
     expect(withBackfill.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
-    expect(withBackfill.hourlyBasicEarned).toBe(800);
+    // 2026-09-04 day-based rewrite: the rest of August is gap-filled
+    // (elapsed, employed since 2022, no log), capping Basic at full.
+    expect(withBackfill.hourlyBasicEarned).toBe(24800);
   });
 
   it('backfills from month-start when stipend starts after the month but attendance exists', async () => {
@@ -322,11 +327,11 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
     const b = await computeBreakdown(logs, {
       existingDeductions: [{ amount: 50000 }],
     });
-    expect(b.hourlyBasicEarned).toBe(800);
-    // Policy (2026-09-04): Basic is earned hourly — payrollBasicStipend
-    // equals hourlyBasicEarned, it is never overridden to the full
-    // contractual amount.
-    expect(b.payrollBasicStipend).toBe(800);
+    // 2026-09-04 day-based rewrite: the rest of the month gap-fills to the
+    // full contractual amount (capped); a large enough deduction still
+    // floors Net at 0.
+    expect(b.hourlyBasicEarned).toBe(24800);
+    expect(b.payrollBasicStipend).toBe(24800);
     expect(b.netStipend).toBe(0);
   });
 
@@ -346,7 +351,12 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
       asOf: new Date(Date.UTC(2026, 7, 14, 0, 0, 0)),
     });
     expect(inProgress.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
-    expect(inProgress.hourlyBasicEarned).toBe(800);
+    // 2026-09-04 day-based rewrite: as-of Aug 14, days 1-13 have elapsed
+    // (13 payable days: the logged PRESENT day 3 plus 12 gap-filled days);
+    // day 14 onward has not happened yet and contributes nothing — Basic
+    // must NOT reach the full 24800 this early in the month.
+    expect(inProgress.hourlyBasicEarned).toBe(roundMoney((24800 * 13) / 31));
+    expect(inProgress.hourlyBasicEarned).toBeLessThan(24800);
   });
 
   // F. ON_LEAVE behavior unchanged
@@ -438,14 +448,17 @@ describe('PayrollService.computeHourlyBreakdown — PRESENT/SWAP_COVERED basic-e
       buildLog(18, AttendanceStatus.ON_LEAVE),
     ];
     const b = await computeBreakdown(logs, { stipendRecord: { basicStipend: 35000 } });
-    // 18 scheduled days out of 31 in the month, all fully credited.
+    // 18 scheduled days out of 31 in the month, all fully credited from
+    // logged statuses.
     const expectedMinutes = 18 * FULL_DAY_MINUTES;
     expect(b.policyCreditMinutes).toBe(expectedMinutes);
     expect(b.workedMinutes).toBe(0);
-    expect(b.hourlyBasicEarned).toBe(
-      roundMoney((35000 * expectedMinutes) / (31 * FULL_DAY_MINUTES)),
-    );
-    // Must be far above the previously-reported 4,489.97 collapse.
+    // 2026-09-04 day-based rewrite: the remaining 13 August days (19-31)
+    // have no log at all and are elapsed as of the default asOf (Sep 1),
+    // so they gap-fill too — Basic reaches the full contractual amount,
+    // capped, far above both the old 4,489.97 collapse and the older
+    // partial-credit figure this test previously asserted.
+    expect(b.hourlyBasicEarned).toBe(35000);
     expect(b.hourlyBasicEarned).toBeGreaterThan(20000);
   });
 });
@@ -504,6 +517,15 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
       existingDeductions: [],
       existingAllowances: [],
       asOf: new Date(Date.UTC(2026, 8, 1)),
+      // Mirror real production wiring (createOrGetEntry/recomputeEmployeeMonth,
+      // payroll.service.ts ~line 1361 and its upsertPayrollEntryForStipendSegment
+      // callers ~line 259/398): only the currently-open (effectiveTo === null)
+      // segment is "the active package" for Basic/allowances, AND production
+      // always widens that active segment's attendance window to month-start
+      // (backfillFromJoining) so a mid-month raise pays the new rate for the
+      // WHOLE month rather than blending with the closed segment's rate.
+      applyContractualPackage: stipendRecord.effectiveTo == null,
+      backfillFromJoining: stipendRecord.effectiveTo == null,
     });
     return { breakdown, findMany };
   }
@@ -522,46 +544,45 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
     expect(breakdown.hourlyBasicEarned).toBe(24800); // exact, see Test A in the Step 1 suite above
   });
 
-  // B. Salary increase mid-month: old segment first half, new segment second half.
-  it('B: a mid-month salary increase splits attendance into two non-overlapping segments with no missing transition date', async () => {
+  // B. Salary increase mid-month (2026-09-04 rule): the closed old segment
+  // still only reads its own narrow window (Aug 1-14), but the new active
+  // segment now reads the WHOLE month (widened via backfillFromJoining,
+  // matching real production wiring) — no blending, the new rate governs
+  // every day of the month, not just the days after the raise.
+  it('B: a mid-month salary increase widens the new active segment to the whole month; the closed old segment stays narrow', async () => {
     const logs = fullMonthPresentLogs();
     const { breakdown: oldSeg } = await computeSegment(logs, {
       basicStipend: 24800,
       effectiveFrom: FAR_PAST,
-      effectiveTo: AUG_15, // exclusive -> covers Aug 1..14
+      effectiveTo: AUG_15, // exclusive -> still only reads Aug 1..14
     });
     const { breakdown: newSeg } = await computeSegment(logs, {
       basicStipend: 27900,
-      effectiveFrom: AUG_15, // inclusive -> covers Aug 15..31
+      effectiveFrom: AUG_15,
       effectiveTo: null,
     });
     expect(oldSeg.policyCreditMinutes).toBe(14 * FULL_DAY_MINUTES);
-    expect(newSeg.policyCreditMinutes).toBe(17 * FULL_DAY_MINUTES);
-    // Every one of the 31 days is counted, and counted exactly once.
-    expect(oldSeg.policyCreditMinutes + newSeg.policyCreditMinutes).toBe(31 * FULL_DAY_MINUTES);
+    // Widened to the whole month, not just Aug 15-31.
+    expect(newSeg.policyCreditMinutes).toBe(31 * FULL_DAY_MINUTES);
   });
 
-  // C. Combined basic earning across both segments equals the correct
-  // prorated total across the two different salary rates.
-  it('C: combined basic earning across both segments matches the correct two-rate prorated total', async () => {
+  // C. A mid-month salary increase: the closed old package earns 0 Basic
+  // (no blending, no dual-paid segments) and the new active package earns
+  // the full contractual amount for the whole month (2026-09-04 rule).
+  it('C: a mid-month salary increase pays the new rate for the whole month, not a two-rate blend', async () => {
     const logs = fullMonthPresentLogs();
     const { breakdown: oldSeg } = await computeSegment(logs, {
-      basicStipend: 24800, // hourlyRate = 24800 / (8*31) = 100.00 exactly
+      basicStipend: 24800,
       effectiveFrom: FAR_PAST,
       effectiveTo: AUG_15,
     });
     const { breakdown: newSeg } = await computeSegment(logs, {
-      basicStipend: 27900, // hourlyRate = 27900 / (8*31) = 112.50 exactly
+      basicStipend: 27900,
       effectiveFrom: AUG_15,
       effectiveTo: null,
     });
-    const oldExpected = roundMoney(roundHoursFromMinutes(14 * FULL_DAY_MINUTES) * computeHourlyRate(24800, 8, 31));
-    const newExpected = roundMoney(roundHoursFromMinutes(17 * FULL_DAY_MINUTES) * computeHourlyRate(27900, 8, 31));
-    expect(oldSeg.hourlyBasicEarned).toBe(oldExpected);
-    expect(oldSeg.hourlyBasicEarned).toBe(11200); // 14 days * 8h * 100/h
-    expect(newSeg.hourlyBasicEarned).toBe(newExpected);
-    expect(newSeg.hourlyBasicEarned).toBe(15300); // 17 days * 8h * 112.5/h
-    expect(roundMoney(oldSeg.hourlyBasicEarned + newSeg.hourlyBasicEarned)).toBe(26500);
+    expect(oldSeg.hourlyBasicEarned).toBe(0);
+    expect(newSeg.hourlyBasicEarned).toBe(27900);
   });
 
   // D. Transition-date boundary test.
@@ -580,9 +601,12 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
       effectiveFrom: AUG_15,
       effectiveTo: null,
     });
-    // Old segment: only Aug 14 (1 day). New segment: only Aug 15 (1 day).
+    // Old (closed) segment: only Aug 14 (1 day) — unaffected by widening.
+    // New (active) segment: 2026-09-04 rule widens it to the whole month,
+    // so it also picks up the Aug 14 log even though its own effectiveFrom
+    // is Aug 15 — by design, no dates are excluded from the active package.
     expect(oldSeg.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
-    expect(newSeg.policyCreditMinutes).toBe(FULL_DAY_MINUTES);
+    expect(newSeg.policyCreditMinutes).toBe(2 * FULL_DAY_MINUTES);
   });
 
   // E. Old stipend segment must not include attendance after its effective period.
@@ -597,21 +621,25 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
     expect(oldSeg.policyCreditMinutes).toBe(14 * FULL_DAY_MINUTES);
   });
 
-  // F. New stipend segment must not include attendance before its effective period.
-  it('F: the new segment excludes attendance dates before its effectiveFrom, even when that data exists', async () => {
+  // F. 2026-09-04 rule: the ACTIVE new segment is deliberately widened to
+  // the whole month (it is "the new rate applies from the 1st", not a
+  // narrow window) — it now DOES reach back into Aug 1-14, unlike before.
+  it('F: the active new segment is widened to the whole month, reaching back before its own effectiveFrom', async () => {
     const logs = fullMonthPresentLogs(); // includes Aug 1..14 too
     const { breakdown: newSeg } = await computeSegment(logs, {
       basicStipend: 27900,
       effectiveFrom: AUG_15,
       effectiveTo: null,
     });
-    // Exactly Aug 15..31 -> 17 days, never reaches back into Aug 1..14.
-    expect(newSeg.policyCreditMinutes).toBe(17 * FULL_DAY_MINUTES);
+    expect(newSeg.policyCreditMinutes).toBe(31 * FULL_DAY_MINUTES);
   });
 
-  // G. Two PayrollEntry rows for the same employee/month: combined total
-  // correct, no attendance date contributes to both.
-  it('G: every attendance date in the month contributes basic earning to exactly one segment, never zero, never two', async () => {
+  // G. 2026-09-04 rule: the closed old segment stays narrow and earns 0
+  // Basic; the active new segment alone accounts for the whole month — the
+  // two segments' raw attendance windows now deliberately overlap (the old
+  // one's overlap is financially inert since its Basic is zeroed), so this
+  // is no longer a strict one-day-one-segment partition.
+  it('G: the closed segment stays narrow (and earns 0 Basic); the active segment alone spans the whole month', async () => {
     const logs = fullMonthPresentLogs();
     const { breakdown: oldSeg } = await computeSegment(logs, {
       basicStipend: 24800,
@@ -624,12 +652,17 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
       effectiveTo: null,
     });
     expect(oldSeg.workedMinutes + newSeg.workedMinutes).toBe(0); // PRESENT -> policy credit only, Step 1
-    expect(oldSeg.policyCreditMinutes + newSeg.policyCreditMinutes).toBe(31 * FULL_DAY_MINUTES);
+    expect(oldSeg.policyCreditMinutes).toBe(14 * FULL_DAY_MINUTES);
+    expect(newSeg.policyCreditMinutes).toBe(31 * FULL_DAY_MINUTES);
+    expect(oldSeg.hourlyBasicEarned).toBe(0);
+    expect(newSeg.hourlyBasicEarned).toBe(27900);
   });
 
   // H. Step 1 regression: PRESENT/SWAP_COVERED still get full scheduled-day
-  // credit WITHIN each segment.
-  it('H: PRESENT and SWAP_COVERED still earn a full scheduled-day floor inside each stipend segment', async () => {
+  // credit. 2026-09-04: the active new segment's widened window also picks
+  // up the old segment's PRESENT day (Aug 10), in addition to its own
+  // SWAP_COVERED day (Aug 20) — two full-day credits, not one.
+  it('H: PRESENT and SWAP_COVERED still earn a full scheduled-day floor; the active segment sees both days once widened', async () => {
     const logs = [
       buildLog(10, AttendanceStatus.PRESENT, { checkIn: pkTime(10, 9, 0), checkOut: pkTime(10, 9, 5) }), // short session
       buildLog(20, AttendanceStatus.SWAP_COVERED, { checkIn: pkTime(20, 9, 0), checkOut: pkTime(20, 9, 5) }),
@@ -646,7 +679,7 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
     });
     expect(oldSeg.policyCreditMinutes).toBe(FULL_DAY_MINUTES); // PRESENT on Aug 10
     expect(oldSeg.workedMinutes).toBe(0);
-    expect(newSeg.policyCreditMinutes).toBe(FULL_DAY_MINUTES); // SWAP_COVERED on Aug 20
+    expect(newSeg.policyCreditMinutes).toBe(2 * FULL_DAY_MINUTES); // Aug 10 (widened) + Aug 20
     expect(newSeg.workedMinutes).toBe(0);
   });
 
@@ -675,33 +708,47 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
     expect(guardCount).toBeGreaterThanOrEqual(2);
   });
 
-  // J. Multiple stipend changes within the same month (three segments).
-  it('J: three stipend segments within one month (two transitions) partition the month with no overlap or gap', async () => {
+  // J. Multiple stipend changes within the same month (three segments,
+  // two transitions). 2026-09-04 rule: only the LAST (active, effectiveTo
+  // null) segment is widened to the whole month and earns Basic; the two
+  // closed segments keep their own narrow windows but earn 0 Basic.
+  it('J: with two transitions, only the final active segment is widened and earns Basic', async () => {
     const logs = fullMonthPresentLogs();
     const AUG_10 = new Date(Date.UTC(2026, 7, 10, 0, 0, 0));
     const AUG_21 = new Date(Date.UTC(2026, 7, 21, 0, 0, 0));
     const { breakdown: seg1 } = await computeSegment(logs, { basicStipend: 20000, effectiveFrom: FAR_PAST, effectiveTo: AUG_10 }); // Aug 1..9
     const { breakdown: seg2 } = await computeSegment(logs, { basicStipend: 24000, effectiveFrom: AUG_10, effectiveTo: AUG_21 }); // Aug 10..20
-    const { breakdown: seg3 } = await computeSegment(logs, { basicStipend: 28000, effectiveFrom: AUG_21, effectiveTo: null }); // Aug 21..31
+    const { breakdown: seg3 } = await computeSegment(logs, { basicStipend: 28000, effectiveFrom: AUG_21, effectiveTo: null }); // Aug 21..31, widened to Aug 1..31
     expect(seg1.policyCreditMinutes).toBe(9 * FULL_DAY_MINUTES);
     expect(seg2.policyCreditMinutes).toBe(11 * FULL_DAY_MINUTES);
-    expect(seg3.policyCreditMinutes).toBe(11 * FULL_DAY_MINUTES);
-    expect(
-      seg1.policyCreditMinutes + seg2.policyCreditMinutes + seg3.policyCreditMinutes,
-    ).toBe(31 * FULL_DAY_MINUTES);
+    expect(seg3.policyCreditMinutes).toBe(31 * FULL_DAY_MINUTES);
+    expect(seg1.hourlyBasicEarned).toBe(0);
+    expect(seg2.hourlyBasicEarned).toBe(0);
+    expect(seg3.hourlyBasicEarned).toBe(28000);
   });
 
   // Confirms the daily-rate denominator policy (Required behavior #5) is
-  // untouched: hourlyRate for each segment still divides by the FULL
-  // calendar-month day count, never the segment's own day count.
+  // untouched: hourlyRate divides by the FULL calendar-month day count,
+  // never a shorter window's day count. Checked directly against the raw
+  // function (bypassing computeSegment's active-package auto-widening) so
+  // this isolates the denominator arithmetic from the 2026-09-04 widening
+  // rule tested elsewhere (B/C/F/G/H/J above).
   it('denominator policy: hourlyRate uses the full calendar-month day count, not the segment day count', async () => {
     const logs = fullMonthPresentLogs();
-    // 14-day segment at contractual 24800/month: if the denominator were
+    const { service } = makeSegmentAwareService(logs);
+    // 14-day window at contractual 24800/month: if the denominator were
     // wrongly switched to segment days (14) instead of the full month
     // (31), hourlyRate would be 24800/(8*14)=221.43 and 14 days' credit
     // would equal the FULL 24800 instead of the correct partial amount.
     const wrongDenominatorResult = roundMoney(roundHoursFromMinutes(14 * FULL_DAY_MINUTES) * computeHourlyRate(24800, 8, 14));
-    const { breakdown } = await computeSegment(logs, { basicStipend: 24800, effectiveFrom: FAR_PAST, effectiveTo: AUG_15 });
+    const breakdown = await (service as any).computeHourlyBreakdown('emp-1', 8, 2026, {
+      stipendRecord: { basicStipend: 24800, effectiveFrom: FAR_PAST, effectiveTo: AUG_15 },
+      employee: EMPLOYEE,
+      existingDeductions: [],
+      existingAllowances: [],
+      asOf: new Date(Date.UTC(2026, 8, 1)),
+      applyContractualPackage: true, // isolate the denominator, not the 2026-09-04 zero-closed-segment rule
+    });
     expect(breakdown.hourlyBasicEarned).not.toBe(wrongDenominatorResult);
     expect(breakdown.hourlyBasicEarned).toBe(11200); // correct, full-month-denominator result
   });
@@ -799,19 +846,20 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     );
   }
 
-  it('A: full-month open segment earns Basic proportional to logged present days', async () => {
+  it('A: full-month open segment earns full contractual Basic once the whole month is accounted for (logged + gap-filled days)', async () => {
     const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
     const b = await computeBreakdown(logs, {
       stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
     });
-    expect(b.creditedAttendanceDays).toBe(28);
-    // Policy (2026-09-04 override, supersedes rulebook rule 4/invariant 45):
-    // Basic is earned hourly — 28 logged present days out of 31 scheduled.
-    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 28) / 31));
-    expect(b.netStipend).toBe(roundMoney((100000 * 28) / 31));
+    // 2026-09-04 day-based rewrite: 28 logged PRESENT days + 3 gap-filled
+    // (elapsed, in-employment, unlogged) August days = 31/31, capped at the
+    // full contractual amount — not a fraction of logged days only.
+    expect(b.creditedAttendanceDays).toBe(31);
+    expect(b.payrollBasicStipend).toBe(100000);
+    expect(b.netStipend).toBe(100000);
   });
 
-  it('B: different packages still scale by the same worked-hours fraction', async () => {
+  it('B: different packages all reach the same full-month cap once gap-filled', async () => {
     const logs = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
     const b25 = await computeBreakdown(logs, {
       stipendRecord: { basicStipend: 25000, effectiveFrom: FAR_PAST, effectiveTo: null },
@@ -819,11 +867,11 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     const b18 = await computeBreakdown(logs, {
       stipendRecord: { basicStipend: 18000, effectiveFrom: FAR_PAST, effectiveTo: null },
     });
-    expect(b25.payrollBasicStipend).toBe(roundMoney((25000 * 28) / 31));
-    expect(b18.payrollBasicStipend).toBe(roundMoney((18000 * 28) / 31));
+    expect(b25.payrollBasicStipend).toBe(25000);
+    expect(b18.payrollBasicStipend).toBe(18000);
   });
 
-  it('C: adding later PRESENT logs increases hourly-earned Basic for an open segment', async () => {
+  it('C: a full-month segment reaches the same capped Basic whether or not every day is individually logged', async () => {
     const through28 = logsForDays(Array.from({ length: 28 }, (_, i) => i + 1));
     const full = logsForDays(Array.from({ length: 31 }, (_, i) => i + 1));
     const stipend = {
@@ -831,8 +879,12 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     };
     const before = await computeBreakdown(through28, stipend);
     const after = await computeBreakdown(full, stipend);
-    expect(before.payrollBasicStipend).toBe(roundMoney((100000 * 28) / 31));
+    // Both reach the same capped 100000 — 28 logged + 3 gap-filled equals
+    // 31 fully logged, by design (a gap day earns exactly what a logged
+    // PRESENT day would have).
+    expect(before.payrollBasicStipend).toBe(100000);
     expect(after.payrollBasicStipend).toBe(100000);
+    expect(before.creditedAttendanceDays).toBe(31);
     expect(after.creditedAttendanceDays).toBe(31);
   });
 
@@ -847,33 +899,38 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
       stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
       existingDeductions: [{ amount: 6451.61 }],
     });
-    expect(b.creditedAttendanceDays).toBe(28);
-    const expectedBasic = roundMoney((100000 * 28) / 31);
+    // 2026-09-04 day-based rewrite: the 3 unlogged trailing August days
+    // gap-fill too, reaching the full 31/31 cap; the ABSENT/UNMARKED/LATE
+    // days still count as payable (their penalty is the separate
+    // disciplineDeductions line, unaffected by this).
+    expect(b.creditedAttendanceDays).toBe(31);
+    const expectedBasic = 100000;
     expect(b.payrollBasicStipend).toBe(expectedBasic);
     expect(b.disciplineDeductions).toBe(6451.61);
     expect(b.netStipend).toBe(roundMoney(expectedBasic - 6451.61));
   });
 
-  it('E: mid-month stipend start — Basic earns only for the days actually logged', async () => {
+  it('E: mid-month stipend start — the segment window (not just logged days) is gap-filled and prorated by calendar days', async () => {
     const aug15 = new Date(Date.UTC(2026, 7, 15));
     const fewLogs = logsForDays([15, 16]);
     const b = await computeBreakdown(fewLogs, {
       stipendRecord: { basicStipend: 100000, effectiveFrom: aug15, effectiveTo: null },
     });
-    expect(b.creditedAttendanceDays).toBe(2);
-    // Only 2 logged present days out of 31 scheduled days in the month —
-    // hourly-earned Basic, not a calendar-day segment proration.
-    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 2) / 31));
+    // 2026-09-04 day-based rewrite: the segment only spans Aug 15-31 (17
+    // days); 2 are logged PRESENT and the other 15 gap-fill (elapsed,
+    // no log) — all 17 elapsed segment days count, not just the 2 logged.
+    expect(b.creditedAttendanceDays).toBe(17);
+    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 17) / 31));
   });
 
-  it('E2: mid-month joiningDate — Basic earns only for the days actually logged', async () => {
+  it('E2: mid-month joiningDate — the post-joining window is gap-filled and prorated by calendar days', async () => {
     const fewLogs = logsForDays([15, 16]);
     const b = await computeBreakdown(fewLogs, {
       stipendRecord: { basicStipend: 100000, effectiveFrom: FAR_PAST, effectiveTo: null },
       employee: { joiningDate: new Date(Date.UTC(2026, 7, 15)) },
     });
-    expect(b.creditedAttendanceDays).toBe(2);
-    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 2) / 31));
+    expect(b.creditedAttendanceDays).toBe(17);
+    expect(b.payrollBasicStipend).toBe(roundMoney((100000 * 17) / 31));
   });
 
   it('E3: backfilled attendance earns Basic hourly across all logged days, regardless of package effectiveFrom', async () => {
@@ -891,11 +948,11 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
       asOf: new Date(Date.UTC(2026, 8, 1)),
       backfillFromJoining: true,
     });
-    expect(b.creditedAttendanceDays).toBe(28);
-    // With backfill, attendance is read from joiningDate, so all 28 logged
-    // present days count toward hourly-earned Basic — not bounded to the
-    // package's own effectiveFrom window.
-    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 28) / 31));
+    // 2026-09-04 day-based rewrite: with backfill, attendance is read from
+    // joiningDate (bounded to the whole month here), so the 3 unlogged
+    // trailing days gap-fill too — full 31/31, capped at contractual.
+    expect(b.creditedAttendanceDays).toBe(31);
+    expect(b.payrollBasicStipend).toBe(30000);
   });
 
   it('E4: oldest open package with attendance backfill earns Basic hourly too', async () => {
@@ -915,9 +972,10 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
       backfillFromJoining: true,
       backfillContractualFromEmployment: true,
     });
-    // Allowances still follow the calendar-month fixed-package rule (rule 11);
-    // only Basic itself is hourly-earned.
-    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 28) / 31));
+    // Allowances still follow the calendar-month fixed-package rule (rule 11).
+    // 2026-09-04 day-based rewrite: Basic gap-fills to the full month (31/31),
+    // capped at contractual, same as the sibling backfill test above.
+    expect(b.payrollBasicStipend).toBe(30000);
     expect(b.fixedAllowances).toBe(5000);
   });
 
@@ -940,8 +998,10 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     expect(b.hourlyRate).toBe(computeHourlyRate(30000, 8, 31));
     expect(b.hourlyRate).not.toBe(computeHourlyRate(35000, 8, 31));
     // Without backfill, attendance is bounded to the package's own window
-    // (Aug 28–31); only day 28 has a logged present day in that window.
-    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 1) / 31));
+    // (Aug 28-31, 4 days). 2026-09-04 day-based rewrite: day 28 is logged
+    // PRESENT and days 29-31 gap-fill (elapsed, no log) — all 4 segment
+    // days count, prorated against the full month.
+    expect(b.payrollBasicStipend).toBe(roundMoney((30000 * 4) / 31));
     expect(b.fixedAllowances).toBe(5000);
   });
 
@@ -1022,14 +1082,16 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     expect(newSeg.payrollBasicStipend).toBe(15300); // 17/31 * 27900
   });
 
-  it('SHORT_LEAVE is credited for its actual worked hours', async () => {
+  it('SHORT_LEAVE is a full-day-paid, quota-limited status (does not itself reduce Basic)', async () => {
     const logs = logsForDays([3], AttendanceStatus.SHORT_LEAVE);
     const b = await computeBreakdown(logs, {
       stipendRecord: { basicStipend: 24800, effectiveFrom: FAR_PAST, effectiveTo: null },
     });
-    expect(b.creditedAttendanceDays).toBe(1);
-    // 1 logged day out of 31 scheduled days — hourly-earned Basic.
-    expect(b.payrollBasicStipend).toBe(roundMoney(24800 / 31));
+    // 2026-09-04 day-based rewrite: day 3 is logged SHORT_LEAVE (full-day
+    // credit, quota-limited — not a pay cut) and the other 30 August days
+    // gap-fill (elapsed, no log) — full month, capped at contractual.
+    expect(b.creditedAttendanceDays).toBe(31);
+    expect(b.payrollBasicStipend).toBe(24800);
   });
 
   it('I: net is payroll basic + allowances − deductions', async () => {
@@ -1039,7 +1101,9 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
       existingDeductions: [{ amount: 5000 }],
       existingAllowances: [{ amount: 2000 }],
     });
-    const expectedBasic = roundMoney(100000 / 31);
+    // 2026-09-04 day-based rewrite: 1 logged day + 30 gap-filled elapsed
+    // days = full month, capped at the full contractual Basic.
+    const expectedBasic = 100000;
     expect(b.payrollBasicStipend).toBe(expectedBasic);
     expect(b.netStipend).toBe(roundMoney(expectedBasic + 2000 - 5000));
   });
