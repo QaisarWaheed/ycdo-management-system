@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Download, FileText, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -49,6 +49,10 @@ type ReportModalProps = {
   columns: ReportColumnConfig[]
   fetchFn: (filters: Record<string, string>) => Promise<Record<string, unknown>[]>
   filename?: string
+  /** Column key (e.g. "branch") to sort/group results by. Used so an "All
+   * Branches" run lists every branch's employees together (branch A, then
+   * branch B, ...) instead of interleaved. */
+  groupByKey?: string
   extraContent?:
     | React.ReactNode
     | ((results: Record<string, unknown>[]) => React.ReactNode)
@@ -62,12 +66,14 @@ export function ReportModal({
   columns,
   fetchFn,
   filename,
+  groupByKey,
   extraContent,
 }: ReportModalProps) {
   const initialFilters = Object.fromEntries(
     filters.map((f) => [f.key, f.defaultValue ?? '']),
   )
   const [filterValues, setFilterValues] = useState(initialFilters)
+  const [appliedFilters, setAppliedFilters] = useState(initialFilters)
   const [results, setResults] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(false)
   const [ran, setRan] = useState(false)
@@ -76,12 +82,33 @@ export function ReportModal({
     setLoading(true)
     try {
       const data = await fetchFn(filterValues)
-      setResults(data)
+      const sorted = groupByKey
+        ? [...data].sort((a, b) =>
+            String(a[groupByKey] ?? '').localeCompare(String(b[groupByKey] ?? '')),
+          )
+        : data
+      setResults(sorted)
+      setAppliedFilters(filterValues)
       setRan(true)
     } finally {
       setLoading(false)
     }
   }
+
+  // Human-readable "Branch: All Branches · Department: X" summary of the
+  // filters the currently-shown results were actually run with, so the
+  // printed/exported report is self-describing without the filter panel.
+  const filterSummary = filters
+    .map((f) => {
+      const value = appliedFilters[f.key]
+      if (!value) return null
+      const label =
+        f.type === 'select'
+          ? (f.options?.find((o) => o.value === value)?.label ?? value)
+          : value
+      return `${f.label}: ${label}`
+    })
+    .filter((s): s is string => !!s)
 
   const handlePrint = () => {
     window.print()
@@ -168,10 +195,21 @@ export function ReportModal({
           </div>
         )}
 
+        {ran && filterSummary.length > 0 && (
+          <p className="text-sm text-text-secondary">
+            {filterSummary.join(' · ')}
+          </p>
+        )}
+
         {ran && (
           <div id="report-results" className="space-y-3">
             <div className="hidden print:block">
               <h2 className="text-lg font-bold">{reportTitle}</h2>
+              {filterSummary.length > 0 && (
+                <p className="text-sm text-text-secondary">
+                  {filterSummary.join(' · ')}
+                </p>
+              )}
               <p className="text-sm text-text-secondary">
                 Generated {new Date().toLocaleString()}
               </p>
@@ -196,17 +234,38 @@ export function ReportModal({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    results.map((row, i) => (
-                      <TableRow key={i}>
-                        {columns.map((col) => (
-                          <TableCell key={col.key}>
-                            {col.render
-                              ? col.render(row)
-                              : String(row[col.key] ?? '—')}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
+                    results.map((row, i) => {
+                      const groupValue = groupByKey ? String(row[groupByKey] ?? '') : null
+                      const prevGroupValue =
+                        groupByKey && i > 0
+                          ? String(results[i - 1][groupByKey] ?? '')
+                          : null
+                      const showGroupHeader =
+                        groupValue !== null && groupValue !== prevGroupValue
+                      return (
+                        <Fragment key={i}>
+                          {showGroupHeader && (
+                            <TableRow key={`group-${i}`} className="bg-muted/50">
+                              <TableCell
+                                colSpan={columns.length}
+                                className="py-2 font-semibold"
+                              >
+                                {groupValue || '—'}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          <TableRow key={i}>
+                            {columns.map((col) => (
+                              <TableCell key={col.key}>
+                                {col.render
+                                  ? col.render(row)
+                                  : String(row[col.key] ?? '—')}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        </Fragment>
+                      )
+                    })
                   )}
                 </TableBody>
               </Table>

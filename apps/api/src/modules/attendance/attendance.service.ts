@@ -3215,7 +3215,19 @@ export class AttendanceService {
       ).length;
     }
 
-    return summarizeAttendanceLogs(logs, weeklyOff);
+    const additionalWorkingDays = await this.prisma.additionalWorkingDay.count(
+      {
+        where: {
+          employeeId,
+          date: { gte: start, ...(visibleEnd ? { lte: visibleEnd } : {}) },
+        },
+      },
+    );
+
+    return {
+      ...summarizeAttendanceLogs(logs, weeklyOff),
+      additionalWorkingDays,
+    };
   }
 
   async markAbsentees(date: string) {

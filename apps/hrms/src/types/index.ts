@@ -877,6 +877,7 @@ export interface AttendanceSummary {
   weeklyOff?: number
   overtimeMinutes: number
   totalLateMinutes: number
+  additionalWorkingDays?: number
 }
 
 export interface DisciplinaryAction {

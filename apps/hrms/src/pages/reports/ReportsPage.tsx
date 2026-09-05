@@ -92,6 +92,10 @@ type ReportDef = {
   columns: ReportColumnConfig[]
   filename: string
   fetchFn: (filters: Record<string, string>) => Promise<Record<string, unknown>[]>
+  /** Column key to group/sort results by when the report spans multiple
+   * branches (e.g. "All Branches" selected) — lists branch A's employees,
+   * then branch B's, and so on, instead of interleaving them. */
+  groupByKey?: string
   extraContent?: (results: Record<string, unknown>[]) => React.ReactNode
 }
 
@@ -224,6 +228,7 @@ function useReports(): ReportDef[] {
           { key: 'phone', label: 'Phone' },
           { key: 'joiningDate', label: 'Joining Date' },
         ],
+        groupByKey: 'branch',
         fetchFn: async (f) => {
           const employees = filterByDesignation(
             sortEmployeesByHierarchy(
@@ -283,6 +288,7 @@ function useReports(): ReportDef[] {
           { key: 'branch', label: 'Branch' },
           { key: 'joiningDate', label: 'Joining Date' },
         ],
+        groupByKey: 'branch',
         fetchFn: async () => {
           const employees = sortEmployeesByHierarchy(
             (await employeesApi.getAll({ status: 'TRAINEE' })) as Employee[],
@@ -312,6 +318,7 @@ function useReports(): ReportDef[] {
           { key: 'branch', label: 'Branch' },
           { key: 'joiningDate', label: 'Joining Date' },
         ],
+        groupByKey: 'branch',
         fetchFn: async () => {
           const employees = sortEmployeesByHierarchy(
             (await employeesApi.getAll({ status: 'APPOINTED' })) as Employee[],
@@ -347,6 +354,7 @@ function useReports(): ReportDef[] {
           { key: 'checkIn', label: 'Check In' },
           { key: 'checkOut', label: 'Check Out' },
         ],
+        groupByKey: 'branch',
         fetchFn: async (f) => {
           const logs = await attendanceApi.getAll({
             startDate: f.date,
@@ -395,6 +403,7 @@ function useReports(): ReportDef[] {
         columns: [
           { key: 'employeeCode', label: 'Code' },
           { key: 'name', label: 'Name' },
+          { key: 'branch', label: 'Branch' },
           { key: 'present', label: 'Present' },
           { key: 'absent', label: 'Absent' },
           { key: 'uninformedAbsent', label: 'Uninformed Absent' },
@@ -405,7 +414,10 @@ function useReports(): ReportDef[] {
           { key: 'holiday', label: 'Holiday' },
           { key: 'swapCovered', label: 'Swap Covered' },
           { key: 'unmarked', label: 'Unmarked' },
+          { key: 'overtimeHours', label: 'Overtime (hrs)' },
+          { key: 'additionalWorkingDays', label: 'Additional Working Days' },
         ],
+        groupByKey: 'branch',
         fetchFn: async (f) => {
           const month = Number(f.month)
           const year = Number(f.year)
@@ -424,6 +436,7 @@ function useReports(): ReportDef[] {
             rows.push({
               employeeCode: emp.employeeCode,
               name: emp.fullName,
+              branch: formatBranchLabel(emp.currentBranch),
               present: summary.present,
               absent: summary.absent,
               uninformedAbsent: summary.uninformedAbsent,
@@ -434,6 +447,8 @@ function useReports(): ReportDef[] {
               holiday: summary.holiday,
               swapCovered: summary.swapCovered,
               unmarked: summary.unmarked ?? 0,
+              overtimeHours: Math.round((summary.overtimeMinutes / 60) * 100) / 100,
+              additionalWorkingDays: summary.additionalWorkingDays ?? 0,
             })
           }
           return rows
@@ -455,9 +470,11 @@ function useReports(): ReportDef[] {
         columns: [
           { key: 'employeeCode', label: 'Code' },
           { key: 'name', label: 'Name' },
+          { key: 'branch', label: 'Branch' },
           { key: 'lateCount', label: 'Late Count' },
           { key: 'totalLateMinutes', label: 'Total Late Minutes' },
         ],
+        groupByKey: 'branch',
         fetchFn: async (f) => {
           const month = Number(f.month)
           const year = Number(f.year)
@@ -483,7 +500,10 @@ function useReports(): ReportDef[] {
             allowedIds = new Set(employees.map((e) => e.id))
           }
 
-          const grouped: Record<string, { code: string; name: string; count: number; minutes: number }> = {}
+          const grouped: Record<
+            string,
+            { code: string; name: string; branch: string; count: number; minutes: number }
+          > = {}
           for (const log of logs as AttendanceLog[]) {
             if (allowedIds && (!log.employeeId || !allowedIds.has(log.employeeId))) {
               continue
@@ -495,6 +515,7 @@ function useReports(): ReportDef[] {
                 name: log.employee
                   ? log.employee.fullName
                   : '—',
+                branch: formatBranchLabel(log.branch),
                 count: 0,
                 minutes: 0,
               }
@@ -506,6 +527,7 @@ function useReports(): ReportDef[] {
           return Object.values(grouped).map((g) => ({
             employeeCode: g.code,
             name: g.name,
+            branch: g.branch,
             lateCount: g.count,
             totalLateMinutes: g.minutes,
           }))
@@ -531,6 +553,7 @@ function useReports(): ReportDef[] {
           { key: 'branch', label: 'Branch' },
           { key: 'status', label: 'Status' },
         ],
+        groupByKey: 'branch',
         fetchFn: async (f) => {
           const logs = await attendanceApi.getAll({
             startDate: f.startDate,
@@ -760,7 +783,12 @@ export function ReportsPage() {
   const [activeReport, setActiveReport] = useState<ReportDef | null>(null)
 
   return (
-    <div className="space-y-6">
+    // print:hidden on the whole page body: ReportModal renders through a
+    // portal outside this tree, so hiding everything here for print leaves
+    // only the modal's own report content (which sets its own print:hidden
+    // spots for filters/buttons) to actually appear in the printed output —
+    // otherwise this report-picker grid printed as extra leading pages.
+    <div className="space-y-6 print:hidden">
       <h1 className="text-2xl font-bold text-text-primary">Reports</h1>
       <p className="text-text-secondary">
         Generate and export HR reports across employees, attendance, leave, and branch change requests.
@@ -800,6 +828,7 @@ export function ReportsPage() {
           columns={activeReport.columns}
           fetchFn={activeReport.fetchFn}
           filename={activeReport.filename}
+          groupByKey={activeReport.groupByKey}
           extraContent={activeReport.extraContent}
         />
       )}
