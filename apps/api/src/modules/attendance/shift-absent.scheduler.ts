@@ -4,6 +4,8 @@ import {
   AttendanceLogType,
   AttendanceSource,
   AttendanceStatus,
+  LeaveStatus,
+  LeaveType,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -98,7 +100,8 @@ export class ShiftAbsentScheduler {
             employee.dutyStartTime?.trim() ||
             employee.shift?.startTime?.trim() ||
             null;
-          await this.prisma.attendanceLog.create({
+          const inserted = await this.prisma.attendanceLog.createMany({
+            skipDuplicates: true,
             data: {
               employeeId: employee.id,
               branchId: employee.currentBranchId,
@@ -112,7 +115,7 @@ export class ShiftAbsentScheduler {
                 employee.dutyEndTime ?? employee.shift?.endTime ?? null,
             },
           });
-          marked++;
+          marked += inserted.count;
         }
         continue;
       }
@@ -150,7 +153,8 @@ export class ShiftAbsentScheduler {
       });
 
       if (!existing) {
-        await this.prisma.attendanceLog.create({
+        const inserted = await this.prisma.attendanceLog.createMany({
+          skipDuplicates: true,
           data: {
             employeeId: employee.id,
             branchId: employee.currentBranchId,
@@ -164,7 +168,7 @@ export class ShiftAbsentScheduler {
               employee.dutyEndTime ?? employee.shift?.endTime ?? null,
           },
         });
-        marked++;
+        marked += inserted.count;
       }
     }
 
@@ -247,11 +251,27 @@ export class ShiftAbsentScheduler {
 
       if (minutesSince < 120) continue;
 
-      await this.prisma.$transaction(async (tx) => {
-        await tx.attendanceLog.update({
-          where: { id: log.id },
+      const changed = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.attendanceLog.updateMany({
+          where: {
+            id: log.id,
+            status: {
+              in: [AttendanceStatus.UNMARKED, AttendanceStatus.ABSENT],
+            },
+            checkIn: null,
+            employee: {
+              leaveRecords: {
+                none: {
+                  leaveType: LeaveType.SHORT_LEAVE,
+                  status: LeaveStatus.APPROVED,
+                  startDate: log.date,
+                },
+              },
+            },
+          },
           data: { status: AttendanceStatus.UNINFORMED_ABSENT },
         });
+        if (updated.count === 0) return false;
 
         await applyDisciplineRules(
           tx,
@@ -268,7 +288,9 @@ export class ShiftAbsentScheduler {
             type: 'UNINFORMED_ABSENT',
           },
         });
+        return true;
       });
+      if (!changed) continue;
 
       // Fires only after the transaction above has committed. UNMARKED/
       // ABSENT -> UNINFORMED_ABSENT changes this day's policy-credit
@@ -320,14 +342,28 @@ export class ShiftAbsentScheduler {
         continue;
       }
 
-      await this.prisma.$transaction(async (tx) => {
-        await tx.attendanceLog.update({
-          where: { id: log.id },
+      const changed = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.attendanceLog.updateMany({
+          where: {
+            id: log.id,
+            status: AttendanceStatus.UNMARKED,
+            checkIn: null,
+            employee: {
+              leaveRecords: {
+                none: {
+                  leaveType: LeaveType.SHORT_LEAVE,
+                  status: LeaveStatus.APPROVED,
+                  startDate: log.date,
+                },
+              },
+            },
+          },
           data: {
             status: AttendanceStatus.ABSENT,
             note: AUTO_ABSENT_24H_NOTE,
           },
         });
+        if (updated.count === 0) return false;
 
         await applyDisciplineRules(
           tx,
@@ -335,7 +371,9 @@ export class ShiftAbsentScheduler {
           AttendanceStatus.ABSENT,
           log.date,
         );
+        return true;
       });
+      if (!changed) continue;
 
       await this.payrollService.recomputePendingPayrollForAttendanceDate(
         log.employee.id,
@@ -409,7 +447,21 @@ export class ShiftAbsentScheduler {
       });
 
       if (!existing) {
-        await this.prisma.attendanceLog.create({
+        if (
+          status === AttendanceStatus.ABSENT &&
+          (await this.prisma.leaveRecord.findFirst({
+            where: {
+              employeeId: employee.id,
+              startDate: date,
+              leaveType: LeaveType.SHORT_LEAVE,
+              status: LeaveStatus.APPROVED,
+            },
+            select: { id: true },
+          }))
+        )
+          continue;
+        const inserted = await this.prisma.attendanceLog.createMany({
+          skipDuplicates: true,
           data: {
             employeeId: employee.id,
             branchId: employee.currentBranchId,
@@ -422,14 +474,14 @@ export class ShiftAbsentScheduler {
             dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
           },
         });
-        marked++;
+        marked += inserted.count;
 
         // Only the 24h-shift ABSENT branch is payroll-relevant here — a
         // bare UNMARKED create (normal shifts) contributes zero credit
         // either way, so recomputing for it would be pure wasted work.
         // Covers both callers (markShiftStartAbsent cron and
         // backfillAbsentForDate) since they both funnel through here.
-        if (status === AttendanceStatus.ABSENT) {
+        if (inserted.count > 0 && status === AttendanceStatus.ABSENT) {
           await this.payrollService.recomputePendingPayrollForAttendanceDate(
             employee.id,
             date,
@@ -461,16 +513,19 @@ export class ShiftAbsentScheduler {
     });
 
     for (const row of rows) {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.attendanceLog.update({
-          where: { id: row.id },
+      const changed = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.attendanceLog.updateMany({
+          where: { id: row.id, status: AttendanceStatus.ABSENT, checkIn: null },
           data: {
             status: AttendanceStatus.UNMARKED,
             note: AUTO_UNMARKED_NOTE,
           },
         });
+        if (updated.count === 0) return false;
         await reverseAbsenceDeductionForDate(tx, row.employeeId, row.date);
+        return true;
       });
+      if (!changed) continue;
       await this.payrollService.recomputePendingPayrollForAttendanceDate(
         row.employeeId,
         row.date,
