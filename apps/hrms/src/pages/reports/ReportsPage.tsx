@@ -19,6 +19,7 @@ import {
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
+import { designationsApi } from '@/api/endpoints/designations'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
 import { branchChangeRequestApi } from '@/api/endpoints/branchChangeRequest'
@@ -121,6 +122,23 @@ function useReportOptions() {
     [departments],
   )
 
+  const { data: designations = [] } = useQuery({
+    queryKey: ['designations-all'],
+    queryFn: () => designationsApi.getAll(),
+  })
+
+  // Designations have no per-employee foreign-key filter on the /employees
+  // endpoint (only branchId/departmentId are supported server-side), so the
+  // option value is the designation's title itself — matched client-side
+  // against employee.currentDesignation in each report's fetchFn below.
+  const designationOptions = useMemo(
+    () => [
+      { value: ALL, label: 'All Designations' },
+      ...designations.map((d) => ({ value: d.title, label: d.title })),
+    ],
+    [designations],
+  )
+
   const statusOptions = [
     { value: ALL, label: 'All Statuses' },
     { value: 'ACTIVE', label: 'Active' },
@@ -147,13 +165,32 @@ function useReportOptions() {
     { value: 'COMPLETED', label: 'Completed' },
   ]
 
-  return { branchOptions, deptOptions, statusOptions, leaveStatusOptions, branchChangeStatusOptions }
+  return {
+    branchOptions,
+    deptOptions,
+    designationOptions,
+    statusOptions,
+    leaveStatusOptions,
+    branchChangeStatusOptions,
+  }
+}
+
+/** Client-side designation filter shared by every report that lists
+ * employees — the /employees endpoint has no designationId query param, so
+ * this narrows an already-fetched employee list by exact title match. */
+function filterByDesignation<T extends { currentDesignation?: string | null }>(
+  employees: T[],
+  designation: string | undefined,
+): T[] {
+  if (!designation || designation === ALL) return employees
+  return employees.filter((e) => e.currentDesignation === designation)
 }
 
 function useReports(): ReportDef[] {
   const {
     branchOptions,
     deptOptions,
+    designationOptions,
     statusOptions,
     leaveStatusOptions,
     branchChangeStatusOptions,
@@ -174,6 +211,7 @@ function useReports(): ReportDef[] {
         filters: [
           { key: 'branchId', label: 'Branch', type: 'select', options: branchOptions, defaultValue: ALL },
           { key: 'departmentId', label: 'Department', type: 'select', options: deptOptions, defaultValue: ALL },
+          { key: 'designation', label: 'Designation', type: 'select', options: designationOptions, defaultValue: ALL },
           { key: 'status', label: 'Status', type: 'select', options: statusOptions, defaultValue: ALL },
         ],
         columns: [
@@ -187,12 +225,15 @@ function useReports(): ReportDef[] {
           { key: 'joiningDate', label: 'Joining Date' },
         ],
         fetchFn: async (f) => {
-          const employees = sortEmployeesByHierarchy(
-            (await employeesApi.getAll({
-              branchId: f.branchId !== ALL ? f.branchId : undefined,
-              departmentId: f.departmentId !== ALL ? f.departmentId : undefined,
-              status: f.status !== ALL ? f.status : undefined,
-            })) as Employee[],
+          const employees = filterByDesignation(
+            sortEmployeesByHierarchy(
+              (await employeesApi.getAll({
+                branchId: f.branchId !== ALL ? f.branchId : undefined,
+                departmentId: f.departmentId !== ALL ? f.departmentId : undefined,
+                status: f.status !== ALL ? f.status : undefined,
+              })) as Employee[],
+            ),
+            f.designation,
           )
           return employees.map((e) => ({
             employeeCode: e.employeeCode,
@@ -296,6 +337,7 @@ function useReports(): ReportDef[] {
           { key: 'date', label: 'Date', type: 'date', defaultValue: defaultDate },
           { key: 'branchId', label: 'Branch', type: 'select', options: branchOptions, defaultValue: ALL },
           { key: 'departmentId', label: 'Department', type: 'select', options: deptOptions, defaultValue: ALL },
+          { key: 'designation', label: 'Designation', type: 'select', options: designationOptions, defaultValue: ALL },
         ],
         columns: [
           { key: 'employeeCode', label: 'Code' },
@@ -314,6 +356,14 @@ function useReports(): ReportDef[] {
           let result = logs as AttendanceLog[]
           if (f.departmentId !== ALL) {
             const employees = await employeesApi.getAll({ departmentId: f.departmentId })
+            const ids = new Set(employees.map((e) => e.id))
+            result = result.filter((l) => l.employeeId && ids.has(l.employeeId))
+          }
+          if (f.designation !== ALL) {
+            const employees = filterByDesignation(
+              (await employeesApi.getAll()) as Employee[],
+              f.designation,
+            )
             const ids = new Set(employees.map((e) => e.id))
             result = result.filter((l) => l.employeeId && ids.has(l.employeeId))
           }
@@ -339,6 +389,8 @@ function useReports(): ReportDef[] {
           { key: 'month', label: 'Month', type: 'number', defaultValue: defaultMonth },
           { key: 'year', label: 'Year', type: 'number', defaultValue: defaultYear },
           { key: 'branchId', label: 'Branch', type: 'select', options: branchOptions, defaultValue: ALL },
+          { key: 'departmentId', label: 'Department', type: 'select', options: deptOptions, defaultValue: ALL },
+          { key: 'designation', label: 'Designation', type: 'select', options: designationOptions, defaultValue: ALL },
         ],
         columns: [
           { key: 'employeeCode', label: 'Code' },
@@ -357,10 +409,14 @@ function useReports(): ReportDef[] {
         fetchFn: async (f) => {
           const month = Number(f.month)
           const year = Number(f.year)
-          const employees = sortEmployeesByHierarchy(
-            (await employeesApi.getAll({
-              branchId: f.branchId !== ALL ? f.branchId : undefined,
-            })) as Employee[],
+          const employees = filterByDesignation(
+            sortEmployeesByHierarchy(
+              (await employeesApi.getAll({
+                branchId: f.branchId !== ALL ? f.branchId : undefined,
+                departmentId: f.departmentId !== ALL ? f.departmentId : undefined,
+              })) as Employee[],
+            ),
+            f.designation,
           )
           const rows: Record<string, unknown>[] = []
           for (const emp of employees) {
@@ -393,6 +449,8 @@ function useReports(): ReportDef[] {
           { key: 'month', label: 'Month', type: 'number', defaultValue: defaultMonth },
           { key: 'year', label: 'Year', type: 'number', defaultValue: defaultYear },
           { key: 'branchId', label: 'Branch', type: 'select', options: branchOptions, defaultValue: ALL },
+          { key: 'departmentId', label: 'Department', type: 'select', options: deptOptions, defaultValue: ALL },
+          { key: 'designation', label: 'Designation', type: 'select', options: designationOptions, defaultValue: ALL },
         ],
         columns: [
           { key: 'employeeCode', label: 'Code' },
@@ -414,8 +472,22 @@ function useReports(): ReportDef[] {
             status: 'LATE',
           })
 
+          let allowedIds: Set<string> | null = null
+          if (f.departmentId !== ALL || f.designation !== ALL) {
+            const employees = filterByDesignation(
+              (await employeesApi.getAll({
+                departmentId: f.departmentId !== ALL ? f.departmentId : undefined,
+              })) as Employee[],
+              f.designation,
+            )
+            allowedIds = new Set(employees.map((e) => e.id))
+          }
+
           const grouped: Record<string, { code: string; name: string; count: number; minutes: number }> = {}
           for (const log of logs as AttendanceLog[]) {
+            if (allowedIds && (!log.employeeId || !allowedIds.has(log.employeeId))) {
+              continue
+            }
             const id = log.employeeId ?? 'unknown'
             if (!grouped[id]) {
               grouped[id] = {
@@ -449,6 +521,8 @@ function useReports(): ReportDef[] {
           { key: 'startDate', label: 'Start Date', type: 'date', defaultValue: defaultDate },
           { key: 'endDate', label: 'End Date', type: 'date', defaultValue: defaultDate },
           { key: 'branchId', label: 'Branch', type: 'select', options: branchOptions, defaultValue: ALL },
+          { key: 'departmentId', label: 'Department', type: 'select', options: deptOptions, defaultValue: ALL },
+          { key: 'designation', label: 'Designation', type: 'select', options: designationOptions, defaultValue: ALL },
         ],
         columns: [
           { key: 'date', label: 'Date' },
@@ -464,7 +538,18 @@ function useReports(): ReportDef[] {
             branchId: f.branchId !== ALL ? f.branchId : undefined,
             status: 'ABSENT',
           })
-          return (logs as AttendanceLog[]).map((l) => ({
+          let result = logs as AttendanceLog[]
+          if (f.departmentId !== ALL || f.designation !== ALL) {
+            const employees = filterByDesignation(
+              (await employeesApi.getAll({
+                departmentId: f.departmentId !== ALL ? f.departmentId : undefined,
+              })) as Employee[],
+              f.designation,
+            )
+            const ids = new Set(employees.map((e) => e.id))
+            result = result.filter((l) => l.employeeId && ids.has(l.employeeId))
+          }
+          return result.map((l) => ({
             date: format(new Date(l.date), 'dd/MM/yyyy'),
             employeeCode: l.employee?.employeeCode ?? '—',
             name: l.employee
@@ -659,6 +744,7 @@ function useReports(): ReportDef[] {
     [
       branchOptions,
       deptOptions,
+      designationOptions,
       statusOptions,
       leaveStatusOptions,
       branchChangeStatusOptions,

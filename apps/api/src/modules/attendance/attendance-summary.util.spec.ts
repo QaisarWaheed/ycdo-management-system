@@ -33,6 +33,7 @@ describe('summarizeAttendanceLogs', () => {
       holiday: 1,
       swapCovered: 1,
       unmarked: 1,
+      weeklyOff: 0,
       overtimeMinutes: 30,
       totalLateMinutes: 12,
     });
@@ -85,8 +86,20 @@ describe('summarizeAttendanceLogs', () => {
       holiday: 0,
       swapCovered: 0,
       unmarked: 0,
+      weeklyOff: 0,
       overtimeMinutes: 0,
       totalLateMinutes: 0,
     });
+  });
+
+  it('adds the weekly-off calendar count on top of logged days (no log row exists for weekly-off days)', () => {
+    const summary = summarizeAttendanceLogs(
+      [
+        { status: AttendanceStatus.PRESENT, overtimeMinutes: 0, lateMinutes: 0 },
+      ],
+      2,
+    );
+    expect(summary.weeklyOff).toBe(2);
+    expect(summary.totalDays).toBe(3);
   });
 });

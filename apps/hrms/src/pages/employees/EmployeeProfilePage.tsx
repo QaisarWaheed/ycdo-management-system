@@ -1855,7 +1855,7 @@ export function EmployeeProfilePage() {
 
           {loadingSummary ? (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-              {[...Array(11)].map((_, i) => (
+              {[...Array(12)].map((_, i) => (
                 <Skeleton key={i} className="h-20" />
               ))}
             </div>
@@ -1881,6 +1881,10 @@ export function EmployeeProfilePage() {
                   value: attendanceSummary?.swapCovered ?? 0,
                 },
                 { label: 'Unmarked', value: attendanceSummary?.unmarked ?? 0 },
+                {
+                  label: 'Weekly Off',
+                  value: attendanceSummary?.weeklyOff ?? 0,
+                },
                 {
                   label: 'Additional working days',
                   value: additionalWorkingDaysInMonth,

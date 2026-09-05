@@ -874,6 +874,7 @@ export interface AttendanceSummary {
   holiday: number
   swapCovered: number
   unmarked?: number
+  weeklyOff?: number
   overtimeMinutes: number
   totalLateMinutes: number
 }

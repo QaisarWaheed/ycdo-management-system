@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Printer } from 'lucide-react'
+import { Download, FileText, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -84,6 +84,15 @@ export function ReportModal({
   }
 
   const handlePrint = () => {
+    window.print()
+  }
+
+  // No PDF library is bundled in this app — every other print/PDF flow here
+  // (payslips, payroll reports) already relies on the browser's native
+  // print dialog, where "Save as PDF" is a built-in destination. Reusing
+  // window.print() keeps this consistent instead of adding a new dependency
+  // just to reproduce what the browser already offers for free.
+  const handleSaveAsPdf = () => {
     window.print()
   }
 
@@ -218,6 +227,10 @@ export function ReportModal({
               <Button variant="outline" onClick={handlePrint}>
                 <Printer className="mr-2 h-4 w-4" />
                 Print
+              </Button>
+              <Button variant="outline" onClick={handleSaveAsPdf}>
+                <FileText className="mr-2 h-4 w-4" />
+                Save as PDF
               </Button>
             </>
           )}

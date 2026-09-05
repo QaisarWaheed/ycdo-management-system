@@ -3198,7 +3198,24 @@ export class AttendanceService {
         })
       : [];
 
-    return summarizeAttendanceLogs(logs);
+    // Weekly-off days never get an AttendanceLog row (ensureMonthLogsForEmployee
+    // deliberately excludes them, same as the payroll gap-day pass) so they
+    // must be counted from the calendar itself, not from `logs` — otherwise
+    // the tile's total silently undercounts elapsed days by the weekly-off
+    // count with no visible line item explaining the gap.
+    let weeklyOff = 0;
+    if (visibleEnd) {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { weeklyOffWeekdays: true },
+      });
+      const elapsedDates = calendarDatesForAttendanceMonth(year, month);
+      weeklyOff = elapsedDates.filter((d) =>
+        isWeeklyOffDate(employee?.weeklyOffWeekdays, d),
+      ).length;
+    }
+
+    return summarizeAttendanceLogs(logs, weeklyOff);
   }
 
   async markAbsentees(date: string) {

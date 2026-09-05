@@ -18,18 +18,27 @@ export type AttendanceMonthSummary = {
   holiday: number;
   swapCovered: number;
   unmarked: number;
+  /** Rostered weekly-off calendar days in range. No AttendanceLog row is
+   * ever written for these (see ensureMonthLogsForEmployee's explicit
+   * isWeeklyOffDate exclusion), so this is NOT derivable from `logs` at
+   * all — callers must pass it in separately (date-range × employee's
+   * weeklyOffWeekdays), same calendar-fact source payroll's own gap-day
+   * pass already uses. Without this, the tile total silently fell short
+   * of elapsed days by the weekly-off count with no visible line item. */
+  weeklyOff: number;
   overtimeMinutes: number;
   totalLateMinutes: number;
 };
 
 export function summarizeAttendanceLogs(
   logs: AttendanceLogSummaryInput[],
+  weeklyOff = 0,
 ): AttendanceMonthSummary {
   const countByStatus = (status: AttendanceStatus) =>
     logs.filter((log) => log.status === status).length;
 
   return {
-    totalDays: logs.length,
+    totalDays: logs.length + weeklyOff,
     present: countByStatus(AttendanceStatus.PRESENT),
     absent: countByStatus(AttendanceStatus.ABSENT),
     late: countByStatus(AttendanceStatus.LATE),
@@ -40,6 +49,7 @@ export function summarizeAttendanceLogs(
     holiday: countByStatus(AttendanceStatus.HOLIDAY),
     swapCovered: countByStatus(AttendanceStatus.SWAP_COVERED),
     unmarked: countByStatus(AttendanceStatus.UNMARKED),
+    weeklyOff,
     overtimeMinutes: logs.reduce((sum, log) => sum + log.overtimeMinutes, 0),
     totalLateMinutes: logs.reduce((sum, log) => sum + log.lateMinutes, 0),
   };
