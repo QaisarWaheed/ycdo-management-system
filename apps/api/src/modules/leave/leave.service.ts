@@ -60,6 +60,8 @@ import {
   reconcileShortLeaveAttendance,
 } from '../attendance/short-leave.util';
 
+import { isWeeklyOffDate } from '../attendance/weekly-off.util';
+
 const MAX_LEAVES_PER_YEAR = 24;
 
 const ACTIVE_LEAVE_STATUSES: LeaveStatus[] = [
@@ -1916,6 +1918,7 @@ export class LeaveService {
       leaveType: LeaveType;
       employee: {
         currentBranchId: string;
+        weeklyOffWeekdays?: number[] | null;
         dutyStartTime: string | null;
         dutyEndTime: string | null;
         dutyTotalHours?: number | null;
@@ -1923,25 +1926,6 @@ export class LeaveService {
       };
     },
   ) {
-    if (leave.leaveType === LeaveType.SHORT_LEAVE) {
-      // Canonical reconciliation shared with the HR-emergency flow (see
-      // attendance.service.ts) — validates duration against real
-      // checkIn/checkOut when it already exists, writes AttendanceStatus
-      // .SHORT_LEAVE (not HALF_DAY — the two flows now converge on the same
-      // treatment), and reverses lateness discipline only when valid.
-      // Silently no-ops on an invalid/unsupported case (e.g. a chain-
-      // approved leave whose actual attendance turns out to exceed the
-      // duration limit) — the leave itself still ends up APPROVED, but
-      // without the Short Leave attendance/payroll benefit for that day.
-      await reconcileShortLeaveAttendance(
-        tx,
-        leave.employeeId,
-        leave.startDate,
-        leave.employee,
-      );
-      return;
-    }
-
     for (const day of this.getDateRange(leave.startDate, leave.endDate)) {
       const existing = await tx.attendanceLog.findUnique({
         where: {
@@ -1953,6 +1937,15 @@ export class LeaveService {
         },
       });
 
+      // Existing public/rostered holidays take precedence, including their punches.
+      if (existing?.status === AttendanceStatus.HOLIDAY) continue;
+      const weeklyOff = isWeeklyOffDate(leave.employee.weeklyOffWeekdays, day);
+      if (leave.leaveType === LeaveType.SHORT_LEAVE && !weeklyOff) {
+        await reconcileShortLeaveAttendance(tx, leave.employeeId, day, leave.employee);
+        continue;
+      }
+      const status = weeklyOff ? AttendanceStatus.HOLIDAY : AttendanceStatus.ON_LEAVE;
+      const note = weeklyOff ? 'Weekly Off' : 'Approved leave';
       const updated = await tx.attendanceLog.upsert({
         where: {
           employeeId_date_type: {
@@ -1966,9 +1959,9 @@ export class LeaveService {
           branchId: leave.employee.currentBranchId,
           date: day,
           type: AttendanceLogType.REGULAR,
-          status: AttendanceStatus.ON_LEAVE,
+          status,
           source: AttendanceSource.MANUAL,
-          note: 'Approved leave',
+          note,
           checkIn: null,
           checkOut: null,
           lateMinutes: 0,
@@ -1977,20 +1970,26 @@ export class LeaveService {
           dutyStartTimeSnapshot: leave.employee.dutyStartTime ?? null,
           dutyEndTimeSnapshot: leave.employee.dutyEndTime ?? null,
         },
-        update: {
-          status: AttendanceStatus.ON_LEAVE,
-          source: AttendanceSource.MANUAL,
-          note: 'Approved leave',
-          checkIn: null,
-          checkOut: null,
-          lateMinutes: 0,
-          overtimeMinutes: 0,
-          overtimePending: false,
-          dutyStartTimeSnapshot: leave.employee.dutyStartTime ?? null,
-          dutyEndTimeSnapshot: leave.employee.dutyEndTime ?? null,
-        },
+        // Do not overwrite a HOLIDAY created since the initial read.
+        update: {},
       });
-
+      if (updated.status === AttendanceStatus.HOLIDAY && !weeklyOff) continue;
+      const attendanceData = weeklyOff
+        ? { status, lateMinutes: 0, note }
+        : {
+            status, source: AttendanceSource.MANUAL, note,
+            checkIn: null, checkOut: null, lateMinutes: 0,
+            overtimeMinutes: 0, overtimePending: false,
+            dutyStartTimeSnapshot: leave.employee.dutyStartTime ?? null,
+            dutyEndTimeSnapshot: leave.employee.dutyEndTime ?? null,
+          };
+      if (existing || updated.status !== status) {
+        const changed = await tx.attendanceLog.updateMany({
+          where: { id: updated.id, status: { not: AttendanceStatus.HOLIDAY } },
+          data: attendanceData,
+        });
+        if (changed.count === 0) continue;
+      }
       // Reconciles both directions this leave approval can move a day out
       // of: ABSENT/UNINFORMED_ABSENT (previously handled here directly) AND
       // LATE/lateness-HALF_DAY (previously NOT handled — a leave retroactively
@@ -2002,8 +2001,8 @@ export class LeaveService {
       await reconcileAttendanceFinancialConsequences(tx, {
         employeeId: leave.employeeId,
         date: day,
-        before: existing,
-        after: updated,
+        before: existing ?? (updated.status !== status ? updated : null),
+        after: { ...updated, ...attendanceData },
       });
     }
   }
