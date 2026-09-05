@@ -1,3 +1,17 @@
+import { AttendanceStatus, type AttendanceLog } from '@prisma/client';
+import {
+  getDutyWindow,
+  resolveAttendanceDutyTimes,
+  workedMinutes,
+} from '../../common/duty.util';
+import {
+  hoursFromDutyWindow,
+  payableMinutesWithinDutyWindow,
+} from '../payroll/payroll-hours.util';
+import {
+  computeShiftStartDateTime,
+  computeShiftEndDateTime,
+} from './shift-time.util';
 import {
   getShiftAttendanceDate,
   hasDutyStartedForAttendanceDate,
@@ -94,4 +108,80 @@ describe('getShiftAttendanceDate for overnight', () => {
     const date = getShiftAttendanceDate(now, '22:00');
     expect(date.toISOString().slice(0, 10)).toBe('2026-08-20');
   });
+});
+
+// A HOLIDAY can carry punch evidence without changing its calendar status.
+// shift-time owns the dated window; duty/payroll helpers own duration/overlap.
+describe('HOLIDAY punch evidence and shift time', () => {
+  it.each([
+    [
+      'normal day',
+      '09:00',
+      '17:00',
+      '2026-08-14T09:00:00+05:00',
+      '2026-08-14T17:00:00+05:00',
+      480,
+    ],
+    [
+      'more than 120 minutes after start',
+      '09:00',
+      '17:00',
+      '2026-08-14T12:00:00+05:00',
+      '2026-08-14T17:00:00+05:00',
+      300,
+    ],
+    [
+      'overnight',
+      '20:00',
+      '04:00',
+      '2026-08-14T20:00:00+05:00',
+      '2026-08-15T04:00:00+05:00',
+      480,
+    ],
+  ] as const)(
+    '%s preserves status and measures the timestamp interval',
+    (_name, start, end, checkIn, checkOut, minutes) => {
+      const log = {
+        status: AttendanceStatus.HOLIDAY,
+        date: new Date('2026-08-14T00:00:00Z'),
+        checkIn: new Date(checkIn),
+        checkOut: new Date(checkOut),
+        dutyStartTimeSnapshot: start,
+        dutyEndTimeSnapshot: end,
+      } satisfies Pick<
+        AttendanceLog,
+        | 'status'
+        | 'date'
+        | 'checkIn'
+        | 'checkOut'
+        | 'dutyStartTimeSnapshot'
+        | 'dutyEndTimeSnapshot'
+      >;
+      const before = { ...log };
+      const duty = resolveAttendanceDutyTimes(log, {
+        dutyStartTime: '08:00',
+        dutyEndTime: '16:00',
+      });
+      const window = getDutyWindow(duty)!;
+
+      expect(duty.source).toBe('snapshot');
+      expect(getShiftAttendanceDate(log.checkIn, start)).toEqual(log.date);
+      expect(computeShiftStartDateTime(log.date, start)).toEqual(
+        new Date(`2026-08-14T${start}:00+05:00`),
+      );
+      expect(
+        computeShiftEndDateTime(log.date, end, window.crossesMidnight),
+      ).toEqual(log.checkOut);
+      expect(workedMinutes(log.checkIn, log.checkOut, window)).toEqual({
+        minutes,
+        anomalous: false,
+      });
+      expect(
+        payableMinutesWithinDutyWindow(log.checkIn, log.checkOut, window),
+      ).toEqual({ minutes, anomalous: false });
+      expect(hoursFromDutyWindow(window)).toBe(8);
+      expect(log).toEqual(before);
+      expect(log.status).toBe(AttendanceStatus.HOLIDAY);
+    },
+  );
 });

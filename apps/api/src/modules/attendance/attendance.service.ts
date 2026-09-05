@@ -864,20 +864,25 @@ export class AttendanceService {
       dateOnly,
       anyExisting?.status,
     );
-    const lateMinutesRaw = twentyFourHour
-      ? 0
-      : computeBiometricLateMinutes(checkTime, employee);
+    // Holiday punches are evidence, not a scheduled-duty lateness event.
+    const isHoliday = anyExisting?.status === AttendanceStatus.HOLIDAY;
+    const lateMinutesRaw =
+      twentyFourHour || isHoliday
+        ? 0
+        : computeBiometricLateMinutes(checkTime, employee);
     const lateMinutes = swapExempt ? 0 : lateMinutesRaw;
     const preDutyOvertimeMinutes = twentyFourHour
       ? 0
       : computePreDutyOvertimeMinutes(checkTime, employee);
-    const status = twentyFourHour
-      ? AttendanceStatus.PRESENT
-      : swapExempt
-        ? anyExisting?.status === AttendanceStatus.SWAP_COVERED
-          ? AttendanceStatus.SWAP_COVERED
-          : AttendanceStatus.PRESENT
-        : this.statusForBiometricCheckIn(lateMinutes, employee);
+    const status = isHoliday
+      ? AttendanceStatus.HOLIDAY
+      : twentyFourHour
+        ? AttendanceStatus.PRESENT
+        : swapExempt
+          ? anyExisting?.status === AttendanceStatus.SWAP_COVERED
+            ? AttendanceStatus.SWAP_COVERED
+            : AttendanceStatus.PRESENT
+          : this.statusForBiometricCheckIn(lateMinutes, employee);
 
     if (anyExisting) {
       if (anyExisting.checkIn) {
@@ -1010,7 +1015,8 @@ export class AttendanceService {
       employee,
     );
 
-    const lateMinutes = openRegular.lateMinutes ?? 0;
+    const isHoliday = openRegular.status === AttendanceStatus.HOLIDAY;
+    const lateMinutes = isHoliday ? 0 : (openRegular.lateMinutes ?? 0);
     let status = openRegular.status;
     const derivedStatus = determineBiometricCheckInStatus(
       lateMinutes,
@@ -1026,6 +1032,7 @@ export class AttendanceService {
         where: { id: openRegular.id },
         data: {
           checkOut: checkTime,
+          ...(isHoliday ? { lateMinutes: 0 } : {}),
           overtimeMinutes,
           overtimePending: overtimeMinutes > 0 && !openRegular.overtimeApprovedAt,
           status,
