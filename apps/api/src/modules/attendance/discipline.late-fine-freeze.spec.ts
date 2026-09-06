@@ -1,3 +1,6 @@
+// Card salary owns attendance earnings and penalties. These tests preserve
+// discipline event/letter and historical reversal behavior, while rejecting new
+// discipline-triggered payroll writes, including letter Send and replay.
 import { AttendanceStatus, LetterType, Prisma } from '@prisma/client';
 
 // discipline.helper.ts imports issueAutoTemplatedLetter at module scope,
@@ -98,6 +101,7 @@ function makeFreezeFakeTx(seed: {
   const letters = seed.letters ?? [];
 
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     employee: {
       findUnique: jest.fn(
         (args: { where: { id: string }; select?: { status?: boolean } }) => {
@@ -389,7 +393,7 @@ afterEach(() => {
 
 describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () => {
   // 1. PENDING late-fine path works unchanged.
-  it('1: a PENDING PayrollEntry still receives the late fine exactly as before', async () => {
+  it('1: a PENDING PayrollEntry does not receive a separate late fine', async () => {
     const { tx, getPayrollEntries, getDeductions } = makeFreezeFakeTx({
       stipendRecords: [singleSr],
       priorLateDates: FINE_PRIOR_DATES,
@@ -400,8 +404,8 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
     const entries = getPayrollEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].status).toBe('PENDING');
-    expect(entries[0].totalDeductions).toBeCloseTo(OLD_RATE_BASIC / 31, 5);
-    expect(getDeductions()).toHaveLength(1);
+    expect(entries[0].totalDeductions).toBe(0);
+    expect(getDeductions()).toHaveLength(0);
   });
 
   // 2. PROCESSED correct segment receives no financial mutation.
@@ -512,7 +516,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
 
   // 6. Transition-date incident still resolves to the NEW stipend segment
   // (segmentation untouched by the freeze guard).
-  it('6: a transition-date late fine still resolves to and mutates the NEW segment (PENDING)', async () => {
+  it('6: transition-date late processing does not charge either segment', async () => {
     const { tx, getPayrollEntries } = makeFreezeFakeTx({
       stipendRecords: [oldSr, newSr],
       priorLateDates: ['2026-08-13', '2026-08-14'],
@@ -521,9 +525,7 @@ describe('discipline.helper — late-fine PROCESSED/PAID financial freeze', () =
     await applyLateFineThenSend(tx, AUG_15);
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
-    expect(entries).toHaveLength(1);
-    expect(entries[0].stipendRecordId).toBe('sr-new'); // half-open: effectiveFrom inclusive
-    expect(entries[0].totalDeductions).toBeCloseTo(NEW_RATE_BASIC / 31, 5);
+    expect(entries).toHaveLength(0);
   });
 
   // 7. Late reversal on PENDING works unchanged.

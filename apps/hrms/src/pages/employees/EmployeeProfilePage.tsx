@@ -32,7 +32,6 @@ import { payrollApi } from '@/api/endpoints/payroll'
 import { previousEmploymentApi } from '@/api/endpoints/previousEmployment'
 import { qualificationsApi } from '@/api/endpoints/qualifications'
 import { incentivesApi } from '@/api/endpoints/incentives'
-import { additionalWorkingDaysApi } from '@/api/endpoints/additionalWorkingDays'
 import { AdditionalWorkingDaysTab } from '@/components/employees/AdditionalWorkingDaysTab'
 import { EmployeePayrollTab } from '@/components/employees/EmployeePayrollTab'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
@@ -777,21 +776,6 @@ export function EmployeeProfilePage() {
     queryFn: () => incentivesApi.getByEmployee(id),
     enabled: !!id,
   })
-
-  const { data: additionalWorkingDays = [] } = useQuery({
-    queryKey: ['additional-working-days', id],
-    queryFn: () => additionalWorkingDaysApi.getByEmployee(id),
-    enabled: !!id,
-  })
-
-  const additionalWorkingDaysInMonth = useMemo(
-    () =>
-      additionalWorkingDays.filter((row) => {
-        const d = new Date(row.date)
-        return d.getUTCMonth() + 1 === month && d.getUTCFullYear() === year
-      }).length,
-    [additionalWorkingDays, month, year],
-  )
 
   const canAddIncentive =
     user?.role === 'SUPER_ADMIN' ||
@@ -1882,19 +1866,13 @@ export function EmployeeProfilePage() {
                 },
                 { label: 'Unmarked', value: attendanceSummary?.unmarked ?? 0 },
                 {
-                  label: 'Weekly Off',
-                  value: attendanceSummary?.weeklyOff ?? 0,
-                },
-                {
                   label: 'Additional working days',
-                  value: additionalWorkingDaysInMonth,
+                  value: attendanceSummary?.additionalWorkingDays ?? 0,
                 },
                 {
                   label: 'Overtime hours',
                   value:
-                    Math.round(
-                      ((attendanceSummary?.overtimeMinutes ?? 0) / 60) * 100,
-                    ) / 100,
+                    attendanceSummary?.overtimeHours ?? 0,
                 },
               ].map((item) => (
                 <Card key={item.label}>
@@ -1907,6 +1885,14 @@ export function EmployeeProfilePage() {
             </div>
           )}
 
+          {(attendanceSummary?.missingDates?.length ?? 0) > 0 && (
+            <p role="alert" className="text-sm text-amber-700">
+              Payroll is blocked: {attendanceSummary?.missingDates?.length} dates have no final attendance status. Review the attendance record before generating salary.
+            </p>
+          )}
+          {attendanceSummary?.risks?.map((risk) => (
+            <p key={risk} className="text-xs text-text-secondary">{risk}</p>
+          ))}
           {monthPayroll.length > 0 && (
             <Card>
               <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">

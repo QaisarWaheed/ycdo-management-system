@@ -1,3 +1,6 @@
+// Card salary owns attendance earnings and penalties. These tests preserve
+// discipline event/letter and historical reversal behavior, while rejecting new
+// discipline-triggered payroll writes, including letter Send and replay.
 import { AttendanceStatus, Prisma } from '@prisma/client';
 import {
   repairLateDisciplineForPayrollMonth,
@@ -130,7 +133,7 @@ describe('repairLateDisciplineForPayrollMonth', () => {
     expect(issueLetterMock).not.toHaveBeenCalled();
   });
 
-  it('applies the 3rd-occurrence fine deduction without a Fine letter', async () => {
+  it('repairing occurrence 3 does not create an independent fine deduction', async () => {
     const disciplineEventKeys = new Set<string>();
     const allLate = [
       { date: AUG_1, status: AttendanceStatus.LATE, lateMinutes: 10, note: null, dutyStartTimeSnapshot: '09:00' },
@@ -199,7 +202,8 @@ describe('repairLateDisciplineForPayrollMonth', () => {
 
     await repairLateDisciplineForPayrollMonth(asTx(tx), EMP_ID, 8, 2026);
 
-    expect(tx.payrollDeduction.create).toHaveBeenCalled();
+    expect(tx.payrollDeduction.create).not.toHaveBeenCalled();
+    expect(tx.payrollEntry.update).not.toHaveBeenCalled();
     expect(issueLetterMock).not.toHaveBeenCalled();
     expect(tx.employee.update).not.toHaveBeenCalled();
   });

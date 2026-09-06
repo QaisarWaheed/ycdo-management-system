@@ -63,6 +63,7 @@ function makeFakeTx(seed: {
   let disciplineEvents = seed.disciplineEvents;
 
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     letter: {
       findMany: jest.fn(() => letters),
       update: jest.fn(

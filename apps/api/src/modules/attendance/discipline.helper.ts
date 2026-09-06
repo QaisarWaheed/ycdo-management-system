@@ -1,3 +1,4 @@
+import { lockPayrollEmployee } from '../payroll/payroll-write-lock.util';
 import {
   AttendanceLogType,
   AttendanceStatus,
@@ -624,6 +625,7 @@ async function reverseHalfDayDeductionForDate(
     disciplineEventRemoved: false,
   };
 
+  await lockPayrollEmployee(tx, employeeId);
   const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
   if (!stipendRecord) return empty;
 
@@ -1158,37 +1160,13 @@ async function applyUninformedAbsentDeduction(
   return { ...tracking, ...financial };
 }
 
-/**
- * Resolves (or creates a bare placeholder) PayrollEntry for the
- * StipendRecord segment that was actually EFFECTIVE ON `date` — NOT
- * whichever record happens to be active right now. See
- * getStipendRecordEffectiveOn. This is what guarantees a dated
- * discipline incident always lands on its own historically-correct
- * PayrollEntry (and, transitively, whichever PROCESSED/PAID freeze that
- * entry already has) instead of silently migrating to the currently-
- * active segment after a later salary revision.
- */
+/** Card salary owns attendance money; discipline retains its incidents and letters. */
 async function getOrCreatePayrollEntry(
-  tx: Prisma.TransactionClient,
-  employeeId: string,
-  date: Date,
-) {
-  const { month, year } = pakistanYearMonthFromDate(date);
-  const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
-
-  if (!stipendRecord) {
-    return null;
-  }
-
-  return tx.payrollEntry.findUnique({
-    where: {
-      stipendRecordId_month_year: {
-        stipendRecordId: stipendRecord.id,
-        month,
-        year,
-      },
-    },
-  });
+  _tx: Prisma.TransactionClient,
+  _employeeId: string,
+  _date: Date,
+): Promise<import('@prisma/client').PayrollEntry | null> {
+  return null;
 }
 
 /**
@@ -2044,6 +2022,7 @@ export async function reverseLateDisciplineForDate(
     // the same segment the original fine was (now correctly) applied to —
     // never the currently-active one, or a later salary revision would
     // make this reversal silently find nothing.
+    await lockPayrollEmployee(tx, employeeId);
     const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
 
     if (stipendRecord) {
@@ -2254,6 +2233,7 @@ export async function reverseAbsenceDeductionForDate(
 
   // Reverse against the segment EFFECTIVE ON the incident date — the same
   // segment the original deduction was applied to.
+  await lockPayrollEmployee(tx, employeeId);
   const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
 
   if (stipendRecord) {
@@ -2499,6 +2479,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
     const { month, year } = pakistanYearMonthFromDate(date);
     // Reverse against the segment EFFECTIVE ON the incident date — the
     // same segment the original fine was applied to.
+    await lockPayrollEmployee(tx, employeeId);
     const stipendRecord = await getStipendRecordEffectiveOn(tx, employeeId, date);
 
     if (stipendRecord) {

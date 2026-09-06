@@ -1,3 +1,4 @@
+import { withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
 import {
   BadRequestException,
   ForbiddenException,
@@ -453,7 +454,7 @@ export class InquiryDecisionService {
     }
 
     const now = new Date();
-    const applyResult = await this.prisma.$transaction(async (tx) => {
+    const applyResult = await withPayrollEmployeeTransaction(this.prisma, inquiry.disciplinaryAction.employeeId, async (tx) => {
       const claimed = await tx.inquiry.updateMany({
         where: {
           id: inquiryId,

@@ -48,6 +48,7 @@ function makeTx(seed?: { letters?: FakeLetter[] }) {
   let letterSeq = 0;
 
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     employee: {
       findUnique: jest.fn(async () => ({
         id: EMP_ID,

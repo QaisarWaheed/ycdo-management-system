@@ -14,6 +14,7 @@ const day = (n: number) => new Date(Date.UTC(2026, 7, n));
 function fixture(seed: any[] = []) {
   const rows = new Map<number, any>(seed.map((r) => [+r.date, { ...r }]));
   const employee = {
+    monthlyAllowedLeaves: 2,
     weeklyOffWeekdays: [0],
     currentBranchId: "b",
     dutyStartTime: "09:00",
@@ -70,7 +71,7 @@ function fixture(seed: any[] = []) {
     },
     employee: { findUnique: jest.fn(async () => employee) },
     leaveRecord: { findMany: jest.fn(async () => []) },
-    additionalWorkingDay: { count: jest.fn(async () => 0) },
+    additionalWorkingDay: { findMany: jest.fn(async () => []) },
   };
   const leave = new LeaveService(prisma, {} as any, {} as any);
   const approve = (
@@ -147,8 +148,8 @@ describe("approved leave Holiday / Weekly Off precedence", () => {
     const summary = await f.card.getEmployeeSummary("e", 8, 2026);
     expect(summary.holiday).toBe(2);
     expect(summary.onLeave).toBe(2);
-    expect(summary.weeklyOff).toBe(4); // five Sundays; Aug 9 already has its HOLIDAY row
-    expect(summary.totalDays).toBe(8); // four stored rows + four other Sundays
+    expect(summary.weeklyOff).toBe(0); // current roster does not invent historical Card statuses
+    expect(summary.totalDays).toBe(4); // only the four stored final rows
   });
   it("excludes both holidays from the actual payroll paid-leave allocation", async () => {
     const f = fixture([holiday(10)]);
@@ -181,6 +182,7 @@ describe("approved leave Holiday / Weekly Off precedence", () => {
   it("keeps both holidays fully paid even with zero allowed paid leave days", async () => {
     const f = fixture([holiday(10)]);
     await f.approve(8, 11);
+    f.employee.monthlyAllowedLeaves = 0;
     const unpaid = await (f.payroll as any).computeMonthlyUnpaidLeaveDates(
       "e",
       8,
@@ -198,6 +200,7 @@ describe("approved leave Holiday / Weekly Off precedence", () => {
           effectiveTo: day(12),
         },
         employee: f.employee,
+        applyContractualPackage: true,
         existingDeductions: [],
         existingAllowances: [],
         unpaidLeaveDateKeys: new Set(

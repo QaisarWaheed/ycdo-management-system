@@ -110,6 +110,7 @@ function inDateRange(date: Date, where: { gte?: Date; lte?: Date; lt?: Date }): 
 
 function makeFakePrisma(db: FakeDb) {
   const prisma = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     employee: {
       findUnique: async ({ where }: any) => db.employees.get(where.id) ?? null,
     },
@@ -131,6 +132,13 @@ function makeFakePrisma(db: FakeDb) {
       },
     },
     payrollEntry: {
+      findFirst: async ({ where }: any) => [...db.payrollEntries.values()].find(e =>
+        e.month === where.month && e.year === where.year &&
+        (!where.stipendRecordId?.not || e.stipendRecordId !== where.stipendRecordId.not) &&
+        (!where.status?.in || where.status.in.includes(e.status)) &&
+        (!where.OR || where.OR.some((condition: any) => Object.entries(condition).every(([field, predicate]: [string, any]) => Number((e as any)[field]) > predicate.gt))) &&
+        (!where.stipendRecord?.employeeId || db.stipendRecords.get(e.stipendRecordId)?.employeeId === where.stipendRecord.employeeId)
+      ) ?? null,
       findUnique: async ({ where, include }: any) => {
         let entry: FakePayrollEntry | undefined;
         if (where.id) entry = db.payrollEntries.get(where.id);
@@ -279,7 +287,8 @@ function makeFakePrisma(db: FakeDb) {
           .filter((l) => !where.type || l.type === where.type)
           .filter((l) => !where.status || l.status === where.status)
           .filter((l) => inDateRange(l.date, where.date))
-          .sort((a, b) => a.date.getTime() - b.date.getTime()),
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+          .map(l => ({ overtimeMinutes: 0, lateMinutes: 0, overtimePending: false, overtimeApprovedAt: null, ...l })),
     },
     additionalWorkingDay: {
       findMany: async ({ where }: any) =>
@@ -528,7 +537,7 @@ describe('PayrollService.recomputeMonthAll', () => {
     expect(db.payrollEntries.get(entry.id)).toEqual(before);
   });
 
-  it('G: a mixed PROCESSED+PENDING employee freezes PROCESSED and refreshes PENDING', async () => {
+  it('G: mixed frozen and pending segments block whole-month recomputation without changing either', async () => {
     const db = new FakeDb();
     seedEmployee(db, 'e1');
     const oldSr = seedStipend(db, 'e1', 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -539,14 +548,15 @@ describe('PayrollService.recomputeMonthAll', () => {
     const service = makeService(db);
 
     const frozenBefore = { ...db.payrollEntries.get(oldEntry.id)! };
+    const pendingBefore = { ...db.payrollEntries.get(newEntry.id)! };
     const result = await service.recomputeMonthAll({ month: 8, year: 2026, dryRun: false, confirm: CONFIRM }, ACTING_USER);
 
-    expect(result.employeesProcessed).toBe(1);
-    const employeeResult = result.results.find((r) => r.employeeId === 'e1')!;
-    expect(employeeResult.status).toBe('PARTIAL_RECOMPUTE');
+    expect(result.employeesProcessed).toBe(0);
+    expect(result.employeesFailed).toBe(1);
+    expect(JSON.stringify(result.failures)).toContain('FROZEN_PAYROLL_SEGMENT');
     expect(db.payrollEntries.get(oldEntry.id)).toEqual(frozenBefore);
     expect(db.payrollEntries.get(oldEntry.id)?.status).toBe(PayrollStatus.PROCESSED);
-    expect(db.payrollEntries.get(newEntry.id)!.basicStipend).toBe(27900);
+    expect(db.payrollEntries.get(newEntry.id)).toEqual(pendingBefore);
   });
 
   // H. Employee with no existing PayrollEntry is never created.
@@ -625,7 +635,7 @@ describe('PayrollService.recomputeMonthAll', () => {
     seedEmployee(db, 'e1', { monthlyAllowedLeaves: 2 });
     const sr = seedStipend(db, 'e1', 24800, new Date(Date.UTC(2000, 0, 1)), null);
     seedPayrollEntry(db, sr.id, PayrollStatus.PENDING);
-    seedFullMonthPresent(db, 'e1', [1, 2]);
+    seedFullMonthPresent(db, 'e1', Array.from({ length: 31 }, (_, i) => i + 1).filter(d => ![5, 6, 7].includes(d)));
     // 3 ON_LEAVE days -> allowance 2 -> 1 unpaid leave day. 2026-09-04
     // rewrite: the unpaid day beyond quota is excluded from payableDays
     // (Basic loses its share) — it no longer creates a separate
@@ -710,6 +720,7 @@ describe('PayrollService.recomputeMonthAll', () => {
       seedEmployee(db, id);
       const sr = seedStipend(db, id, 20000, new Date(Date.UTC(2000, 0, 1)), null);
       seedPayrollEntry(db, sr.id, PayrollStatus.PENDING);
+      seedFullMonthPresent(db, id);
     }
     return ids;
   }

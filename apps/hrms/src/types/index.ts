@@ -878,6 +878,9 @@ export interface AttendanceSummary {
   overtimeMinutes: number
   totalLateMinutes: number
   additionalWorkingDays?: number
+  overtimeHours?: number
+  missingDates?: string[]
+  risks?: string[]
 }
 
 export interface DisciplinaryAction {

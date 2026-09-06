@@ -1,3 +1,6 @@
+// Card salary owns attendance earnings and penalties. These tests preserve
+// discipline event/letter and historical reversal behavior, while rejecting new
+// discipline-triggered payroll writes, including letter Send and replay.
 import { AttendanceStatus, LetterType, Prisma } from '@prisma/client';
 
 // discipline.helper.ts imports issueAutoTemplatedLetter at module scope,
@@ -91,6 +94,7 @@ function makeSegmentFakeTx(seed: {
   }));
 
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     employee: {
       findUnique: jest.fn(
         (args: { where: { id: string }; select?: { status?: boolean } }) => {
@@ -392,7 +396,7 @@ const newSr: FakeStipend = {
 
 describe('discipline.helper — Step 4 dated-incident stipend-segment attribution', () => {
   // A. LATE fine dated BEFORE the increment attaches to the OLD segment.
-  it('A: a LATE fine incident dated before the increment is priced and filed against the OLD segment', async () => {
+  it('A: pre-increment LATE processing does not charge any segment', async () => {
     const { tx, getPayrollEntries, getDeductions } = makeSegmentFakeTx({
       stipendRecords: [oldSr, newSr],
       priorDates: ['2026-08-03', '2026-08-04'], // 2 prior LATE days -> this is the 3rd -> Fine
@@ -414,15 +418,13 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
-    expect(entries).toHaveLength(1);
-    expect(entries[0].stipendRecordId).toBe('sr-old');
+    expect(entries).toHaveLength(0);
     const dedns = getDeductions();
-    expect(dedns).toHaveLength(1);
-    expect(dedns[0].amount).toBeCloseTo(OLD_RATE_BASIC / 31, 5);
+    expect(dedns).toHaveLength(0);
   });
 
   // B. LATE fine dated on/after the increment attaches to the NEW segment.
-  it('B: a LATE fine incident dated after the increment is priced and filed against the NEW segment', async () => {
+  it('B: post-increment LATE processing does not charge any segment', async () => {
     const { tx, getPayrollEntries, getDeductions } = makeSegmentFakeTx({
       stipendRecords: [oldSr, newSr],
       priorDates: ['2026-08-16', '2026-08-17'],
@@ -444,15 +446,14 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
-    expect(entries).toHaveLength(1);
-    expect(entries[0].stipendRecordId).toBe('sr-new');
+    expect(entries).toHaveLength(0);
     const dedns = getDeductions();
-    expect(dedns[0].amount).toBeCloseTo(NEW_RATE_BASIC / 31, 5);
+    expect(dedns).toHaveLength(0);
   });
 
   // C. UNINFORMED_ABSENT old-segment incident attaches correctly, priced at
   // the OLD rate, and never touches a NEW-segment PayrollEntry.
-  it('C: an UNINFORMED_ABSENT incident dated in the OLD segment deducts at the OLD rate against the OLD segment only', async () => {
+  it('C: pre-increment UNINFORMED_ABSENT does not charge any segment', async () => {
     const { tx, getPayrollEntries } = makeSegmentFakeTx({
       stipendRecords: [oldSr, newSr],
     });
@@ -475,14 +476,12 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
-    expect(entries).toHaveLength(1);
-    expect(entries[0].stipendRecordId).toBe('sr-old');
-    expect(entries[0].totalDeductions).toBeCloseTo((OLD_RATE_BASIC / 31) * 2, 5);
+    expect(entries).toHaveLength(0);
   });
 
   // D. Missing-checkout fine attaches to the segment effective on the
   // incident date (OLD segment here).
-  it('D: a missing-checkout fine is priced and filed against the segment effective on the incident date', async () => {
+  it('D: missing-checkout processing does not charge any segment', async () => {
     const { tx, getPayrollEntries } = makeSegmentFakeTx({
       stipendRecords: [oldSr, newSr],
       priorDates: ['2026-08-06', '2026-08-07'], // 2 prior open days -> this is the 3rd -> Fine
@@ -505,14 +504,12 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
-    expect(entries).toHaveLength(1);
-    expect(entries[0].stipendRecordId).toBe('sr-old');
-    expect(entries[0].totalDeductions).toBeCloseTo(OLD_RATE_BASIC / 31, 5);
+    expect(entries).toHaveLength(0);
   });
 
   // E. Transition-date incident (exactly effectiveFrom of the new record)
   // belongs to the NEW segment — half-open [effectiveFrom, effectiveTo).
-  it('E: an ABSENT incident dated exactly on the transition date belongs to the NEW segment', async () => {
+  it('E: transition-date ABSENT processing does not charge any segment', async () => {
     const { tx, getPayrollEntries } = makeSegmentFakeTx({
       stipendRecords: [oldSr, newSr],
     });
@@ -529,9 +526,7 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
-    expect(entries).toHaveLength(1);
-    expect(entries[0].stipendRecordId).toBe('sr-new');
-    expect(entries[0].totalDeductions).toBeCloseTo((NEW_RATE_BASIC / 31) * 2, 5);
+    expect(entries).toHaveLength(0);
   });
 
   // F. PROCESSED historical segment stays frozen — deduction is NOT applied,
@@ -625,7 +620,7 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
 
   // H. Idempotency: re-applying the same dated incident twice never
   // double-deducts, and both calls resolve to the same historical segment.
-  it('H: re-applying the same ABSENT-family incident twice is idempotent and always resolves to the same segment', async () => {
+  it('H: replaying an ABSENT-family incident does not create financial writes', async () => {
     const { tx, getPayrollEntries, getDeductions } = makeSegmentFakeTx({
       stipendRecords: [oldSr, newSr],
     });
@@ -649,7 +644,7 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
     const afterFirst = getPayrollEntries().find(
       (e) => e.stipendRecordId === 'sr-old',
     )!.totalDeductions;
-    expect(getDeductions()).toHaveLength(1);
+    expect(getDeductions()).toHaveLength(0);
 
     await applyDisciplineRules(
       tx,
@@ -669,11 +664,9 @@ describe('discipline.helper — Step 4 dated-incident stipend-segment attributio
 
     // DisciplineEvent's unique claim makes the second call a true no-op —
     // no second deduction row, totals unchanged.
-    expect(getDeductions()).toHaveLength(1);
+    expect(getDeductions()).toHaveLength(0);
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
-    expect(entries).toHaveLength(1);
-    expect(entries[0].stipendRecordId).toBe('sr-old');
-    expect(entries[0].totalDeductions).toBe(afterFirst);
-    expect(entries[0].totalDeductions).toBeCloseTo((OLD_RATE_BASIC / 31) * 2, 5);
+    expect(entries).toHaveLength(0);
+    expect(getPayrollEntries().find((entry) => entry.stipendRecordId === 'sr-old')!.totalDeductions).toBe(afterFirst);
   });
 });

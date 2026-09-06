@@ -43,15 +43,8 @@ describe('PayrollService.updateActiveStipend', () => {
       },
       auditLog: { create: auditCreate },
       payrollEntry: { findMany: jest.fn().mockResolvedValue([]) },
-      $transaction: async (fn: (tx: unknown) => unknown) =>
-        fn({
-          stipendRecord: {
-            update: stipendUpdate,
-            create: stipendCreate,
-            updateMany: stipendUpdateMany,
-          },
-          auditLog: { create: auditCreate },
-        }),
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: async (fn: (tx: unknown) => unknown): Promise<unknown> => fn(prisma),
     };
     const service = new PayrollService(prisma as never, {} as never);
 
@@ -119,15 +112,8 @@ describe('PayrollService.updateActiveStipend', () => {
       },
       auditLog: { create: auditCreate },
       payrollEntry: { findMany: jest.fn().mockResolvedValue([]) },
-      $transaction: async (fn: (tx: unknown) => unknown) =>
-        fn({
-          stipendRecord: {
-            update: stipendUpdate,
-            create: stipendCreate,
-            updateMany: stipendUpdateMany,
-          },
-          auditLog: { create: auditCreate },
-        }),
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: async (fn: (tx: unknown) => unknown): Promise<unknown> => fn(prisma),
     };
     const service = new PayrollService(prisma as never, {} as never);
 

@@ -72,6 +72,7 @@ describe('InquiryDecisionService', () => {
 
   function build(inquiry = openInquiry()) {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: employeeId }]),
       inquiry: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         update: jest.fn().mockResolvedValue({}),
@@ -470,6 +471,21 @@ describe('InquiryDecisionService', () => {
 
     await service.approve(inquiryId, approverId);
 
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: 'Serializable' }),
+    );
+    expect(tx.$queryRaw).toHaveBeenCalledWith(
+      expect.any(Array),
+      employeeId,
+    );
+    expect((tx.$queryRaw.mock.calls[0][0] as string[]).join('')).toContain('FOR UPDATE');
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.inquiry.updateMany.mock.invocationCallOrder[0],
+    );
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.payrollEntry.findMany.mock.invocationCallOrder[0],
+    );
     expect(tx.payrollDeduction.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

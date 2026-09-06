@@ -50,6 +50,7 @@ function makeAbsenceFakeTx(seed: {
   let disciplineEvents = seed.disciplineEvents;
 
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     stipendRecord: {
       findFirst: jest.fn(({ where }: { where: { employeeId: string } }) =>
         where.employeeId === ownerEmployeeId && payrollEntry

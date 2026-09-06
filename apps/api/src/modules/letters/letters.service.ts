@@ -1,3 +1,4 @@
+import { lockPayrollEmployee, withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
 import {
   BadRequestException,
   ConflictException,
@@ -2161,7 +2162,9 @@ export class LettersService implements OnModuleInit {
     let fineUndone = false;
     let fineSkippedReason: string | null = null;
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await withPayrollEmployeeTransaction(this.prisma, letter.employeeId, async (tx) => {
+      fineUndone = false;
+      fineSkippedReason = null;
       const updated = await tx.letter.update({
         where: { id: letterId },
         data: {
@@ -2270,6 +2273,7 @@ export class LettersService implements OnModuleInit {
       generatedAt: Date;
     },
   ): Promise<{ undone: boolean; skippedReason: string | null }> {
+    await lockPayrollEmployee(tx, letter.employeeId);
     const vars = (letter.variables ?? {}) as Record<string, unknown>;
     const incidentDate =
       typeof vars.incidentDate === 'string'
@@ -2278,6 +2282,7 @@ export class LettersService implements OnModuleInit {
 
     const deductions = await tx.payrollDeduction.findMany({
       where: {
+        OR: [{ description: null }, { NOT: { description: { startsWith: 'Attendance Card:' } } }],
         payrollEntry: {
           stipendRecord: { employeeId: letter.employeeId },
         },

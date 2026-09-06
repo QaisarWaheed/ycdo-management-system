@@ -25,15 +25,20 @@ describe('PayrollService.resetUnpaidPayroll / rebuild', () => {
 
   it('deletes unpaid entries and leaves PAID counted as skipped', async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
       stipendReceipt: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
       payrollDeduction: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
       allowance: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      payrollEntry: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      payrollEntry: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'pe-1' }, { id: 'pe-2' }]),
+        count: jest.fn().mockResolvedValue(3),
+        deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
     const prisma = {
       payrollEntry: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'pe-1' }, { id: 'pe-2' }]),
+        findMany: jest.fn().mockResolvedValue([{ stipendRecord: { employeeId: 'emp-1' } }, { stipendRecord: { employeeId: 'emp-2' } }]),
         count: jest.fn().mockResolvedValue(3),
       },
       $transaction: jest.fn(async (cb: (client: typeof tx) => Promise<void>) =>

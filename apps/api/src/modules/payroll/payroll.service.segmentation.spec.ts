@@ -123,6 +123,7 @@ function inDateRange(date: Date, where: { gte?: Date; lte?: Date; lt?: Date }): 
 
 function makeFakePrisma(db: FakeDb) {
   const prisma = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     employee: {
       findUnique: async ({ where }: any) => db.employees.get(where.id) ?? null,
     },
@@ -144,6 +145,13 @@ function makeFakePrisma(db: FakeDb) {
       },
     },
     payrollEntry: {
+      findFirst: async ({ where }: any) => [...db.payrollEntries.values()].find(e =>
+        e.month === where.month && e.year === where.year &&
+        (!where.stipendRecordId?.not || e.stipendRecordId !== where.stipendRecordId.not) &&
+        (!where.status?.in || where.status.in.includes(e.status)) &&
+        (!where.OR || where.OR.some((condition: any) => Object.entries(condition).every(([field, predicate]: [string, any]) => Number((e as any)[field]) > predicate.gt))) &&
+        (!where.stipendRecord?.employeeId || db.stipendRecords.get(e.stipendRecordId)?.employeeId === where.stipendRecord.employeeId)
+      ) ?? null,
       findUnique: async ({ where, include }: any) => {
         let entry: FakePayrollEntry | undefined;
         if (where.id) entry = db.payrollEntries.get(where.id);
@@ -288,7 +296,8 @@ function makeFakePrisma(db: FakeDb) {
           .filter((l) => !where.type || l.type === where.type)
           .filter((l) => !where.status || l.status === where.status)
           .filter((l) => inDateRange(l.date, where.date))
-          .sort((a, b) => a.date.getTime() - b.date.getTime()),
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+          .map(l => ({ overtimeMinutes: 0, lateMinutes: 0, overtimePending: false, overtimeApprovedAt: null, ...l })),
     },
     additionalWorkingDay: {
       findMany: async ({ where }: any) =>
@@ -404,6 +413,20 @@ const AUG_15 = new Date(Date.UTC(2026, 7, 15, 0, 0, 0));
 
 describe('PayrollService — Step 3 multi-segment discovery/recompute architecture', () => {
   // A. Single stipend record / full month => behavior unchanged.
+  it('rejects incomplete historical Cards without creating payroll or attendance rows', async () => {
+    const db = new FakeDb();
+    seedEmployee(db);
+    seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
+    seedFullMonthPresent(db, [1]);
+    const service = makeService(db);
+    await expect(service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any))
+      .rejects.toThrow('INCOMPLETE_ATTENDANCE_CARD');
+    expect(db.payrollEntries.size).toBe(0);
+    expect(db.attendanceLogs).toHaveLength(1);
+    expect(db.allowances.size).toBe(0);
+    expect(db.deductions.size).toBe(0);
+  });
+
   it('A: a single full-month stipend record behaves exactly as before segmentation existed', async () => {
     const db = new FakeDb();
     seedEmployee(db);
@@ -520,6 +543,26 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     expect(after).toEqual(frozenSnapshot);
   });
 
+  it('allows a zero-valued closed PROCESSED segment while refreshing its pending monthly owner', async () => {
+    const db = new FakeDb();
+    seedEmployee(db);
+    const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
+    const newSr = seedStipend(db, 27900, AUG_15, null);
+    seedFullMonthPresent(db);
+    const service = makeService(db);
+    await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
+    const closed = [...db.payrollEntries.values()].find(e => e.stipendRecordId === oldSr.id)!;
+    expect(closed.basicStipend + closed.totalAllowances + closed.totalDeductions).toBe(0);
+    closed.status = PayrollStatus.PROCESSED;
+    const frozenBefore = { ...closed };
+    db.attendanceLogs[0].status = AttendanceStatus.HALF_DAY;
+    await service.recomputeEmployeeMonth({ employeeId: EMP_ID, month: 8, year: 2026 });
+    expect(db.payrollEntries.get(closed.id)).toEqual(frozenBefore);
+    const owner = [...db.payrollEntries.values()].find(e => e.stipendRecordId === newSr.id)!;
+    expect(owner.status).toBe(PayrollStatus.PENDING);
+    expect(owner.basicStipend).toBe(27450);
+  });
+
   it('H: an AdditionalWorkingDay row is credited on the active payroll row', async () => {
     const db = new FakeDb();
     seedEmployee(db);
@@ -563,7 +606,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     expect(entry.basicStipend).toBeCloseTo((24800 * 30) / 31, 2);
   });
 
-  it('J: a RelieverSession in the active window is credited once on that row', async () => {
+  it('J: reliever duty is paid only through its stored AWD Card row', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -573,14 +616,16 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
       employeeId: EMP_ID, date: augustDate(20),
       checkIn: pkTime(20, 18, 0), checkOut: pkTime(20, 22, 0), totalMinutes: 240,
     });
+    db.additionalWorkingDays.push({ employeeId: EMP_ID, date: augustDate(20), note: 'Reliever duty' });
     const service = makeService(db);
 
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
     const newReliever = [...db.allowances.values()].find((a) => a.payrollEntryId === newEntry.id && a.type === 'RELIEVER');
-    expect(newReliever).toBeDefined();
-    // Final policy: partial reliever = actual approved hours, not a forced full day.
-    expect(newReliever!.hours).toBe(4);
+    expect(newReliever).toBeUndefined();
+    const awd = [...db.allowances.values()].filter(a => a.type === 'ADDITIONAL_WORKING_DAYS');
+    expect(awd).toHaveLength(1);
+    expect(awd[0].amount).toBe(900);
   });
 
   it('L: month payroll combines contractual segments (old + new)', async () => {
@@ -604,6 +649,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     const db = new FakeDb();
     seedEmployee(db);
     seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
+    seedFullMonthPresent(db, Array.from({ length: 30 }, (_, i) => i + 2));
     db.attendanceLogs.push({
       employeeId: EMP_ID, type: AttendanceLogType.REGULAR, date: augustDate(1),
       checkIn: pkTime(1, 9, 0), checkOut: pkTime(1, 9, 5), // short/anomalous-shaped session
@@ -622,6 +668,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
     const newSr = seedStipend(db, 27900, AUG_15, null);
+    seedFullMonthPresent(db, Array.from({ length: 31 }, (_, i) => i + 1).filter(d => ![14, 15].includes(d)));
     for (const day of [14, 15]) {
       db.attendanceLogs.push({
         employeeId: EMP_ID, type: AttendanceLogType.REGULAR, date: augustDate(day),
@@ -633,12 +680,7 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     await service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any);
     const oldEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id)!;
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
-    // 2026-09-04 rule: mid-month PACKAGE CHANGE — the closed OLD segment
-    // earns 0 (no blending), and the active NEW segment is widened to the
-    // whole month (backfillFromJoining), earning the full contractual
-    // amount: Aug 14 and 15 are logged PRESENT, and the remaining 29
-    // elapsed August days gap-fill (no log, but within employment) —
-    // 31/31 payable days, capped at the full 27900.
+    // All 31 final stored days belong to the active package; closed Basic stays zero.
     expect(oldEntry.basicStipend).toBe(0);
     expect(newEntry.basicStipend).toBe(27900);
   });

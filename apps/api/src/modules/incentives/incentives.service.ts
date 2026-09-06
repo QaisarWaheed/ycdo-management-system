@@ -1,3 +1,4 @@
+import { withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
 import {
   BadRequestException,
   Injectable,
@@ -43,26 +44,26 @@ export class IncentivesService {
       dto.employeeId,
     );
 
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: dto.employeeId },
-    });
+    return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, async (tx) => {
+      const employee = await tx.employee.findUnique({
+        where: { id: dto.employeeId },
+      });
 
-    if (!employee) {
-      throw new NotFoundException(
-        `Employee with id ${dto.employeeId} not found`,
-      );
-    }
+      if (!employee) {
+        throw new NotFoundException(
+          `Employee with id ${dto.employeeId} not found`,
+        );
+      }
 
-    if (
-      employee.status !== EmployeeStatus.ACTIVE &&
-      employee.status !== EmployeeStatus.APPOINTED
-    ) {
-      throw new BadRequestException(
-        'Incentives can only be added for active or appointed employees',
-      );
-    }
+      if (
+        employee.status !== EmployeeStatus.ACTIVE &&
+        employee.status !== EmployeeStatus.APPOINTED
+      ) {
+        throw new BadRequestException(
+          'Incentives can only be added for active or appointed employees',
+        );
+      }
 
-    return this.prisma.$transaction(async (tx) => {
       const incentive = await tx.incentive.create({
         data: {
           employeeId: dto.employeeId,
@@ -191,30 +192,34 @@ export class IncentivesService {
       throw new NotFoundException(`Incentive with id ${id} not found`);
     }
 
-    const payrollEntry = await this.prisma.payrollEntry.findFirst({
-      where: {
-        month: incentive.month,
-        year: incentive.year,
-        stipendRecord: { employeeId: incentive.employeeId },
-      },
-      include: { allowances: true },
-    });
+    await withPayrollEmployeeTransaction(this.prisma, incentive.employeeId, async (tx) => {
+      const incentive = await tx.incentive.findUnique({ where: { id } });
+      if (!incentive) {
+        throw new NotFoundException(`Incentive with id ${id} not found`);
+      }
+      const payrollEntry = await tx.payrollEntry.findFirst({
+        where: {
+          month: incentive.month,
+          year: incentive.year,
+          stipendRecord: { employeeId: incentive.employeeId },
+        },
+        include: { allowances: true },
+      });
 
-    if (!payrollEntry) {
-      throw new NotFoundException('Associated payroll entry not found');
-    }
+      if (!payrollEntry) {
+        throw new NotFoundException('Associated payroll entry not found');
+      }
 
-    const allowance = payrollEntry.allowances.find((item) =>
-      isIncentiveAllowance(item.description, incentive.reason),
-    );
+      const allowance = payrollEntry.allowances.find((item) =>
+        isIncentiveAllowance(item.description, incentive.reason),
+      );
 
-    if (!allowance) {
-      throw new NotFoundException('Associated allowance record not found');
-    }
+      if (!allowance) {
+        throw new NotFoundException('Associated allowance record not found');
+      }
 
-    const amount = Number(incentive.amount);
+      const amount = Number(incentive.amount);
 
-    await this.prisma.$transaction(async (tx) => {
       await tx.allowance.delete({ where: { id: allowance.id } });
 
       await tx.payrollEntry.update({

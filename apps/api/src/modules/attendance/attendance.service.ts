@@ -28,7 +28,7 @@ import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PayrollService } from '../payroll/payroll.service';
 import { LettersService } from '../letters/letters.service';
-import { summarizeAttendanceLogs } from './attendance-summary.util';
+import { loadAttendanceCard } from './attendance-card.util';
 import { DisciplinaryService } from '../disciplinary/disciplinary.service';
 import { SuspensionRequestService } from '../disciplinary/suspension-request.service';
 import { InquiryOpeningService } from '../disciplinary/inquiry-opening.service';
@@ -2530,14 +2530,6 @@ export class AttendanceService {
         : [searchFilter];
     }
 
-    if (query.employeeId && query.month && query.year) {
-      await this.ensureMonthLogsForEmployee(
-        query.employeeId,
-        query.month,
-        query.year,
-      );
-    }
-
     const logs = await this.prisma.attendanceLog.findMany({
       where,
       include: {
@@ -3191,48 +3183,7 @@ export class AttendanceService {
   }
 
   async getEmployeeSummary(employeeId: string, month: number, year: number) {
-    await this.ensureMonthLogsForEmployee(employeeId, month, year);
-
-    const { start } = pakistanMonthDateRange(year, month);
-    const visibleEnd = pakistanVisibleAttendanceEnd(year, month);
-    const logs = visibleEnd
-      ? await this.prisma.attendanceLog.findMany({
-          where: {
-            employeeId,
-            type: AttendanceLogType.REGULAR,
-            date: { gte: start, lte: visibleEnd },
-          },
-        })
-      : [];
-
-    // Count only unrepresented Weekly Off dates. Leave approval can store a
-    // HOLIDAY row for a Weekly Off, which already contributes to the card.
-    let weeklyOff = 0;
-    if (visibleEnd) {
-      const employee = await this.prisma.employee.findUnique({
-        where: { id: employeeId },
-        select: { weeklyOffWeekdays: true },
-      });
-      const elapsedDates = calendarDatesForAttendanceMonth(year, month);
-      const loggedDates = new Set(logs.map((log) => log.date.getTime()));
-      weeklyOff = elapsedDates.filter((d) =>
-        isWeeklyOffDate(employee?.weeklyOffWeekdays, d) && !loggedDates.has(d.getTime()),
-      ).length;
-    }
-
-    const additionalWorkingDays = await this.prisma.additionalWorkingDay.count(
-      {
-        where: {
-          employeeId,
-          date: { gte: start, ...(visibleEnd ? { lte: visibleEnd } : {}) },
-        },
-      },
-    );
-
-    return {
-      ...summarizeAttendanceLogs(logs, weeklyOff),
-      additionalWorkingDays,
-    };
+    return loadAttendanceCard(this.prisma, employeeId, month, year);
   }
 
   async markAbsentees(date: string) {

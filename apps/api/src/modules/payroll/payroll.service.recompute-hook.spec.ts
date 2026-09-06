@@ -122,6 +122,7 @@ function inDateRange(date: Date, where: { gte?: Date; lte?: Date; lt?: Date }): 
 
 function makeFakePrisma(db: FakeDb) {
   const prisma = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     employee: {
       findUnique: async ({ where }: any) => db.employees.get(where.id) ?? null,
     },
@@ -143,16 +144,13 @@ function makeFakePrisma(db: FakeDb) {
       },
     },
     payrollEntry: {
-      findFirst: async ({ where }: any) => {
-        const employeeId: string = where.stipendRecord.employeeId;
-        const entry = [...db.payrollEntries.values()].find(
-          (e) =>
-            e.month === where.month &&
-            e.year === where.year &&
-            db.stipendRecords.get(e.stipendRecordId)?.employeeId === employeeId,
-        );
-        return entry ? { id: entry.id } : null;
-      },
+      findFirst: async ({ where }: any) => [...db.payrollEntries.values()].find(e =>
+        e.month === where.month && e.year === where.year &&
+        (!where.stipendRecordId?.not || e.stipendRecordId !== where.stipendRecordId.not) &&
+        (!where.status?.in || where.status.in.includes(e.status)) &&
+        (!where.OR || where.OR.some((condition: any) => Object.entries(condition).every(([field, predicate]: [string, any]) => Number((e as any)[field]) > predicate.gt))) &&
+        (!where.stipendRecord?.employeeId || db.stipendRecords.get(e.stipendRecordId)?.employeeId === where.stipendRecord.employeeId)
+      ) ?? null,
       findUnique: async ({ where, include }: any) => {
         let entry: FakePayrollEntry | undefined;
         if (where.id) entry = db.payrollEntries.get(where.id);
@@ -253,7 +251,8 @@ function makeFakePrisma(db: FakeDb) {
           .filter((l) => !where.type || l.type === where.type)
           .filter((l) => !where.status || l.status === where.status)
           .filter((l) => inDateRange(l.date, where.date))
-          .sort((a, b) => a.date.getTime() - b.date.getTime()),
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+          .map(l => ({ overtimeMinutes: 0, lateMinutes: 0, overtimePending: false, overtimeApprovedAt: null, ...l })),
     },
     additionalWorkingDay: {
       findMany: async ({ where }: any) =>
@@ -322,6 +321,8 @@ function seedEmployee(db: FakeDb, overrides: Partial<any> = {}) {
     shift: null,
     ...overrides,
   });
+  // Explicit stored fixture dates: production must never synthesize missing days.
+  for (let day = 1; day <= 31; day++) seedPresentDay(db, day, AttendanceStatus.UNMARKED);
 }
 
 function seedStipend(db: FakeDb, basicStipend: number, effectiveFrom: Date, effectiveTo: Date | null): FakeStipendRecord {
@@ -364,6 +365,7 @@ function seedPayrollEntry(db: FakeDb, stipendRecordId: string, month: number, ye
 }
 
 function seedPresentDay(db: FakeDb, day: number, status: AttendanceStatus = AttendanceStatus.PRESENT) {
+  db.attendanceLogs = db.attendanceLogs.filter(l => l.date.getTime() !== augustDate(day).getTime());
   db.attendanceLogs.push({
     employeeId: EMP_ID,
     type: AttendanceLogType.REGULAR,
@@ -380,8 +382,8 @@ function seedPresentDay(db: FakeDb, day: number, status: AttendanceStatus = Atte
 const AUG_15 = new Date(Date.UTC(2026, 7, 15, 0, 0, 0));
 
 describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
-  // 1. Final policy: Basic is contractual calendar amount, not attendance-grown.
-  it('1: PENDING Basic stays full contractual stipend independent of attendance logs', async () => {
+  // Final stored statuses determine paid Basic.
+  it('1: PENDING Basic grows only when a stored final day becomes paid', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -390,17 +392,17 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
     const before = [...db.payrollEntries.values()][0];
-    expect(before.basicStipend).toBe(24800);
+    expect(before.basicStipend).toBe(0);
 
     seedPresentDay(db, 10);
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
     const after = [...db.payrollEntries.values()][0];
-    expect(after.basicStipend).toBe(24800);
+    expect(after.basicStipend).toBe(800);
   });
 
-  // 2. PRESENT -> ABSENT: Basic unchanged (attendance consequences are deductions).
-  it('2: PRESENT -> ABSENT recomputes cleanly and basicStipend stays contractual (no attendance shrink)', async () => {
+  // ABSENT loses its own pay and adds the Card absence penalty.
+  it('2: PRESENT -> ABSENT removes paid Basic and adds one daily-rate penalty', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -416,8 +418,9 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
     const afterAbsent = [...db.payrollEntries.values()][0].basicStipend;
 
-    expect(afterAbsent).toBe(afterPresent);
-    expect(afterAbsent).toBe(24800);
+    expect(afterPresent).toBe(800);
+    expect(afterAbsent).toBe(0);
+    expect([...db.payrollEntries.values()][0].totalDeductions).toBe(800);
   });
 
   // 3. Historical August correction made later recomputes August, not the
@@ -437,7 +440,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     // never a wall-clock "now".
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
 
-    expect(db.payrollEntries.get(augEntry.id)!.basicStipend).toBe(24800);
+    expect(db.payrollEntries.get(augEntry.id)!.basicStipend).toBe(800);
     expect(db.payrollEntries.get(sepEntry.id)!.basicStipend).toBe(12345);
   });
 
@@ -487,7 +490,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     expect(db.payrollEntries.get(entry.id)).toEqual(before);
   });
 
-  it('6b: PRESENT -> HALF_DAY keeps contractual Basic (half-day is a deduction)', async () => {
+  it('6b: PRESENT -> HALF_DAY earns half a daily rate without a separate deduction', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -496,12 +499,13 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     const service = makeService(db);
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
-    expect([...db.payrollEntries.values()][0].basicStipend).toBe(24800);
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(800);
 
     db.attendanceLogs.find((l) => l.date.getTime() === augustDate(10).getTime())!.status =
       AttendanceStatus.HALF_DAY;
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
-    expect([...db.payrollEntries.values()][0].basicStipend).toBe(24800);
+    expect([...db.payrollEntries.values()][0].basicStipend).toBe(400);
+    expect([...db.deductions.values()]).toHaveLength(0);
   });
 
   // 7. PAID payroll remains financially unchanged.
@@ -556,10 +560,8 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     expect(awdAllowances).toHaveLength(1); // no duplicate allowance rows across 3 calls
   });
 
-  // 10. Multi-stipend-segment month recomputes the correct affected
-  // segment using the existing segmentation, leaving the other segment's
-  // (independently correct) totals as-is.
-  it('10: a correction to an OLD-segment date only changes the OLD segment; the NEW segment recomputes to the same correct value', async () => {
+  // The package-bearing entry owns the whole monthly Card.
+  it('10: the package-bearing segment owns the whole Card month and old Basic stays zero', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);

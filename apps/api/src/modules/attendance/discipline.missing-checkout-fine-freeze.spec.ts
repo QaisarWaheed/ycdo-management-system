@@ -1,3 +1,6 @@
+// Card salary owns attendance earnings and penalties. These tests preserve
+// discipline event/letter and historical reversal behavior, while rejecting new
+// discipline-triggered payroll writes, including letter Send and replay.
 import { LetterType, Prisma } from '@prisma/client';
 
 // discipline.helper.ts imports issueAutoTemplatedLetter at module scope,
@@ -107,6 +110,7 @@ function makeFreezeFakeTx(seed: {
   const letters = seed.letters ?? [];
 
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     employee: {
       findUnique: jest.fn((args: { where: { id: string } }) => {
         if (args.where.id !== EMP_ID) return null;
@@ -466,7 +470,7 @@ afterEach(() => {
 
 describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial freeze', () => {
   // A. PENDING missing-checkout fine works unchanged.
-  it('A: a PENDING PayrollEntry still receives the missing-checkout fine exactly as before', async () => {
+  it('A: a PENDING PayrollEntry does not receive a missing-checkout fine', async () => {
     const { tx, getPayrollEntries, getDeductions } = makeFreezeFakeTx({
       stipendRecords: [singleSr],
       priorOpenDates: FINE_PRIOR_DATES,
@@ -477,8 +481,8 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const entries = getPayrollEntries();
     expect(entries).toHaveLength(1);
     expect(entries[0].status).toBe('PENDING');
-    expect(entries[0].totalDeductions).toBeCloseTo(OLD_RATE_BASIC / 31, 5);
-    expect(getDeductions()).toHaveLength(1);
+    expect(entries[0].totalDeductions).toBe(0);
+    expect(getDeductions()).toHaveLength(0);
   });
 
   // B. PROCESSED target segment gets no financial mutation.
@@ -589,7 +593,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
 
   // F. Transition-date incident still resolves to the NEW stipend segment
   // (segmentation untouched by the freeze guard).
-  it('F: a transition-date missing-checkout fine still resolves to and mutates the NEW segment (PENDING)', async () => {
+  it('F: transition-date missing-checkout processing does not charge either segment', async () => {
     const { tx, getPayrollEntries } = makeFreezeFakeTx({
       stipendRecords: [oldSr, newSr],
       priorOpenDates: ['2026-08-13', '2026-08-14'],
@@ -601,9 +605,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     });
 
     const entries = getPayrollEntries().filter((e) => e.totalDeductions > 0);
-    expect(entries).toHaveLength(1);
-    expect(entries[0].stipendRecordId).toBe('sr-new'); // half-open: effectiveFrom inclusive
-    expect(entries[0].totalDeductions).toBeCloseTo(NEW_RATE_BASIC / 31, 5);
+    expect(entries).toHaveLength(0);
   });
 
   // G. Reversal on PENDING works unchanged.

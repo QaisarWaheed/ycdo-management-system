@@ -9,21 +9,9 @@ jest.mock('../attendance/discipline.helper', () => ({
   }),
 }));
 
-/**
- * Step 4 (Gap #2) regression coverage: overtime is recorded per
- * AttendanceLog row (one date each), so — like every other date-based
- * child-row calculation since Step 3 — it must be attributed to whichever
- * StipendRecord segment is effective on each attendance date, never
- * aggregated month-globally and dumped onto one PayrollEntry picked via
- * findFirst. getOvertimePreview partitions OT-bearing dates per segment;
- * applyOvertime writes each segment's own share to its own PayrollEntry
- * only, so no OT minute can ever contribute to more than one segment's row.
- *
- * Uses the same style of in-memory fake Prisma double as
- * payroll.service.segmentation.spec.ts, extended with overtime-specific
- * surface (AttendanceLog.overtimeMinutes/overtimePending, updateMany,
- * PayrollEntry.findMany, Allowance, and $transaction).
- */
+/** Card OT is stored REGULAR minutes, paid once on the monthly package owner.
+ * Salary refresh preserves pending approval state and never recalculates OT from punches.
+ * The in-memory Prisma fixtures exercise preview, refresh, freeze and idempotency. */
 
 let idCounter = 0;
 function newId(prefix: string) {
@@ -99,6 +87,7 @@ function inDateRange(date: Date, where: { gte?: Date; lte?: Date; lt?: Date }): 
 
 function makeFakePrisma(db: FakeDb) {
   const prisma = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     employee: {
       findUnique: async ({ where }: any) => db.employees.get(where.id) ?? null,
     },
@@ -120,6 +109,13 @@ function makeFakePrisma(db: FakeDb) {
       },
     },
     payrollEntry: {
+      findFirst: async ({ where }: any) => [...db.payrollEntries.values()].find(e =>
+        e.month === where.month && e.year === where.year &&
+        (!where.stipendRecordId?.not || e.stipendRecordId !== where.stipendRecordId.not) &&
+        (!where.status?.in || where.status.in.includes(e.status)) &&
+        (!where.OR || where.OR.some((condition: any) => Object.entries(condition).every(([field, predicate]: [string, any]) => Number((e as any)[field]) > predicate.gt))) &&
+        (!where.stipendRecord?.employeeId || db.stipendRecords.get(e.stipendRecordId)?.employeeId === where.stipendRecord.employeeId)
+      ) ?? null,
       findUnique: async ({ where, include }: any) => {
         let entry: FakePayrollEntry | undefined;
         if (where.id) entry = db.payrollEntries.get(where.id);
@@ -257,7 +253,8 @@ function makeFakePrisma(db: FakeDb) {
           .filter((l) => !where.status || l.status === where.status)
           .filter((l) => !where.overtimeMinutes || l.overtimeMinutes > 0)
           .filter((l) => inDateRange(l.date, where.date))
-          .sort((a, b) => a.date.getTime() - b.date.getTime()),
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+          .map(l => ({ lateMinutes: 0, overtimeApprovedAt: null, ...l })),
       updateMany: async ({ where, data }: any) => {
         let count = 0;
         for (const l of db.attendanceLogs) {
@@ -405,7 +402,36 @@ function seedOvertime(db: FakeDb, day: number, minutes: number, pending = true) 
 
 const AUG_15 = new Date(Date.UTC(2026, 7, 15, 0, 0, 0));
 
-describe('PayrollService — Step 4 overtime stipend-segment attribution', () => {
+describe('PayrollService — Card-only overtime ownership', () => {
+  it('uses Card rounded hours and the unrounded rate, excluding separate OVERTIME records', async () => {
+    const db = new FakeDb();
+    seedEmployee(db, { dutyTotalHours: 7 });
+    seedStipend(db, 28000, new Date(Date.UTC(2000, 0, 1)), null);
+    seedFullMonthPresent(db);
+    seedOvertime(db, 10, 1, true);
+    const source = db.attendanceLogs.find(l => l.date.getTime() === augustDate(10).getTime())!;
+    db.attendanceLogs.push({ ...source, type: AttendanceLogType.OVERTIME, overtimeMinutes: 600 });
+    const service = makeService(db);
+    const preview = await service.getOvertimePreview(EMP_ID, 8, 2026);
+    expect(preview.overtimeHours).toBe(0.02);
+    expect(preview.pendingOvertimeMinutes).toBe(1);
+    const amount = Math.round(0.02 * (28000 / 31 / 7) * 100) / 100;
+    expect(preview.amount).toBe(amount);
+    const result = await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
+    expect(result.totalAllowances).toBe(amount);
+    expect(source.overtimePending).toBe(true);
+  });
+  it('refuses applying overtime for an incomplete historical Card', async () => {
+    const db = new FakeDb();
+    seedEmployee(db);
+    seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
+    seedOvertime(db, 10, 120, true);
+    const service = makeService(db);
+    await expect(service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER)).rejects.toThrow('INCOMPLETE_ATTENDANCE_CARD');
+    expect(db.payrollEntries.size).toBe(0);
+    expect(db.attendanceLogs).toHaveLength(1);
+    expect(db.attendanceLogs[0].overtimePending).toBe(true);
+  });
   // I. Single-segment month: overtime preview/apply behaves exactly as
   // before segmentation (no regression for the common case).
   it('I: a single full-month stipend record — overtime preview/apply is unchanged from pre-segmentation behavior', async () => {
@@ -426,7 +452,9 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
 
     const result = await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
     expect(result.totalAllowances).toBeCloseTo(200, 5);
-    expect((result as any).segments).toHaveLength(1);
+    expect(db.payrollEntries.size).toBe(1);
+    expect(preview.pendingOvertimeMinutes).toBe(120);
+    expect(db.attendanceLogs.find(l => l.date.getTime() === augustDate(10).getTime())!.overtimePending).toBe(true);
   });
 
   it('payroll generate/refresh writes overtime from attendance hours without applyOvertime', async () => {
@@ -447,9 +475,8 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     expect(ot?.amount).toBe(200);
   });
 
-  // J. Overtime dated BEFORE the increment is attributed only to the OLD
-  // segment's rate/entry.
-  it('J: overtime before the increment is attributed to the OLD segment only', async () => {
+  // Overtime dates before the increment still belong to the whole-month Card.
+  it('J: overtime before the increment belongs to the monthly package-bearing Card owner', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -461,10 +488,11 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     const preview = await service.getOvertimePreview(EMP_ID, 8, 2026);
     const oldSeg = preview.segments.find((s) => s.stipendRecordId === oldSr.id)!;
     const newSeg = preview.segments.find((s) => s.stipendRecordId === newSr.id)!;
-    expect(oldSeg.overtimeMinutes).toBe(120);
-    expect(newSeg.overtimeMinutes).toBe(0);
+    expect(oldSeg.overtimeMinutes).toBe(0);
+    expect(newSeg.overtimeMinutes).toBe(120);
     expect(oldSeg.hourlyRate).toBe(100); // 24800/(8*31)
-    expect(oldSeg.amount).toBe(200); // 2h * 100
+    expect(oldSeg.amount).toBe(0);
+    expect(newSeg.amount).toBe(225); // whole-month owner rate: 2h * 112.5
   });
 
   // K. Overtime dated AFTER the increment is attributed only to the NEW
@@ -491,7 +519,7 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
   // L. Overtime spanning both segments: each date's minutes land in exactly
   // one segment, no double-counting, and the combined preview total equals
   // the sum of segment totals.
-  it('L: overtime spanning both segments splits correctly with no double-counting', async () => {
+  it('L: overtime spanning both date windows is paid once by the Card owner', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -506,11 +534,10 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     const oldSeg = preview.segments.find((s) => s.stipendRecordId === oldSr.id)!;
     const newSeg = preview.segments.find((s) => s.stipendRecordId === newSr.id)!;
     expect(oldSeg.amount + newSeg.amount).toBeCloseTo(preview.amount, 5);
-    expect(preview.amount).toBeCloseTo(200 + 112.5, 5);
+    expect(preview.amount).toBeCloseTo(337.5, 5);
   });
 
-  // M. applyOvertime writes each segment's overtime to its own PayrollEntry
-  // row — never an arbitrary one.
+  // One monthly owner receives the total overtime allowance.
   it('M: applyOvertime writes overtime onto the active PayrollEntry only', async () => {
     const db = new FakeDb();
     seedEmployee(db);
@@ -526,13 +553,11 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     expect(db.payrollEntries.size).toBe(2);
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
     const newOt = [...db.allowances.values()].find((a) => a.payrollEntryId === newEntry.id && a.type === AllowanceType.OVERTIME);
-    expect(newOt?.amount).toBe(112.5);
+    expect(newOt?.amount).toBe(337.5);
   });
 
-  // N. A PROCESSED old segment stays frozen — its overtime allowance is
-  // never applied/replaced, even though the OTHER (active) segment's
-  // overtime still applies normally.
-  it('N: a PROCESSED old segment is frozen — overtime is applied to the active segment only', async () => {
+  // Frozen siblings block whole-month refresh rather than duplicating historical pay.
+  it('N: a PROCESSED sibling prevents whole-month overtime refresh', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -548,17 +573,23 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
       [...db.payrollEntries.values()].find((e) => e.stipendRecordId === oldSr.id),
     ).toBeDefined();
 
-    await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
+    const oldEntry = [...db.payrollEntries.values()].find(e => e.stipendRecordId === oldSr.id)!;
+    oldEntry.status = PayrollStatus.PROCESSED;
+    oldEntry.basicStipend = 100;
+    oldEntry.netStipend = 100; // Existing frozen money must prevent whole-month duplicate payment.
+    const beforeEntries = [...db.payrollEntries.values()].map(e => ({ ...e }));
+    const beforeAllowances = [...db.allowances.values()].map(e => ({ ...e }));
+    await expect(service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER)).rejects.toThrow('FROZEN_PAYROLL_SEGMENT');
+    expect([...db.payrollEntries.values()]).toEqual(beforeEntries);
+    expect([...db.allowances.values()]).toEqual(beforeAllowances);
 
     const newEntry = [...db.payrollEntries.values()].find((e) => e.stipendRecordId === newSr.id)!;
     const newOt = [...db.allowances.values()].find((a) => a.payrollEntryId === newEntry.id && a.type === AllowanceType.OVERTIME);
-    expect(newOt?.amount).toBe(112.5);
+    expect(newOt?.amount).toBe(337.5);
   });
 
-  // O. Re-applying overtime (e.g. after an attendance correction) replaces
-  // the existing OVERTIME allowance on each segment rather than duplicating
-  // it, and pending flags are cleared only within each segment's own dates.
-  it('O: re-applying overtime replaces (not duplicates) each segment allowance, and clears pending flags per-segment', async () => {
+  // Refresh replaces the managed allowance and leaves attendance approval unchanged.
+  it('O: re-applying overtime replaces one Card allowance without changing pending approval flags', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const oldSr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), AUG_15);
@@ -582,7 +613,9 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     expect(newOtAllowances).toHaveLength(1);
 
     const log20 = db.attendanceLogs.find((l) => l.date.getTime() === augustDate(20).getTime())!;
-    expect(log20.overtimePending).toBe(false);
+    expect(log20.overtimePending).toBe(true);
+    expect(log10.overtimePending).toBe(true);
+    expect(newOtAllowances[0].amount).toBe(450);
   });
 
   // P. Combined preview total equals the sum of segment totals across three
@@ -605,9 +638,9 @@ describe('PayrollService — Step 4 overtime stipend-segment attribution', () =>
     const seg1 = preview.segments.find((s) => s.stipendRecordId === sr1.id)!;
     const seg2 = preview.segments.find((s) => s.stipendRecordId === sr2.id)!;
     const seg3 = preview.segments.find((s) => s.stipendRecordId === sr3.id)!;
-    expect(seg1.overtimeMinutes).toBe(60);
-    expect(seg2.overtimeMinutes).toBe(60);
-    expect(seg3.overtimeMinutes).toBe(60);
+    expect(seg1.overtimeMinutes).toBe(0);
+    expect(seg2.overtimeMinutes).toBe(0);
+    expect(seg3.overtimeMinutes).toBe(180);
     expect(preview.overtimeMinutes).toBe(180);
     expect(seg1.amount + seg2.amount + seg3.amount).toBeCloseTo(preview.amount, 5);
   });

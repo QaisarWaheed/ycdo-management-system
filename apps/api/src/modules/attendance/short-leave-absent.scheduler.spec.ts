@@ -330,6 +330,8 @@ describe('approved Short Leave versus absent schedulers', () => {
     const service = new PayrollService(
       {
         attendanceLog: { findMany: jest.fn().mockResolvedValue([h.get()]) },
+        employee: { findUnique: jest.fn().mockResolvedValue(h.employee) },
+        additionalWorkingDay: { findMany: jest.fn().mockResolvedValue([]) },
       } as any,
       {} as any,
     );
@@ -340,6 +342,7 @@ describe('approved Short Leave versus absent schedulers', () => {
         effectiveTo: new Date('2026-08-15T00:00:00Z'),
       },
       employee: h.employee,
+      applyContractualPackage: true,
       existingDeductions: [],
       existingAllowances: [],
       asOf: new Date('2026-09-01T00:00:00Z'),

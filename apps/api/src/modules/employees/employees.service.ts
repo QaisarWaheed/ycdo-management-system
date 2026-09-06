@@ -1,3 +1,4 @@
+import { withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
 import {
   BadRequestException,
   ConflictException,
@@ -2274,7 +2275,7 @@ export class EmployeesService {
       throw new NotFoundException(`Employee with id ${id} not found`);
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    await withPayrollEmployeeTransaction(this.prisma, id, async (tx) => {
       const leaveIds = (
         await tx.leaveRecord.findMany({
           where: { employeeId: id },
