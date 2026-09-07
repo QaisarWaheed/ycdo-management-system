@@ -1,3 +1,4 @@
+import { ensureWeeklyOffHolidays } from './weekly-off-holiday.util';
 import {
   BadRequestException,
   ConflictException,
@@ -2034,6 +2035,7 @@ export class AttendanceService {
         continue;
       }
       if (isWeeklyOffDate(employee.weeklyOffWeekdays, dateOnly)) {
+        await ensureWeeklyOffHolidays(this.prisma, employee, dateOnly);
         continue;
       }
 
@@ -2215,6 +2217,7 @@ export class AttendanceService {
         continue;
       }
       if (isWeeklyOffDate(employee.weeklyOffWeekdays, date)) {
+        await ensureWeeklyOffHolidays(this.prisma, employee, date);
         continue;
       }
 
@@ -3195,7 +3198,7 @@ export class AttendanceService {
         relieverOnly: false,
         shiftId: { not: null },
       },
-      select: { id: true, currentBranchId: true, weeklyOffWeekdays: true },
+      select: { id: true, currentBranchId: true, weeklyOffWeekdays: true, status: true, statusEffectiveFrom: true, joiningDate: true },
     });
 
     const existingLogs = await this.prisma.attendanceLog.findMany({
@@ -3203,6 +3206,9 @@ export class AttendanceService {
       select: { employeeId: true },
     });
 
+    for (const employee of activeEmployees) {
+      await ensureWeeklyOffHolidays(this.prisma, employee, dateOnly);
+    }
     const loggedEmployeeIds = new Set(existingLogs.map((log) => log.employeeId));
 
     const absentEmployees = activeEmployees.filter(

@@ -1,3 +1,4 @@
+import { ensureWeeklyOffHolidays } from './weekly-off-holiday.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
@@ -70,6 +71,7 @@ export class ShiftAbsentScheduler {
     let marked = 0;
 
     for (const employee of employees) {
+      await ensureWeeklyOffHolidays(this.prisma, employee, undefined, now);
       const is24h =
         (employee.shift && is24HourShiftRecord(employee.shift)) ||
         is24HourShift(employee);
@@ -433,6 +435,7 @@ export class ShiftAbsentScheduler {
         continue;
       }
       if (isWeeklyOffDate(employee.weeklyOffWeekdays, date)) {
+        marked += await ensureWeeklyOffHolidays(this.prisma, employee, date);
         continue;
       }
 
