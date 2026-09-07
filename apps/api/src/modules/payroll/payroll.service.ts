@@ -1828,6 +1828,7 @@ export class PayrollService {
       employee,
       presenceDays,
       leaveSplit,
+      absenceCounts: card,
     });
 
     const [withAttendance] = await this.attachPayrollAttendanceReport(
@@ -1887,6 +1888,7 @@ export class PayrollService {
       shift?: { startTime: string; endTime: string } | null;
     };
     presenceDays: number;
+    absenceCounts?: Pick<AttendanceCard, 'absent' | 'uninformedAbsent'>;
     leaveSplit: {
       leaveDays: number;
       paidLeaveDays: number;
@@ -1990,11 +1992,24 @@ export class PayrollService {
       other: otherDeduction,
     };
 
-    const deductionItems = deductions.map((d) => ({
-      reason: d.reason,
-      description: d.description ?? null,
-      amount: Number(d.amount) || 0,
-    }));
+    const deductionItems = deductions.flatMap((d) => {
+      const item = { reason: String(d.reason), description: d.description ?? null, amount: Number(d.amount) || 0 };
+      const counts = input.absenceCounts;
+      if (d.reason !== DeductionType.UNINFORMED_ABSENCE ||
+          d.description !== CARD_ABSENCE_DESCRIPTION || !counts ||
+          counts.absent + counts.uninformedAbsent === 0) return [item];
+
+      // Presentation only: allocate the stored penalty, never recalculate or add a charge.
+      const description = 'Attendance Card: additional absence penalty; the unpaid day is already reflected in earned stipend.';
+      if (!counts.uninformedAbsent) return [{ ...item, reason: 'ABSENCE', description }];
+      if (!counts.absent) return [{ ...item, reason: 'UNINFORMED ABSENCE', description }];
+      const absenceAmount = Math.round((item.amount * counts.absent /
+        (counts.absent + counts.uninformedAbsent) + Number.EPSILON) * 100) / 100;
+      return [
+        { reason: 'ABSENCE', description, amount: absenceAmount },
+        { reason: 'UNINFORMED ABSENCE', description, amount: Math.round((item.amount - absenceAmount) * 100) / 100 },
+      ];
+    });
 
     const earningsTotal = computeEarningsTotal(earnings);
     const deductionsTotal = computeDeductionsTotal(deductionsBlock);
