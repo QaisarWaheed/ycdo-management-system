@@ -39,3 +39,9 @@ export const DEFAULT_STIPEND_VALUES: StipendPackageValues = {
   fineDeduction: 0,
   healthDeduction: 0,
 }
+
+/** Closed packages are history, even when their start date sorts last. */
+export function selectCurrentStipend<T extends { effectiveFrom: string; effectiveTo?: string | null }>(records: T[]): T | undefined {
+  return records.filter(record => record.effectiveTo === null)
+    .sort((a, b) => new Date(b.effectiveFrom).getTime() - new Date(a.effectiveFrom).getTime())[0]
+}

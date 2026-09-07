@@ -14,7 +14,7 @@ import { PayrollStatus } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 
 describe('PayrollService.updateActiveStipend', () => {
-  it('updates the open package in place and does not create a new stipend', async () => {
+  it('preserves explicit-date correction of the open package in place', async () => {
     const active = {
       id: 'sr-open',
       basicStipend: 30000,
@@ -37,6 +37,7 @@ describe('PayrollService.updateActiveStipend', () => {
         }),
       },
       stipendRecord: {
+        findMany: jest.fn().mockResolvedValue([{ ...active, effectiveTo: null }, { id: 'prior', effectiveFrom: new Date('2020-01-01'), effectiveTo: active.effectiveFrom }]),
         update: stipendUpdate,
         create: stipendCreate,
         updateMany: stipendUpdateMany,
@@ -53,6 +54,7 @@ describe('PayrollService.updateActiveStipend', () => {
         employeeId: 'emp-1',
         basicStipend: 32000,
         allowances: 5000,
+        effectiveFrom: '2021-02-21',
         reason: 'Correct package amounts',
       },
       'user-1',
@@ -106,6 +108,7 @@ describe('PayrollService.updateActiveStipend', () => {
         }),
       },
       stipendRecord: {
+        findMany: jest.fn().mockResolvedValue([{ ...active, effectiveTo: null }, { id: 'prior', effectiveFrom: new Date('2020-01-01'), effectiveTo: active.effectiveFrom }]),
         update: stipendUpdate,
         create: stipendCreate,
         updateMany: stipendUpdateMany,

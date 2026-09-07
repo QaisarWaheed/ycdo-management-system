@@ -364,7 +364,8 @@ export class UpdateActiveStipendDto {
   healthDeduction?: number;
 
   /**
-   * Optional correction of the open package start date (e.g. move a raise
+   * When omitted, amounts apply from the current month; older versions are preserved.
+   * Optional explicit correction of the open package start date (e.g. move a raise
    * entered mid-month back to the 1st). Does not create a new package.
    * Prior package closed on the old start date is closed on this date instead.
    */

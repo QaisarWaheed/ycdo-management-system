@@ -1,3 +1,4 @@
+import { selectCurrentStipend } from '@/lib/stipendUtils'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -70,7 +71,7 @@ export function EmployeePayrollTab({
   const [historyPage, setHistoryPage] = useState(0)
   const [viewEntry, setViewEntry] = useState<PayrollEntry | null>(null)
 
-  const latestStipend = stipendRecords[0]
+  const latestStipend = selectCurrentStipend(stipendRecords)
 
   const totalDeductions = useMemo(() => {
     if (!latestStipend) return 0

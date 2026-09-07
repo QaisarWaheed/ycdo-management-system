@@ -1,3 +1,4 @@
+import { selectCurrentStipend } from '@/lib/stipendUtils'
 import { Fragment, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -1039,7 +1040,7 @@ export function EmployeeProfilePage() {
 
   const history = (employee.employmentHistory ?? []) as EmploymentHistory[]
   const stipends = (employee.stipendRecords ?? []) as StipendRecord[]
-  const latestStipend = stipends[0]
+  const latestStipend = selectCurrentStipend(stipends)
   const basicStipendAmount = latestStipend
     ? Number(latestStipend.basicStipend)
     : 0

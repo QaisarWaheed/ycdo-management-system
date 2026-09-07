@@ -1,3 +1,4 @@
+import { resolvePackageComponents, validatePackageTimeline } from './stipend-package-integrity.util';
 import { loadAttendanceCard, type AttendanceCard } from '../attendance/attendance-card.util';
 import { calculateCardSalary, isLegacyAttendanceDeduction, CARD_ABSENCE_DESCRIPTION, CARD_LATE_DESCRIPTION } from './attendance-card-salary.util';
 import { payrollTransactionClient, withPayrollEmployeeTransaction } from './payroll-write-lock.util';
@@ -2758,7 +2759,7 @@ export class PayrollService {
         stipendRecords: {
           where: { effectiveTo: null },
           orderBy: { effectiveFrom: 'desc' },
-          take: 1,
+          take: 2,
         },
       },
     });
@@ -2769,6 +2770,9 @@ export class PayrollService {
       );
     }
 
+    if (employee.stipendRecords.length > 1) {
+      throw new BadRequestException('Multiple open stipend packages; resolve package history before editing');
+    }
     const activeStipendRecord = employee.stipendRecords[0];
     if (!activeStipendRecord) {
       throw new NotFoundException(
@@ -2780,18 +2784,14 @@ export class PayrollService {
     if (Number.isNaN(effectiveFrom.getTime())) {
       throw new BadRequestException('effectiveFrom is not a valid date');
     }
+    const history = await this.prisma.stipendRecord.findMany({ where: { employeeId: dto.employeeId } });
+    validatePackageTimeline([
+      ...history.map(record => record.id === activeStipendRecord.id ? { ...record, effectiveTo: effectiveFrom } : record),
+      { id: 'new-package', effectiveFrom, effectiveTo: null },
+    ]);
     const previousSalary = Number(activeStipendRecord.basicStipend);
-    const lumpsumTotal = calculateLumpsumTotal({
-      basicStipend: dto.basicStipend,
-      allowances: dto.allowances,
-      reward: dto.reward,
-      progressReward: dto.progressReward,
-      fuelAllowance: dto.fuelAllowance,
-      loanDeduction: dto.loanDeduction,
-      advanceDeduction: dto.advanceDeduction,
-      fineDeduction: dto.fineDeduction,
-      healthDeduction: dto.healthDeduction,
-    });
+    const packageValues = resolvePackageComponents(activeStipendRecord, dto);
+    const lumpsumTotal = calculateLumpsumTotal(packageValues);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.stipendRecord.update({
@@ -2802,15 +2802,7 @@ export class PayrollService {
       const newRecord = await tx.stipendRecord.create({
         data: {
           employeeId: dto.employeeId,
-          basicStipend: dto.basicStipend,
-          allowances: dto.allowances ?? 0,
-          reward: dto.reward ?? 0,
-          progressReward: dto.progressReward ?? 0,
-          fuelAllowance: dto.fuelAllowance ?? 0,
-          loanDeduction: dto.loanDeduction ?? 0,
-          advanceDeduction: dto.advanceDeduction ?? 0,
-          fineDeduction: dto.fineDeduction ?? 0,
-          healthDeduction: dto.healthDeduction ?? 0,
+          ...packageValues,
           lumpsumTotal,
           effectiveFrom,
         },
@@ -2834,6 +2826,9 @@ export class PayrollService {
             previousSalary,
             newBasicStipend: dto.basicStipend,
             lumpsumTotal,
+            previousPackage: { ...resolvePackageComponents(activeStipendRecord, { basicStipend: Number(activeStipendRecord.basicStipend) }) },
+            newPackage: { ...packageValues },
+            suppliedComponents: Object.keys(packageValues).filter(key => dto[key] != null),
             reason: dto.reason,
           },
         },
@@ -2844,9 +2839,8 @@ export class PayrollService {
   }
 
   /**
-   * Correct the currently-open stipend amounts without opening a new
-   * package. Edit Payroll must use this for ordinary corrections so a
-   * save does not start a mid-month increment from "today".
+   * Undated edits apply from the current Pakistan month, preserving older
+   * package versions. Explicit dates retain the validated correction path.
    */
   async updateActiveStipend(dto: UpdateActiveStipendDto, actingUserId: string) {
     if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, tx => this.inTransaction(tx).updateActiveStipend(dto, actingUserId));
@@ -2857,7 +2851,7 @@ export class PayrollService {
         stipendRecords: {
           where: { effectiveTo: null },
           orderBy: { effectiveFrom: 'desc' },
-          take: 1,
+          take: 2,
         },
       },
     });
@@ -2868,6 +2862,9 @@ export class PayrollService {
       );
     }
 
+    if (employee.stipendRecords.length > 1) {
+      throw new BadRequestException('Multiple open stipend packages; resolve package history before editing');
+    }
     const activeStipendRecord = employee.stipendRecords[0];
     if (!activeStipendRecord) {
       throw new NotFoundException(
@@ -2875,22 +2872,19 @@ export class PayrollService {
       );
     }
 
-    const lumpsumTotal = calculateLumpsumTotal({
-      basicStipend: dto.basicStipend,
-      allowances: dto.allowances,
-      reward: dto.reward,
-      progressReward: dto.progressReward,
-      fuelAllowance: dto.fuelAllowance,
-      loanDeduction: dto.loanDeduction,
-      advanceDeduction: dto.advanceDeduction,
-      fineDeduction: dto.fineDeduction,
-      healthDeduction: dto.healthDeduction,
-    });
+    const packageValues = resolvePackageComponents(activeStipendRecord, dto);
+    const lumpsumTotal = calculateLumpsumTotal(packageValues);
 
     const previousEffectiveFrom = activeStipendRecord.effectiveFrom;
+    const currentMonthStart = toUtcMonthStart(pakistanDateOnly(new Date()));
+    const undatedEdit = !dto.effectiveFrom;
+    if (undatedEdit && toUtcMonthStart(previousEffectiveFrom) > currentMonthStart) {
+      throw new BadRequestException('Cannot edit a future stipend package without an explicit effective date');
+    }
+    const createMonthlyVersion = undatedEdit && toUtcMonthStart(previousEffectiveFrom) < currentMonthStart;
     const nextEffectiveFrom = dto.effectiveFrom
       ? new Date(dto.effectiveFrom)
-      : null;
+      : createMonthlyVersion ? currentMonthStart : null;
     const effectiveFromChanging =
       !!nextEffectiveFrom &&
       nextEffectiveFrom.getTime() !== previousEffectiveFrom.getTime();
@@ -2906,8 +2900,25 @@ export class PayrollService {
       }
     }
 
+    if (effectiveFromChanging && nextEffectiveFrom) {
+      const history = await this.prisma.stipendRecord.findMany({ where: { employeeId: dto.employeeId } });
+      const proposed = history.map(record => {
+        if (createMonthlyVersion) return record.id === activeStipendRecord.id
+          ? { ...record, effectiveTo: currentMonthStart } : record;
+        if (record.id === activeStipendRecord.id) return { ...record, effectiveFrom: nextEffectiveFrom };
+        return record.effectiveTo?.getTime() === previousEffectiveFrom.getTime()
+          ? { ...record, effectiveTo: nextEffectiveFrom } : record;
+      });
+      if (createMonthlyVersion) proposed.push({ ...activeStipendRecord, id: 'new-monthly-package', effectiveFrom: currentMonthStart, effectiveTo: null });
+      validatePackageTimeline(proposed);
+    }
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (effectiveFromChanging && nextEffectiveFrom) {
+      if (createMonthlyVersion) {
+        await tx.stipendRecord.update({
+          where: { id: activeStipendRecord.id },
+          data: { effectiveTo: currentMonthStart },
+        });
+      } else if (effectiveFromChanging && nextEffectiveFrom) {
         // Keep half-open chain: prior package closed exactly when the open
         // package started. Moving the raise to day-1 moves that seam too.
         await tx.stipendRecord.updateMany({
@@ -2920,18 +2931,14 @@ export class PayrollService {
         });
       }
 
-      const record = await tx.stipendRecord.update({
+      const record = createMonthlyVersion
+        ? await tx.stipendRecord.create({
+            data: { employeeId: dto.employeeId, ...packageValues, lumpsumTotal, effectiveFrom: currentMonthStart },
+          })
+        : await tx.stipendRecord.update({
         where: { id: activeStipendRecord.id },
         data: {
-          basicStipend: dto.basicStipend,
-          allowances: dto.allowances ?? 0,
-          reward: dto.reward ?? 0,
-          progressReward: dto.progressReward ?? 0,
-          fuelAllowance: dto.fuelAllowance ?? 0,
-          loanDeduction: dto.loanDeduction ?? 0,
-          advanceDeduction: dto.advanceDeduction ?? 0,
-          fineDeduction: dto.fineDeduction ?? 0,
-          healthDeduction: dto.healthDeduction ?? 0,
+          ...packageValues,
           lumpsumTotal,
           ...(effectiveFromChanging && nextEffectiveFrom
             ? { effectiveFrom: nextEffectiveFrom }
@@ -2939,6 +2946,20 @@ export class PayrollService {
         },
       });
 
+      if (createMonthlyVersion) {
+        // Preserve the pending entry and its child rows while changing its package owner.
+        await tx.payrollEntry.updateMany({
+          where: {
+            stipendRecordId: activeStipendRecord.id,
+            status: PayrollStatus.PENDING,
+            OR: [
+              { year: { gt: currentMonthStart.getUTCFullYear() } },
+              { year: currentMonthStart.getUTCFullYear(), month: { gte: currentMonthStart.getUTCMonth() + 1 } },
+            ],
+          },
+          data: { stipendRecordId: record.id },
+        });
+      }
       await tx.auditLog.create({
         data: {
           userId: actingUserId,
@@ -2949,6 +2970,9 @@ export class PayrollService {
             previousBasicStipend: Number(activeStipendRecord.basicStipend),
             newBasicStipend: dto.basicStipend,
             lumpsumTotal,
+            previousPackage: { ...resolvePackageComponents(activeStipendRecord, { basicStipend: Number(activeStipendRecord.basicStipend) }) },
+            newPackage: { ...packageValues },
+            suppliedComponents: Object.keys(packageValues).filter(key => dto[key] != null),
             reason: dto.reason?.trim() || null,
             previousEffectiveFrom,
             newEffectiveFrom: effectiveFromChanging
@@ -2970,6 +2994,7 @@ export class PayrollService {
       distinct: ['month', 'year'],
     });
     for (const row of pendingMonths) {
+      if (undatedEdit && Date.UTC(row.year, row.month - 1, 1) < currentMonthStart.getTime()) continue;
       await this.recomputeEmployeeMonth({
         employeeId: dto.employeeId,
         month: row.month,

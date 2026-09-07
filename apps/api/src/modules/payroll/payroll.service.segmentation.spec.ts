@@ -723,3 +723,79 @@ describe('PayrollService — Step 3 multi-segment discovery/recompute architectu
     expect(db.payrollEntries.size).toBe(2);
   });
 });
+
+describe('recurring package values use the same latest monthly owner as Basic', () => {
+  const fields = ['basicStipend', 'allowances', 'fuelAllowance', 'reward', 'progressReward', 'loanDeduction', 'advanceDeduction', 'fineDeduction', 'healthDeduction'] as const;
+  const deductionFields = new Set<string>(['loanDeduction','advanceDeduction','fineDeduction','healthDeduction']);
+  it.each(fields.flatMap(field => [false,true].map(decrease => ({ field, decrease }))))('$field uses the whole-month latest value (decrease: $decrease), isolated from July and September', async ({field,decrease}) => {
+    const db = new FakeDb();
+    seedEmployee(db, { dutyTotalHours: 8, joiningDate: new Date('2020-01-01') });
+    const before = decrease ? 15000 : 5000;
+    const after = decrease ? (field === 'basicStipend' ? 5000 : 0) : 15000;
+    const july = seedStipend(db, 31000, new Date('2020-01-01'), new Date('2026-08-10'));
+    const august = seedStipend(db, 31000, new Date('2026-08-10'), new Date('2026-09-01'));
+    const september = seedStipend(db, 31000, new Date('2026-09-01'), null);
+    july[field] = before; august[field] = after; september[field] = 25000;
+    seedFullMonthPresent(db);
+    const julyLogs = db.attendanceLogs.map(log => ({ ...log, date: new Date(Date.UTC(2026,6,log.date.getUTCDate())) }));
+    db.attendanceLogs.push(...julyLogs);
+    const service = makeService(db);
+    const expected = (value: number) => field === 'basicStipend' ? value : 31000 + (deductionFields.has(field) ? -value : value);
+    const julyEntry = await service.createOrGetEntry({employeeId:EMP_ID,month:7,year:2026} as any);
+    expect(julyEntry.netStipend).toBe(expected(before));
+    const augustEntry = await service.createOrGetEntry({employeeId:EMP_ID,month:8,year:2026} as any);
+    expect(augustEntry.stipendRecordId).toBe(august.id);
+    expect(augustEntry.netStipend).toBe(expected(after));
+    expect(augustEntry.basicStipend).toBe(field === 'basicStipend' ? after : 31000);
+    expect(augustEntry.totalAllowances).toBe(field !== 'basicStipend' && !deductionFields.has(field) ? after : 0);
+    expect(augustEntry.totalDeductions).toBe(deductionFields.has(field) ? after : 0);
+    expect([...db.payrollEntries.values()].filter(e=>e.month===8).reduce((sum,e)=>sum+Number(e.netStipend),0)).toBe(expected(after));
+    expect([...db.payrollEntries.values()].some(e=>e.stipendRecordId===september.id)).toBe(false);
+    const julyAgain = await service.createOrGetEntry({employeeId:EMP_ID,month:7,year:2026} as any);
+    expect(julyAgain.netStipend).toBe(expected(before));
+  });
+});
+
+describe('undated correction refreshes the current Card payroll owner', () => {
+  it('preserves July and refreshes August once, including repeated saves', async () => {
+    jest.setSystemTime(new Date('2026-08-31T12:00:00Z'));
+    try {
+      const db = new FakeDb();
+      seedEmployee(db, { dutyTotalHours: 8, joiningDate: new Date('2020-01-01') });
+      const old = seedStipend(db, 31000, new Date('2020-01-01'), null);
+      old.fuelAllowance = 5000;
+      seedFullMonthPresent(db);
+      db.attendanceLogs.push(...db.attendanceLogs.map(log => ({ ...log, date: new Date(Date.UTC(2026,6,log.date.getUTCDate())) })));
+      const prisma: any = makeFakePrisma(db);
+      const findPackages = prisma.stipendRecord.findMany;
+      prisma.stipendRecord.findMany = async (args: any) => args.where.effectiveFrom
+        ? findPackages(args) : [...db.stipendRecords.values()];
+      prisma.employee.findUnique = async () => ({ ...db.employees.get(EMP_ID), stipendRecords: [...db.stipendRecords.values()].filter(r => r.effectiveTo === null) });
+      prisma.stipendRecord.update = async ({where,data}: any) => {
+        const record = { ...db.stipendRecords.get(where.id), ...data };
+        db.stipendRecords.set(where.id, record); return record;
+      };
+      prisma.stipendRecord.create = async ({data}: any) => {
+        const record = {id:newId('sr'),effectiveTo:null,...data};
+        db.stipendRecords.set(record.id,record); return record;
+      };
+      prisma.payrollEntry.updateMany = async ({where,data}: any) => {
+        for (const entry of db.payrollEntries.values()) {
+          if (entry.stipendRecordId === where.stipendRecordId && entry.status === where.status &&
+            where.OR.some((rule: any) => typeof rule.year === 'object'
+              ? entry.year > rule.year.gt : entry.year === rule.year && entry.month >= rule.month.gte)) Object.assign(entry,data);
+        }
+      };
+      const service = new PayrollService(prisma, {} as any);
+      const july = await service.createOrGetEntry({employeeId:EMP_ID,month:7,year:2026});
+      await service.createOrGetEntry({employeeId:EMP_ID,month:8,year:2026});
+      const change = {employeeId:EMP_ID,basicStipend:31000,fuelAllowance:0,allowances:2000};
+      await service.updateActiveStipend(change,'hr');
+      await service.updateActiveStipend(change,'hr');
+      expect(db.stipendRecords.size).toBe(2);
+      expect(db.payrollEntries.get(july.id)?.netStipend).toBe(36000);
+      expect((await service.createOrGetEntry({employeeId:EMP_ID,month:7,year:2026})).netStipend).toBe(36000);
+      expect([...db.payrollEntries.values()].filter(e=>e.month===8).reduce((sum,e)=>sum+Number(e.netStipend),0)).toBe(33000);
+    } finally { jest.setSystemTime(new Date('2026-09-15T07:00:00Z')); }
+  });
+});

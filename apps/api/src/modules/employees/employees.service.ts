@@ -828,6 +828,7 @@ export class EmployeesService {
         currentDepartment: true,
         shift: true,
         stipendRecords: {
+          where: { effectiveTo: null },
           orderBy: { effectiveFrom: 'desc' },
           take: 1,
         },
