@@ -87,6 +87,7 @@ export type EmployeeFilters = EmployeeQueryDto;
 type ActingUser = {
   id: string;
   role: UserRole | string;
+  roles?: UserRole[];
   branchId?: string | null;
 };
 
@@ -164,6 +165,10 @@ export class EmployeesService {
   }
 
   async create(dto: CreateEmployeeDto, actingUser?: ActingUser) {
+    const actorRoles = [...(actingUser?.roles ?? []), ...(actingUser?.role ? [actingUser.role] : [])] as UserRole[];
+    if (dto.staffType === StaffType.EXISTING && !hasAnyRole(actorRoles, [UserRole.SUPER_ADMIN])) {
+      throw new ForbiddenException('Only Super Admin can add Existing Staff');
+    }
     this.validateCreateDto(dto);
     dto.currentDesignation = normalizeDesignationName(dto.currentDesignation);
 

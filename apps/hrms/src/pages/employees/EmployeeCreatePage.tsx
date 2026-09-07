@@ -745,6 +745,7 @@ export function EmployeeCreatePage() {
 }
 
 function EmployeeCreatePageForm() {
+  const { hasRole } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const prefill = (location.state as { prefill?: EmployeePrefill } | null)
@@ -1491,7 +1492,7 @@ function EmployeeCreatePageForm() {
             What type of staff are you adding?
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {STAFF_TYPE_OPTIONS.map((option) => {
+            {STAFF_TYPE_OPTIONS.filter(option => option.value !== 'EXISTING' || hasRole(['SUPER_ADMIN'])).map((option) => {
               const Icon = option.icon
               const selected = staffType === option.value
               return (
