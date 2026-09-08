@@ -298,8 +298,10 @@ describe('discipline idempotency gate (DisciplineEvent)', () => {
     expect(tx.user.updateMany).not.toHaveBeenCalled();
   });
 
-  it('continues the late sequence across month boundaries instead of restarting at Fine', async () => {
+  it('resets the late sequence each Pakistan calendar month (ignores prior-month lates)', async () => {
     const incidentDate = new Date('2026-09-08T00:00:00.000Z');
+    // Aug 31 is prior-month and must NOT count toward September occurrence.
+    // Sept 3 + Sept 4 + Sept 8 => monthly occurrence 3 => Fine (not Advice).
     const lateDays = [
       { date: new Date('2026-08-31T00:00:00.000Z') },
       { date: new Date('2026-09-03T00:00:00.000Z') },
@@ -326,15 +328,14 @@ describe('discipline idempotency gate (DisciplineEvent)', () => {
         employeeId: EMPLOYEE_ID,
         category: 'LATE',
         incidentDate,
-        occurrence: 4,
+        occurrence: 3,
       },
     });
     expect(issueAutoTemplatedLetter).toHaveBeenCalledTimes(1);
     expect(issueAutoTemplatedLetter.mock.calls[0][1]).toMatchObject({
-      letterType: LetterType.ADVICE,
-      extraFields: expect.objectContaining({ monthlyLateOccurrence: 4 }),
+      letterType: LetterType.FINE,
+      extraFields: expect.objectContaining({ monthlyLateOccurrence: 3 }),
     });
-    expect(tx.payrollDeduction.create).not.toHaveBeenCalled();
   });
 
   it.each([1, 2, 3])('baseline UA occurrence %i retains explanation and only recommends suspension at 3', async (occurrence) => {

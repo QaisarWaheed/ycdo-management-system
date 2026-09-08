@@ -713,7 +713,7 @@ function deriveCheckInLabel(
 }
 
 /**
- * Late-occurrence cycle: 1/4/7 -> Advice, 2/5/8 -> Warning,
+ * Monthly late-occurrence cycle: 1/4/7 -> Advice, 2/5/8 -> Warning,
  * 3/6 -> Fine + 1-day deduction, 9 -> Suspension (no additional deduction).
  * Attendance status itself is never changed here — only letters/deductions/
  * suspension are applied on top of whatever status the caller already
@@ -750,17 +750,18 @@ async function applyLateDiscipline(
   const dutyStartTime =
     dutyStartTimeSnapshot ?? employee?.dutyStartTime ?? null;
 
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
 
-  // Count LATE and late-driven HALF_DAY days up to THIS incident date only
-  // — later days must not inflate today's
+  // Count LATE and late-driven HALF_DAY days up to THIS incident date
+  // only — later days in the same month must not inflate today's
   // occurrence (e.g. legacy backfill or bulk import that wrote the
-  // whole period before discipline ran).
+  // whole month before discipline ran).
   const priorLateDays = await tx.attendanceLog.findMany({
     where: {
       employeeId,
-      date: { lte: dayStart },
+      date: { gte: startOfMonth, lte: dayStart },
       OR: [
         { status: AttendanceStatus.LATE },
         {
@@ -779,7 +780,7 @@ async function applyLateDiscipline(
     priorLateDays.map((row) => row.date.toISOString().slice(0, 10)),
   );
   uniqueDays.add(dayStart.toISOString().slice(0, 10));
-  const lateCount = uniqueDays.size;
+  const lateCount = uniqueDays.size; // resets naturally every month — derived fresh from AttendanceLog, no in-memory/stored counter.
 
   // Atomic idempotency gate — must be claimed before ANY letter/deduction
   // side-effect below. Retries, biometric replay, concurrent HR edits, and
@@ -1195,6 +1196,7 @@ async function hasLetterForMonthlyOccurrence(
   lateCount: number,
   date: Date,
 ): Promise<boolean> {
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dateLabel = dayStart.toISOString().slice(0, 10);
@@ -1203,6 +1205,7 @@ async function hasLetterForMonthlyOccurrence(
     where: {
       employeeId,
       letterType,
+      generatedAt: { gte: startOfMonth },
     },
     select: { variables: true },
   });
