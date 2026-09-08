@@ -164,17 +164,12 @@ describe('LettersService appointment Phase 3A', () => {
       $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
     };
 
-    const whatsappService = {
-      deliverAfterLetterGenerated: jest.fn().mockResolvedValue(undefined),
-    };
-
     const service = new LettersService(
       prisma as never,
       { assertEmployeeAccess: jest.fn() } as never,
-      whatsappService as never,
     );
 
-    return { service, prisma, tx, whatsappService, created, draftLetter };
+    return { service, prisma, tx, created, draftLetter };
   }
 
   it('pre-approval preview creates no Letter row and includes watermark + signatory', async () => {
@@ -206,7 +201,7 @@ describe('LettersService appointment Phase 3A', () => {
   });
 
   it('generateSystemLetter creates DRAFT without WhatsApp or employee notification', async () => {
-    const { service, tx, whatsappService, created } = build();
+    const { service, tx, created } = build();
     await service.generateSystemLetter(
       {
         employeeId,
@@ -217,7 +212,6 @@ describe('LettersService appointment Phase 3A', () => {
     );
     expect(created.status).toBe(LetterStatus.DRAFT);
     expect(tx.notification.create).not.toHaveBeenCalled();
-    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
   });
 
   it('does not duplicate an existing Appointment DRAFT', async () => {
@@ -265,7 +259,7 @@ describe('LettersService appointment Phase 3A', () => {
   });
 
   it('Send removes watermark, notifies employee, WhatsApps once, and retries do not resend', async () => {
-    const { service, tx, whatsappService, prisma } = build();
+    const { service, tx, prisma } = build();
     jest
       .spyOn(service, 'getPdf')
       .mockResolvedValue({ buffer: Buffer.from('pdf'), filename: 'letter.pdf' });
@@ -318,7 +312,6 @@ describe('LettersService appointment Phase 3A', () => {
         data: expect.objectContaining({ type: 'LETTER_ISSUED' }),
       }),
     );
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
     const pdfCalls = (generatePdf as jest.Mock).mock.calls;
     const sentHtmlArg = String(pdfCalls[pdfCalls.length - 1]?.[0] ?? '');
     expect(sentHtmlArg).toContain(APPOINTMENT_CHAIRMAN_ADMIN_NAME);
@@ -343,7 +336,6 @@ describe('LettersService appointment Phase 3A', () => {
       UserRole.HR_MANAGER,
     );
     expect(second.alreadySent).toBe(true);
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
   });
 
   it('manual generate uses mapping, creates DRAFT, and ignores templateCode bypass', async () => {
@@ -409,16 +401,15 @@ describe('LettersService appointment Phase 3A', () => {
   });
 
   it('rejects Send on a DRAFT Appointment until it is approved', async () => {
-    const { service, whatsappService, tx } = build();
+    const { service, tx } = build();
     await expect(
       service.sendLetter('letter-1', 'user-hr', UserRole.HR_MANAGER),
     ).rejects.toThrow(/must be approved before it can be sent/);
-    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
     expect(tx.notification.create).not.toHaveBeenCalled();
   });
 
   it('issues a DRAFT Appointment when the employee is already Active', async () => {
-    const { service, prisma, tx, whatsappService } = build();
+    const { service, prisma, tx } = build();
     prisma.employee.findUnique.mockResolvedValue({
       id: employeeId,
       fullName: 'Test Employee',
@@ -447,18 +438,16 @@ describe('LettersService appointment Phase 3A', () => {
         data: expect.objectContaining({ status: LetterStatus.SENT }),
       }),
     );
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalled();
   });
 
   it('submit for approval keeps DRAFT watermark side-effects off', async () => {
-    const { service, tx, whatsappService } = build();
+    const { service, tx } = build();
     const result = await service.submitAppointmentForApproval(
       'letter-1',
       'user-hr',
       UserRole.HR_MANAGER,
     );
     expect(result.letter.status).toBe(LetterStatus.PENDING_APPROVAL);
-    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
     expect(tx.notification.create).not.toHaveBeenCalled();
     expect(tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -470,7 +459,7 @@ describe('LettersService appointment Phase 3A', () => {
   });
 
   it('approve moves PENDING_APPROVAL to APPROVED without WhatsApp or employee notify', async () => {
-    const { service, prisma, tx, whatsappService, draftLetter } = build();
+    const { service, prisma, tx, draftLetter } = build();
     prisma.letter.findUnique.mockResolvedValue({
       ...draftLetter,
       status: LetterStatus.PENDING_APPROVAL,
@@ -481,7 +470,6 @@ describe('LettersService appointment Phase 3A', () => {
       UserRole.PRESIDENT,
     );
     expect(result.letter.status).toBe(LetterStatus.APPROVED);
-    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
     expect(tx.notification.create).not.toHaveBeenCalled();
   });
 
@@ -609,7 +597,7 @@ describe('LettersService appointment Phase 3A', () => {
   });
 
   it('concurrent Send claims APPROVED once and does not double-notify or WhatsApp', async () => {
-    const { service, tx, whatsappService, prisma } = build();
+    const { service, tx, prisma } = build();
     jest
       .spyOn(service, 'getPdf')
       .mockResolvedValue({ buffer: Buffer.from('pdf'), filename: 'letter.pdf' });
@@ -657,7 +645,6 @@ describe('LettersService appointment Phase 3A', () => {
     expect(first.alreadySent).toBe(false);
     expect(second.alreadySent).toBe(true);
     expect(tx.notification.create).toHaveBeenCalledTimes(1);
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
   });
 
   it('stale approve cannot overwrite a newer status', async () => {

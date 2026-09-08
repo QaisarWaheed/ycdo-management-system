@@ -29,7 +29,6 @@ describe('LettersService.findOne / getPdf portal access', () => {
     const service = new LettersService(
       prisma as never,
       { assertEmployeeAccess: jest.fn() } as never,
-      { deliverAfterLetterGenerated: jest.fn() } as never,
     );
     return { service, prisma };
   }

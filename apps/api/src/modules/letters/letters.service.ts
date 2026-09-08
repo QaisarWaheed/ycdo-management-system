@@ -39,7 +39,6 @@ import {
 } from '../../common/urdu-identity';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { normalizePakistanPhone } from '../whatsapp/phone.util';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import {
   ensureInquiryResolvedNotification,
   isResolutionTriggerKind,
@@ -200,7 +199,6 @@ export class LettersService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private accessScopeService: AccessScopeService,
-    private whatsappService: WhatsAppService,
   ) {}
 
   async onModuleInit() {
@@ -754,20 +752,6 @@ export class LettersService implements OnModuleInit {
 
       return record;
     });
-
-    if (!deferPortal) {
-      await this.whatsappService.deliverAfterLetterGenerated({
-        letterId: letter.id,
-        employeeId: dto.employeeId,
-        employeeName: String(built.variables.employeeName ?? ''),
-        letterType: dto.letterType,
-        phone: built.phone,
-        fileUrl,
-        pdfBuffer,
-        htmlContent: built.htmlContent,
-        filename: `${sanitizeRefForFilename(letterNo)}.jpg`,
-      });
-    }
 
     return { letter, previewHtml: built.htmlContent, reusedExisting: false };
   }
@@ -1848,25 +1832,6 @@ export class LettersService implements OnModuleInit {
     }
 
     const updated = txResult.letter;
-
-    // Best-effort WhatsApp after portal publish
-    try {
-      const { buffer, filename, htmlContent } = await this.getPdf(letterId);
-      const phone = updated.employee?.phone ?? null;
-      await this.whatsappService.deliverAfterLetterGenerated({
-        letterId,
-        employeeId: letter.employeeId,
-        employeeName: updated.employee?.fullName ?? '',
-        letterType: letter.letterType,
-        phone,
-        fileUrl: updated.fileUrl,
-        pdfBuffer: buffer,
-        htmlContent,
-        filename: filename.replace(/\.pdf$/i, '.jpg'),
-      });
-    } catch (err) {
-      console.error(`WhatsApp deliver after send failed for ${letterId}:`, err);
-    }
 
     return { letter: updated, alreadySent: false };
   }

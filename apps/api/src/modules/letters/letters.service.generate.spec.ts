@@ -77,21 +77,16 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
       $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
     };
 
-    const whatsappService = {
-      deliverAfterLetterGenerated: jest.fn().mockResolvedValue(undefined),
-    };
-
     const service = new LettersService(
       prisma as never,
       { assertEmployeeAccess: jest.fn() } as never,
-      whatsappService as never,
     );
 
-    return { service, tx, whatsappService, created };
+    return { service, tx, created };
   }
 
   it('keeps REINSTATEMENT as DRAFT and does not WhatsApp or notify', async () => {
-    const { service, tx, whatsappService, created } = build();
+    const { service, tx, created } = build();
 
     await service.generateSystemLetter(
       {
@@ -104,11 +99,10 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
 
     expect(created.status).toBe(LetterStatus.DRAFT);
     expect(tx.notification.create).not.toHaveBeenCalled();
-    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
   });
 
   it('keeps TERMINATION as DRAFT and does not WhatsApp or notify', async () => {
-    const { service, tx, whatsappService, created } = build();
+    const { service, tx, created } = build();
 
     await service.generateSystemLetter(
       {
@@ -121,11 +115,10 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
 
     expect(created.status).toBe(LetterStatus.DRAFT);
     expect(tx.notification.create).not.toHaveBeenCalled();
-    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
   });
 
   it('keeps EXPLANATION as DRAFT and does not WhatsApp or notify', async () => {
-    const { service, tx, whatsappService, created } = build();
+    const { service, tx, created } = build();
 
     await service.generateSystemLetter(
       {
@@ -138,11 +131,10 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
 
     expect(created.status).toBe(LetterStatus.DRAFT);
     expect(tx.notification.create).not.toHaveBeenCalled();
-    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
   });
 
   it('auto-sends SUSPENSION_ELIGIBILITY as SENT with eligibility wording', async () => {
-    const { service, tx, whatsappService, created } = build();
+    const { service, tx, created } = build();
     tx.user = {
       findFirst: jest.fn().mockResolvedValue({ id: 'hr-1' }),
     };
@@ -184,15 +176,10 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
         }),
       }),
     );
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledWith(
-      expect.objectContaining({
-        letterType: LetterType.SUSPENSION_ELIGIBILITY,
-      }),
-    );
   });
 
   it('auto-sends NEAR_SUSPENSION_WARNING as SENT with warning wording', async () => {
-    const { service, tx, whatsappService, created } = build();
+    const { service, tx, created } = build();
 
     await service.generateSystemLetter(
       {
@@ -232,12 +219,6 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
         }),
       }),
     );
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledWith(
-      expect.objectContaining({
-        letterType: LetterType.NEAR_SUSPENSION_WARNING,
-      }),
-    );
   });
 
   it('rejects manual generate of system watchlist letter types', async () => {
@@ -275,7 +256,6 @@ describe('LettersService.findAll portal visibility', () => {
     const service = new LettersService(
       prisma as never,
       { assertEmployeeAccess: jest.fn() } as never,
-      { deliverAfterLetterGenerated: jest.fn() } as never,
     );
 
     await service.findAll({}, { id: 'emp-user', role: UserRole.EMPLOYEE, portalOnly: true });
