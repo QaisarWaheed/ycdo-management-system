@@ -1509,6 +1509,8 @@ async function issueLateLetterIfNotAlready(
 // ─── MISSING CHECKOUT (separate category from lateness — never mixed) ─────
 
 export type MissingCheckoutOptions = {
+  /** Live auto-closure: warning draft only, irrespective of occurrence or temporary mode. */
+  warningOnly?: boolean;
   checkIn: Date;
   dutyEndTime: string | null;
 };
@@ -1603,7 +1605,7 @@ export async function applyMissingCheckoutDiscipline(
   // Temporary ops mode: auto-checkout path owns closure; do not issue
   // Advice/Warning/Fine or deductions. Flip TEMPORARY_AUTO_CHECKOUT off to
   // restore this function's normal behaviour — no other edits required.
-  if (isTemporaryAutoCheckoutEnabled()) {
+  if (isTemporaryAutoCheckoutEnabled() && !options.warningOnly) {
     return;
   }
 
@@ -1678,6 +1680,15 @@ export async function applyMissingCheckoutDiscipline(
   );
   const expectedCheckoutLabel = options.dutyEndTime ?? 'نامعلوم';
   const baseDetail = `تاریخ: ${dayKey}، حاضری کا وقت: ${checkInLabel}، متوقع چیک آؤٹ کا وقت: ${expectedCheckoutLabel}۔ ڈیوٹی مکمل ہونے کے باوجود چیک آؤٹ نہیں کیا گیا، جو کہ ہر ملازم کی ذمہ داری ہے۔`;
+
+  if (options.warningOnly) {
+    if (AUTO_DISCIPLINE.lettersAndSuspendEnabled) {
+      await issueMissingCheckoutLetterIfNotAlready(tx, employeeId, LetterType.WARNING, missingCount, date, {
+        violations: baseDetail, incidentDate: dayKey, disciplineCategory: 'MISSING_CHECKOUT',
+      });
+    }
+    return;
+  }
 
   const positionInCycle = ((missingCount - 1) % 3) + 1; // 1, 2, or 3
 

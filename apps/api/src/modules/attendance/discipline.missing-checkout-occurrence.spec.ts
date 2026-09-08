@@ -505,3 +505,17 @@ describe('reverseMissingCheckoutDisciplineForDate occurrence renumbering', () =>
     expect(getEvents()).toHaveLength(0);
   });
 });
+
+describe('live missing-checkout warning-only mode',()=>{
+ it('creates warning drafts through the existing helper at every occurrence, without payroll writes',async()=>{
+  const {tx,getEvents}=makeTx();
+  for(const day of ['2026-08-05','2026-08-10','2026-08-14']){
+   const options={...opts(day),warningOnly:true};
+   await applyMissingCheckoutDiscipline(tx,EMP_ID,new Date(day),options);
+   await applyMissingCheckoutDiscipline(tx,EMP_ID,new Date(day),options);
+  }
+  expect(getEvents()).toHaveLength(3);
+  expect(issueMock.mock.calls.map(c=>c[1].letterType)).toEqual([LetterType.WARNING,LetterType.WARNING,LetterType.WARNING]);
+  expect(tx.payrollDeduction.create).not.toHaveBeenCalled();expect(tx.payrollEntry.update).not.toHaveBeenCalled();
+ });
+});

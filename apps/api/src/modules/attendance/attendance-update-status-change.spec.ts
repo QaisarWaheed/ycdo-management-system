@@ -1,3 +1,4 @@
+jest.mock('../letters/pdf.helper',()=>({}));
 jest.mock('./../letters/auto-letter.helper', () => ({
   issueAutoTemplatedLetter: jest.fn().mockResolvedValue(undefined),
 }));
@@ -40,6 +41,8 @@ function makeLateStatusUpdateService() {
     dutyEndTimeSnapshot: '16:00',
     employee: {
       id: EMP_ID,
+      status: 'ACTIVE',
+      joiningDate: new Date('2020-01-01'),
       fullName: 'Dawood Ahmed',
       employeeCode: 'YCDO-2026-0001',
       currentBranchId: 'branch-1',
@@ -288,8 +291,7 @@ describe('AttendanceService.updateAttendance — status-changing check-in edits'
     // Post-write reconcile applies late discipline once and half-day pay deduction.
     expect(getDisciplineEvents()).toHaveLength(1);
     expect(getDisciplineEvents()[0].incidentDate).toBe(DATE_LABEL);
-    expect(getDeductions()).toHaveLength(1);
-    expect(getDeductions()[0].reason).toBe('HALF_DAY');
+    expect(getDeductions()).toHaveLength(0); // Card Salary owns the financial effect.
   });
 
   it('persists LATE when check-in is only slightly late', async () => {
@@ -323,4 +325,20 @@ describe('AttendanceService.updateAttendance — status-changing check-in edits'
     expect(update?.status).toBe(AttendanceStatus.PRESENT);
     expect(getDisciplineEvents()).toHaveLength(0);
   });
+});
+
+describe('manual checkout and saved OT',()=>{
+ it('checkout edit adds early departure exactly once',async()=>{
+  const {service,getCapturedUpdate,getDisciplineEvents}=makeLateStatusUpdateService();
+  const dto={checkOut:'2026-08-20T15:30:00+05:00'};
+  await service.updateAttendance('log-1',dto as any,ACTING_USER);
+  expect(getCapturedUpdate()).toMatchObject({status:AttendanceStatus.LATE,lateMinutes:30});
+  await service.updateAttendance('log-1',dto as any,ACTING_USER);
+  expect(getCapturedUpdate()?.lateMinutes).toBe(30);expect(getDisciplineEvents()).toHaveLength(1);
+ });
+ it.each([0,120])('manual OT %i is stored exactly alongside timestamp edits',async overtimeMinutes=>{
+  const {service,getCapturedUpdate}=makeLateStatusUpdateService();
+  await service.updateAttendance('log-1',{checkIn:'2026-08-20T06:30:00+05:00',checkOut:'2026-08-20T18:00:00+05:00',overtimeMinutes} as any,ACTING_USER);
+  expect(getCapturedUpdate()).toMatchObject({overtimeMinutes,status:AttendanceStatus.PRESENT,lateMinutes:0});
+ });
 });

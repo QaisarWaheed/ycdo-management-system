@@ -1,3 +1,4 @@
+import { classifyDutyCheckout } from './checkout-classification.util';
 import { ensureWeeklyOffHolidays } from './weekly-off-holiday.util';
 import {
   BadRequestException,
@@ -51,8 +52,6 @@ import {
 } from './attendance.dto';
 import {
   computeBiometricLateMinutes,
-  computeBiometricOvertimeMinutes,
-  computePreDutyOvertimeMinutes,
   determineBiometricCheckInStatus,
   is24HourShift,
   isOvernightShift,
@@ -872,9 +871,7 @@ export class AttendanceService {
         ? 0
         : computeBiometricLateMinutes(checkTime, employee);
     const lateMinutes = swapExempt ? 0 : lateMinutesRaw;
-    const preDutyOvertimeMinutes = twentyFourHour
-      ? 0
-      : computePreDutyOvertimeMinutes(checkTime, employee);
+
     const status = isHoliday
       ? AttendanceStatus.HOLIDAY
       : twentyFourHour
@@ -928,8 +925,6 @@ export class AttendanceService {
             status,
             source: AttendanceSource.BIOMETRIC,
             lateMinutes,
-            overtimeMinutes: preDutyOvertimeMinutes,
-            overtimePending: preDutyOvertimeMinutes > 0,
             note: twentyFourHour
               ? '24-hour shift check-in'
               : wasUninformedAbsent
@@ -957,8 +952,8 @@ export class AttendanceService {
           checkIn: checkTime,
           status,
           lateMinutes,
-          overtimeMinutes: preDutyOvertimeMinutes,
-          overtimePending: preDutyOvertimeMinutes > 0,
+          overtimeMinutes: 0,
+          overtimePending: false,
           source: AttendanceSource.BIOMETRIC,
           note: twentyFourHour ? '24-hour shift check-in' : undefined,
           dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
@@ -1007,36 +1002,15 @@ export class AttendanceService {
       throw new BadRequestException(CHECKOUT_TOO_SOON_REASON);
     }
 
-    const sessionMinutes = Math.round(
-      (checkTime.getTime() - openRegular.checkIn!.getTime()) / 60000,
-    );
-    const overtimeMinutes = computeBiometricOvertimeMinutes(
-      openRegular.checkIn!,
-      checkTime,
-      employee,
-    );
-
-    const isHoliday = openRegular.status === AttendanceStatus.HOLIDAY;
-    const lateMinutes = isHoliday ? 0 : (openRegular.lateMinutes ?? 0);
-    let status = openRegular.status;
-    const derivedStatus = determineBiometricCheckInStatus(
-      lateMinutes,
-      employee,
-      sessionMinutes,
-    );
-    if (derivedStatus === AttendanceStatus.HALF_DAY) {
-      status = AttendanceStatus.HALF_DAY;
-    }
+    const swapExempt = await this.isLateExemptForSwap(db, employee.id, dateOnly, openRegular.status);
+    const classification = swapExempt ? {} : classifyDutyCheckout(openRegular, employee, checkTime);
 
     const log = await this.runInTx(db, async (tx) => {
       return tx.attendanceLog.update({
         where: { id: openRegular.id },
         data: {
           checkOut: checkTime,
-          ...(isHoliday ? { lateMinutes: 0 } : {}),
-          overtimeMinutes,
-          overtimePending: overtimeMinutes > 0 && !openRegular.overtimeApprovedAt,
-          status,
+          ...classification,
           sessionClosedAt: null,
         },
       });
@@ -1121,15 +1095,11 @@ export class AttendanceService {
       );
     }
 
-    const overtimeMinutes = Math.round(
-      (checkTime.getTime() - open.checkIn.getTime()) / 60000,
-    );
-
     const log = await db.attendanceLog.update({
       where: { id: open.id },
       data: {
         checkOut: checkTime,
-        overtimeMinutes,
+        overtimeMinutes: 0,
       },
     });
 
@@ -1310,23 +1280,17 @@ export class AttendanceService {
       }
     }
 
-    const preDutyOvertime =
-      checkIn && !is24HourShift(employee)
-        ? computePreDutyOvertimeMinutes(checkIn, employee)
-        : 0;
-
-    let calculatedOvertime = dto.overtimeMinutes ?? preDutyOvertime;
-    if (checkOut) {
-      calculatedOvertime =
-        preDutyOvertime + this.calculateOvertimeMinutes(checkOut, employee);
+    if (checkIn && checkOut && !swapExempt) {
+      const classification = classifyDutyCheckout({ ...existing, date: dateOnly, checkIn, status, lateMinutes }, employee, checkOut);
+      status = classification.status ?? status;
+      lateMinutes = classification.lateMinutes ?? lateMinutes;
     }
-
-    const isSuperAdmin = actingUser.role === UserRole.SUPER_ADMIN;
-    const overtimeMinutes = isSuperAdmin
-      ? (dto.overtimeMinutes ?? calculatedOvertime)
-      : 0;
-    const overtimePending =
-      !isSuperAdmin && calculatedOvertime > 0;
+    const canSaveOvertime = FULL_ATTENDANCE_EDIT_ROLES.includes(actingUser.role);
+    if (dto.overtimeMinutes !== undefined && !canSaveOvertime) {
+      throw new ForbiddenException('Only HR, IT, or Super Admin can update overtime minutes');
+    }
+    const overtimeMinutes = dto.overtimeMinutes ?? existing?.overtimeMinutes ?? 0;
+    const overtimePending = dto.overtimeMinutes !== undefined ? false : existing?.overtimePending ?? false;
 
     const result = await this.prisma.$transaction(async (tx) => {
       let effectiveStatus = status;
@@ -1573,8 +1537,6 @@ export class AttendanceService {
         data.checkIn = null;
         data.checkOut = null;
         data.lateMinutes = 0;
-        data.overtimeMinutes = 0;
-        data.overtimePending = false;
       }
     }
     if (dto.checkIn !== undefined) {
@@ -1587,11 +1549,6 @@ export class AttendanceService {
       // A checkout without a check-in is invalid; clear the full session.
       data.checkOut = null;
       data.lateMinutes = 0;
-      data.overtimeMinutes = 0;
-      data.overtimePending = false;
-    } else if (dto.checkOut === null) {
-      data.overtimeMinutes = 0;
-      data.overtimePending = false;
     }
 
     const effectiveCheckIn =
@@ -1638,8 +1595,8 @@ export class AttendanceService {
       }
     }
 
-    // Auto-recompute status/lateMinutes ONLY when checkIn is genuinely,
-    // explicitly being changed in THIS request (dto.checkIn !== undefined).
+    // Recompute only for explicit punch edits; checkout edits include early departure.
+    // Unrelated note/OT edits preserve the settled daily status.
     // Previously this ran whenever the row already had a checkIn at all
     // (effectiveCheckIn falls back to log.checkIn) — meaning an unrelated
     // edit (note, overtime, anything not touching status/checkIn) would
@@ -1650,8 +1607,10 @@ export class AttendanceService {
     // unrelated edit.
     if (
       dto.status === undefined &&
-      dto.checkIn !== undefined &&
-      effectiveCheckIn
+      (dto.checkIn !== undefined || (dto.checkOut !== undefined &&
+        ([AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.HALF_DAY] as AttendanceStatus[]).includes(log.status))) &&
+      effectiveCheckIn &&
+      !([AttendanceStatus.HOLIDAY, AttendanceStatus.SHORT_LEAVE, AttendanceStatus.ON_LEAVE] as AttendanceStatus[]).includes(log.status)
     ) {
       const swapExempt = await this.isLateExemptForSwap(
         this.prisma,
@@ -1683,6 +1642,9 @@ export class AttendanceService {
           : 0;
         data.status = statusFromLateMinutes(lateMinutes);
         data.lateMinutes = lateMinutes;
+        if (effectiveCheckOut) Object.assign(data, classifyDutyCheckout({
+          ...log, checkIn: effectiveCheckIn, status: data.status as AttendanceStatus,
+        }, log.employee, effectiveCheckOut));
       }
     }
 
@@ -3570,10 +3532,6 @@ export class AttendanceService {
       throw new BadRequestException('Already checked out today');
     }
 
-    const overtimeMinutes =
-      computePreDutyOvertimeMinutes(existing.checkIn, employee) +
-      this.calculateOvertimeMinutes(checkTime, employee);
-
     await this.prisma.$transaction(async (tx) => {
       await tx.portalAttendance.create({
         data: {
@@ -3588,7 +3546,7 @@ export class AttendanceService {
 
       const updated = await tx.attendanceLog.update({
         where: { id: existing.id },
-        data: { checkOut: checkTime, overtimeMinutes },
+        data: { checkOut: checkTime, ...classifyDutyCheckout(existing, employee, checkTime) },
       });
 
       // Reverses a missing-checkout consequence if the scheduler already
