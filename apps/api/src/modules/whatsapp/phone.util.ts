@@ -24,17 +24,14 @@ export function normalizePakistanPhone(raw: string | null | undefined): string |
   return digits;
 }
 
-/** Empty / unset = send to everyone. Set in testing to restrict recipients. */
+/** Letters are live for all valid employee numbers. */
 export function isOnWhatsAppAllowlist(
   phoneE164: string,
   rawAllowlist: string | undefined | null = process.env.WHATSAPP_ALLOWLIST,
 ): boolean {
-  const entries = (rawAllowlist ?? '')
-    .split(/[,;]+/)
-    .map((part) => normalizePakistanPhone(part.trim()))
-    .filter((n): n is string => Boolean(n));
-  if (entries.length === 0) return true;
-  return entries.includes(phoneE164);
+  void phoneE164;
+  void rawAllowlist;
+  return true;
 }
 
 if (require.main === module) {

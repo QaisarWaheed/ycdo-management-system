@@ -6,11 +6,11 @@ describe('isOnWhatsAppAllowlist', () => {
     expect(isOnWhatsAppAllowlist('923001234567', undefined)).toBe(true);
   });
 
-  it('allows only listed numbers while testing', () => {
+  it('allows every number even when an old testing allowlist is configured', () => {
     const list = '03001234567, +92 333 1112222';
     expect(isOnWhatsAppAllowlist('923001234567', list)).toBe(true);
     expect(isOnWhatsAppAllowlist('923331112222', list)).toBe(true);
-    expect(isOnWhatsAppAllowlist('923009999999', list)).toBe(false);
+    expect(isOnWhatsAppAllowlist('923009999999', list)).toBe(true);
   });
 
   it('normalizes mixed Pakistan formats in the allowlist', () => {
