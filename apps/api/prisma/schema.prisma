@@ -414,6 +414,9 @@ model AttendanceLog {
   overtimeApprovedBy    String?
   overtimeApprovedAt    DateTime?
   source                AttendanceSource  @default(BIOMETRIC)
+  /// Null until a write under the punch-source model sets it (no backfill).
+  checkInSource         AttendanceSource?
+  checkOutSource        AttendanceSource?
   note                  String?
   createdAt             DateTime          @default(now())
   /// Set once the backend stops treating this session as open (missing
