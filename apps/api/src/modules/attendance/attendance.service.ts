@@ -1,4 +1,11 @@
 import { classifyDutyCheckout } from './checkout-classification.util';
+import {
+  punchSourcesForBiometricCheckIn,
+  punchSourcesForBiometricCheckOut,
+  punchSourcesForHrUpdate,
+  punchSourcesForManualCheckIn,
+  summarizeLegacySource,
+} from './punch-source.util';
 import { ensureWeeklyOffHolidays } from './weekly-off-holiday.util';
 import {
   BadRequestException,
@@ -923,7 +930,7 @@ export class AttendanceService {
           data: {
             checkIn: checkTime,
             status,
-            source: AttendanceSource.BIOMETRIC,
+            ...punchSourcesForBiometricCheckIn(),
             lateMinutes,
             note: twentyFourHour
               ? '24-hour shift check-in'
@@ -954,7 +961,7 @@ export class AttendanceService {
           lateMinutes,
           overtimeMinutes: 0,
           overtimePending: false,
-          source: AttendanceSource.BIOMETRIC,
+          ...punchSourcesForBiometricCheckIn(),
           note: twentyFourHour ? '24-hour shift check-in' : undefined,
           dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
           dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
@@ -1012,6 +1019,7 @@ export class AttendanceService {
           checkOut: checkTime,
           ...classification,
           sessionClosedAt: null,
+          ...punchSourcesForBiometricCheckOut(),
         },
       });
     });
@@ -1063,6 +1071,7 @@ export class AttendanceService {
         checkIn: checkTime,
         status: AttendanceStatus.PRESENT,
         source,
+        checkInSource: source,
         dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
         dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
       },
@@ -1086,6 +1095,7 @@ export class AttendanceService {
     checkTime: Date,
     dateOnly: Date,
     db: PrismaService | Prisma.TransactionClient = this.prisma,
+    punchSource: AttendanceSource = AttendanceSource.BIOMETRIC,
   ) {
     const open = await this.findOpenOvertimeLog(employee.id, dateOnly);
 
@@ -1100,6 +1110,12 @@ export class AttendanceService {
       data: {
         checkOut: checkTime,
         overtimeMinutes: 0,
+        checkOutSource: punchSource,
+        source: summarizeLegacySource(
+          open.checkInSource,
+          punchSource,
+          open.source,
+        ),
       },
     });
 
@@ -1151,7 +1167,13 @@ export class AttendanceService {
       );
     }
 
-    return this.biometricOvertimeCheckOut(employee, checkTime, dateOnly);
+    return this.biometricOvertimeCheckOut(
+      employee,
+      checkTime,
+      dateOnly,
+      this.prisma,
+      AttendanceSource.MANUAL,
+    );
   }
 
   async markManual(
@@ -1355,7 +1377,9 @@ export class AttendanceService {
           lateMinutes,
           overtimeMinutes,
           overtimePending,
-          source: AttendanceSource.MANUAL,
+          ...(checkIn
+            ? punchSourcesForManualCheckIn(Boolean(checkOut))
+            : { source: AttendanceSource.MANUAL }),
           note: dto.note,
           dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
           dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
@@ -1367,7 +1391,9 @@ export class AttendanceService {
           lateMinutes,
           overtimeMinutes,
           overtimePending,
-          source: AttendanceSource.MANUAL,
+          ...(checkIn
+            ? punchSourcesForManualCheckIn(Boolean(checkOut))
+            : { source: AttendanceSource.MANUAL }),
           note: dto.note,
         },
       });
@@ -1448,6 +1474,8 @@ export class AttendanceService {
         checkOut: true,
         lateMinutes: true,
         source: true,
+        checkInSource: true,
+        checkOutSource: true,
         note: true,
         createdAt: true,
         employee: {
@@ -1494,6 +1522,8 @@ export class AttendanceService {
         checkOut: log.checkOut,
         lateMinutes: log.lateMinutes,
         source: log.source,
+        checkInSource: log.checkInSource,
+        checkOutSource: log.checkOutSource,
         note: log.note,
         createdAt: log.createdAt,
         employeeName: log.employee.fullName,
@@ -1594,6 +1624,9 @@ export class AttendanceService {
       lateMinutes: log.lateMinutes,
       overtimeMinutes: log.overtimeMinutes,
       note: log.note,
+      source: log.source,
+      checkInSource: log.checkInSource,
+      checkOutSource: log.checkOutSource,
     };
 
     const data: Prisma.AttendanceLogUpdateInput = {};
@@ -1618,6 +1651,8 @@ export class AttendanceService {
         data.checkIn = null;
         data.checkOut = null;
         data.lateMinutes = 0;
+        data.checkInSource = null;
+        data.checkOutSource = null;
       }
     }
     if (dto.checkIn !== undefined) {
@@ -1639,11 +1674,30 @@ export class AttendanceService {
           : null
         : log.checkIn;
     const effectiveCheckOut =
-      dto.checkOut !== undefined
-        ? dto.checkOut
-          ? parseAttendanceDateTime(dto.checkOut)
-          : null
-        : log.checkOut;
+      effectiveCheckIn == null
+        ? null
+        : dto.checkOut !== undefined
+          ? dto.checkOut
+            ? parseAttendanceDateTime(dto.checkOut)
+            : null
+          : log.checkOut;
+
+    Object.assign(
+      data,
+      punchSourcesForHrUpdate({
+        previousCheckIn: log.checkIn,
+        previousCheckOut: log.checkOut,
+        previousCheckInSource: log.checkInSource,
+        previousCheckOutSource: log.checkOutSource,
+        previousSource: log.source,
+        nextCheckIn: effectiveCheckIn,
+        nextCheckOut: effectiveCheckOut,
+        checkInProvided: dto.checkIn !== undefined,
+        checkOutProvided:
+          dto.checkOut !== undefined ||
+          (dto.checkIn !== undefined && effectiveCheckIn == null),
+      }),
+    );
 
     // HR "emergency" flow: retroactively reclassifying this row's real
     // checkIn/checkOut as Short Leave. Validated up front (fast fail, never
@@ -1887,6 +1941,9 @@ export class AttendanceService {
               lateMinutes: result.lateMinutes,
               overtimeMinutes: result.overtimeMinutes,
               note: result.note,
+              source: result.source,
+              checkInSource: result.checkInSource,
+              checkOutSource: result.checkOutSource,
             },
             shortLeaveDecision,
           },
@@ -3525,7 +3582,7 @@ export class AttendanceService {
           checkIn: checkTime,
           status,
           lateMinutes,
-          source: AttendanceSource.MANUAL,
+          ...punchSourcesForManualCheckIn(false),
           note: 'Portal check-in',
           dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
           dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
@@ -3534,7 +3591,7 @@ export class AttendanceService {
           checkIn: checkTime,
           status,
           lateMinutes,
-          source: AttendanceSource.MANUAL,
+          ...punchSourcesForManualCheckIn(false),
           note: 'Portal check-in',
         },
       });
@@ -3627,7 +3684,16 @@ export class AttendanceService {
 
       const updated = await tx.attendanceLog.update({
         where: { id: existing.id },
-        data: { checkOut: checkTime, ...classifyDutyCheckout(existing, employee, checkTime) },
+        data: {
+          checkOut: checkTime,
+          ...classifyDutyCheckout(existing, employee, checkTime),
+          checkOutSource: AttendanceSource.MANUAL,
+          source: summarizeLegacySource(
+            existing.checkInSource,
+            AttendanceSource.MANUAL,
+            existing.source,
+          ),
+        },
       });
 
       // Reverses a missing-checkout consequence if the scheduler already
@@ -4045,7 +4111,9 @@ export class AttendanceService {
               status: dto.status,
               lateMinutes,
               note: dto.note,
-              source: AttendanceSource.MANUAL,
+              ...(checkIn
+                ? punchSourcesForManualCheckIn(Boolean(checkOut))
+                : { source: AttendanceSource.MANUAL }),
             },
           })
         : await tx.attendanceLog.create({
@@ -4058,7 +4126,9 @@ export class AttendanceService {
               checkOut,
               status: dto.status,
               lateMinutes,
-              source: AttendanceSource.MANUAL,
+              ...(checkIn
+                ? punchSourcesForManualCheckIn(Boolean(checkOut))
+                : { source: AttendanceSource.MANUAL }),
               note: dto.note,
               dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
               dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
