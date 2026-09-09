@@ -112,6 +112,26 @@ export class AttendanceController {
     return this.attendanceService.approveOvertime(id, dto, user.id);
   }
 
+  @Get(':id/trail')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+    UserRole.ADMIN_OFFICER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.MEDICINE_MANAGER,
+    UserRole.IT_ADMIN,
+  )
+  getAttendanceTrail(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.attendanceService.getAttendanceTrail(id, user);
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(

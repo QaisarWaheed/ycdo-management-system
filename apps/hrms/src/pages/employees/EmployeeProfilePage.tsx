@@ -9,6 +9,7 @@ import {
   Download,
   FileText,
   Fingerprint,
+  History,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -25,6 +26,7 @@ import {
 } from '@/lib/attendanceEligibility'
 import { AttendanceStatusBadge } from '@/components/attendance/AttendanceStatusBadge'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
+import { AttendanceTrailDialog } from '@/components/attendance/AttendanceTrailDialog'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
@@ -199,7 +201,11 @@ function letterStatus(letter: Letter): {
   className: string
 } {
   const v = letterVars(letter)
-  if (v.reversedDueToShortLeave === true || v.reversed === true) {
+  if (
+    letter.status === 'REVERSED' ||
+    v.reversedDueToShortLeave === true ||
+    v.reversed === true
+  ) {
     return {
       label: 'Reversed',
       className: 'border-amber-200 bg-amber-50 text-amber-900',
@@ -668,6 +674,8 @@ export function EmployeeProfilePage() {
   const [incentiveOpen, setIncentiveOpen] = useState(false)
   const [faceSyncOpen, setFaceSyncOpen] = useState(false)
   const [attendanceToEdit, setAttendanceToEdit] =
+    useState<AttendanceLog | null>(null)
+  const [attendanceTrailLog, setAttendanceTrailLog] =
     useState<AttendanceLog | null>(null)
   const [expandedPrevEmpId, setExpandedPrevEmpId] = useState<string | null>(
     null,
@@ -1943,14 +1951,14 @@ export function EmployeeProfilePage() {
                       <TableHead>Late Min</TableHead>
                       <TableHead>Extra hours</TableHead>
                       <TableHead>Source</TableHead>
-                      {canUpdateAttendance && <TableHead>Actions</TableHead>}
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {attendanceLogs.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={canUpdateAttendance ? 8 : 7}
+                          colSpan={8}
                           className="text-text-secondary"
                         >
                           No attendance records
@@ -1985,18 +1993,28 @@ export function EmployeeProfilePage() {
                               : '—'}
                           </TableCell>
                           <TableCell>{log.source ?? '—'}</TableCell>
-                          {canUpdateAttendance && (
-                            <TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setAttendanceToEdit(log)}
+                                onClick={() => setAttendanceTrailLog(log)}
                               >
-                                <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                                Update
+                                <History className="mr-1.5 h-3.5 w-3.5" />
+                                Trail
                               </Button>
-                            </TableCell>
-                          )}
+                              {canUpdateAttendance && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setAttendanceToEdit(log)}
+                                >
+                                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                                  Update
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -2785,6 +2803,16 @@ export function EmployeeProfilePage() {
           queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
           queryClient.invalidateQueries({ queryKey: ['leave-balance', id] })
           queryClient.invalidateQueries({ queryKey: ['leave', id] })
+          queryClient.invalidateQueries({
+            queryKey: ['attendance', 'trail', attendanceToEdit?.id],
+          })
+        }}
+      />
+      <AttendanceTrailDialog
+        log={attendanceTrailLog}
+        open={attendanceTrailLog !== null}
+        onOpenChange={(open) => {
+          if (!open) setAttendanceTrailLog(null)
         }}
       />
 

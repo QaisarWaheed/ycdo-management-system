@@ -73,6 +73,8 @@ function makeFakeTx(seed: {
         }: {
           where: { id: string };
           data: {
+            status?: string;
+            reversedAt?: Date;
             variables: Record<string, unknown>;
             requiresAcknowledgement?: boolean;
           };
@@ -80,6 +82,9 @@ function makeFakeTx(seed: {
           const letter = letters.find((l) => l.id === where.id);
           if (!letter) throw new Error('letter not found');
           letter.variables = data.variables;
+          if (data.status !== undefined) {
+            (letter as { status?: string }).status = data.status;
+          }
           if (data.requiresAcknowledgement !== undefined) {
             letter.requiresAcknowledgement = data.requiresAcknowledgement;
           }
@@ -369,6 +374,7 @@ describe('reverseLateDisciplineForDate', () => {
     expect(state.disciplineEvents).toHaveLength(0);
     expect(state.letters[0].variables.reversedDueToShortLeave).toBe(true);
     expect(state.letters[0].requiresAcknowledgement).toBe(false);
+    expect((state.letters[0] as { status?: string }).status).toBe('REVERSED');
   });
 
   it('Scenario 3/4: an ADVICE/WARNING-only date (no deduction) is reversed with no payroll interaction', async () => {
@@ -404,6 +410,9 @@ describe('reverseLateDisciplineForDate', () => {
     expect(result.deductionReversed).toBe(false);
     expect(result.disciplineEventRemoved).toBe(true);
     expect(getState().letters[0].variables.reversedDueToShortLeave).toBe(true);
+    expect((getState().letters[0] as { status?: string }).status).toBe(
+      'REVERSED',
+    );
   });
 
   it('Scenario 8: calling reversal twice is idempotent — no double credit, no error', async () => {

@@ -164,12 +164,17 @@ describe('LettersService appointment Phase 3A', () => {
       $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
     };
 
+    const whatsappService = {
+      deliverAfterLetterGenerated: jest.fn().mockResolvedValue(undefined),
+    };
+
     const service = new LettersService(
       prisma as never,
       { assertEmployeeAccess: jest.fn() } as never,
+      whatsappService as never,
     );
 
-    return { service, prisma, tx, created, draftLetter };
+    return { service, prisma, tx, whatsappService, created, draftLetter };
   }
 
   it('pre-approval preview creates no Letter row and includes watermark + signatory', async () => {
@@ -231,7 +236,8 @@ describe('LettersService appointment Phase 3A', () => {
     expect(prisma.letter.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          status: { in: [LetterStatus.SENT, LetterStatus.REVERSED] },
+          status: LetterStatus.SENT,
+          NOT: expect.any(Object),
         }),
       }),
     );

@@ -77,12 +77,17 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
       $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
     };
 
+    const whatsappService = {
+      deliverAfterLetterGenerated: jest.fn().mockResolvedValue(undefined),
+    };
+
     const service = new LettersService(
       prisma as never,
       { assertEmployeeAccess: jest.fn() } as never,
+      whatsappService as never,
     );
 
-    return { service, tx, created };
+    return { service, tx, whatsappService, created };
   }
 
   it('keeps REINSTATEMENT as DRAFT and does not WhatsApp or notify', async () => {
@@ -134,7 +139,7 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
   });
 
   it('auto-sends SUSPENSION_ELIGIBILITY as SENT with eligibility wording', async () => {
-    const { service, tx, created } = build();
+    const { service, tx, created, whatsappService } = build();
     tx.user = {
       findFirst: jest.fn().mockResolvedValue({ id: 'hr-1' }),
     };
@@ -176,10 +181,15 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
         }),
       }),
     );
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        letterType: LetterType.SUSPENSION_ELIGIBILITY,
+      }),
+    );
   });
 
   it('auto-sends NEAR_SUSPENSION_WARNING as SENT with warning wording', async () => {
-    const { service, tx, created } = build();
+    const { service, tx, created, whatsappService } = build();
 
     await service.generateSystemLetter(
       {
@@ -219,6 +229,12 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
         }),
       }),
     );
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        letterType: LetterType.NEAR_SUSPENSION_WARNING,
+      }),
+    );
   });
 
   it('rejects manual generate of system watchlist letter types', async () => {
@@ -256,6 +272,7 @@ describe('LettersService.findAll portal visibility', () => {
     const service = new LettersService(
       prisma as never,
       { assertEmployeeAccess: jest.fn() } as never,
+      { deliverAfterLetterGenerated: jest.fn() } as never,
     );
 
     await service.findAll({}, { id: 'emp-user', role: UserRole.EMPLOYEE, portalOnly: true });
@@ -263,7 +280,8 @@ describe('LettersService.findAll portal visibility', () => {
     expect(prisma.letter.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          status: { in: [LetterStatus.SENT, LetterStatus.REVERSED] },
+          status: LetterStatus.SENT,
+          NOT: expect.any(Object),
         }),
       }),
     );

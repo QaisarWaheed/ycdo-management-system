@@ -101,6 +101,7 @@ describe('LettersService.updateLetter', () => {
     const service = new LettersService(
       prisma as never,
       { assertEmployeeAccess: jest.fn().mockResolvedValue(undefined) } as never,
+      { deliverAfterLetterGenerated: jest.fn() } as never,
     );
 
     return { service, prisma, tx, letter };

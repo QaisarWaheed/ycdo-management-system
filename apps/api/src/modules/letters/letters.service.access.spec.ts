@@ -29,6 +29,7 @@ describe('LettersService.findOne / getPdf portal access', () => {
     const service = new LettersService(
       prisma as never,
       { assertEmployeeAccess: jest.fn() } as never,
+      { deliverAfterLetterGenerated: jest.fn() } as never,
     );
     return { service, prisma };
   }
@@ -90,7 +91,7 @@ describe('LettersService.findOne / getPdf portal access', () => {
     await expect(service.findOne(letterId, portalEmployee)).resolves.toEqual(letter);
   });
 
-  it('employee can fetch own REVERSED letter', async () => {
+  it('employee cannot fetch own REVERSED letter', async () => {
     const letter = {
       id: letterId,
       employeeId: ownId,
@@ -101,7 +102,26 @@ describe('LettersService.findOne / getPdf portal access', () => {
     };
     const { service } = build(letter);
 
-    await expect(service.findOne(letterId, portalEmployee)).resolves.toEqual(letter);
+    await expect(service.findOne(letterId, portalEmployee)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('employee cannot fetch soft-reversed SENT letter', async () => {
+    const letter = {
+      id: letterId,
+      employeeId: ownId,
+      status: LetterStatus.SENT,
+      variables: { reversedDueToShortLeave: true },
+      employee: { id: ownId },
+      acknowledgement: null,
+      replies: [],
+    };
+    const { service } = build(letter);
+
+    await expect(service.findOne(letterId, portalEmployee)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 
   it('HR can still fetch DRAFT letters', async () => {

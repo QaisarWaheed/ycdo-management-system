@@ -12,6 +12,40 @@ export const attendanceApi = {
     api.post('/attendance/manual', data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch<unknown, AttendanceLog>(`/attendance/${id}`, data),
+  getTrail: (id: string) =>
+    api.get<
+      unknown,
+      {
+        attendance: {
+          id: string
+          date: string
+          status: string
+          checkIn: string | null
+          checkOut: string | null
+          lateMinutes: number | null
+          source: string | null
+          note: string | null
+          createdAt: string
+          employeeName: string
+          employeeCode: string | null
+        }
+        events: Array<{
+          id: string
+          action: string
+          createdAt: string
+          changes: {
+            previous?: Record<string, unknown>
+            updated?: Record<string, unknown>
+          } | null
+          actor: {
+            id: string
+            email: string
+            role: string
+            name: string | null
+          }
+        }>
+      }
+    >(`/attendance/${id}/trail`),
   approveOvertime: (id: string, overtimeMinutes: number) =>
     api.patch(`/attendance/${id}/approve-overtime`, { overtimeMinutes }),
   markAbsentees: (date: string) =>

@@ -174,9 +174,13 @@ describe('LettersService.sendLetter', () => {
     const accessScopeService = {
       assertEmployeeAccess: jest.fn().mockResolvedValue(undefined),
     };
+    const whatsappService = {
+      deliverAfterLetterGenerated: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new LettersService(
       prisma as never,
       accessScopeService as never,
+      whatsappService as never,
     );
     jest
       .spyOn(service, 'getPdf')
@@ -187,6 +191,7 @@ describe('LettersService.sendLetter', () => {
       prisma,
       tx,
       accessScopeService,
+      whatsappService,
       letter,
       sentLetter,
     };
@@ -237,7 +242,7 @@ describe('LettersService.sendLetter', () => {
   });
 
   it('issues an APPROVED suspension atomically', async () => {
-    const { service, tx, accessScopeService } = build({
+    const { service, tx, accessScopeService, whatsappService } = build({
       letterType: LetterType.SUSPENSION,
       employeeStatus: EmployeeStatus.ACTIVE,
       currentBranchId: 'branch-at-issue',
@@ -311,14 +316,43 @@ describe('LettersService.sendLetter', () => {
         data: expect.objectContaining({ action: 'LETTER_SENT' }),
       }),
     );
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        letterId,
+        employeeId,
+        letterType: LetterType.SUSPENSION,
+      }),
+    );
     expect(result.alreadySent).toBe(false);
     expect(result.letter.status).toBe(LetterStatus.SENT);
+  });
+
+  it('rejects sending a soft-reversed draft letter', async () => {
+    const { service, prisma, whatsappService, letter } = build({
+      letterType: LetterType.WARNING,
+      employeeStatus: EmployeeStatus.ACTIVE,
+      request: null,
+    });
+    prisma.letter.findUnique.mockResolvedValue({
+      ...letter,
+      variables: {
+        incidentDate: '2026-09-08',
+        monthlyLateOccurrence: 2,
+        reversedDueToShortLeave: true,
+        reversed: true,
+      },
+    });
+
+    await expect(
+      service.sendLetter(letterId, actingUserId, UserRole.HR_MANAGER),
+    ).rejects.toThrow(/reversed letter/i);
+    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
   });
 
   it.each([LetterType.WARNING, LetterType.FINE, LetterType.ADVICE])(
     'sends a DRAFT %s letter without a SuspensionRequest or employee status change',
     async (letterType) => {
-      const { service, tx } = build({
+      const { service, tx, whatsappService } = build({
         letterType,
         employeeStatus: EmployeeStatus.ACTIVE,
         request: null,
@@ -339,6 +373,7 @@ describe('LettersService.sendLetter', () => {
       expect(tx.employee.findUnique).not.toHaveBeenCalled();
       expect(tx.employee.update).not.toHaveBeenCalled();
       expect(tx.inquiry.create).not.toHaveBeenCalled();
+      expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalled();
       expect(applyDisciplineDeductionOnLetterSend).toHaveBeenCalled();
       expect(result.alreadySent).toBe(false);
     },

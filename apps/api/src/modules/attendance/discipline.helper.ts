@@ -2084,9 +2084,12 @@ export async function reverseLateDisciplineForDate(
   await tx.letter.update({
     where: { id: letter.id },
     data: {
+      status: LetterStatus.REVERSED,
+      reversedAt: new Date(),
       variables: {
         ...((letter.variables as object) ?? {}),
         reversedDueToShortLeave: true,
+        reversed: true,
         reversedAt: new Date().toISOString(),
         // Distinct from reversedDueToShortLeave (kept as-is — it is the
         // established dedup/soft-void marker every reader already checks)
@@ -2330,10 +2333,8 @@ export async function reverseAbsenceDeductionForDate(
     await tx.letter.update({
       where: { id: absenceLetter.id },
       data: {
-        status:
-          absenceLetter.status === LetterStatus.DRAFT
-            ? LetterStatus.REVERSED
-            : absenceLetter.status,
+        status: LetterStatus.REVERSED,
+        reversedAt: new Date(),
         variables: {
           ...((absenceLetter.variables as object) ?? {}),
           reversed: true,
@@ -2539,9 +2540,12 @@ export async function reverseMissingCheckoutDisciplineForDate(
   await tx.letter.update({
     where: { id: letter.id },
     data: {
+      status: LetterStatus.REVERSED,
+      reversedAt: new Date(),
       variables: {
         ...((letter.variables as object) ?? {}),
         reversed: true,
+        reversedDueToShortLeave: true,
         reversedAt: new Date().toISOString(),
         reversalTrigger: 'CHECKOUT_PROVIDED',
         ...(blockedByPayrollStatus

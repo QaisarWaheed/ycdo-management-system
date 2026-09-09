@@ -39,6 +39,7 @@ import {
 } from '../../common/urdu-identity';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { normalizePakistanPhone } from '../whatsapp/phone.util';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import {
   ensureInquiryResolvedNotification,
   isResolutionTriggerKind,
@@ -199,6 +200,7 @@ export class LettersService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private accessScopeService: AccessScopeService,
+    private whatsappService: WhatsAppService,
   ) {}
 
   async onModuleInit() {
@@ -752,6 +754,22 @@ export class LettersService implements OnModuleInit {
 
       return record;
     });
+
+    // Any letter that lands on the portal as SENT also gets WhatsApp
+    // (HR Send uses sendLetter; these two watchlist types auto-SENT here).
+    if (!deferPortal) {
+      await this.whatsappService.deliverAfterLetterGenerated({
+        letterId: letter.id,
+        employeeId: dto.employeeId,
+        employeeName: String(built.variables.employeeName ?? ''),
+        letterType: dto.letterType,
+        phone: built.phone,
+        fileUrl,
+        pdfBuffer,
+        htmlContent: built.htmlContent,
+        filename: `${sanitizeRefForFilename(letterNo)}.jpg`,
+      });
+    }
 
     return { letter, previewHtml: built.htmlContent, reusedExisting: false };
   }
@@ -1608,6 +1626,15 @@ export class LettersService implements OnModuleInit {
     if (letter.status === LetterStatus.REVERSED) {
       throw new BadRequestException('Cannot send a reversed letter');
     }
+    const letterVars = (letter.variables ?? {}) as Record<string, unknown>;
+    if (
+      letterVars.reversedDueToShortLeave === true ||
+      letterVars.reversed === true
+    ) {
+      throw new BadRequestException(
+        'Cannot send a reversed letter — attendance discipline for this incident was undone',
+      );
+    }
     if (letter.status === LetterStatus.SENT) {
       return {
         letter,
@@ -1832,6 +1859,25 @@ export class LettersService implements OnModuleInit {
     }
 
     const updated = txResult.letter;
+
+    // WhatsApp whenever a letter is published to the portal via Send.
+    try {
+      const { buffer, filename, htmlContent } = await this.getPdf(letterId);
+      const phone = updated.employee?.phone ?? null;
+      await this.whatsappService.deliverAfterLetterGenerated({
+        letterId,
+        employeeId: letter.employeeId,
+        employeeName: updated.employee?.fullName ?? '',
+        letterType: letter.letterType,
+        phone,
+        fileUrl: updated.fileUrl,
+        pdfBuffer: buffer,
+        htmlContent,
+        filename: filename.replace(/\.pdf$/i, '.jpg'),
+      });
+    } catch (err) {
+      console.error(`WhatsApp deliver after send failed for ${letterId}:`, err);
+    }
 
     return { letter: updated, alreadySent: false };
   }
@@ -2321,7 +2367,24 @@ export class LettersService implements OnModuleInit {
     } else if (query.status) {
       where.status = query.status;
     } else if (actingUser?.portalOnly) {
-      where.status = { in: [LetterStatus.SENT, LetterStatus.REVERSED] };
+      // Portal shows only active sent letters — reversed / soft-reversed stay HR-only.
+      where.status = LetterStatus.SENT;
+      where.NOT = {
+        OR: [
+          {
+            variables: {
+              path: ['reversedDueToShortLeave'],
+              equals: true,
+            },
+          },
+          {
+            variables: {
+              path: ['reversed'],
+              equals: true,
+            },
+          },
+        ],
+      };
     }
 
     if (query.startDate && query.endDate) {
@@ -2690,7 +2753,11 @@ export class LettersService implements OnModuleInit {
   }
 
   private assertPortalLetterAccess(
-    letter: { employeeId: string; status: LetterStatus },
+    letter: {
+      employeeId: string;
+      status: LetterStatus;
+      variables?: unknown;
+    },
     letterId: string,
     actor?: {
       id: string;
@@ -2706,12 +2773,14 @@ export class LettersService implements OnModuleInit {
     if (!actor?.employeeId || letter.employeeId !== actor.employeeId) {
       throw new NotFoundException(`Letter with id ${letterId} not found`);
     }
+    const vars = (letter.variables ?? {}) as Record<string, unknown>;
     if (
-      letter.status !== LetterStatus.SENT &&
-      letter.status !== LetterStatus.REVERSED
+      letter.status !== LetterStatus.SENT ||
+      vars.reversedDueToShortLeave === true ||
+      vars.reversed === true
     ) {
       throw new ForbiddenException(
-        'Draft letters are not available in the employee portal',
+        'Draft and reversed letters are not available in the employee portal',
       );
     }
   }

@@ -1433,6 +1433,87 @@ export class AttendanceService {
     });
   }
 
+  async getAttendanceTrail(
+    id: string,
+    actingUser: { id: string; role: UserRole },
+  ) {
+    const log = await this.prisma.attendanceLog.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        employeeId: true,
+        date: true,
+        status: true,
+        checkIn: true,
+        checkOut: true,
+        lateMinutes: true,
+        source: true,
+        note: true,
+        createdAt: true,
+        employee: {
+          select: { fullName: true, employeeCode: true },
+        },
+      },
+    });
+
+    if (!log) {
+      throw new NotFoundException(`Attendance log with id ${id} not found`);
+    }
+
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUser.id,
+      actingUser.role,
+      Permission.ATTENDANCE_MARK,
+      log.employeeId,
+    );
+
+    const events = await this.prisma.auditLog.findMany({
+      where: {
+        entity: 'AttendanceLog',
+        entityId: id,
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            employee: { select: { fullName: true } },
+          },
+        },
+      },
+    });
+
+    return {
+      attendance: {
+        id: log.id,
+        date: log.date,
+        status: log.status,
+        checkIn: log.checkIn,
+        checkOut: log.checkOut,
+        lateMinutes: log.lateMinutes,
+        source: log.source,
+        note: log.note,
+        createdAt: log.createdAt,
+        employeeName: log.employee.fullName,
+        employeeCode: log.employee.employeeCode,
+      },
+      events: events.map((event) => ({
+        id: event.id,
+        action: event.action,
+        createdAt: event.createdAt,
+        changes: event.changes,
+        actor: {
+          id: event.user.id,
+          email: event.user.email,
+          role: event.user.role,
+          name: event.user.employee?.fullName ?? null,
+        },
+      })),
+    };
+  }
+
   async updateAttendance(
     id: string,
     dto: UpdateAttendanceDto,
