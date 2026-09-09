@@ -11,6 +11,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { formatDateTimeTime } from '@/lib/timeFormat'
+import {
+  displayCheckInSource,
+  displayCheckOutSource,
+} from '@/lib/attendanceSourceDisplay'
 import type { AttendanceLog } from '@/types'
 
 type TrailEvent = {
@@ -116,8 +120,11 @@ export function AttendanceTrailDialog({
                   : '—'}
               </div>
               <div>
-                <span className="text-text-secondary">Source: </span>
-                {data?.attendance?.source ?? log?.source ?? '—'}
+                <span className="text-text-secondary">Check-in source: </span>
+                {displayCheckInSource(data?.attendance ?? log ?? {})}
+                {' · '}
+                <span className="text-text-secondary">Check-out source: </span>
+                {displayCheckOutSource(data?.attendance ?? log ?? {})}
                 {' · '}
                 <span className="text-text-secondary">Created: </span>
                 {data?.attendance?.createdAt
@@ -150,6 +157,8 @@ export function AttendanceTrailDialog({
                       'overtimeMinutes',
                       'note',
                       'source',
+                      'checkInSource',
+                      'checkOutSource',
                     ].includes(key),
                   )
                   return (

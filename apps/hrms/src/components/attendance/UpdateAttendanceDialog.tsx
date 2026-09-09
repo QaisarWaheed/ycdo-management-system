@@ -33,6 +33,10 @@ import {
 } from '@/lib/searchableSelectOptions'
 import { formatDateTimeTime, toPakistanTime24 } from '@/lib/timeFormat'
 import { attendanceLockMessage, canHrCorrectAttendance } from '@/lib/attendanceEligibility'
+import {
+  displayCheckInSource,
+  displayCheckOutSource,
+} from '@/lib/attendanceSourceDisplay'
 import { cn } from '@/lib/utils'
 import { ATTENDANCE_STATUSES, type AttendanceLog, type AttendanceStatus } from '@/types'
 import { attendanceStatusStyles } from '@/components/attendance/AttendanceStatusBadge'
@@ -268,6 +272,12 @@ export function UpdateAttendanceDialog({
                 )}
               </div>
               <TimeInput12Hour value={checkIn} onChange={setCheckIn} />
+              {log && (
+                <p className="text-xs text-text-secondary">
+                  Check-in source: {displayCheckInSource(log)} · Check-out
+                  source: {displayCheckOutSource(log)}
+                </p>
+              )}
               {isPendingAttendanceStatus(log.status) && !checkIn && (
                 <p className="text-xs text-text-secondary">
                   Enter check-in time to mark attendance.

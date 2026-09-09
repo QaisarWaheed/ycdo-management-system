@@ -27,6 +27,10 @@ import {
 import { AttendanceStatusBadge } from '@/components/attendance/AttendanceStatusBadge'
 import { UpdateAttendanceDialog } from '@/components/attendance/UpdateAttendanceDialog'
 import { AttendanceTrailDialog } from '@/components/attendance/AttendanceTrailDialog'
+import {
+  displayCheckInSource,
+  displayCheckOutSource,
+} from '@/lib/attendanceSourceDisplay'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { employeesApi } from '@/api/endpoints/employees'
 import { leaveApi } from '@/api/endpoints/leave'
@@ -1992,7 +1996,12 @@ export function EmployeeProfilePage() {
                               ? `${Math.round(((log.overtimeMinutes ?? 0) / 60) * 100) / 100}h`
                               : '—'}
                           </TableCell>
-                          <TableCell>{log.source ?? '—'}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-0.5 text-xs">
+                              <span>In: {displayCheckInSource(log)}</span>
+                              <span>Out: {displayCheckOutSource(log)}</span>
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-2">
                               <Button

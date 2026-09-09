@@ -647,6 +647,8 @@ export interface AttendanceLog {
   overtimeApprovedAt?: string | null
   type?: 'REGULAR' | 'OVERTIME'
   source?: string
+  checkInSource?: string | null
+  checkOutSource?: string | null
   note?: string | null
   dutyStartTimeSnapshot?: string | null
   dutyEndTimeSnapshot?: string | null

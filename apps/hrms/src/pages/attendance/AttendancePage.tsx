@@ -18,6 +18,10 @@ import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { combineCheckOutDateTime, combineDateAndTime } from '@/lib/attendanceUtils'
 import { canHrCorrectAttendance } from '@/lib/attendanceEligibility'
 import {
+  displayCheckInSource,
+  displayCheckOutSource,
+} from '@/lib/attendanceSourceDisplay'
+import {
   CheckInManualTab,
   CheckOutManualTab,
   MarkLeaveManualTab,
@@ -574,13 +578,10 @@ function DailyLogTab({
                     )}
                   </TableCell>
                   <TableCell>
-                    {log.source === 'BIOMETRIC' ? (
-                      <Badge className="bg-blue-100 text-blue-800">BIOMETRIC</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-gray-600">
-                        MANUAL
-                      </Badge>
-                    )}
+                    <div className="flex flex-col gap-0.5 text-xs">
+                      <span>In: {displayCheckInSource(log)}</span>
+                      <span>Out: {displayCheckOutSource(log)}</span>
+                    </div>
                   </TableCell>
                   {canFullyEditAttendance && (
                   <TableCell>
