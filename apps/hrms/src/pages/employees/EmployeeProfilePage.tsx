@@ -681,6 +681,9 @@ export function EmployeeProfilePage() {
     useState<AttendanceLog | null>(null)
   const [attendanceTrailLog, setAttendanceTrailLog] =
     useState<AttendanceLog | null>(null)
+  const [creatingMissingDate, setCreatingMissingDate] = useState<string | null>(
+    null,
+  )
   const [expandedPrevEmpId, setExpandedPrevEmpId] = useState<string | null>(
     null,
   )
@@ -721,6 +724,76 @@ export function EmployeeProfilePage() {
     queryFn: () => attendanceApi.getAll({ employeeId: id, month, year }),
     enabled: !!id,
   })
+
+  type AttendanceLogRow = AttendanceLog & { isMissing?: boolean }
+
+  const attendanceLogRows = useMemo((): AttendanceLogRow[] => {
+    const logs = (attendanceLogs as AttendanceLog[]).map((log) => ({
+      ...log,
+      isMissing: false as const,
+    }))
+    const loggedKeys = new Set(
+      logs.map((log) => String(log.date).slice(0, 10)),
+    )
+    const missingRows: AttendanceLogRow[] = (
+      attendanceSummary?.missingDates ?? []
+    )
+      .filter((date) => !loggedKeys.has(date.slice(0, 10)))
+      .map((date) => ({
+        id: `missing:${date}`,
+        date,
+        status: 'MISSING',
+        lateMinutes: 0,
+        overtimeMinutes: 0,
+        source: undefined,
+        note: 'No attendance record yet — update to create one',
+        isMissing: true,
+      }))
+    return [...logs, ...missingRows].sort((a, b) =>
+      String(b.date).localeCompare(String(a.date)),
+    )
+  }, [attendanceLogs, attendanceSummary?.missingDates])
+
+  const openAttendanceUpdate = async (row: AttendanceLogRow) => {
+    if (!id) return
+    if (!row.isMissing) {
+      setAttendanceToEdit(row)
+      return
+    }
+    const dateKey = String(row.date).slice(0, 10)
+    setCreatingMissingDate(dateKey)
+    try {
+      const created = await attendanceApi.markManual({
+        employeeId: id,
+        date: dateKey,
+        status: 'UNMARKED',
+        note: 'Created from profile missing-day update',
+      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['attendance', 'logs', id, month, year],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['attendance', 'summary', id, month, year],
+        }),
+      ])
+      setAttendanceToEdit(created)
+    } catch (err: unknown) {
+      const msg = (
+        err as { response?: { data?: { message?: string | string[] } } }
+      )?.response?.data?.message
+      toast({
+        title: 'Could not open attendance for this date',
+        description: Array.isArray(msg)
+          ? msg.join(', ')
+          : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    } finally {
+      setCreatingMissingDate(null)
+    }
+  }
+
   const { data: payrollHistory = [] } = useQuery({
     queryKey: ['payroll-history', id],
     queryFn: () => payrollApi.getHistory(id),
@@ -1959,7 +2032,7 @@ export function EmployeeProfilePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {attendanceLogs.length === 0 ? (
+                    {attendanceLogRows.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={8}
@@ -1969,8 +2042,18 @@ export function EmployeeProfilePage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      attendanceLogs.map((log) => (
-                        <TableRow key={log.id}>
+                      attendanceLogRows.map((log) => {
+                        const dateKey = String(log.date).slice(0, 10)
+                        const isCreating = creatingMissingDate === dateKey
+                        return (
+                        <TableRow
+                          key={log.id}
+                          className={
+                            log.isMissing
+                              ? 'bg-amber-50/60'
+                              : undefined
+                          }
+                        >
                           <TableCell>
                             {format(new Date(log.date), 'dd/MM/yyyy')}
                           </TableCell>
@@ -1985,16 +2068,29 @@ export function EmployeeProfilePage() {
                               : '—'}
                           </TableCell>
                           <TableCell>
-                            <AttendanceStatusBadge
-                              status={log.status}
-                              note={log.note}
-                            />
+                            {log.isMissing ? (
+                              <Badge
+                                variant="outline"
+                                className="border-amber-300 bg-amber-100 text-amber-900"
+                              >
+                                Missing
+                              </Badge>
+                            ) : (
+                              <AttendanceStatusBadge
+                                status={log.status}
+                                note={log.note}
+                              />
+                            )}
                           </TableCell>
-                          <TableCell>{log.lateMinutes ?? 0}</TableCell>
                           <TableCell>
-                            {(log.overtimeMinutes ?? 0) > 0
-                              ? `${Math.round(((log.overtimeMinutes ?? 0) / 60) * 100) / 100}h`
-                              : '—'}
+                            {log.isMissing ? '—' : (log.lateMinutes ?? 0)}
+                          </TableCell>
+                          <TableCell>
+                            {log.isMissing
+                              ? '—'
+                              : (log.overtimeMinutes ?? 0) > 0
+                                ? `${Math.round(((log.overtimeMinutes ?? 0) / 60) * 100) / 100}h`
+                                : '—'}
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-col gap-0.5 text-xs">
@@ -2004,28 +2100,36 @@ export function EmployeeProfilePage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setAttendanceTrailLog(log)}
-                              >
-                                <History className="mr-1.5 h-3.5 w-3.5" />
-                                Trail
-                              </Button>
+                              {!log.isMissing && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setAttendanceTrailLog(log)}
+                                >
+                                  <History className="mr-1.5 h-3.5 w-3.5" />
+                                  Trail
+                                </Button>
+                              )}
                               {canUpdateAttendance && (
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => setAttendanceToEdit(log)}
+                                  disabled={isCreating}
+                                  onClick={() => void openAttendanceUpdate(log)}
                                 >
                                   <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                                  Update
+                                  {log.isMissing
+                                    ? isCreating
+                                      ? 'Opening…'
+                                      : 'Update'
+                                    : 'Update'}
                                 </Button>
                               )}
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))
+                        )
+                      })
                     )}
                   </TableBody>
                 </Table>

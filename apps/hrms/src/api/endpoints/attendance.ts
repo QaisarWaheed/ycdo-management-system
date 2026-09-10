@@ -9,7 +9,7 @@ export const attendanceApi = {
       params: { month, year },
     }),
   markManual: (data: Record<string, unknown>) =>
-    api.post('/attendance/manual', data),
+    api.post<unknown, AttendanceLog>('/attendance/manual', data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch<unknown, AttendanceLog>(`/attendance/${id}`, data),
   getTrail: (id: string) =>

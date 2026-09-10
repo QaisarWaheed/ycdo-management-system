@@ -40,3 +40,4 @@ yarn-error.log*
 # CapRover / local deploy archives (exceed GitHub 100MB limit)
 **/deploy.tar.gz
 *.tar.gz
+.worktrees
