@@ -258,7 +258,7 @@ export class EmployeeOnboardingService {
           stipendRecord ?? snapshot.basicStipend ?? 0,
         );
 
-        // Appointment letter is created, then issued if the employee is already Active.
+        // Watermarked Appointment DRAFT only — HR Send strips watermark + WhatsApp.
         await this.lettersService.generateSystemLetter({
           employeeId: employee.id,
           letterType: LetterType.APPOINTMENT,

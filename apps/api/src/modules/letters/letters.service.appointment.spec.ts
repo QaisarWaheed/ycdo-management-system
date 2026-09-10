@@ -206,7 +206,7 @@ describe('LettersService appointment Phase 3A', () => {
   });
 
   it('generateSystemLetter creates DRAFT without WhatsApp or employee notification', async () => {
-    const { service, tx, created } = build();
+    const { service, tx, created, whatsappService } = build();
     await service.generateSystemLetter(
       {
         employeeId,
@@ -217,6 +217,47 @@ describe('LettersService appointment Phase 3A', () => {
     );
     expect(created.status).toBe(LetterStatus.DRAFT);
     expect(tx.notification.create).not.toHaveBeenCalled();
+    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
+  });
+
+  it('keeps watermarked DRAFT when employee is already Active (no auto Send)', async () => {
+    const { service, prisma, tx, created, whatsappService } = build();
+    prisma.employee.findUnique.mockResolvedValue({
+      id: employeeId,
+      fullName: 'Test Employee',
+      employeeCode: 'E-1',
+      phone: '03001234567',
+      cnic: '12345-1234567-1',
+      gender: Gender.MALE,
+      currentDesignation: 'MEDICAL OFFICER',
+      currentDepartmentId: 'dept-1',
+      dutyStartTime: '09:00',
+      dutyEndTime: '17:00',
+      dutyTotalHours: 8,
+      monthlyAllowedLeaves: 2,
+      currentBranch: { name: 'Main' },
+      currentDepartment: { id: 'dept-1', name: 'OPD' },
+      status: EmployeeStatus.ACTIVE,
+    });
+    const sendSpy = jest.spyOn(service, 'sendLetter');
+    await service.generateSystemLetter(
+      {
+        employeeId,
+        letterType: LetterType.APPOINTMENT,
+        extraFields: {
+          stipendAmount: '1000',
+          hoursPerDay: '8',
+          shiftName: 'General',
+          capacity: 'Full Time',
+        },
+      },
+      'SYSTEM',
+    );
+    expect(created.status).toBe(LetterStatus.DRAFT);
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(tx.notification.create).not.toHaveBeenCalled();
+    expect(whatsappService.deliverAfterLetterGenerated).not.toHaveBeenCalled();
+    sendSpy.mockRestore();
   });
 
   it('does not duplicate an existing Appointment DRAFT', async () => {
@@ -265,7 +306,7 @@ describe('LettersService appointment Phase 3A', () => {
   });
 
   it('Send removes watermark, notifies employee, WhatsApps once, and retries do not resend', async () => {
-    const { service, tx, prisma } = build();
+    const { service, tx, prisma, whatsappService } = build();
     jest
       .spyOn(service, 'getPdf')
       .mockResolvedValue({ buffer: Buffer.from('pdf'), filename: 'letter.pdf' });
@@ -326,6 +367,7 @@ describe('LettersService appointment Phase 3A', () => {
       chairmanAdminName?: string;
     };
     expect(sentVars.chairmanAdminName).toBe(APPOINTMENT_CHAIRMAN_ADMIN_NAME);
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
 
     prisma.letter.findUnique.mockResolvedValue({
       id: 'letter-1',
@@ -342,6 +384,7 @@ describe('LettersService appointment Phase 3A', () => {
       UserRole.HR_MANAGER,
     );
     expect(second.alreadySent).toBe(true);
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
   });
 
   it('manual generate uses mapping, creates DRAFT, and ignores templateCode bypass', async () => {

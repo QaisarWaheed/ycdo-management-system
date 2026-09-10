@@ -627,34 +627,17 @@ export class LettersService implements OnModuleInit {
     }
   }
 
+  /**
+   * Appointment letters always stay watermarked DRAFT after generate.
+   * HR Send strips the watermark, publishes to the portal, and WhatsApps.
+   */
   private async finalizeGeneratedAppointment(
     letter: { id: string; employeeId: string; status: LetterStatus },
     previewHtml: string,
-    actingUserId: string,
+    _actingUserId: string,
     reusedExisting: boolean,
   ) {
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: letter.employeeId },
-      select: { status: true },
-    });
-    if (
-      employee?.status !== EmployeeStatus.ACTIVE ||
-      letter.status === LetterStatus.SENT
-    ) {
-      return { letter, previewHtml, reusedExisting };
-    }
-
-    const sent = await this.sendLetter(
-      letter.id,
-      actingUserId,
-      UserRole.SUPER_ADMIN,
-      { skipAccessCheck: true },
-    );
-    return {
-      letter: sent.letter,
-      previewHtml,
-      reusedExisting,
-    };
+    return { letter, previewHtml, reusedExisting };
   }
 
   private appointmentStatusesAllowedToSend(
@@ -2574,6 +2557,8 @@ export class LettersService implements OnModuleInit {
             fullName: true,
             employeeCode: true,
             currentDesignation: true,
+            status: true,
+            phone: true,
           },
         },
         acknowledgement: true,

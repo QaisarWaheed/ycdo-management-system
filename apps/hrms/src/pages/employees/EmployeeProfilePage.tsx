@@ -977,7 +977,7 @@ export function EmployeeProfilePage() {
           : 'Appointment letter issued',
         description: data.alreadySent
           ? 'This letter was already sent to the employee portal.'
-          : 'Watermark removed. Employee portal and WhatsApp run from Send only.',
+          : 'Watermark removed. Sent to portal and WhatsApp.',
       })
       queryClient.invalidateQueries({ queryKey: ['letters', id] })
     },

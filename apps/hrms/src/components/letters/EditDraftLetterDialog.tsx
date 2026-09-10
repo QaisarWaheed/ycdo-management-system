@@ -91,7 +91,15 @@ export function EditDraftLetterDialog({
   const templateFields = extraFields.filter((f) => f.onTemplate)
   const sideFields = extraFields.filter((f) => !f.onTemplate)
   const status = active?.status
+  const employeeActive = active?.employee?.status === 'ACTIVE'
   const canEdit = status === 'DRAFT'
+  const canSendAppointment =
+    isAppointment &&
+    (status === 'APPROVED' ||
+      (employeeActive &&
+        (status === 'DRAFT' || status === 'PENDING_APPROVAL')))
+  const canSubmitAppointment =
+    isAppointment && status === 'DRAFT' && !employeeActive
   const dirty =
     canEdit && savedFieldsJson !== '' && JSON.stringify(fields) !== savedFieldsJson
   const printBlock = printDraftBlockedReason(dirty)
@@ -239,7 +247,7 @@ export function EditDraftLetterDialog({
         title: data.alreadySent ? 'Already sent' : 'Appointment letter sent',
         description: data.alreadySent
           ? data.message
-          : 'Final PDF has no draft watermark.',
+          : 'Watermark removed. Sent to portal and WhatsApp.',
       })
       invalidate()
     },
@@ -317,7 +325,7 @@ export function EditDraftLetterDialog({
       >
         {status === 'SENT' ? 'Download / Print Final' : 'Print Draft'}
       </Button>
-      {status === 'DRAFT' ? (
+      {canSubmitAppointment ? (
         <Button
           type="button"
           disabled={!!printBlock || submitMutation.isPending || dirty}
@@ -346,26 +354,25 @@ export function EditDraftLetterDialog({
           </Button>
         </>
       ) : null}
-      {status === 'APPROVED' ? (
-        <>
-          {canApprove ? (
-            <Button
-              variant="outline"
-              type="button"
-              disabled={rejectMutation.isPending}
-              onClick={() => rejectMutation.mutate()}
-            >
-              Return
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            disabled={sendMutation.isPending}
-            onClick={() => sendMutation.mutate()}
-          >
-            Send
-          </Button>
-        </>
+      {status === 'APPROVED' && canApprove ? (
+        <Button
+          variant="outline"
+          type="button"
+          disabled={rejectMutation.isPending}
+          onClick={() => rejectMutation.mutate()}
+        >
+          Return
+        </Button>
+      ) : null}
+      {canSendAppointment ? (
+        <Button
+          type="button"
+          disabled={!!printBlock || sendMutation.isPending || dirty}
+          title={dirty ? SAVE_BEFORE_PRINT_MESSAGE : undefined}
+          onClick={() => sendMutation.mutate()}
+        >
+          Send
+        </Button>
       ) : null}
       <Button variant="ghost" type="button" onClick={() => onOpenChange(false)}>
         Close
