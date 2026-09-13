@@ -152,6 +152,24 @@ export class AcknowledgementsService {
         status: LetterStatus.SENT,
         requiresAcknowledgement: true,
         acknowledgement: null,
+        // Keep the acknowledgement banner consistent with the employee
+        // letter list: reversed/soft-reversed letters are HR-only.
+        NOT: {
+          OR: [
+            {
+              variables: {
+                path: ['reversedDueToShortLeave'],
+                equals: true,
+              },
+            },
+            {
+              variables: {
+                path: ['reversed'],
+                equals: true,
+              },
+            },
+          ],
+        },
       },
       select: {
         id: true,
