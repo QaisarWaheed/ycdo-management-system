@@ -72,11 +72,18 @@ function ReplyStatusCell({ letter }: { letter: Letter }) {
   )
 }
 
-function letterIncidentDate(letter: Letter): string {
+function letterIncidentDate(letter: Letter): Date {
   const incidentDate = letter.content?.incidentDate ?? letter.variables?.incidentDate
-  return typeof incidentDate === 'string' && incidentDate.trim()
-    ? incidentDate.slice(0, 10)
-    : letter.generatedAt
+  if (typeof incidentDate === 'string' && incidentDate.trim()) {
+    const value = incidentDate.trim()
+    const dayFirst = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+    if (dayFirst) {
+      return new Date(`${dayFirst[3]}-${dayFirst[2]}-${dayFirst[1]}T00:00:00`)
+    }
+    const iso = new Date(value.slice(0, 10))
+    if (!Number.isNaN(iso.getTime())) return iso
+  }
+  return new Date(letter.generatedAt)
 }
 
 function AcknowledgementStatusCell({
@@ -408,8 +415,7 @@ export function MyLettersPage() {
 
   const sorted = [...visibleLetters].sort(
     (a, b) =>
-      new Date(letterIncidentDate(b)).getTime() -
-      new Date(letterIncidentDate(a)).getTime(),
+      letterIncidentDate(b).getTime() - letterIncidentDate(a).getTime(),
   )
 
   return (
@@ -489,7 +495,7 @@ export function MyLettersPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {format(new Date(letterIncidentDate(letter)), 'dd/MM/yyyy')}
+                    {format(letterIncidentDate(letter), 'dd/MM/yyyy')}
                   </TableCell>
                   <TableCell>
                     <ReplyStatusCell letter={letter} />
