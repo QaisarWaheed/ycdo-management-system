@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Clock } from 'lucide-react'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from '@/hooks/use-toast'
 import { formatDuration } from '@/lib/helpers'
 import { parseTimeToMinutes } from '@/lib/shiftUtils'
 import { cn } from '@/lib/utils'
@@ -119,14 +121,35 @@ function ShiftProgressBar({
 }
 
 function WidgetContent({
+  employeeId,
   timer,
   shift,
   compact,
 }: {
+  employeeId: string
   timer: ActiveTimer
   shift?: { startTime: string; endTime: string; name?: string }
   compact?: boolean
 }) {
+  const queryClient = useQueryClient()
+  const overtimeMutation = useMutation({
+    mutationFn: (punchType: 'OVERTIME_CHECKIN' | 'OVERTIME_CHECKOUT') =>
+      attendanceApi.overtimePunch(punchType),
+    onSuccess: () => {
+      toast({ title: 'Overtime attendance updated' })
+      queryClient.invalidateQueries({ queryKey: ['attendance-timer', employeeId] })
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
+    },
+    onError: (error: { response?: { data?: { message?: string | string[] } } }) => {
+      const message = error.response?.data?.message
+      toast({
+        title: 'Unable to update overtime attendance',
+        description: Array.isArray(message) ? message.join(', ') : message,
+        variant: 'destructive',
+      })
+    },
+  })
+
   const { primaryShift, reliever, overtime } = timer
   const primaryActive = primaryShift.isActive
   const shiftComplete =
@@ -259,6 +282,24 @@ function WidgetContent({
         )}
       </div>
 
+      {shiftComplete && (
+        <Button
+          className={cn('w-full', otActive ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700')}
+          disabled={overtimeMutation.isPending}
+          onClick={() =>
+            overtimeMutation.mutate(
+              otActive ? 'OVERTIME_CHECKOUT' : 'OVERTIME_CHECKIN',
+            )
+          }
+        >
+          {overtimeMutation.isPending
+            ? 'Updating...'
+            : otActive
+              ? 'Overtime Check-Out'
+              : 'Overtime Check-In'}
+        </Button>
+      )}
+
       {reliever.isActive && (
         <div
           className={cn(
@@ -309,7 +350,14 @@ export function PortalCheckInWidget({
 
   if (!timer) return null
 
-  const content = <WidgetContent timer={timer} shift={shift} compact={compact} />
+  const content = (
+    <WidgetContent
+      employeeId={employeeId}
+      timer={timer}
+      shift={shift}
+      compact={compact}
+    />
+  )
 
   if (compact) {
     return content
