@@ -225,6 +225,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       roles,
+      client,
       employeeId: user.employeeId,
       branchId: user.branchId,
     };

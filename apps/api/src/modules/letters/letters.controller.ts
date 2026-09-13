@@ -348,12 +348,14 @@ export class LettersController {
       id: string;
       role: UserRole;
       roles?: UserRole[];
+      client?: string;
       employeeId?: string | null;
     },
   ) {
     const effectiveRoles = user.roles?.length ? user.roles : [user.role];
     const isPortalOnly =
-      effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE;
+      (user.client === 'portal' && !!user.employeeId) ||
+      (effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE);
 
     if (isPortalOnly) {
       if (!user.employeeId) {
@@ -417,6 +419,7 @@ export class LettersController {
       id: string;
       role: UserRole;
       roles?: UserRole[];
+      client?: string;
       employeeId?: string | null;
     },
     @Res() res: Response,
@@ -471,6 +474,7 @@ export class LettersController {
       id: string;
       role: UserRole;
       roles?: UserRole[];
+      client?: string;
       employeeId?: string | null;
     },
   ) {
@@ -495,11 +499,13 @@ export class LettersController {
     id: string;
     role: UserRole;
     roles?: UserRole[];
+    client?: string;
     employeeId?: string | null;
   }) {
     const effectiveRoles = user.roles?.length ? user.roles : [user.role];
     const isPortalOnly =
-      effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE;
+      (user.client === 'portal' && !!user.employeeId) ||
+      (effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE);
 
     if (isPortalOnly) {
       if (!user.employeeId) {
