@@ -1,7 +1,10 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  // Keep production portal builds functional even when the deployment does
+  // not pass VITE_API_URL as a Docker build argument. Local development can
+  // still override this with VITE_API_URL=http://localhost:3000.
+  baseURL: import.meta.env.VITE_API_URL || 'https://hrms-api.ycdo.org.pk',
   headers: {
     'Content-Type': 'application/json',
   },
