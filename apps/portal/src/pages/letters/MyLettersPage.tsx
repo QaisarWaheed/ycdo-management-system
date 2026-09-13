@@ -72,6 +72,13 @@ function ReplyStatusCell({ letter }: { letter: Letter }) {
   )
 }
 
+function letterIncidentDate(letter: Letter): string {
+  const incidentDate = letter.content?.incidentDate ?? letter.variables?.incidentDate
+  return typeof incidentDate === 'string' && incidentDate.trim()
+    ? incidentDate.slice(0, 10)
+    : letter.generatedAt
+}
+
 function AcknowledgementStatusCell({
   letter,
   pendingIds,
@@ -394,9 +401,15 @@ export function MyLettersPage() {
     }
   }
 
-  const sorted = [...(letters as Letter[])].sort(
+  const visibleLetters = (letters as Letter[]).filter((letter) => {
+    const vars = letter.variables ?? {}
+    return vars.reversed !== true && vars.reversedDueToShortLeave !== true
+  })
+
+  const sorted = [...visibleLetters].sort(
     (a, b) =>
-      new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime(),
+      new Date(letterIncidentDate(b)).getTime() -
+      new Date(letterIncidentDate(a)).getTime(),
   )
 
   return (
@@ -476,7 +489,7 @@ export function MyLettersPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {format(new Date(letter.generatedAt), 'dd/MM/yyyy')}
+                    {format(new Date(letterIncidentDate(letter)), 'dd/MM/yyyy')}
                   </TableCell>
                   <TableCell>
                     <ReplyStatusCell letter={letter} />

@@ -204,6 +204,7 @@ export interface Letter {
   letterNo?: string | null
   generatedAt: string
   content?: Record<string, unknown>
+  variables?: Record<string, unknown> | null
   replyDeadline?: string | null
   isReplied?: boolean
   autoEscalated?: boolean
