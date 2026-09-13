@@ -354,10 +354,8 @@ export class LettersController {
     const effectiveRoles = user.roles?.length ? user.roles : [user.role];
     const isPortalOnly =
       effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE;
-    const hasManagerScopes =
-      await this.accessScopeService.userHasManagerScopes(user.id);
 
-    if (isPortalOnly && !hasManagerScopes) {
+    if (isPortalOnly) {
       if (!user.employeeId) {
         throw new ForbiddenException('Employee profile required');
       }
@@ -502,10 +500,8 @@ export class LettersController {
     const effectiveRoles = user.roles?.length ? user.roles : [user.role];
     const isPortalOnly =
       effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE;
-    const hasManagerScopes =
-      await this.accessScopeService.userHasManagerScopes(user.id);
 
-    if (isPortalOnly && !hasManagerScopes) {
+    if (isPortalOnly) {
       if (!user.employeeId) {
         throw new ForbiddenException('Employee profile required');
       }
