@@ -145,31 +145,15 @@ export class AcknowledgementsService {
     return acknowledgement;
   }
 
-  getPendingAcknowledgements(employeeId: string) {
-    return this.prisma.letter.findMany({
+  async getPendingAcknowledgements(employeeId: string) {
+    // Soft-reversed filter is applied in JS: Prisma JSON `NOT path equals true`
+    // drops rows when the key is missing (SQL NULL).
+    const letters = await this.prisma.letter.findMany({
       where: {
         employeeId,
         status: LetterStatus.SENT,
         requiresAcknowledgement: true,
         acknowledgement: null,
-        // Keep the acknowledgement banner consistent with the employee
-        // letter list: reversed/soft-reversed letters are HR-only.
-        NOT: {
-          OR: [
-            {
-              variables: {
-                path: ['reversedDueToShortLeave'],
-                equals: true,
-              },
-            },
-            {
-              variables: {
-                path: ['reversed'],
-                equals: true,
-              },
-            },
-          ],
-        },
       },
       select: {
         id: true,
@@ -178,9 +162,19 @@ export class AcknowledgementsService {
         generatedAt: true,
         replyDeadline: true,
         fileUrl: true,
+        variables: true,
       },
       orderBy: { generatedAt: 'desc' },
     });
+
+    return letters
+      .filter((letter) => {
+        const vars = (letter.variables ?? {}) as Record<string, unknown>;
+        return (
+          vars.reversed !== true && vars.reversedDueToShortLeave !== true
+        );
+      })
+      .map(({ variables: _variables, ...rest }) => rest);
   }
 
   private extractRefNumber(fileUrl: string | null): string {

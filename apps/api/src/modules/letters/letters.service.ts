@@ -132,6 +132,12 @@ function letterIssuedAuditAction(letterType: LetterType): string {
   return 'LETTER_GENERATED';
 }
 
+/** Soft-reverse flags in letter.variables (status may still be SENT). */
+function isSoftReversedLetter(variables: unknown): boolean {
+  const vars = (variables ?? {}) as Record<string, unknown>;
+  return vars.reversed === true || vars.reversedDueToShortLeave === true;
+}
+
 /** Discipline letters that stay DRAFT until HR explicitly sends to portal.
  * Near-suspension and Due (eligibility) notices are sent immediately. */
 const IMMEDIATE_SEND_LETTER_TYPES: LetterType[] = [
@@ -2350,24 +2356,10 @@ export class LettersService implements OnModuleInit {
     } else if (query.status) {
       where.status = query.status;
     } else if (actingUser?.portalOnly) {
-      // Portal shows only active sent letters — reversed / soft-reversed stay HR-only.
+      // Portal shows only SENT letters. Soft-reversed rows are filtered in JS
+      // below — Prisma JSON `NOT path equals true` excludes rows where the
+      // key is missing (SQL NULL), which hid almost every normal letter.
       where.status = LetterStatus.SENT;
-      where.NOT = {
-        OR: [
-          {
-            variables: {
-              path: ['reversedDueToShortLeave'],
-              equals: true,
-            },
-          },
-          {
-            variables: {
-              path: ['reversed'],
-              equals: true,
-            },
-          },
-        ],
-      };
     }
 
     if (query.startDate && query.endDate) {
@@ -2386,7 +2378,7 @@ export class LettersService implements OnModuleInit {
         );
     }
 
-    return this.prisma.letter.findMany({
+    const letters = await this.prisma.letter.findMany({
       where,
       include: {
         employee: {
@@ -2404,6 +2396,12 @@ export class LettersService implements OnModuleInit {
       },
       orderBy: { generatedAt: 'desc' },
     });
+
+    if (!actingUser?.portalOnly) {
+      return letters;
+    }
+
+    return letters.filter((letter) => !isSoftReversedLetter(letter.variables));
   }
 
   /**
@@ -2758,11 +2756,9 @@ export class LettersService implements OnModuleInit {
     if (!actor?.employeeId || letter.employeeId !== actor.employeeId) {
       throw new NotFoundException(`Letter with id ${letterId} not found`);
     }
-    const vars = (letter.variables ?? {}) as Record<string, unknown>;
     if (
       letter.status !== LetterStatus.SENT ||
-      vars.reversedDueToShortLeave === true ||
-      vars.reversed === true
+      isSoftReversedLetter(letter.variables)
     ) {
       throw new ForbiddenException(
         'Draft and reversed letters are not available in the employee portal',

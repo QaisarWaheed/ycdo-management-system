@@ -278,10 +278,10 @@ describe('LettersService appointment Phase 3A', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           status: LetterStatus.SENT,
-          NOT: expect.any(Object),
         }),
       }),
     );
+    expect(prisma.letter.findMany.mock.calls[0][0].where.NOT).toBeUndefined();
   });
 
   it('allows editing a DRAFT Appointment and rejects SENT', async () => {

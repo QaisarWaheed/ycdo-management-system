@@ -263,10 +263,22 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
 });
 
 describe('LettersService.findAll portal visibility', () => {
-  it('hides DRAFT from the employee portal and lists SENT and REVERSED', async () => {
+  it('queries SENT only and drops soft-reversed rows in memory', async () => {
     const prisma = {
       letter: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'sent-1', status: LetterStatus.SENT }]),
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'sent-1', status: LetterStatus.SENT, variables: { incidentDate: '01/01/2026' } },
+          {
+            id: 'soft-rev',
+            status: LetterStatus.SENT,
+            variables: { reversed: true },
+          },
+          {
+            id: 'short-leave-rev',
+            status: LetterStatus.SENT,
+            variables: { reversedDueToShortLeave: true },
+          },
+        ]),
       },
     };
     const service = new LettersService(
@@ -275,15 +287,19 @@ describe('LettersService.findAll portal visibility', () => {
       { deliverAfterLetterGenerated: jest.fn() } as never,
     );
 
-    await service.findAll({}, { id: 'emp-user', role: UserRole.EMPLOYEE, portalOnly: true });
+    const result = await service.findAll(
+      {},
+      { id: 'emp-user', role: UserRole.EMPLOYEE, portalOnly: true },
+    );
 
     expect(prisma.letter.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           status: LetterStatus.SENT,
-          NOT: expect.any(Object),
         }),
       }),
     );
+    expect(prisma.letter.findMany.mock.calls[0][0].where.NOT).toBeUndefined();
+    expect(result.map((l: { id: string }) => l.id)).toEqual(['sent-1']);
   });
 });
