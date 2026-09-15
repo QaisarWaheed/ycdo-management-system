@@ -384,7 +384,8 @@ describe('LettersService appointment Phase 3A', () => {
       UserRole.HR_MANAGER,
     );
     expect(second.alreadySent).toBe(true);
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
+    // Retry still invokes deliver; WhatsApp service no-ops if Meta already SENT.
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(2);
   });
 
   it('manual generate uses mapping, creates DRAFT, and ignores templateCode bypass', async () => {

@@ -380,7 +380,7 @@ describe('LettersService.sendLetter', () => {
   );
 
   it('is idempotent for an already SENT suspension letter with no request', async () => {
-    const { service, prisma, tx } = build({
+    const { service, prisma, tx, whatsappService } = build({
       letterType: LetterType.SUSPENSION,
       letterStatus: LetterStatus.SENT,
       employeeStatus: EmployeeStatus.ACTIVE,
@@ -399,6 +399,14 @@ describe('LettersService.sendLetter', () => {
     expect(tx.inquiry.create).not.toHaveBeenCalled();
     expect(tx.notification.create).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        letterId,
+        employeeId,
+        letterType: LetterType.SUSPENSION,
+        phone: employeeEmbed.phone,
+      }),
+    );
   });
 
   it('issues an approved suspension to an already SUSPENDED employee without rewriting status', async () => {
@@ -544,7 +552,7 @@ describe('LettersService.sendLetter', () => {
   });
 
   it('does not repeat issuance side effects when a concurrent send already marked the letter SENT', async () => {
-    const { service, tx } = build({
+    const { service, tx, whatsappService } = build({
       letterType: LetterType.SUSPENSION,
       employeeStatus: EmployeeStatus.ACTIVE,
       request: approvedRequest(),
@@ -574,6 +582,7 @@ describe('LettersService.sendLetter', () => {
     expect(tx.suspensionRequest.updateMany).not.toHaveBeenCalled();
     expect(tx.notification.create).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
   });
 
   it('snapshots Employee.currentBranchId at issue time, not a preparation-time value', async () => {
@@ -661,7 +670,7 @@ describe('LettersService.sendLetter', () => {
   });
 
   it('does not duplicate INQUIRY_RESOLVED when send is retried on an already SENT letter', async () => {
-    const { service, tx } = build({
+    const { service, tx, whatsappService } = build({
       letterType: LetterType.REINSTATEMENT,
       letterStatus: LetterStatus.SENT,
       employeeStatus: EmployeeStatus.ACTIVE,
@@ -679,5 +688,6 @@ describe('LettersService.sendLetter', () => {
 
     expect(result.alreadySent).toBe(true);
     expect(tx.notification.create).not.toHaveBeenCalled();
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
   });
 });

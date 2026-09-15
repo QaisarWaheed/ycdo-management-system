@@ -744,20 +744,27 @@ export class LettersService implements OnModuleInit {
       return record;
     });
 
-    // Any letter that lands on the portal as SENT also gets WhatsApp
-    // (HR Send uses sendLetter; these two watchlist types auto-SENT here).
+    // Auto-SENT portal letters (NEAR_SUSPENSION_WARNING / SUSPENSION_ELIGIBILITY)
+    // must also go out on WhatsApp. DRAFT types wait for HR Send.
     if (!deferPortal) {
-      await this.whatsappService.deliverAfterLetterGenerated({
-        letterId: letter.id,
-        employeeId: dto.employeeId,
-        employeeName: String(built.variables.employeeName ?? ''),
-        letterType: dto.letterType,
-        phone: built.phone,
-        fileUrl,
-        pdfBuffer,
-        htmlContent: built.htmlContent,
-        filename: `${sanitizeRefForFilename(letterNo)}.jpg`,
-      });
+      try {
+        await this.whatsappService.deliverAfterLetterGenerated({
+          letterId: letter.id,
+          employeeId: dto.employeeId,
+          employeeName: String(built.variables.employeeName ?? ''),
+          letterType: dto.letterType,
+          phone: built.phone,
+          fileUrl,
+          pdfBuffer,
+          htmlContent: built.htmlContent,
+          filename: `${sanitizeRefForFilename(letterNo)}.jpg`,
+        });
+      } catch (err) {
+        console.error(
+          `WhatsApp deliver after auto portal send failed for ${letter.id}:`,
+          err,
+        );
+      }
     }
 
     return { letter, previewHtml: built.htmlContent, reusedExisting: false };
@@ -1625,6 +1632,16 @@ export class LettersService implements OnModuleInit {
       );
     }
     if (letter.status === LetterStatus.SENT) {
+      // Portal publish already happened — still ensure WhatsApp delivery
+      // (retries FAILED/SKIPPED; no-ops when Meta already SENT).
+      await this.deliverWhatsAppForPortalSentLetter({
+        letterId,
+        employeeId: letter.employeeId,
+        employeeName: letter.employee?.fullName ?? '',
+        letterType: letter.letterType,
+        phone: letter.employee?.phone ?? null,
+        fileUrl: letter.fileUrl,
+      });
       return {
         letter,
         alreadySent: true,
@@ -1840,6 +1857,14 @@ export class LettersService implements OnModuleInit {
     });
 
     if (txResult.alreadySent) {
+      await this.deliverWhatsAppForPortalSentLetter({
+        letterId,
+        employeeId: letter.employeeId,
+        employeeName: txResult.letter.employee?.fullName ?? '',
+        letterType: letter.letterType,
+        phone: txResult.letter.employee?.phone ?? null,
+        fileUrl: txResult.letter.fileUrl,
+      });
       return {
         letter: txResult.letter,
         alreadySent: true,
@@ -1850,25 +1875,49 @@ export class LettersService implements OnModuleInit {
     const updated = txResult.letter;
 
     // WhatsApp whenever a letter is published to the portal via Send.
+    await this.deliverWhatsAppForPortalSentLetter({
+      letterId,
+      employeeId: letter.employeeId,
+      employeeName: updated.employee?.fullName ?? '',
+      letterType: letter.letterType,
+      phone: updated.employee?.phone ?? null,
+      fileUrl: updated.fileUrl,
+    });
+
+    return { letter: updated, alreadySent: false };
+  }
+
+  /**
+   * Best-effort Meta WhatsApp after a letter is (or already was) SENT to the portal.
+   * Used by HR Send and by auto-SENT generators (NEAR_SUSPENSION / SUSPENSION_ELIGIBILITY).
+   */
+  private async deliverWhatsAppForPortalSentLetter(opts: {
+    letterId: string;
+    employeeId: string;
+    employeeName: string;
+    letterType: LetterType;
+    phone: string | null;
+    fileUrl: string | null;
+  }): Promise<void> {
     try {
-      const { buffer, filename, htmlContent } = await this.getPdf(letterId);
-      const phone = updated.employee?.phone ?? null;
+      const { buffer, filename, htmlContent } = await this.getPdf(opts.letterId);
       await this.whatsappService.deliverAfterLetterGenerated({
-        letterId,
-        employeeId: letter.employeeId,
-        employeeName: updated.employee?.fullName ?? '',
-        letterType: letter.letterType,
-        phone,
-        fileUrl: updated.fileUrl,
+        letterId: opts.letterId,
+        employeeId: opts.employeeId,
+        employeeName: opts.employeeName,
+        letterType: opts.letterType,
+        phone: opts.phone,
+        fileUrl: opts.fileUrl,
         pdfBuffer: buffer,
         htmlContent,
         filename: filename.replace(/\.pdf$/i, '.jpg'),
       });
     } catch (err) {
-      console.error(`WhatsApp deliver after send failed for ${letterId}:`, err);
+      console.error(
+        `WhatsApp deliver after portal send failed for ${opts.letterId}:`,
+        err,
+      );
     }
-
-    return { letter: updated, alreadySent: false };
   }
 
   private async issueApprovedSuspensionInTx(
