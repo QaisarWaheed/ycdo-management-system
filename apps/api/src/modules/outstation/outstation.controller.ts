@@ -42,6 +42,7 @@ export class OutstationController {
     UserRole.SUPER_ADMIN,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
+    UserRole.PRESIDENT,
     UserRole.HR_OPERATIONS_MANAGER,
   )
   getDistrictSummary() {
@@ -53,6 +54,7 @@ export class OutstationController {
     UserRole.SUPER_ADMIN,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
+    UserRole.PRESIDENT,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,

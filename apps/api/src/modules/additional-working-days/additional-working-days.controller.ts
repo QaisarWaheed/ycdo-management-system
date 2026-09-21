@@ -43,6 +43,7 @@ export class AdditionalWorkingDaysController {
     UserRole.SUPER_ADMIN,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
+    UserRole.PRESIDENT,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,

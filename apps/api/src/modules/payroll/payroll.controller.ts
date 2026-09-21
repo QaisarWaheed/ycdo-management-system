@@ -39,6 +39,7 @@ const PAYROLL_READ_ROLES = [
   UserRole.IT_ADMIN,
   UserRole.CHAIRMAN,
   UserRole.FOUNDER,
+  UserRole.PRESIDENT,
 ];
 
 const PAYROLL_WRITE_ROLES = [

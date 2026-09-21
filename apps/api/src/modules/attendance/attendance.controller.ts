@@ -402,6 +402,7 @@ export class AttendanceController {
     UserRole.EMPLOYEE,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
+    UserRole.PRESIDENT,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.IT_ADMIN,

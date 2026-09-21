@@ -87,6 +87,7 @@ export class EmployeesController {
     UserRole.PAYROLL_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
+    UserRole.PRESIDENT,
     UserRole.IT_ADMIN,
   )
   findAll(
@@ -109,6 +110,7 @@ export class EmployeesController {
     UserRole.PAYROLL_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
+    UserRole.PRESIDENT,
     UserRole.IT_ADMIN,
   )
   getStats() {
@@ -192,6 +194,7 @@ export class EmployeesController {
     UserRole.PAYROLL_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
+    UserRole.PRESIDENT,
     UserRole.EMPLOYEE,
   )
   findOne(
@@ -224,6 +227,7 @@ export class EmployeesController {
     UserRole.IT_ADMIN,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
+    UserRole.PRESIDENT,
     UserRole.EMPLOYEE,
   )
   getWorkingHours(

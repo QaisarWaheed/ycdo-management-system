@@ -339,6 +339,9 @@ export class LettersController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
     UserRole.EMPLOYEE,
   )
   async findAll(
@@ -410,6 +413,9 @@ export class LettersController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
     UserRole.IT_ADMIN,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
     UserRole.EMPLOYEE,
   )
   async getPdf(
@@ -465,6 +471,9 @@ export class LettersController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_MANAGER,
     UserRole.IT_ADMIN,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
     UserRole.EMPLOYEE,
   )
   findOne(

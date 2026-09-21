@@ -40,6 +40,7 @@ const LEAVE_READ_ROLES = [
   UserRole.IT_ADMIN,
   UserRole.CHAIRMAN,
   UserRole.FOUNDER,
+  UserRole.PRESIDENT,
   UserRole.EMPLOYEE,
 ];
 
