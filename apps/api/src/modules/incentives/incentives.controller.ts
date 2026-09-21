@@ -26,6 +26,7 @@ export class IncentivesController {
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
+    UserRole.PAYROLL_OFFICER,
   )
   create(
     @Body() dto: CreateIncentiveDto,
@@ -39,11 +40,13 @@ export class IncentivesController {
     UserRole.SUPER_ADMIN,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
+    UserRole.PRESIDENT,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
+    UserRole.PAYROLL_OFFICER,
   )
   findAll(
     @Query() query: IncentiveQueryDto,
@@ -57,6 +60,7 @@ export class IncentivesController {
     UserRole.SUPER_ADMIN,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
+    UserRole.PRESIDENT,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,

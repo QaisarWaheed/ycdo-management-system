@@ -1,4 +1,4 @@
-import { EmployeeStatus } from '@prisma/client';
+import { EmployeeStatus, PayrollStatus } from '@prisma/client';
 import { IncentivesService } from './incentives.service';
 import { incentiveAllowanceDescription } from './incentives.dto';
 
@@ -15,6 +15,7 @@ describe('IncentivesService payroll locking', () => {
     const lock = new Promise<void>((resolve) => { unlock = resolve; });
     const entry = {
       id: 'payroll-1',
+      status: PayrollStatus.PENDING as PayrollStatus,
       allowances: [{ id: 'allowance-1', description: incentiveAllowanceDescription(incentive.reason) }],
     };
     const tx = {
@@ -61,6 +62,17 @@ describe('IncentivesService payroll locking', () => {
       where: { id: 'payroll-1' },
       data: { totalAllowances: { increment: 100 }, netStipend: { increment: 100 } },
     });
+  });
+
+  it('rejects an incentive when the month payroll is no longer PENDING', async () => {
+    const { service, tx, unlock } = build();
+    tx.payrollEntry.findUnique.mockResolvedValue({
+      id: 'payroll-1', status: PayrollStatus.PROCESSED, allowances: [],
+    });
+    unlock();
+    await expect(service.create(incentive, 'manager-1')).rejects.toThrow(/PENDING/);
+    expect(tx.allowance.create).not.toHaveBeenCalled();
+    expect(tx.payrollEntry.update).not.toHaveBeenCalled();
   });
 
   it('rereads deletion state after the lock and rejects an incentive already removed by another writer', async () => {

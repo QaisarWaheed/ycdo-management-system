@@ -53,22 +53,28 @@ export function AddIncentiveDialog({
   open,
   onOpenChange,
   defaultEmployeeId,
+  defaultMonth,
+  defaultYear,
   onSuccess,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultEmployeeId?: string
+  defaultMonth?: number
+  defaultYear?: number
   onSuccess?: () => void
 }) {
   const queryClient = useQueryClient()
   const now = new Date()
+  const initialMonth = defaultMonth ?? now.getMonth() + 1
+  const initialYear = defaultYear ?? now.getFullYear()
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       employeeId: defaultEmployeeId ?? '',
-      month: now.getMonth() + 1,
-      year: now.getFullYear(),
+      month: initialMonth,
+      year: initialYear,
       amount: 0,
       reason: '',
     },
@@ -78,7 +84,9 @@ export function AddIncentiveDialog({
     if (defaultEmployeeId) {
       form.setValue('employeeId', defaultEmployeeId)
     }
-  }, [defaultEmployeeId, form, open])
+    form.setValue('month', initialMonth)
+    form.setValue('year', initialYear)
+  }, [defaultEmployeeId, initialMonth, initialYear, form, open])
 
   const reason = form.watch('reason')
 
@@ -89,8 +97,8 @@ export function AddIncentiveDialog({
       queryClient.invalidateQueries({ queryKey: ['incentives'] })
       form.reset({
         employeeId: defaultEmployeeId ?? '',
-        month: now.getMonth() + 1,
-        year: now.getFullYear(),
+        month: initialMonth,
+        year: initialYear,
         amount: 0,
         reason: '',
       })

@@ -2,7 +2,7 @@ import { useMemo, useState, Fragment } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { MoreHorizontal, Printer } from 'lucide-react'
+import { MoreHorizontal, Plus, Printer } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
@@ -10,6 +10,7 @@ import { departmentsApi } from '@/api/endpoints/departments'
 import { designationsApi } from '@/api/endpoints/designations'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
+import { incentivesApi } from '@/api/endpoints/incentives'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { stipendReceiptsApi } from '@/api/endpoints/stipendReceipts'
 import { TablePagination } from '@/components/common/TablePagination'
@@ -77,6 +78,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { usePagination } from '@/hooks/usePagination'
+import { useAuth } from '@/hooks/useAuth'
+import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
 import { cn } from '@/lib/utils'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
@@ -674,6 +677,17 @@ function MonthlyPayrollTab() {
   const [addDeductionEntry, setAddDeductionEntry] = useState<PayrollEntry | null>(
     null,
   )
+  const [incentiveEmployeeId, setIncentiveEmployeeId] = useState<string | null>(
+    null,
+  )
+  const { hasRole } = useAuth()
+  const canAddIncentive = hasRole([
+    'SUPER_ADMIN',
+    'PAYROLL_OFFICER',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'ADMIN_OFFICER',
+  ])
   const [confirmGenerate, setConfirmGenerate] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetAllUnpaidMonths, setResetAllUnpaidMonths] = useState(false)
@@ -740,6 +754,23 @@ function MonthlyPayrollTab() {
     entries,
     [filters],
   )
+
+  const { data: monthIncentives = [] } = useQuery({
+    queryKey: ['incentives', monthYear.year, monthYear.month],
+    queryFn: () =>
+      incentivesApi.getAll({ year: monthYear.year, month: monthYear.month }),
+  })
+
+  const incentiveTotals = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const inc of monthIncentives) {
+      totals.set(
+        inc.employeeId,
+        (totals.get(inc.employeeId) ?? 0) + Number(inc.amount),
+      )
+    }
+    return totals
+  }, [monthIncentives])
 
   const generateMutation = useMutation({
     mutationFn: () =>
@@ -1031,6 +1062,7 @@ function MonthlyPayrollTab() {
               <TableHead>Deductions</TableHead>
               <TableHead>Allowances</TableHead>
               <TableHead>Net Stipend</TableHead>
+              <TableHead className="whitespace-nowrap">Incentive</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-[50px]" />
             </TableRow>
@@ -1039,7 +1071,7 @@ function MonthlyPayrollTab() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(13)].map((__, j) => (
+                  {[...Array(14)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -1048,7 +1080,7 @@ function MonthlyPayrollTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={13} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={14} className="h-32 text-center text-text-secondary">
                   No payroll entries for this period
                 </TableCell>
               </TableRow>
@@ -1102,6 +1134,31 @@ function MonthlyPayrollTab() {
                     <TableCell>{formatPKR(entry.totalAllowances)}</TableCell>
                     <TableCell className="font-medium">
                       {formatPKR(entry.netStipend)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 whitespace-nowrap">
+                        <span
+                          className={cn(
+                            emp?.id && incentiveTotals.get(emp.id)
+                              ? 'text-green-700'
+                              : 'text-text-secondary',
+                          )}
+                        >
+                          {formatPKR(emp?.id ? incentiveTotals.get(emp.id) ?? 0 : 0)}
+                        </span>
+                        {canAddIncentive && entry.status === 'PENDING' && emp?.id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2"
+                            title="Add incentive"
+                            onClick={() => setIncentiveEmployeeId(emp.id)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <PayrollStatusBadge status={entry.status} />
@@ -1178,6 +1235,15 @@ function MonthlyPayrollTab() {
         footer={`Total entries: ${entries.length}. Attendance is the full month (same counts on every stipend row for that employee).`}
       />
 
+      <AddIncentiveDialog
+        open={!!incentiveEmployeeId}
+        onOpenChange={(v) => !v && setIncentiveEmployeeId(null)}
+        defaultEmployeeId={incentiveEmployeeId ?? undefined}
+        defaultMonth={monthYear.month}
+        defaultYear={monthYear.year}
+        onSuccess={() => invalidatePayrollViews(queryClient)}
+      />
+
       <PayrollDetailDialog
         entry={viewEntry}
         open={!!viewEntry}
@@ -1234,7 +1300,8 @@ function MonthlyPayrollTab() {
                 : format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')}
               {branchId ? ' in the selected branch' : ''} from the HR payroll
               list, employee profile payroll tabs, attendance salary cards,
-              and the employee portal. PAID entries are never removed.
+              and the employee portal. Incentives added for those months are
+              deleted too. PAID entries are never removed.
             </p>
             <p>
               After clearing, click Generate Entries to rebuild from current

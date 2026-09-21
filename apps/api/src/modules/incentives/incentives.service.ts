@@ -81,6 +81,11 @@ export class IncentivesService {
         dto.month,
         dto.year,
       );
+      if (payrollEntry.status !== PayrollStatus.PENDING) {
+        throw new BadRequestException(
+          `Payroll for ${dto.month}/${dto.year} is already ${payrollEntry.status}; incentives can only be added while it is PENDING`,
+        );
+      }
 
       await tx.allowance.create({
         data: {

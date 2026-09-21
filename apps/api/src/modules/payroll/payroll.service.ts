@@ -843,9 +843,28 @@ export class PayrollService {
     }
     const unpaid = await this.prisma.payrollEntry.findMany({
       where: unpaidWhere,
-      select: { id: true },
+      select: {
+        id: true,
+        month: true,
+        year: true,
+        stipendRecord: { select: { employeeId: true } },
+      },
     });
     const ids = unpaid.map((row) => row.id);
+    // Incentives live on their own table and are folded into payroll as an
+    // allowance; clearing a month's payroll must clear its incentives too.
+    const incentivePeriods = new Map<
+      string,
+      { employeeId: string; month: number; year: number }
+    >();
+    for (const row of unpaid) {
+      const employeeId = row.stipendRecord.employeeId;
+      incentivePeriods.set(`${employeeId}:${row.year}:${row.month}`, {
+        employeeId,
+        month: row.month,
+        year: row.year,
+      });
+    }
 
     const paidSkipped = await this.prisma.payrollEntry.count({
       where: {
@@ -864,6 +883,7 @@ export class PayrollService {
     });
 
     const CHUNK = 400;
+    let incentivesDeleted = 0;
     await this.prisma.$transaction(
       async (tx) => {
         for (let i = 0; i < ids.length; i += CHUNK) {
@@ -881,6 +901,46 @@ export class PayrollService {
             where: { id: { in: chunk } },
           });
         }
+        // Only drop incentives for employee-months with no surviving entry
+        // (e.g. a PAID sibling segment keeps its incentives).
+        const periods = [...incentivePeriods.values()];
+        for (let i = 0; i < periods.length; i += CHUNK) {
+          const chunk = periods.slice(i, i + CHUNK);
+          const surviving = await tx.payrollEntry.findMany({
+            where: {
+              OR: chunk.map((p) => ({
+                month: p.month,
+                year: p.year,
+                stipendRecord: { employeeId: p.employeeId },
+              })),
+            },
+            select: {
+              month: true,
+              year: true,
+              stipendRecord: { select: { employeeId: true } },
+            },
+          });
+          const keep = new Set(
+            surviving.map(
+              (e) => `${e.stipendRecord.employeeId}:${e.year}:${e.month}`,
+            ),
+          );
+          const toClear = chunk.filter(
+            (p) => !keep.has(`${p.employeeId}:${p.year}:${p.month}`),
+          );
+          if (toClear.length) {
+            const removed = await tx.incentive.deleteMany({
+              where: {
+                OR: toClear.map((p) => ({
+                  employeeId: p.employeeId,
+                  month: p.month,
+                  year: p.year,
+                })),
+              },
+            });
+            incentivesDeleted += removed.count;
+          }
+        }
         await tx.auditLog.create({
           data: {
             userId: actingUser.id,
@@ -893,6 +953,7 @@ export class PayrollService {
               branchId: dto.branchId ?? null,
               allUnpaidMonths: dto.allUnpaidMonths === true,
               deleted: ids.length,
+              incentivesDeleted,
               paidSkipped,
             },
           },
@@ -903,6 +964,7 @@ export class PayrollService {
 
     return {
       deleted: ids.length,
+      incentivesDeleted,
       paidSkipped,
       month: dto.month,
       year: dto.year,

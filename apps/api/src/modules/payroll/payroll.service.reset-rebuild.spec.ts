@@ -30,10 +30,21 @@ describe('PayrollService.resetUnpaidPayroll / rebuild', () => {
       payrollDeduction: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
       allowance: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
       payrollEntry: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'pe-1' }, { id: 'pe-2' }]),
+        findMany: jest
+          .fn()
+          // unpaid entries to clear
+          .mockResolvedValueOnce([
+            { id: 'pe-1', month: 8, year: 2026, stipendRecord: { employeeId: 'emp-1' } },
+            { id: 'pe-2', month: 8, year: 2026, stipendRecord: { employeeId: 'emp-2' } },
+          ])
+          // surviving entries for those employee-months (emp-2 has a PAID sibling)
+          .mockResolvedValueOnce([
+            { month: 8, year: 2026, stipendRecord: { employeeId: 'emp-2' } },
+          ]),
         count: jest.fn().mockResolvedValue(3),
         deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
+      incentive: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
     const prisma = {
@@ -65,6 +76,10 @@ describe('PayrollService.resetUnpaidPayroll / rebuild', () => {
       }),
     );
     expect(tx.payrollEntry.deleteMany).toHaveBeenCalled();
+    expect(tx.incentive.deleteMany).toHaveBeenCalledWith({
+      where: { OR: [{ employeeId: 'emp-1', month: 8, year: 2026 }] },
+    });
+    expect(result.incentivesDeleted).toBe(1);
     expect(tx.auditLog.create).toHaveBeenCalled();
   });
 
