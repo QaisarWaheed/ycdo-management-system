@@ -8,10 +8,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Permission, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, RoutePermission } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CreateIncentiveDto, IncentiveQueryDto } from './incentives.dto';
 import { IncentivesService } from './incentives.service';
@@ -22,6 +22,7 @@ export class IncentivesController {
   constructor(private incentivesService: IncentivesService) {}
 
   @Post()
+  @RoutePermission(Permission.INCENTIVES_MANAGE)
   @Roles(
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
@@ -36,6 +37,7 @@ export class IncentivesController {
   }
 
   @Get()
+  @RoutePermission(Permission.INCENTIVES_VIEW)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.FOUNDER,
@@ -56,6 +58,7 @@ export class IncentivesController {
   }
 
   @Get('employee/:employeeId')
+  @RoutePermission(Permission.INCENTIVES_VIEW)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.FOUNDER,

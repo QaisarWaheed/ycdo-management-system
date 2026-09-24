@@ -5,11 +5,14 @@ export type AppPermission =
   | 'ATTENDANCE_EDIT'
   | 'LEAVE_APPROVE'
   | 'LEAVE_APPLY_OTHERS'
+  | 'PAYROLL_VIEW'
   | 'PAYROLL_MANAGE'
+  | 'EMPLOYEES_VIEW'
   | 'EMPLOYEES_CREATE'
   | 'EMPLOYEES_EDIT'
   | 'DISCIPLINARY_MANAGE'
   | 'LETTERS_GENERATE'
+  | 'INCENTIVES_VIEW'
   | 'INCENTIVES_MANAGE'
   | 'RECRUITMENT_MANAGE'
   | 'REPORTS_VIEW'
@@ -174,6 +177,7 @@ export const userAccessApi = {
     password: string
     role: string
     branchId?: string
+    permissions?: PermissionOverrideInput[]
   }) => api.post<unknown, UserAccessDetail>('/user-access', data),
 
   resetPassword: (userId: string, newPassword: string) =>

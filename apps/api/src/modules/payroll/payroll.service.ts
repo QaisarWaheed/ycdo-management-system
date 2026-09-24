@@ -1,5 +1,6 @@
 import { resolvePackageComponents, validatePackageTimeline } from './stipend-package-integrity.util';
 import { loadAttendanceCard, type AttendanceCard } from '../attendance/attendance-card.util';
+import { isManualDeduction } from './manual-deduction.util';
 import { calculateCardSalary, isLegacyAttendanceDeduction, CARD_ABSENCE_DESCRIPTION, CARD_LATE_DESCRIPTION } from './attendance-card-salary.util';
 import { payrollTransactionClient, withPayrollEmployeeTransaction } from './payroll-write-lock.util';
 import {
@@ -69,6 +70,9 @@ import {
 import { repairLateDisciplineForPayrollMonth } from '../attendance/discipline.helper';
 import {
   AddDeductionDto,
+  AddDeductionsDto,
+  UpdateDeductionDto,
+  PayslipBatchDto,
   AddAllowanceDto,
   ApplyOvertimeDto,
   CreatePayrollEntryDto,
@@ -1423,8 +1427,134 @@ export class PayrollService {
     return this.prisma.payrollEntry.update({ where: { id: entry.id }, data: { ...this.clampPayrollTotals(breakdown), forcedNonActive: forceNonActiveOverride === true || entry.forcedNonActive === true }, include: { deductions: true, allowances: true } });
   }
 
+  /** Saves every filled deduction cause in one transaction, so none are half-applied. */
+  async addDeductions(dto: AddDeductionsDto) {
+    for (const item of dto.items) {
+      if (isLegacyAttendanceDeduction(item)) throw new BadRequestException('Attendance deductions are owned by the Attendance Card');
+      if (!isManualDeduction(item)) throw new BadRequestException('Only manual deduction causes can be added from payroll');
+    }
+    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.entryEmployeeId(dto.payrollEntryId), tx => this.inTransaction(tx).addDeductions(dto));
+
+    let updated: Awaited<ReturnType<PayrollService['addDeduction']>> | undefined;
+    for (const item of dto.items) {
+      updated = await this.addDeduction({ payrollEntryId: dto.payrollEntryId, ...item });
+    }
+    return updated;
+  }
+
+  /** Loads a manual deduction on an editable (PENDING) entry, or explains why it cannot change. */
+  private async findEditableManualDeduction(id: string) {
+    const deduction = await this.prisma.payrollDeduction.findUnique({
+      where: { id },
+      include: { payrollEntry: true },
+    });
+    if (!deduction) throw new NotFoundException('Deduction not found');
+    if (!isManualDeduction(deduction)) {
+      throw new BadRequestException(
+        'Only manually added deductions can be changed here; attendance and disciplinary deductions are managed where they were created',
+      );
+    }
+    if (
+      deduction.payrollEntry.status === PayrollStatus.PROCESSED ||
+      deduction.payrollEntry.status === PayrollStatus.PAID
+    ) {
+      throw new BadRequestException(
+        'Cannot change deductions on processed or paid payroll entries',
+      );
+    }
+    return deduction;
+  }
+
+  private async deductionEmployeeId(id: string): Promise<string> {
+    const found = await this.prisma.payrollDeduction.findUnique({
+      where: { id },
+      select: { payrollEntryId: true },
+    });
+    if (!found) throw new NotFoundException('Deduction not found');
+    return this.entryEmployeeId(found.payrollEntryId);
+  }
+
+  async updateDeduction(id: string, dto: UpdateDeductionDto, actingUserId: string) {
+    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.deductionEmployeeId(id), tx => this.inTransaction(tx).updateDeduction(id, dto, actingUserId));
+
+    const deduction = await this.findEditableManualDeduction(id);
+    const next = {
+      reason: dto.reason ?? deduction.reason,
+      amount: dto.amount ?? Number(deduction.amount),
+      description:
+        dto.description === undefined
+          ? deduction.description
+          : dto.description?.trim() || null,
+    };
+    if (!isManualDeduction(next)) {
+      throw new BadRequestException('Only manual deduction causes can be used here');
+    }
+    const delta = next.amount - Number(deduction.amount);
+    const entry = deduction.payrollEntry;
+
+    await this.prisma.payrollDeduction.update({ where: { id }, data: next });
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actingUserId,
+        action: 'UPDATE_PAYROLL_DEDUCTION',
+        entity: 'PayrollDeduction',
+        entityId: id,
+        changes: {
+          payrollEntryId: entry.id,
+          before: {
+            reason: deduction.reason,
+            amount: Number(deduction.amount),
+            description: deduction.description,
+          },
+          after: next,
+        },
+      },
+    });
+    return this.prisma.payrollEntry.update({
+      where: { id: entry.id },
+      data: {
+        totalDeductions: Number(entry.totalDeductions) + delta,
+        netStipend: Number(entry.netStipend) - delta,
+      },
+      include: { deductions: true },
+    });
+  }
+
+  async removeDeduction(id: string, actingUserId: string) {
+    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.deductionEmployeeId(id), tx => this.inTransaction(tx).removeDeduction(id, actingUserId));
+
+    const deduction = await this.findEditableManualDeduction(id);
+    const amount = Number(deduction.amount);
+    const entry = deduction.payrollEntry;
+
+    await this.prisma.payrollDeduction.delete({ where: { id } });
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actingUserId,
+        action: 'REMOVE_PAYROLL_DEDUCTION',
+        entity: 'PayrollDeduction',
+        entityId: id,
+        changes: {
+          payrollEntryId: entry.id,
+          reason: deduction.reason,
+          amount,
+          description: deduction.description,
+        },
+      },
+    });
+    return this.prisma.payrollEntry.update({
+      where: { id: entry.id },
+      data: {
+        totalDeductions: Number(entry.totalDeductions) - amount,
+        netStipend: Number(entry.netStipend) + amount,
+      },
+      include: { deductions: true },
+    });
+  }
+
   async addDeduction(dto: AddDeductionDto) {
     if (isLegacyAttendanceDeduction(dto)) throw new BadRequestException('Attendance deductions are owned by the Attendance Card');
+    if (!isManualDeduction(dto)) throw new BadRequestException('Only manual deduction causes can be added from payroll');
     if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.entryEmployeeId(dto.payrollEntryId), tx => this.inTransaction(tx).addDeduction(dto));
 
     const entry = await this.prisma.payrollEntry.findUnique({
@@ -1756,6 +1886,29 @@ export class PayrollService {
     return this.createOrGetEntry({ employeeId: dto.employeeId, month: dto.month, year: dto.year },actingUser);
   }
 
+  /**
+   * Payslips for many entries, built exactly as the single payslip view builds
+   * them. A few at a time: opening a PENDING entry recomputes it first.
+   */
+  async getPayslips(
+    dto: PayslipBatchDto,
+    actingUser?: { id: string; role: UserRole; employeeId?: string | null },
+  ) {
+    const ids = [...new Set(dto.entryIds)];
+    const results: { entryId: string; slip: PayslipSlipData }[] = [];
+    const concurrency = 4;
+    for (let i = 0; i < ids.length; i += concurrency) {
+      const chunk = await Promise.all(
+        ids.slice(i, i + concurrency).map(async (entryId) => {
+          const full = await this.getEntryWithAllowances(entryId, actingUser);
+          return { entryId, slip: full.slip };
+        }),
+      );
+      results.push(...chunk);
+    }
+    return results;
+  }
+
   async getEntryWithAllowances(
     entryId: string,
     actingUser?: { id: string; role: UserRole; employeeId?: string | null },
@@ -1980,9 +2133,17 @@ export class PayrollService {
       .filter(
         (d) =>
           d.reason === DeductionType.DISCIPLINARY_FINE ||
+          d.reason === DeductionType.FINE ||
           d.reason === DeductionType.LATE_ARRIVAL,
       )
       .reduce((sum, d) => sum + Number(d.amount), 0);
+
+    const sumReason = (reason: DeductionType) =>
+      deductions
+        .filter((d) => d.reason === reason)
+        .reduce((sum, d) => sum + Number(d.amount), 0);
+    const loanFromEntries = sumReason(DeductionType.LOAN);
+    const advanceFromEntries = sumReason(DeductionType.ADVANCE);
 
     const categorizedDeductionIds = new Set(
       deductions
@@ -1994,7 +2155,14 @@ export class PayrollService {
             (d.reason === DeductionType.OTHER &&
               (d.description ?? '').startsWith('Unmarked day')) ||
             d.reason === DeductionType.DISCIPLINARY_FINE ||
-            d.reason === DeductionType.LATE_ARRIVAL,
+            d.reason === DeductionType.FINE ||
+            d.reason === DeductionType.LATE_ARRIVAL ||
+            d.reason === DeductionType.LOAN ||
+            d.reason === DeductionType.ADVANCE ||
+            d.reason === DeductionType.MEDICINE_PENDING ||
+            d.reason === DeductionType.KITCHEN_PENDING ||
+            d.reason === DeductionType.ELECTRICITY_BILL ||
+            d.reason === DeductionType.MOBILE_BILL,
         )
         .map((d) => d),
     );
@@ -2041,8 +2209,8 @@ export class PayrollService {
     };
 
     const deductionsBlock = {
-      advance: pkg.advanceDeduction || 0,
-      loan: pkg.loanDeduction || 0,
+      advance: (pkg.advanceDeduction || 0) + advanceFromEntries,
+      loan: (pkg.loanDeduction || 0) + loanFromEntries,
       mobileLoad: 0,
       absence: absenceDeduction,
       fine: (pkg.fineDeduction || 0) + fineFromEntries,
@@ -2050,7 +2218,10 @@ export class PayrollService {
       providentFund: 0,
       tax: 0,
       auditDifference: 0,
-      staffPendingMed: 0,
+      staffPendingMed: sumReason(DeductionType.MEDICINE_PENDING),
+      kitchenPending: sumReason(DeductionType.KITCHEN_PENDING),
+      electricityBill: sumReason(DeductionType.ELECTRICITY_BILL),
+      mobileBill: sumReason(DeductionType.MOBILE_BILL),
       other: otherDeduction,
     };
 

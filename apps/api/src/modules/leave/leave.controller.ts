@@ -11,10 +11,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Permission, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, AlsoAllowPermission } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
   ApplyLeaveDto,
@@ -165,6 +165,7 @@ export class LeaveController {
   }
 
   @Get()
+  @AlsoAllowPermission(Permission.REPORTS_VIEW)
   @Roles(...LEAVE_READ_ROLES)
   async findAll(
     @Query() query: LeaveQueryDto,

@@ -1,4 +1,5 @@
 import api from '../axios'
+import type { PayslipSlipData } from '@/lib/payslipSlip'
 import type {
   HourlyPayrollBreakdown,
   PayrollEntry,
@@ -71,6 +72,12 @@ export const payrollApi = {
     api.get<unknown, PayrollEntry[]>('/payroll/entries', { params }),
   getEntry: (id: string) =>
     api.get<unknown, PayrollEntry>(`/payroll/entries/${id}`),
+  /** Payslips for many entries at once (bulk print). */
+  getPayslips: (entryIds: string[]) =>
+    api.post<unknown, { entryId: string; slip: PayslipSlipData }[]>(
+      '/payroll/payslips',
+      { entryIds },
+    ),
   getEntryFull: (id: string) =>
     api.get<
       unknown,
@@ -84,6 +91,16 @@ export const payrollApi = {
     api.post<unknown, PayrollEntry>('/payroll/entries', data),
   addDeduction: (data: Record<string, unknown>) =>
     api.post<unknown, PayrollEntry>('/payroll/deductions', data),
+  addDeductions: (data: {
+    payrollEntryId: string
+    items: { reason: string; amount: number; description?: string }[]
+  }) => api.post<unknown, PayrollEntry>('/payroll/deductions/batch', data),
+  updateDeduction: (
+    id: string,
+    data: { reason?: string; amount?: number; description?: string | null },
+  ) => api.patch<unknown, PayrollEntry>(`/payroll/deductions/${id}`, data),
+  removeDeduction: (id: string) =>
+    api.delete<unknown, PayrollEntry>(`/payroll/deductions/${id}`),
   addAllowance: (data: Record<string, unknown>) =>
     api.post<unknown, PayrollEntry>('/payroll/allowances', data),
   updateStatus: (id: string, data: Record<string, unknown>) =>

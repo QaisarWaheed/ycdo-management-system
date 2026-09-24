@@ -109,6 +109,13 @@ export class CreateSystemLoginDto {
   @IsOptional()
   @IsUUID()
   branchId?: string;
+
+  /** Allow/Deny overrides set at creation; omitted entries use the role default. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PermissionOverrideDto)
+  permissions?: PermissionOverrideDto[];
 }
 
 export class ResetLoginPasswordDto {

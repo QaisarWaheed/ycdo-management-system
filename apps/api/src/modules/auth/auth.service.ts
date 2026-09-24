@@ -230,7 +230,8 @@ export class AuthService {
       branchId: user.branchId,
     };
 
-    const permissions = await this.getGrantedPermissions(user.id, user.role);
+    const { permissions, permissionOverrides } =
+      await this.getPermissionAccess(user.id, user.role);
 
     return {
       access_token: this.jwtService.sign(payload),
@@ -242,6 +243,7 @@ export class AuthService {
         employeeId: user.employeeId,
         branchId: user.branchId,
         permissions,
+        permissionOverrides,
       },
     };
   }
@@ -298,19 +300,26 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await this.validateUser(userId);
     const roles = await this.permissionsService.getUserEffectiveRoles(userId);
-    const permissions = await this.getGrantedPermissions(user.id, user.role);
-    return { ...user, roles, permissions };
+    const { permissions, permissionOverrides } =
+      await this.getPermissionAccess(user.id, user.role);
+    return { ...user, roles, permissions, permissionOverrides };
   }
 
-  private async getGrantedPermissions(
-    userId: string,
-    role: User['role'],
-  ): Promise<string[]> {
+  /** Effective permissions, plus IT's explicit Grant/Deny so the HRMS sidebar can honour them. */
+  private async getPermissionAccess(userId: string, role: User['role']) {
     const effective = await this.permissionsService.getEffectivePermissions(
       userId,
       role,
     );
-    return effective.filter((p) => p.effective).map((p) => p.permission);
+    const permissionOverrides: Record<string, boolean> = {};
+    for (const p of effective) {
+      if (p.source === 'override_grant') permissionOverrides[p.permission] = true;
+      if (p.source === 'override_deny') permissionOverrides[p.permission] = false;
+    }
+    return {
+      permissions: effective.filter((p) => p.effective).map((p) => p.permission),
+      permissionOverrides,
+    };
   }
 
   async register(dto: RegisterDto): Promise<UserWithoutPassword> {

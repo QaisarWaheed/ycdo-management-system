@@ -1,4 +1,4 @@
-import { useMemo, useState, Fragment } from 'react'
+import { useCallback, useMemo, useState, Fragment } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -22,6 +22,8 @@ import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { PKRInput } from '@/components/common/PKRInput'
 import { PayslipDocument } from '@/components/payroll/PayslipDocument'
+import { PayslipPrintSheet } from '@/components/payroll/PayslipPrintSheet'
+import type { PayslipSlipData } from '@/lib/payslipSlip'
 import {
   buildMonthlyPayrollReportRows,
   PayrollReportPrintSection,
@@ -77,6 +79,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
+import { getApiErrorMessage } from '@/lib/apiErrorMessage'
 import { usePagination } from '@/hooks/usePagination'
 import { useAuth } from '@/hooks/useAuth'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
@@ -86,6 +89,10 @@ import {
   ALLOWANCE_TYPES,
   DEDUCTION_TYPES,
   type AllowanceType,
+  type DeductionType,
+  type PayrollDeduction,
+  deductionReasonLabel,
+  isManualDeduction,
   type PayrollEntry,
   type PayrollStatus,
   type StipendReceipt,
@@ -111,18 +118,194 @@ function PayrollStatusBadge({ status }: { status: string }) {
   )
 }
 
-const deductionSchema = z.object({
-  reason: z.enum([
-    'LATE_ARRIVAL',
-    'UNINFORMED_ABSENCE',
-    'DISCIPLINARY_FINE',
-    'OTHER',
-  ]),
-  amount: z.number().positive('Amount must be greater than 0'),
-  description: z.string().optional(),
-})
+function DeductionsTable({
+  deductions,
+  editable,
+  onChanged,
+}: {
+  deductions: PayrollDeduction[]
+  editable: boolean
+  onChanged: () => void
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draftReason, setDraftReason] = useState<DeductionType>('OTHER')
+  const [draftAmount, setDraftAmount] = useState(0)
+  const [draftDescription, setDraftDescription] = useState('')
+  const [removing, setRemoving] = useState<PayrollDeduction | null>(null)
 
-type DeductionFormValues = z.infer<typeof deductionSchema>
+  const showError =
+    (title: string) =>
+    (err: { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message
+      toast({
+        title,
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    }
+
+  const saveMutation = useMutation({
+    mutationFn: (id: string) =>
+      payrollApi.updateDeduction(id, {
+        reason: draftReason,
+        amount: draftAmount,
+        description: draftDescription.trim() || null,
+      }),
+    onSuccess: () => {
+      toast({ title: 'Deduction updated' })
+      setEditingId(null)
+      onChanged()
+    },
+    onError: showError('Failed to update deduction'),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => payrollApi.removeDeduction(id),
+    onSuccess: () => {
+      toast({ title: 'Deduction removed' })
+      setRemoving(null)
+      onChanged()
+    },
+    onError: showError('Failed to remove deduction'),
+  })
+
+  const startEdit = (d: PayrollDeduction) => {
+    setEditingId(d.id)
+    setDraftReason(d.reason as DeductionType)
+    setDraftAmount(Number(d.amount) || 0)
+    setDraftDescription(d.description ?? '')
+  }
+
+  const columns = editable ? 4 : 3
+
+  return (
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Reason</TableHead>
+            <TableHead>Amount</TableHead>
+            <TableHead>Description</TableHead>
+            {editable && <TableHead className="w-[150px] text-right">Actions</TableHead>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {deductions.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={columns} className="text-text-secondary">
+                No deductions
+              </TableCell>
+            </TableRow>
+          ) : (
+            deductions.map((d) =>
+              editingId === d.id ? (
+                <TableRow key={d.id}>
+                  <TableCell className="min-w-[160px]">
+                    <Select
+                      value={draftReason}
+                      onValueChange={(v) => setDraftReason(v as DeductionType)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DEDUCTION_TYPES.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>
+                            {t.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="min-w-[140px]">
+                    <PKRInput value={draftAmount} onChange={setDraftAmount} />
+                  </TableCell>
+                  <TableCell className="min-w-[160px]">
+                    <Input
+                      value={draftDescription}
+                      onChange={(e) => setDraftDescription(e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        size="sm"
+                        disabled={draftAmount <= 0 || saveMutation.isPending}
+                        onClick={() => saveMutation.mutate(d.id)}
+                      >
+                        {saveMutation.isPending ? 'Saving...' : 'Save'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditingId(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <TableRow key={d.id}>
+                  <TableCell>{deductionReasonLabel(d.reason)}</TableCell>
+                  <TableCell className="text-red-600">{formatPKR(d.amount)}</TableCell>
+                  <TableCell>{d.description ?? '—'}</TableCell>
+                  {editable && (
+                    <TableCell className="text-right">
+                      {isManualDeduction(d) ? (
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={editingId !== null}
+                            onClick={() => startEdit(d)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:text-red-700"
+                            disabled={editingId !== null}
+                            onClick={() => setRemoving(d)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ) : (
+                        <span
+                          className="text-xs text-text-secondary"
+                          title="Created by attendance or disciplinary records; change it there"
+                        >
+                          System
+                        </span>
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              ),
+            )
+          )}
+        </TableBody>
+      </Table>
+      <ConfirmDialog
+        open={!!removing}
+        onCancel={() => setRemoving(null)}
+        title="Remove deduction"
+        description={
+          removing
+            ? `Remove ${deductionReasonLabel(removing.reason)} of ${formatPKR(removing.amount)}? It will be added back to net pay.`
+            : ''
+        }
+        confirmLabel="Remove"
+        confirmVariant="destructive"
+        loading={removeMutation.isPending}
+        onConfirm={() => removing && removeMutation.mutate(removing.id)}
+      />
+    </>
+  )
+}
 
 function AddDeductionForm({
   payrollEntryId,
@@ -131,17 +314,25 @@ function AddDeductionForm({
   payrollEntryId: string
   onSuccess: () => void
 }) {
-  const form = useForm<DeductionFormValues>({
-    resolver: zodResolver(deductionSchema),
-    defaultValues: { reason: 'OTHER', amount: 0, description: '' },
+  const [amounts, setAmounts] = useState<Partial<Record<DeductionType, number>>>({})
+  const [description, setDescription] = useState('')
+
+  const items = DEDUCTION_TYPES.flatMap(({ value }) => {
+    const amount = amounts[value] ?? 0
+    return amount > 0
+      ? [{ reason: value, amount, description: description.trim() || undefined }]
+      : []
   })
+  const total = items.reduce((sum, item) => sum + item.amount, 0)
 
   const mutation = useMutation({
-    mutationFn: (values: DeductionFormValues) =>
-      payrollApi.addDeduction({ payrollEntryId, ...values }),
+    mutationFn: () => payrollApi.addDeductions({ payrollEntryId, items }),
     onSuccess: () => {
-      toast({ title: 'Deduction added' })
-      form.reset()
+      toast({
+        title: items.length === 1 ? 'Deduction added' : `${items.length} deductions added`,
+      })
+      setAmounts({})
+      setDescription('')
       onSuccess()
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -155,67 +346,50 @@ function AddDeductionForm({
   })
 
   return (
-    <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit((v) => mutation.mutate(v))}
-        className="space-y-3 border-t border-border pt-4"
-      >
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (items.length) mutation.mutate()
+      }}
+      className="space-y-3 border-t border-border pt-4"
+    >
+      <div>
         <p className="text-sm font-medium">Add Deduction</p>
-        <FormField
-          control={form.control}
-          name="reason"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Reason</FormLabel>
-              <Select value={field.value} onValueChange={field.onChange}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {DEDUCTION_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
+        <p className="text-xs text-text-secondary">
+          Enter an amount against each cause that applies; empty fields are skipped.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {DEDUCTION_TYPES.map(({ value, label }) => (
+          <div key={value} className="space-y-1">
+            <Label htmlFor={`deduction-${value}`}>{label}</Label>
+            <PKRInput
+              id={`deduction-${value}`}
+              value={amounts[value] ?? 0}
+              onChange={(amount) =>
+                setAmounts((prev) => ({ ...prev, [value]: amount }))
+              }
+            />
+          </div>
+        ))}
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="deduction-description">Description (optional)</Label>
+        <Textarea
+          id="deduction-description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
         />
-        <FormField
-          control={form.control}
-          name="amount"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Amount</FormLabel>
-              <FormControl>
-                <PKRInput value={field.value} onChange={field.onChange} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Description</FormLabel>
-              <FormControl>
-                <Textarea {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <Button type="submit" disabled={mutation.isPending} size="sm">
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-text-secondary">
+          Total: <span className="font-medium text-foreground">{formatPKR(total)}</span>
+        </p>
+        <Button type="submit" disabled={mutation.isPending || !items.length} size="sm">
           {mutation.isPending ? 'Adding...' : 'Add Deduction'}
         </Button>
-      </form>
-    </Form>
+      </div>
+    </form>
   )
 }
 
@@ -340,6 +514,8 @@ function PayrollDetailDialog({
 }) {
   const queryClient = useQueryClient()
   const [detailTab, setDetailTab] = useState('deductions')
+  const { hasPermission } = useAuth()
+  const canManagePayroll = hasPermission('PAYROLL_MANAGE')
 
   const { data: fullEntry, refetch } = useQuery({
     queryKey: ['payroll-entry-full', entry?.id],
@@ -553,34 +729,11 @@ function PayrollDetailDialog({
           </TabsList>
 
           <TabsContent value="deductions" className="no-print space-y-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Description</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {deductions.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-text-secondary">
-                      No deductions
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  deductions.map((d) => (
-                    <TableRow key={d.id}>
-                      <TableCell>{d.reason.replace(/_/g, ' ')}</TableCell>
-                      <TableCell className="text-red-600">
-                        {formatPKR(d.amount)}
-                      </TableCell>
-                      <TableCell>{d.description ?? '—'}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+            <DeductionsTable
+              deductions={deductions}
+              editable={entry.status === 'PENDING' && canManagePayroll}
+              onChanged={refresh}
+            />
             <p className="text-right font-semibold">
               Total Deductions: {formatPKR(totalDeductions)}
             </p>
@@ -654,6 +807,35 @@ function PayrollDetailDialog({
 }
 
 /** Employee profiles, attendance tab cards, and portal My Payroll read the same PayrollEntry rows. */
+function RowDeductionsEditor({
+  entry,
+  onAdded,
+}: {
+  entry: PayrollEntry
+  onAdded: () => void
+}) {
+  const queryClient = useQueryClient()
+  const { data: fullEntry, refetch } = useQuery({
+    queryKey: ['payroll-entry-full', entry.id],
+    queryFn: () => payrollApi.getEntryFull(entry.id),
+  })
+  const deductions = (fullEntry ?? entry).deductions ?? []
+
+  return (
+    <div className="space-y-4">
+      <DeductionsTable
+        deductions={deductions}
+        editable={entry.status === 'PENDING'}
+        onChanged={() => {
+          void refetch()
+          invalidatePayrollViews(queryClient)
+        }}
+      />
+      <AddDeductionForm payrollEntryId={entry.id} onSuccess={onAdded} />
+    </div>
+  )
+}
+
 function invalidatePayrollViews(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ['payroll-entries'] })
   queryClient.invalidateQueries({ queryKey: ['payroll-summary'] })
@@ -680,14 +862,8 @@ function MonthlyPayrollTab() {
   const [incentiveEmployeeId, setIncentiveEmployeeId] = useState<string | null>(
     null,
   )
-  const { hasRole } = useAuth()
-  const canAddIncentive = hasRole([
-    'SUPER_ADMIN',
-    'PAYROLL_OFFICER',
-    'HR_MANAGER',
-    'HR_ADMIN_MANAGER',
-    'ADMIN_OFFICER',
-  ])
+  const { hasPermission } = useAuth()
+  const canAddIncentive = hasPermission('INCENTIVES_MANAGE')
   const [confirmGenerate, setConfirmGenerate] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetAllUnpaidMonths, setResetAllUnpaidMonths] = useState(false)
@@ -754,6 +930,27 @@ function MonthlyPayrollTab() {
     entries,
     [filters],
   )
+
+  const [printSlips, setPrintSlips] = useState<PayslipSlipData[] | null>(null)
+  const clearPrintSlips = useCallback(() => setPrintSlips(null), [])
+  const payslipsMutation = useMutation({
+    mutationFn: () => payrollApi.getPayslips(entries.map((e) => e.id)),
+    onSuccess: (rows) => {
+      const byId = new Map(rows.map((row) => [row.entryId, row.slip]))
+      // Keep the on-screen order of the filtered list.
+      setPrintSlips(
+        entries
+          .map((e) => byId.get(e.id))
+          .filter((slip): slip is PayslipSlipData => !!slip),
+      )
+    },
+    onError: (err) =>
+      toast({
+        title: 'Could not load payslips',
+        description: getApiErrorMessage(err, 'Please try again'),
+        variant: 'destructive',
+      }),
+  })
 
   const { data: monthIncentives = [] } = useQuery({
     queryKey: ['incentives', monthYear.year, monthYear.month],
@@ -1032,6 +1229,20 @@ function MonthlyPayrollTab() {
           </Button>
           <PrintPayrollReportButton disabled={entries.length === 0} />
           <Button
+            variant="outline"
+            disabled={entries.length === 0 || payslipsMutation.isPending}
+            onClick={() => payslipsMutation.mutate()}
+            title="Print the payslips of all filtered employees, 4 per A4 page"
+          >
+            <Printer className="mr-2 h-4 w-4" />
+            {payslipsMutation.isPending
+              ? `Preparing ${entries.length} payslips...`
+              : 'Print Payslips (4 per page)'}
+          </Button>
+          {printSlips && printSlips.length > 0 && (
+            <PayslipPrintSheet slips={printSlips} onDone={clearPrintSlips} />
+          )}
+          <Button
             className="bg-primary hover:bg-primary-dark"
             onClick={() => setConfirmGenerate(true)}
           >
@@ -1256,13 +1467,13 @@ function MonthlyPayrollTab() {
           open={!!addDeductionEntry}
           onOpenChange={(v) => !v && setAddDeductionEntry(null)}
         >
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Add Deduction</DialogTitle>
+              <DialogTitle>Deductions</DialogTitle>
             </DialogHeader>
-            <AddDeductionForm
-              payrollEntryId={addDeductionEntry.id}
-              onSuccess={() => {
+            <RowDeductionsEditor
+              entry={addDeductionEntry}
+              onAdded={() => {
                 invalidatePayrollViews(queryClient)
                 setAddDeductionEntry(null)
               }}

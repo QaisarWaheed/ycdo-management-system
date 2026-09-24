@@ -62,6 +62,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { usePagination } from '@/hooks/usePagination'
 import { getApiErrorMessage } from '@/lib/apiErrorMessage'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
+import { roleAllowsPermission } from '@/lib/permissionDefaults'
 
 type LoginTypeFilter = 'all' | 'employee' | 'system'
 type PermissionMode = 'default' | 'grant' | 'deny'
@@ -386,6 +387,9 @@ function CreateSystemLoginDialog({
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('')
   const [branchId, setBranchId] = useState('')
+  const [permissionModes, setPermissionModes] = useState<
+    Partial<Record<AppPermission, PermissionMode>>
+  >({})
 
   const { data: meta } = useQuery({
     queryKey: ['user-access-meta'],
@@ -397,6 +401,14 @@ function CreateSystemLoginDialog({
     queryFn: () => branchesApi.getAll(),
   })
 
+  const resetForm = () => {
+    setEmail('')
+    setPassword('')
+    setRole('')
+    setBranchId('')
+    setPermissionModes({})
+  }
+
   const mutation = useMutation({
     mutationFn: () =>
       userAccessApi.createSystemLogin({
@@ -404,13 +416,16 @@ function CreateSystemLoginDialog({
         password,
         role,
         branchId: branchId || undefined,
+        permissions: Object.entries(permissionModes)
+          .filter(([, mode]) => mode && mode !== 'default')
+          .map(([permission, mode]) => ({
+            permission: permission as AppPermission,
+            granted: mode === 'grant',
+          })),
       }),
     onSuccess: () => {
       toast({ title: 'System login created' })
-      setEmail('')
-      setPassword('')
-      setRole('')
-      setBranchId('')
+      resetForm()
       onOpenChange(false)
       queryClient.invalidateQueries({ queryKey: ['login-access'] })
     },
@@ -428,16 +443,11 @@ function CreateSystemLoginDialog({
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        if (!v) {
-          setEmail('')
-          setPassword('')
-          setRole('')
-          setBranchId('')
-        }
+        if (!v) resetForm()
         onOpenChange(v)
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create System Login</DialogTitle>
         </DialogHeader>
@@ -488,6 +498,53 @@ function CreateSystemLoginDialog({
               </SelectContent>
             </Select>
           </div>
+          {role && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-base">Permissions</Label>
+                <p className="text-xs text-text-secondary">
+                  Default follows the role. Grant or deny to decide what this login
+                  can see and do — the sidebar only shows sections it is allowed.
+                </p>
+              </div>
+              <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border border-border p-3">
+                {(meta?.permissions ?? []).map(({ permission, label }) => (
+                  <div
+                    key={permission}
+                    className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2 last:border-0 last:pb-0"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{label}</p>
+                      <p className="text-xs text-text-secondary">
+                        Role default:{' '}
+                        {roleAllowsPermission(role, permission)
+                          ? 'Allowed'
+                          : 'Not allowed'}
+                      </p>
+                    </div>
+                    <Select
+                      value={permissionModes[permission] ?? 'default'}
+                      onValueChange={(v) =>
+                        setPermissionModes((prev) => ({
+                          ...prev,
+                          [permission]: v as PermissionMode,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-[130px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">Default</SelectItem>
+                        <SelectItem value="grant">Grant</SelectItem>
+                        <SelectItem value="deny">Deny</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

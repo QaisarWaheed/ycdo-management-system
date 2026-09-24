@@ -10,6 +10,8 @@ export interface User {
   branchId?: string | null
   /** Effective permission keys granted via role defaults + Login Access overrides */
   permissions?: string[]
+  /** IT's explicit Login Access choices: true = Grant, false = Deny */
+  permissionOverrides?: Record<string, boolean>
 }
 
 export interface AuthLoginResponse {
@@ -694,6 +696,13 @@ export type DeductionType =
   | 'UNPAID_LEAVE'
   | 'HALF_DAY'
   | 'OTHER'
+  | 'MEDICINE_PENDING'
+  | 'KITCHEN_PENDING'
+  | 'LOAN'
+  | 'ADVANCE'
+  | 'ELECTRICITY_BILL'
+  | 'MOBILE_BILL'
+  | 'FINE'
 
 export interface PayrollDeduction {
   id: string
@@ -856,13 +865,32 @@ export const ATTENDANCE_STATUSES: AttendanceStatus[] = [
   'HOLIDAY',
 ]
 
+/**
+ * Causes HR can deduct by hand. Attendance deductions (late, absence, half
+ * day) come from the Attendance Card and are rejected by the API here.
+ */
 export const DEDUCTION_TYPES: { value: DeductionType; label: string }[] = [
-  { value: 'LATE_ARRIVAL', label: 'Late Arrival' },
-  { value: 'UNINFORMED_ABSENCE', label: 'Uninformed Absence' },
-  { value: 'HALF_DAY', label: 'Half Day' },
-  { value: 'DISCIPLINARY_FINE', label: 'Disciplinary Fine' },
-  { value: 'OTHER', label: 'Other' },
+  { value: 'MEDICINE_PENDING', label: 'Medicine Pending' },
+  { value: 'KITCHEN_PENDING', label: 'Kitchen Pending' },
+  { value: 'LOAN', label: 'Loan' },
+  { value: 'ADVANCE', label: 'Advances' },
+  { value: 'ELECTRICITY_BILL', label: 'Electricity Bill' },
+  { value: 'MOBILE_BILL', label: 'Mobile Bill' },
+  { value: 'OTHER', label: 'Other Deductions' },
+  { value: 'FINE', label: 'Fine' },
 ]
+
+/** Manually added deductions are the only ones HR can edit or remove from payroll. */
+export function isManualDeduction(d: { reason: string; description?: string | null }) {
+  if (!DEDUCTION_TYPES.some((t) => t.value === d.reason)) return false
+  return !(d.reason === 'OTHER' && /^Unmarked day \(/.test(d.description ?? ''))
+}
+
+export function deductionReasonLabel(reason: string) {
+  return (
+    DEDUCTION_TYPES.find((t) => t.value === reason)?.label ?? reason.replace(/_/g, ' ')
+  )
+}
 
 export interface AttendanceSummary {
   totalDays: number

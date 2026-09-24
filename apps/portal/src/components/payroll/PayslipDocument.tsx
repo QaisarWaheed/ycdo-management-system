@@ -70,7 +70,12 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
       slip.deductions.fine +
       slip.deductions.health +
       (slip.deductions.providentFund ?? 0) +
-      (slip.deductions.tax ?? 0)
+      (slip.deductions.tax ?? 0) +
+      (slip.deductions.staffPendingMed ?? 0) +
+      (slip.deductions.kitchenPending ?? 0) +
+      (slip.deductions.electricityBill ?? 0) +
+      (slip.deductions.mobileBill ?? 0) +
+      (slip.deductions.other ?? 0)
 
   return (
     <div className="print-content mx-auto max-w-[820px] overflow-x-auto bg-white p-2 text-black sm:p-4">
@@ -156,12 +161,29 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
               />
               <MoneyRow label="Absence" amount={slip.deductions.absence} />
               <MoneyRow label="Fine" amount={slip.deductions.fine} />
+              <MoneyRow
+                label="Medicine Pending"
+                amount={slip.deductions.staffPendingMed ?? 0}
+              />
+              <MoneyRow
+                label="Kitchen Pending"
+                amount={slip.deductions.kitchenPending ?? 0}
+              />
+              <MoneyRow
+                label="Electricity Bill"
+                amount={slip.deductions.electricityBill ?? 0}
+              />
+              <MoneyRow
+                label="Mobile Bill"
+                amount={slip.deductions.mobileBill ?? 0}
+              />
               <MoneyRow label="Health" amount={slip.deductions.health} />
               <MoneyRow
                 label="Provident Fund"
                 amount={slip.deductions.providentFund ?? 0}
               />
               <MoneyRow label="Tax" amount={slip.deductions.tax ?? 0} />
+              <MoneyRow label="Other" amount={slip.deductions.other ?? 0} />
               <MoneyRow label="Deduction" amount={deductionsTotal} bold />
               <MoneyRow label="Net Pay" amount={netPay} bold />
             </tbody>

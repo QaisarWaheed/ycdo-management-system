@@ -12,10 +12,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { UserRole } from '@prisma/client';
+import { Permission, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, AlsoAllowPermission } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
   ApproveOvertimeDto,
@@ -263,6 +263,7 @@ export class AttendanceController {
   }
 
   @Get('summary/:employeeId')
+  @AlsoAllowPermission(Permission.REPORTS_VIEW)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     UserRole.SUPER_ADMIN,
@@ -392,6 +393,7 @@ export class AttendanceController {
   }
 
   @Get()
+  @AlsoAllowPermission(Permission.REPORTS_VIEW)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     UserRole.SUPER_ADMIN,

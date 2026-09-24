@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   BarChart3,
   Bell,
@@ -24,6 +26,8 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { authApi } from '@/api/endpoints/auth'
+import { useAuthStore } from '@/store/auth.store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
@@ -139,6 +143,20 @@ function navItemsForRole(role?: string) {
     )
   }
 
+  if (role === 'PAYROLL_OFFICER') {
+    return allNavItems.filter((item) =>
+      ['/dashboard', '/employees', '/payroll', '/incentives', '/letters', '/reports'].includes(
+        item.to,
+      ),
+    )
+  }
+
+  if (role === 'PROGRESS_OFFICER') {
+    return allNavItems.filter((item) =>
+      ['/dashboard', '/employees', '/letters', '/reports'].includes(item.to),
+    )
+  }
+
   if (role === 'IT_ADMIN') {
     return [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -157,25 +175,153 @@ function navItemsForRole(role?: string) {
   return allNavItems
 }
 
+/**
+ * What each section needs on the server. `permission` sections follow Login
+ * Access (IT Grant/Deny); `roles` mirror the @Roles on the page's main API
+ * read, so the menu never offers a page that would come back empty or denied.
+ * Sections not listed here are open to every HRMS login.
+ */
+const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> = {
+  '/employees': { permission: 'EMPLOYEES_VIEW' },
+  '/payroll': { permission: 'PAYROLL_VIEW' },
+  '/incentives': { permission: 'INCENTIVES_VIEW' },
+  '/reports': { permission: 'REPORTS_VIEW' },
+  '/letters': { permission: 'LETTERS_GENERATE' },
+  '/portal-login': {
+    roles: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_EXECUTIVE', 'HR_OPERATIONS_MANAGER'],
+  },
+  '/attendance': {
+    roles: [
+      'HR_MANAGER',
+      'HR_ADMIN_MANAGER',
+      'HR_OPERATIONS_MANAGER',
+      'HR_EXECUTIVE',
+      'ADMIN_MANAGER',
+      'ADMIN_OFFICER',
+      'MEDICINE_MANAGER',
+      'IT_ADMIN',
+      'CHAIRMAN',
+      'FOUNDER',
+      'PRESIDENT',
+    ],
+  },
+  '/branch-change-request': {
+    roles: [
+      'HR_MANAGER',
+      'HR_ADMIN_MANAGER',
+      'HR_OPERATIONS_MANAGER',
+      'HR_EXECUTIVE',
+      'ADMIN_MANAGER',
+      'ADMIN_OFFICER',
+      'CHAIRMAN',
+      'FOUNDER',
+      'PRESIDENT',
+    ],
+  },
+  '/leave': {
+    roles: [
+      'HR_MANAGER',
+      'HR_ADMIN_MANAGER',
+      'HR_OPERATIONS_MANAGER',
+      'HR_EXECUTIVE',
+      'ADMIN_MANAGER',
+      'ADMIN_OFFICER',
+      'IT_ADMIN',
+      'CHAIRMAN',
+      'FOUNDER',
+      'PRESIDENT',
+    ],
+  },
+  '/recruitment': { roles: ['HR_MANAGER', 'HR_EXECUTIVE', 'ADMIN_MANAGER'] },
+  '/broadcasts': { roles: ['IT_ADMIN', 'HR_EXECUTIVE'] },
+  // The Activity Trail page only renders its data for Super Admin.
+  '/activity-trail': { roles: [] },
+  '/admin/master-data': { roles: ['IT_ADMIN'] },
+  '/admin/roles': { roles: ['IT_ADMIN'] },
+  '/admin/login-access': { roles: ['IT_ADMIN'] },
+  '/admin/letter-templates': {
+    roles: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_EXECUTIVE', 'ADMIN_MANAGER', 'ADMIN_OFFICER', 'IT_ADMIN'],
+  },
+  '/admin/appointment-letter-settings': {
+    roles: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_EXECUTIVE', 'ADMIN_MANAGER'],
+  },
+}
+
+/** Roles whose menu is exactly their curated list (no Biometric IDs / Rule Book). */
+const FIXED_MENU_ROLES = ['PAYROLL_OFFICER', 'PROGRESS_OFFICER']
+
 function useSidebarNavItems() {
-  const { user } = useAuth()
+  const { user, hasRole, hasPermission } = useAuth()
+  const overrides = user?.permissionOverrides ?? {}
+  const isSuperAdmin = hasRole(['SUPER_ADMIN'])
+
+  const canOpen = (to: string) => {
+    if (isSuperAdmin) return true
+    const access = SECTION_ACCESS[to]
+    if (!access) return true
+    if (access.permission) {
+      if (overrides[access.permission] === false) return false
+      return hasPermission(access.permission)
+    }
+    return access.roles ? hasRole(access.roles) : true
+  }
+
   const roleNavItems = navItemsForRole(user?.role)
-  const employeeIndex = roleNavItems.findIndex((item) => item.to === '/employees')
-  const insertionIndex =
-    employeeIndex >= 0
-      ? employeeIndex + 1
-      : Math.max(1, roleNavItems.findIndex((item) => item.to === '/dashboard') + 1)
-  return [
-    ...roleNavItems.slice(0, insertionIndex),
-    biometricIdsNavItem,
-    ...roleNavItems.slice(insertionIndex),
-    ruleBookNavItem,
-  ]
+  let items = roleNavItems
+  if (!FIXED_MENU_ROLES.includes(user?.role ?? '')) {
+    const employeeIndex = items.findIndex((item) => item.to === '/employees')
+    const insertionIndex =
+      employeeIndex >= 0
+        ? employeeIndex + 1
+        : Math.max(1, items.findIndex((item) => item.to === '/dashboard') + 1)
+    items = [
+      ...items.slice(0, insertionIndex),
+      biometricIdsNavItem,
+      ...items.slice(insertionIndex),
+      ruleBookNavItem,
+    ]
+  }
+
+  // IT "Grant" on a section permission adds that section even when the role's
+  // menu leaves it out.
+  const granted = allNavItems.filter((item) => {
+    const permission = SECTION_ACCESS[item.to]?.permission
+    return (
+      !!permission &&
+      overrides[permission] === true &&
+      !items.some((existing) => existing.to === item.to)
+    )
+  })
+  if (granted.length) {
+    const order = allNavItems.map((item) => item.to)
+    const rank = (to: string) => {
+      const index = order.indexOf(to)
+      return index === -1 ? order.length : index
+    }
+    items = [...items, ...granted].sort((a, b) => rank(a.to) - rank(b.to))
+  }
+
+  return items.filter((item) => canOpen(item.to))
+}
+
+function useRefreshCurrentUser() {
+  const { isAuthenticated } = useAuth()
+  const updateUser = useAuthStore((state) => state.updateUser)
+  const { data } = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: () => authApi.me(),
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+  })
+  useEffect(() => {
+    if (data) updateUser(data)
+  }, [data, updateUser])
 }
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  useRefreshCurrentUser()
   const navItems = useSidebarNavItems()
   const emailName = user?.email?.split('@')[0] ?? 'User'
 

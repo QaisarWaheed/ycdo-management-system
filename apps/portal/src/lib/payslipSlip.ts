@@ -39,6 +39,10 @@ export interface PayslipSlipData {
     tax: number
     auditDifference: number
     staffPendingMed: number
+    kitchenPending?: number
+    electricityBill?: number
+    mobileBill?: number
+    other?: number
   }
   earningsTotal: number
   deductionsTotal: number
@@ -135,8 +139,37 @@ export function buildPayslipSlipFromEntry(data: {
     .reduce((s, d) => s + money(d.amount), 0)
   const fineEntries = deductions
     .filter(
-      (d) => d.reason === 'DISCIPLINARY_FINE' || d.reason === 'LATE_ARRIVAL',
+      (d) =>
+        d.reason === 'DISCIPLINARY_FINE' ||
+        d.reason === 'FINE' ||
+        d.reason === 'LATE_ARRIVAL',
     )
+    .reduce((s, d) => s + money(d.amount), 0)
+  const sumReason = (reason: string) =>
+    deductions
+      .filter((d) => d.reason === reason)
+      .reduce((s, d) => s + money(d.amount), 0)
+  const knownReasons = new Set([
+    'UNINFORMED_ABSENCE',
+    'UNPAID_LEAVE',
+    'DISCIPLINARY_FINE',
+    'FINE',
+    'LATE_ARRIVAL',
+    'LOAN',
+    'ADVANCE',
+    'MEDICINE_PENDING',
+    'KITCHEN_PENDING',
+    'ELECTRICITY_BILL',
+    'MOBILE_BILL',
+  ])
+  const otherDeduction = deductions
+    .filter((d) => !knownReasons.has(d.reason))
+    .reduce((s, d) => s + money(d.amount), 0)
+  const loanEntries = deductions
+    .filter((d) => d.reason === 'LOAN')
+    .reduce((s, d) => s + money(d.amount), 0)
+  const advanceEntries = deductions
+    .filter((d) => d.reason === 'ADVANCE')
     .reduce((s, d) => s + money(d.amount), 0)
 
   const payPeriod = new Date(data.year, data.month - 1, 1).toLocaleString(
@@ -156,8 +189,8 @@ export function buildPayslipSlipFromEntry(data: {
   }
 
   const deductionsBlock = {
-    advance: money(pkg?.advanceDeduction),
-    loan: money(pkg?.loanDeduction),
+    advance: money(pkg?.advanceDeduction) + advanceEntries,
+    loan: money(pkg?.loanDeduction) + loanEntries,
     mobileLoad: 0,
     absence,
     fine: money(pkg?.fineDeduction) + fineEntries,
@@ -165,7 +198,11 @@ export function buildPayslipSlipFromEntry(data: {
     providentFund: 0,
     tax: 0,
     auditDifference: 0,
-    staffPendingMed: 0,
+    staffPendingMed: sumReason('MEDICINE_PENDING'),
+    kitchenPending: sumReason('KITCHEN_PENDING'),
+    electricityBill: sumReason('ELECTRICITY_BILL'),
+    mobileBill: sumReason('MOBILE_BILL'),
+    other: otherDeduction,
   }
 
   const earningsTotal =
@@ -188,7 +225,11 @@ export function buildPayslipSlipFromEntry(data: {
     deductionsBlock.providentFund +
     deductionsBlock.tax +
     deductionsBlock.auditDifference +
-    deductionsBlock.staffPendingMed
+    deductionsBlock.staffPendingMed +
+    deductionsBlock.kitchenPending +
+    deductionsBlock.electricityBill +
+    deductionsBlock.mobileBill +
+    deductionsBlock.other
 
   const netPay = money(data.netStipend)
   const dutyTime =

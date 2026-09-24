@@ -42,7 +42,11 @@ export interface PayslipSlipData {
     providentFund: number;
     tax: number;
     auditDifference: number;
+    /** Medicine Pending */
     staffPendingMed: number;
+    kitchenPending: number;
+    electricityBill: number;
+    mobileBill: number;
     /** Catch-all for deduction reasons not covered by the fixed categories above, so nothing is silently dropped from the printed total. */
     other: number;
   };
@@ -126,6 +130,9 @@ export function computeDeductionsTotal(
     deductions.tax +
     deductions.auditDifference +
     deductions.staffPendingMed +
+    deductions.kitchenPending +
+    deductions.electricityBill +
+    deductions.mobileBill +
     deductions.other
   );
 }

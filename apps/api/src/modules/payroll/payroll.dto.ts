@@ -1,7 +1,10 @@
 import { AllowanceType, DeductionType, PayrollStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   Equals,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -11,6 +14,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  ValidateNested,
   IsUUID,
   Max,
   Min,
@@ -76,6 +80,50 @@ export class AddDeductionDto {
   @IsOptional()
   @IsString()
   description?: string;
+}
+
+export class DeductionItemDto {
+  @IsEnum(DeductionType)
+  @IsNotEmpty()
+  reason: DeductionType;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  amount: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+export class UpdateDeductionDto {
+  @IsOptional()
+  @IsEnum(DeductionType)
+  reason?: DeductionType;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  amount?: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+}
+
+/** Several deduction causes for one payroll entry, saved together. */
+export class AddDeductionsDto {
+  @IsUUID()
+  @IsNotEmpty()
+  payrollEntryId: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => DeductionItemDto)
+  items: DeductionItemDto[];
 }
 
 export class AddAllowanceDto {
@@ -411,4 +459,13 @@ export class PayrollQueryDto {
   @IsOptional()
   @IsEnum(PayrollStatus)
   status?: PayrollStatus;
+}
+
+/** Payroll entries whose payslips are printed together (4 per A4 page). */
+export class PayslipBatchDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
+  @IsUUID('all', { each: true })
+  entryIds: string[];
 }

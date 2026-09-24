@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -9,14 +10,21 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Permission, UserRole } from '@prisma/client';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import {
+  AlsoAllowPermission,
+  Roles,
+  RoutePermission,
+} from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
   AddDeductionDto,
+  AddDeductionsDto,
+  UpdateDeductionDto,
+  PayslipBatchDto,
   AddAllowanceDto,
   ApplyOvertimeDto,
   CreatePayrollEntryDto,
@@ -64,6 +72,7 @@ export class PayrollController {
   constructor(private payrollService: PayrollService) {}
   @Post('entries')
   @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
   createOrGetEntry(
     @Body() dto: CreatePayrollEntryDto,
     @CurrentUser() user: { id: string; role: UserRole },
@@ -80,6 +89,7 @@ export class PayrollController {
    */
   @Post('recompute-month')
   @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
   recomputeEmployeeMonth(
     @Body() dto: ApplyOvertimeDto,
     @CurrentUser() user: { id: string; role: UserRole },
@@ -104,6 +114,7 @@ export class PayrollController {
    */
   @Post('recompute-month-all')
   @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
   recomputeMonthAll(
     @Body() dto: RecomputeMonthAllDto,
     @CurrentUser() user: { id: string; role: UserRole },
@@ -113,6 +124,7 @@ export class PayrollController {
 
   @Post('reset-unpaid')
   @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
   resetUnpaidPayroll(
     @Body() dto: ResetUnpaidPayrollDto,
     @CurrentUser() user: { id: string; role: UserRole },
@@ -122,6 +134,7 @@ export class PayrollController {
 
   @Post('rebuild-from-attendance')
   @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
   rebuildPayrollFromAttendanceAndLetters(
     @Body() dto: RebuildPayrollDto,
     @CurrentUser() user: { id: string; role: UserRole },
@@ -131,12 +144,42 @@ export class PayrollController {
 
   @Post('deductions')
   @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
   addDeduction(@Body() dto: AddDeductionDto) {
     return this.payrollService.addDeduction(dto);
   }
 
+  @Post('deductions/batch')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
+  addDeductions(@Body() dto: AddDeductionsDto) {
+    return this.payrollService.addDeductions(dto);
+  }
+
+  @Patch('deductions/:id')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
+  updateDeduction(
+    @Param('id') id: string,
+    @Body() dto: UpdateDeductionDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.payrollService.updateDeduction(id, dto, user.id);
+  }
+
+  @Delete('deductions/:id')
+  @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
+  removeDeduction(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.payrollService.removeDeduction(id, user.id);
+  }
+
   @Post('allowances')
   @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
   addAllowance(@Body() dto: AddAllowanceDto) {
     return this.payrollService.addAllowance(dto);
   }
@@ -176,6 +219,7 @@ export class PayrollController {
 
   @Get('summary')
   @Roles(...PAYROLL_READ_ROLES)
+  @RoutePermission(Permission.PAYROLL_VIEW)
   getMonthlyPayrollSummary(
     @Query('month') month: string,
     @Query('year') year: string,
@@ -194,6 +238,7 @@ export class PayrollController {
 
   @Get('report')
   @Roles(...PAYROLL_READ_ROLES)
+  @RoutePermission(Permission.PAYROLL_VIEW)
   async downloadPayrollReport(
     @Query('branchId') branchId: string,
     @Query('month') month: string,
@@ -234,6 +279,7 @@ export class PayrollController {
 
   @Get('entries')
   @Roles(...PAYROLL_READ_ROLES)
+  @RoutePermission(Permission.PAYROLL_VIEW)
   findAll(
     @Query() query: PayrollQueryDto,
     @CurrentUser() user: { id: string; role: UserRole },
@@ -241,7 +287,19 @@ export class PayrollController {
     return this.payrollService.findAll(query, user);
   }
 
+  @Post('payslips')
+  @Roles(...PAYROLL_READ_ROLES)
+  @RoutePermission(Permission.PAYROLL_VIEW)
+  getPayslips(
+    @Body() dto: PayslipBatchDto,
+    @CurrentUser()
+    user: { id: string; role: UserRole; employeeId?: string | null },
+  ) {
+    return this.payrollService.getPayslips(dto, user);
+  }
+
   @Get('entries/:id/full')
+  @AlsoAllowPermission(Permission.PAYROLL_VIEW)
   @Roles(...PAYROLL_WRITE_ROLES, UserRole.EMPLOYEE, UserRole.HR_EXECUTIVE)
   getEntryWithAllowances(
     @Param('id') id: string,
@@ -252,6 +310,7 @@ export class PayrollController {
   }
 
   @Get('entries/:id')
+  @AlsoAllowPermission(Permission.PAYROLL_VIEW)
   @Roles(...PAYROLL_WRITE_ROLES)
   findOne(@Param('id') id: string) {
     return this.payrollService.findOne(id);
@@ -259,6 +318,7 @@ export class PayrollController {
 
   @Post('increment')
   @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
   salaryIncrement(
     @Body() dto: SalaryIncrementDto,
     @CurrentUser() user: { id: string },
@@ -268,6 +328,7 @@ export class PayrollController {
 
   @Patch('stipend')
   @Roles(...PAYROLL_WRITE_ROLES)
+  @RoutePermission(Permission.PAYROLL_MANAGE)
   updateActiveStipend(
     @Body() dto: UpdateActiveStipendDto,
     @CurrentUser() user: { id: string },

@@ -37,6 +37,18 @@ export class PermissionsService {
     return buildEffectiveRoles(user.role, user.additionalRoles);
   }
 
+  /** IT override for one permission: true = Allow, false = Deny, null = role default. */
+  async getOverride(
+    userId: string,
+    permission: Permission,
+  ): Promise<boolean | null> {
+    const override = await this.prisma.userPermission.findUnique({
+      where: { userId_permission: { userId, permission } },
+      select: { granted: true },
+    });
+    return override ? override.granted : null;
+  }
+
   async userHasPermission(
     userId: string,
     role: UserRole,

@@ -603,6 +603,15 @@ enum DeductionType {
   UNPAID_LEAVE
   HALF_DAY
   OTHER
+  MEDICINE_PENDING
+  KITCHEN_PENDING
+  LOAN
+  ADVANCE
+  ELECTRICITY_BILL
+  MOBILE_BILL
+  /// Fine entered by hand in payroll; DISCIPLINARY_FINE is reserved for
+  /// system fines linked to attendance/inquiry records.
+  FINE
   /// One-day deduction for a quota-exceeded Full Leave HR rejected. Distinct
   /// from UNPAID_LEAVE (which is matched by reason alone and recomputed/
   /// upserted as a monthly aggregate elsewhere — reusing it here would risk
@@ -1267,11 +1276,14 @@ enum Permission {
   ATTENDANCE_EDIT
   LEAVE_APPROVE
   LEAVE_APPLY_OTHERS
+  PAYROLL_VIEW
   PAYROLL_MANAGE
+  EMPLOYEES_VIEW
   EMPLOYEES_CREATE
   EMPLOYEES_EDIT
   DISCIPLINARY_MANAGE
   LETTERS_GENERATE
+  INCENTIVES_VIEW
   INCENTIVES_MANAGE
   RECRUITMENT_MANAGE
   REPORTS_VIEW
@@ -1294,6 +1306,7 @@ enum UserRole {
   MEDICINE_MANAGER
   DEPARTMENT_HEAD
   PAYROLL_OFFICER
+  PROGRESS_OFFICER
   EMPLOYEE
 }
 

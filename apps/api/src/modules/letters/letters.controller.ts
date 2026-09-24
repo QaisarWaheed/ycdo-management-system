@@ -11,11 +11,11 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Permission, UserRole } from '@prisma/client';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, AlsoAllowPermission, RoutePermission } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import {
@@ -50,6 +50,7 @@ export class LettersController {
   ) {}
 
   @Get('templates')
+  @AlsoAllowPermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -103,6 +104,7 @@ export class LettersController {
   }
 
   @Post('preview')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -117,6 +119,7 @@ export class LettersController {
   }
 
   @Post('appointment-preview')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -214,6 +217,7 @@ export class LettersController {
   }
 
   @Post()
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -231,6 +235,7 @@ export class LettersController {
   }
 
   @Patch(':id')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -249,6 +254,7 @@ export class LettersController {
   }
 
   @Post(':id/send')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -266,6 +272,7 @@ export class LettersController {
   }
 
   @Post(':id/submit-for-approval')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -331,6 +338,7 @@ export class LettersController {
   }
 
   @Get()
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.IT_ADMIN,
@@ -376,6 +384,7 @@ export class LettersController {
   }
 
   @Get('pending')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -406,6 +415,7 @@ export class LettersController {
   }
 
   @Get(':id/pdf')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -440,6 +450,7 @@ export class LettersController {
   }
 
   @Get(':id/whatsapp-share')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -452,6 +463,7 @@ export class LettersController {
   }
 
   @Post(':id/mark-whatsapp-shared')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -464,6 +476,7 @@ export class LettersController {
   }
 
   @Get(':id')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -493,6 +506,7 @@ export class LettersController {
   }
 
   @Patch(':id/printed')
+  @RoutePermission(Permission.LETTERS_GENERATE)
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
   markPrinted(@Param('id') id: string) {
     return this.lettersService.markPrinted(id);

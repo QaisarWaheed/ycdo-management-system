@@ -1,10 +1,15 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserRole } from '@prisma/client';
-import { ROLES_KEY } from './roles.decorator';
+import { Permission, UserRole } from '@prisma/client';
+import {
+  ALSO_ALLOW_PERMISSIONS_KEY,
+  ROLES_KEY,
+  ROUTE_PERMISSION_KEY,
+} from './roles.decorator';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { hasAnyRole } from '../../common/user-roles.util';
+import { rolesDefaultAllow } from '../permissions/permissions.constants';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -20,7 +25,21 @@ export class RolesGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    if (!requiredRoles || requiredRoles.length === 0) {
+    const routePermission = this.reflector.getAllAndOverride<
+      Permission | undefined
+    >(ROUTE_PERMISSION_KEY, [context.getHandler(), context.getClass()]);
+
+    const alsoAllow =
+      this.reflector.getAllAndOverride<Permission[] | undefined>(
+        ALSO_ALLOW_PERMISSIONS_KEY,
+        [context.getHandler(), context.getClass()],
+      ) ?? [];
+
+    if (
+      (!requiredRoles || requiredRoles.length === 0) &&
+      !routePermission &&
+      alsoAllow.length === 0
+    ) {
       return true;
     }
 
@@ -38,6 +57,32 @@ export class RolesGuard implements CanActivate {
     if (hasAnyRole(effectiveRoles, [UserRole.SUPER_ADMIN])) {
       return true;
     }
+
+    // Permission-tied routes follow Login Access: an IT Deny closes the
+    // route, an IT Allow or the role default opens it; otherwise @Roles decides.
+    if (routePermission) {
+      const override = await this.permissionsService.getOverride(
+        user.id,
+        routePermission,
+      );
+      if (override === false) return false;
+      if (override === true) return true;
+      if (rolesDefaultAllow(effectiveRoles, routePermission)) return true;
+    }
+
+    for (const permission of alsoAllow) {
+      if (
+        await this.permissionsService.userHasPermission(
+          user.id,
+          user.role,
+          permission,
+        )
+      ) {
+        return true;
+      }
+    }
+
+    if (!requiredRoles || requiredRoles.length === 0) return false;
 
     if (hasAnyRole(effectiveRoles, [UserRole.HR_EXECUTIVE])) {
       const controllerName = context.getClass().name;

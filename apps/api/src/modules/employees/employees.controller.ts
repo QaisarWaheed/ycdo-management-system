@@ -17,7 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Permission, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, RoutePermission } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
   ActiveShiftQueryDto,
@@ -76,6 +76,7 @@ export class EmployeesController {
   }
 
   @Get()
+  @RoutePermission(Permission.EMPLOYEES_VIEW)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -85,6 +86,7 @@ export class EmployeesController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.PAYROLL_OFFICER,
+    UserRole.PROGRESS_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
     UserRole.PRESIDENT,
@@ -99,6 +101,7 @@ export class EmployeesController {
   }
 
   @Get('stats')
+  @RoutePermission(Permission.EMPLOYEES_VIEW)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -108,6 +111,7 @@ export class EmployeesController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.PAYROLL_OFFICER,
+    UserRole.PROGRESS_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
     UserRole.PRESIDENT,
@@ -118,6 +122,7 @@ export class EmployeesController {
   }
 
   @Get('filter-options')
+  @RoutePermission(Permission.EMPLOYEES_VIEW)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -182,6 +187,7 @@ export class EmployeesController {
   }
 
   @Get(':id')
+  @RoutePermission(Permission.EMPLOYEES_VIEW)
   @Roles(
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
@@ -192,6 +198,7 @@ export class EmployeesController {
     UserRole.ADMIN_OFFICER,
     UserRole.IT_ADMIN,
     UserRole.PAYROLL_OFFICER,
+    UserRole.PROGRESS_OFFICER,
     UserRole.CHAIRMAN,
     UserRole.FOUNDER,
     UserRole.PRESIDENT,

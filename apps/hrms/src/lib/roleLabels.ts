@@ -13,6 +13,7 @@ export const ROLE_LABELS: Record<string, string> = {
   MEDICINE_MANAGER: 'Medicine Manager',
   DEPARTMENT_HEAD: 'Department Head',
   PAYROLL_OFFICER: 'Payroll Officer',
+  PROGRESS_OFFICER: 'Progress Officer',
   EMPLOYEE: 'Employee (Portal)',
 }
 
@@ -36,6 +37,7 @@ export const ROLE_GROUPS: { title: string; roles: string[] }[] = [
       'HR_EXECUTIVE',
       'HR_MANAGER',
       'PAYROLL_OFFICER',
+      'PROGRESS_OFFICER',
     ],
   },
   {

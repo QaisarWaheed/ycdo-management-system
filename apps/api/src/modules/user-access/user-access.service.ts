@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { Permission, Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -506,13 +506,31 @@ export class UserAccessService {
         data: { userId: created.id, plainText: dto.password },
       });
 
+      const overrides = (dto.permissions ?? []).filter(
+        (p): p is { permission: Permission; granted: boolean } =>
+          typeof p.granted === 'boolean',
+      );
+      if (overrides.length) {
+        await tx.userPermission.createMany({
+          data: overrides.map((p) => ({
+            userId: created.id,
+            permission: p.permission,
+            granted: p.granted,
+          })),
+        });
+      }
+
       await tx.auditLog.create({
         data: {
           userId: actingUserId,
           action: 'CREATE_SYSTEM_LOGIN',
           entity: 'User',
           entityId: created.id,
-          changes: { email: dto.email, role: dto.role },
+          changes: {
+            email: dto.email,
+            role: dto.role,
+            permissions: overrides,
+          },
         },
       });
 

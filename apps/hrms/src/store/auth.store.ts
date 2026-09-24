@@ -9,6 +9,8 @@ interface AuthState {
   login: (token: string, user: User) => void
   logout: () => void
   hydrate: () => void
+  /** Refresh roles/permissions from /auth/me without a new login. */
+  updateUser: (user: User) => void
 }
 
 function readStoredUser(): User | null {
@@ -46,6 +48,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem('hrms_token')
     localStorage.removeItem('hrms_user')
     set({ token: null, user: null, isAuthenticated: false })
+  },
+  updateUser: (user) => {
+    localStorage.setItem('hrms_user', JSON.stringify(user))
+    set({ user })
   },
   hydrate: () => {
     const token = localStorage.getItem('hrms_token')
