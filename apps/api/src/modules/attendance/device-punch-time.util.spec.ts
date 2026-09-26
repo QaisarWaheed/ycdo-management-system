@@ -17,27 +17,23 @@ describe('device-punch-time.util', () => {
     expect(result.checkTime).toEqual(now);
   });
 
-  it('uses eventTime for a punch from a few minutes ago', () => {
+  it('stamps API time, not eventTime, for a punch from a few minutes ago', () => {
     const result = resolveRawScanPunchTime({
       eventTime: '2026-08-30T14:22:00+05:00',
       now,
     });
-    expect(result.fromDevice).toBe(true);
+    expect(result.fromDevice).toBe(false);
     expect(result.verdict).toBe('ok');
-    expect(result.checkTime.toISOString()).toBe(
-      new Date('2026-08-30T14:22:00+05:00').toISOString(),
-    );
+    expect(result.checkTime).toEqual(now);
   });
 
-  it('prefers eventTime over the gateway timestamp alias', () => {
+  it('validates eventTime over the gateway timestamp alias', () => {
     const result = resolveRawScanPunchTime({
       eventTime: '2026-08-30T14:22:00+05:00',
       timestamp: '2026-08-30T08:00:00+05:00',
       now,
     });
-    expect(result.checkTime.toISOString()).toBe(
-      new Date('2026-08-30T14:22:00+05:00').toISOString(),
-    );
+    expect(result.checkTime).toEqual(now);
     expect(result.verdict).toBe('ok');
   });
 
@@ -52,15 +48,13 @@ describe('device-punch-time.util', () => {
     );
   });
 
-  it('treats naive device times as Pakistan local', () => {
+  it('accepts naive device times read as Pakistan local', () => {
     const result = resolveRawScanPunchTime({
       eventTime: '2026-08-30T14:20:00',
       now,
     });
     expect(result.verdict).toBe('ok');
-    expect(result.checkTime.toISOString()).toBe(
-      new Date('2026-08-30T14:20:00+05:00').toISOString(),
-    );
+    expect(result.checkTime).toEqual(now);
   });
 
   it('rejects a punch more than 5 minutes in the future', () => {
@@ -82,26 +76,22 @@ describe('device-punch-time.util', () => {
     expect(isCheckoutTooSoon(checkIn, checkOut)).toBe(false);
   });
 
-  it('keeps Pakistan wall-clock when the device stamps China +08:00', () => {
+  it('accepts a China +08:00 stamp showing Pakistan wall-clock', () => {
     const result = resolveRawScanPunchTime({
       eventTime: '2026-08-30T14:22:00+08:00',
       now,
     });
     expect(result.verdict).toBe('ok');
-    expect(result.checkTime.toISOString()).toBe(
-      new Date('2026-08-30T14:22:00+05:00').toISOString(),
-    );
+    expect(result.checkTime).toEqual(now);
   });
 
-  it('keeps a China-offset timestamp when the instant is actually current', () => {
+  it('accepts a China-offset timestamp when the instant is actually current', () => {
     const result = resolveRawScanPunchTime({
       eventTime: '2026-08-30T17:22:00+08:00',
       now,
     });
     expect(result.verdict).toBe('ok');
-    expect(result.checkTime.toISOString()).toBe(
-      new Date('2026-08-30T14:22:00+05:00').toISOString(),
-    );
+    expect(result.checkTime).toEqual(now);
   });
 
   it('uses API time when the device year is ten years behind but the clock-of-day matches', () => {

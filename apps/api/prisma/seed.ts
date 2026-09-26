@@ -748,6 +748,9 @@ async function main() {
     throw new Error('YCDO Central Hospital not found after seeding');
   }
 
+  // Fresh databases need the department catalog before seed employees reference it.
+  await seedGlobalDepartments();
+
   for (const emp of seedEmployees) {
     let employee = await prisma.employee.findFirst({
       where: { cnic: emp.cnic },

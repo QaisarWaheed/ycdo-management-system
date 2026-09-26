@@ -70,13 +70,32 @@ function salvageWrongCalendar(
 }
 
 /**
- * Prefer the device's punch clock when the gateway/agent sent one.
- * Falls back to API receive time only when no device time was provided
- * (live biometric-push / broken firmware).
+ * Validates the device's punch clock only to reject offline dumps.
  *
  * Hikvision terminals often ship with China +08:00, or a factory year
  * (2016) while the wall clock is Pakistan local. Treat those as live
  * punches. Same-day offline dumps (30 min–24 h old) stay rejected.
+ */
+function classifyDeviceClock(raw: string, now: Date): DevicePunchVerdict {
+  const parsed = parseAttendanceDateTime(raw);
+  if (Number.isNaN(parsed.getTime())) return 'invalid';
+  if (classifyDevicePunchAge(parsed, now) === 'ok') return 'ok';
+
+  const pktWall = pakistanWallClock(raw);
+  if (pktWall && classifyDevicePunchAge(pktWall, now) === 'ok') return 'ok';
+
+  const salvaged =
+    salvageWrongCalendar(parsed, now) ??
+    (pktWall ? salvageWrongCalendar(pktWall, now) : null);
+  if (salvaged) return 'ok';
+
+  return classifyDevicePunchAge(parsed, now);
+}
+
+/**
+ * Punch time is always API receive time (stored UTC, read as PKT), never
+ * the device clock. The device time, when sent, only decides whether the
+ * event is a live punch or a stale/future/garbage dump to reject.
  */
 export function resolveRawScanPunchTime(opts: {
   eventTime?: string | null;
@@ -85,34 +104,8 @@ export function resolveRawScanPunchTime(opts: {
 }): { checkTime: Date; fromDevice: boolean; verdict: DevicePunchVerdict } {
   const now = opts.now ?? new Date();
   const raw = (opts.eventTime ?? opts.timestamp ?? '').trim();
-  if (!raw) {
-    return { checkTime: now, fromDevice: false, verdict: 'ok' };
-  }
-
-  const parsed = parseAttendanceDateTime(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    return { checkTime: now, fromDevice: true, verdict: 'invalid' };
-  }
-
-  if (classifyDevicePunchAge(parsed, now) === 'ok') {
-    return { checkTime: parsed, fromDevice: true, verdict: 'ok' };
-  }
-
-  const pktWall = pakistanWallClock(raw);
-  if (pktWall && classifyDevicePunchAge(pktWall, now) === 'ok') {
-    return { checkTime: pktWall, fromDevice: true, verdict: 'ok' };
-  }
-
-  const salvaged =
-    salvageWrongCalendar(parsed, now) ??
-    (pktWall ? salvageWrongCalendar(pktWall, now) : null);
-  if (salvaged) return salvaged;
-
-  return {
-    checkTime: parsed,
-    fromDevice: true,
-    verdict: classifyDevicePunchAge(parsed, now),
-  };
+  const verdict = raw ? classifyDeviceClock(raw, now) : 'ok';
+  return { checkTime: now, fromDevice: false, verdict };
 }
 
 export function isCheckoutTooSoon(
