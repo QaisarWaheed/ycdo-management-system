@@ -31,7 +31,12 @@ export class RecruitmentController {
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.PROGRESS_OFFICER,
+  )
   findAll(@Query() query: ApplicationQueryDto) {
     return this.recruitmentService.findAll(query);
   }
@@ -62,7 +67,12 @@ export class RecruitmentController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.ADMIN_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.PROGRESS_OFFICER,
+  )
   findOne(@Param('id') id: string) {
     return this.recruitmentService.findOne(id);
   }

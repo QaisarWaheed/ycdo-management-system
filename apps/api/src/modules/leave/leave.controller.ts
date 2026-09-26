@@ -83,6 +83,7 @@ export class LeaveController {
     UserRole.SUPER_ADMIN,
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
+    UserRole.PROGRESS_OFFICER,
   )
   getTodayRelievers(
     @Query('branchId') branchId: string | undefined,

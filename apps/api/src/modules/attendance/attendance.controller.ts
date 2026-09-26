@@ -303,6 +303,7 @@ export class AttendanceController {
     UserRole.HR_EXECUTIVE,
     UserRole.ADMIN_MANAGER,
     UserRole.IT_ADMIN,
+    UserRole.PROGRESS_OFFICER,
   )
   getSuspensionWatchlist(
     @Query('year') year?: string,

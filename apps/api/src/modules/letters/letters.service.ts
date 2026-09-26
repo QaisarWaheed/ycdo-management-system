@@ -132,6 +132,33 @@ function letterIssuedAuditAction(letterType: LetterType): string {
   return 'LETTER_GENERATED';
 }
 
+/**
+ * Finance (Payroll Officer) and Progress Officer work only with letters they
+ * generated: they cannot list, open, send or share anyone else's letters.
+ * A login that also holds a broader HRMS role keeps that role's access.
+ */
+const OWN_LETTERS_ONLY_ROLES: UserRole[] = [
+  UserRole.PAYROLL_OFFICER,
+  UserRole.PROGRESS_OFFICER,
+];
+
+type LetterActor = { id: string; role: UserRole; roles?: UserRole[] };
+
+export function isOwnLettersOnlyActor(actor?: {
+  role: UserRole;
+  roles?: UserRole[];
+}): boolean {
+  if (!actor) return false;
+  const roles = actor.roles?.length ? actor.roles : [actor.role];
+  return (
+    hasAnyRole(roles, OWN_LETTERS_ONLY_ROLES) &&
+    roles.every(
+      (role) =>
+        OWN_LETTERS_ONLY_ROLES.includes(role) || role === UserRole.EMPLOYEE,
+    )
+  );
+}
+
 /** Soft-reverse flags in letter.variables (status may still be SENT). */
 function isSoftReversedLetter(variables: unknown): boolean {
   const vars = (variables ?? {}) as Record<string, unknown>;
@@ -578,6 +605,7 @@ export class LettersService implements OnModuleInit {
             variables: variables as Prisma.InputJsonValue,
             templateVersion: prepared.templateVersion,
             requiresAcknowledgement: false,
+            createdById: actingUserId !== 'SYSTEM' ? actingUserId : null,
           },
         });
 
@@ -703,6 +731,7 @@ export class LettersService implements OnModuleInit {
           requiresAcknowledgement: deferPortal
             ? false
             : ACKNOWLEDGEMENT_TYPES.includes(dto.letterType),
+          createdById: actingUserId !== 'SYSTEM' ? actingUserId : null,
         },
       });
 
@@ -1283,8 +1312,14 @@ export class LettersService implements OnModuleInit {
     dto: UpdateLetterDto,
     actingUserId: string,
     actingRole: UserRole,
+    actingRoles?: UserRole[],
   ) {
     const letter = await this.findOne(letterId);
+    this.assertOwnLetterAccess(letter, letterId, {
+      id: actingUserId,
+      role: actingRole,
+      roles: actingRoles,
+    });
     await this.accessScopeService.assertEmployeeAccess(
       actingUserId,
       actingRole,
@@ -1382,8 +1417,14 @@ export class LettersService implements OnModuleInit {
     letterId: string,
     actingUserId: string,
     actingRole: UserRole,
+    actingRoles?: UserRole[],
   ) {
     const letter = await this.findOne(letterId);
+    this.assertOwnLetterAccess(letter, letterId, {
+      id: actingUserId,
+      role: actingRole,
+      roles: actingRoles,
+    });
     await this.accessScopeService.assertEmployeeAccess(
       actingUserId,
       actingRole,
@@ -1607,10 +1648,15 @@ export class LettersService implements OnModuleInit {
     letterId: string,
     actingUserId: string,
     actingRole: UserRole,
-    opts?: { skipAccessCheck?: boolean },
+    opts?: { skipAccessCheck?: boolean; actingRoles?: UserRole[] },
   ) {
     const letter = await this.findOne(letterId);
     if (!opts?.skipAccessCheck) {
+      this.assertOwnLetterAccess(letter, letterId, {
+        id: actingUserId,
+        role: actingRole,
+        roles: opts?.actingRoles,
+      });
       await this.accessScopeService.assertEmployeeAccess(
         actingUserId,
         actingRole,
@@ -2388,7 +2434,7 @@ export class LettersService implements OnModuleInit {
 
   async findAll(
     query: LetterQueryDto,
-    actingUser?: { id: string; role: UserRole; portalOnly?: boolean },
+    actingUser?: LetterActor & { portalOnly?: boolean },
   ) {
     const where: Prisma.LetterWhereInput = {};
 
@@ -2425,6 +2471,9 @@ export class LettersService implements OnModuleInit {
           actingUser.role,
           {},
         );
+      if (isOwnLettersOnlyActor(actingUser)) {
+        where.createdById = actingUser.id;
+      }
     }
 
     const letters = await this.prisma.letter.findMany({
@@ -2457,9 +2506,7 @@ export class LettersService implements OnModuleInit {
    * Letters awaiting HR outbound WhatsApp Web share (wa.me).
    * Excludes Meta SENT / in-flight PENDING sends and already-shared rows.
    */
-  async findPending(
-    actingUser?: { id: string; role: UserRole },
-  ) {
+  async findPending(actingUser?: LetterActor) {
     const where: Prisma.LetterWhereInput = {
       status: LetterStatus.SENT,
       whatsappSharedAt: null,
@@ -2482,6 +2529,9 @@ export class LettersService implements OnModuleInit {
           actingUser.role,
           {},
         );
+      if (isOwnLettersOnlyActor(actingUser)) {
+        where.createdById = actingUser.id;
+      }
     }
 
     return this.prisma.letter.findMany({
@@ -2508,7 +2558,7 @@ export class LettersService implements OnModuleInit {
     });
   }
 
-  async getWhatsAppShare(letterId: string) {
+  async getWhatsAppShare(letterId: string, actor?: LetterActor) {
     const letter = await this.prisma.letter.findUnique({
       where: { id: letterId },
       include: {
@@ -2526,6 +2576,7 @@ export class LettersService implements OnModuleInit {
     if (!letter) {
       throw new NotFoundException(`Letter with id ${letterId} not found`);
     }
+    this.assertOwnLetterAccess(letter, letterId, actor);
 
     const phoneE164 = normalizePakistanPhone(letter.employee.phone);
     const letterTypeLabel = letter.letterType.replace(/_/g, ' ');
@@ -2563,8 +2614,9 @@ export class LettersService implements OnModuleInit {
     };
   }
 
-  async markWhatsAppShared(letterId: string) {
-    await this.findOne(letterId);
+  async markWhatsAppShared(letterId: string, actor?: LetterActor) {
+    const letter = await this.findOne(letterId);
+    this.assertOwnLetterAccess(letter, letterId, actor);
 
     return this.prisma.letter.update({
       where: { id: letterId },
@@ -2619,6 +2671,7 @@ export class LettersService implements OnModuleInit {
     }
 
     this.assertPortalLetterAccess(letter, letterId, actor);
+    this.assertOwnLetterAccess(letter, letterId, actor);
 
     return letter;
   }
@@ -2782,6 +2835,17 @@ export class LettersService implements OnModuleInit {
     if (actor.portalOnly) return true;
     const roles = actor.roles?.length ? actor.roles : [actor.role];
     return roles.length === 1 && roles[0] === UserRole.EMPLOYEE;
+  }
+
+  private assertOwnLetterAccess(
+    letter: { createdById: string | null },
+    letterId: string,
+    actor?: LetterActor,
+  ) {
+    if (!isOwnLettersOnlyActor(actor)) return;
+    if (letter.createdById !== actor!.id) {
+      throw new NotFoundException(`Letter with id ${letterId} not found`);
+    }
   }
 
   private assertPortalLetterAccess(

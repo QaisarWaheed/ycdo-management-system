@@ -148,7 +148,13 @@ function statusBadge(status: string) {
   )
 }
 
-function ViewAllLink({ to, label = 'View All →' }: { to: string; label?: string }) {
+function ViewAllLink({
+  to,
+  label = 'View All →',
+}: {
+  to: string
+  label?: string
+}) {
   const navigate = useNavigate()
   return (
     <button
@@ -234,11 +240,109 @@ function DashboardContent({ role }: { role?: string }) {
   return <AdminDashboard />
 }
 
+/**
+ * Mirrors the @Roles on each dashboard API read so a card is only rendered
+ * (and only fetched) when the login can actually see its data. HR Executive
+ * passes every role-gated route on the server.
+ */
+const DASHBOARD_READ_ROLES = {
+  attendance: [
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+    'HR_EXECUTIVE',
+    'ADMIN_MANAGER',
+    'ADMIN_OFFICER',
+    'MEDICINE_MANAGER',
+    'IT_ADMIN',
+    'CHAIRMAN',
+    'FOUNDER',
+    'PRESIDENT',
+  ],
+  leave: [
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+    'HR_EXECUTIVE',
+    'ADMIN_MANAGER',
+    'ADMIN_OFFICER',
+    'IT_ADMIN',
+    'CHAIRMAN',
+    'FOUNDER',
+    'PRESIDENT',
+  ],
+  relievers: [
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+    'HR_EXECUTIVE',
+    'ADMIN_MANAGER',
+    'ADMIN_OFFICER',
+    'PROGRESS_OFFICER',
+  ],
+  disciplinary: [
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+    'HR_EXECUTIVE',
+    'ADMIN_MANAGER',
+    'ADMIN_OFFICER',
+    'IT_ADMIN',
+    'CHAIRMAN',
+    'FOUNDER',
+    'PRESIDENT',
+    'PROGRESS_OFFICER',
+  ],
+  suspensionWatchlist: [
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+    'HR_EXECUTIVE',
+    'ADMIN_MANAGER',
+    'IT_ADMIN',
+    'PROGRESS_OFFICER',
+  ],
+  portalPresence: [
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_EXECUTIVE',
+    'HR_OPERATIONS_MANAGER',
+    'PROGRESS_OFFICER',
+  ],
+  recruitment: [
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_EXECUTIVE',
+    'ADMIN_MANAGER',
+    'PROGRESS_OFFICER',
+  ],
+}
+
 function AdminDashboard() {
   const navigate = useNavigate()
   const location = useLocation()
   const returnTo = `${location.pathname}${location.search}`
   const today = todayRange()
+  const { hasRole, hasPermission } = useAuth()
+
+  const canEmployees = hasPermission('EMPLOYEES_VIEW')
+  // Attendance and leave lists also open for Reports access (Payroll /
+  // Progress Officer).
+  const canAttendance =
+    hasRole(DASHBOARD_READ_ROLES.attendance) || hasPermission('REPORTS_VIEW')
+  const canLeave =
+    hasRole(DASHBOARD_READ_ROLES.leave) || hasPermission('REPORTS_VIEW')
+  const canRelievers = hasRole(DASHBOARD_READ_ROLES.relievers)
+  const canDisciplinary = hasRole(DASHBOARD_READ_ROLES.disciplinary)
+  const canWatchlist = hasRole(DASHBOARD_READ_ROLES.suspensionWatchlist)
+  const canPortalPresence = hasRole(DASHBOARD_READ_ROLES.portalPresence)
+  const canRecruitment = hasRole(DASHBOARD_READ_ROLES.recruitment)
 
   const {
     data: employees,
@@ -247,6 +351,7 @@ function AdminDashboard() {
   } = useQuery({
     queryKey: ['employees'],
     queryFn: () => employeesApi.getAll(),
+    enabled: canEmployees,
   })
 
   const {
@@ -255,8 +360,8 @@ function AdminDashboard() {
     isError: errorAttendance,
   } = useQuery({
     queryKey: ['attendance', 'today', today],
-    queryFn: () =>
-      attendanceApi.getAll({ ...today, dutyFilter: 'all' }),
+    queryFn: () => attendanceApi.getAll({ ...today, dutyFilter: 'all' }),
+    enabled: canAttendance,
     refetchInterval: 60_000,
   })
 
@@ -267,6 +372,7 @@ function AdminDashboard() {
   } = useQuery({
     queryKey: ['leave', 'pending'],
     queryFn: () => leaveApi.getAll({ status: 'PENDING' }),
+    enabled: canLeave,
   })
 
   const {
@@ -276,6 +382,7 @@ function AdminDashboard() {
   } = useQuery({
     queryKey: ['disciplinary', 'active'],
     queryFn: () => disciplinaryApi.getActiveCases(),
+    enabled: canDisciplinary,
   })
 
   const {
@@ -285,6 +392,7 @@ function AdminDashboard() {
   } = useQuery({
     queryKey: ['suspension-watchlist'],
     queryFn: () => attendanceApi.getSuspensionWatchlist(),
+    enabled: canWatchlist,
   })
 
   const watchBuckets = partitionSuspensionWatchlist(suspensionWatchlist)
@@ -296,6 +404,7 @@ function AdminDashboard() {
   } = useQuery({
     queryKey: ['recruitment', 'applied'],
     queryFn: () => recruitmentApi.getAll({ status: 'APPLIED' }),
+    enabled: canRecruitment,
   })
 
   const {
@@ -305,6 +414,7 @@ function AdminDashboard() {
   } = useQuery({
     queryKey: ['leave', 'today-relievers'],
     queryFn: () => leaveApi.getTodayRelievers(),
+    enabled: canRelievers,
   })
 
   const {
@@ -314,12 +424,17 @@ function AdminDashboard() {
   } = useQuery({
     queryKey: ['portal-presence', 'summary'],
     queryFn: () => portalPresenceApi.getSummary(),
+    enabled: canPortalPresence,
     refetchInterval: 60_000,
   })
 
   const attendanceLogs = (attendance ?? []) as AttendanceLog[]
-  const unmarkedToday = attendanceLogs.filter((l) => l.status === 'UNMARKED').length
-  const presentToday = attendanceLogs.filter((l) => l.status === 'PRESENT').length
+  const unmarkedToday = attendanceLogs.filter(
+    (l) => l.status === 'UNMARKED',
+  ).length
+  const presentToday = attendanceLogs.filter(
+    (l) => l.status === 'PRESENT',
+  ).length
   const absentToday = attendanceLogs.filter((l) => l.status === 'ABSENT').length
   const uninformedAbsentToday = attendanceLogs.filter(
     (l) => l.status === 'UNINFORMED_ABSENT',
@@ -327,7 +442,9 @@ function AdminDashboard() {
   const lateToday = attendanceLogs.filter(
     (l) => l.status === 'LATE' || l.status === 'HALF_DAY',
   ).length
-  const onLeaveToday = attendanceLogs.filter((l) => l.status === 'ON_LEAVE').length
+  const onLeaveToday = attendanceLogs.filter(
+    (l) => l.status === 'ON_LEAVE',
+  ).length
 
   const recentEmployees = ((employees ?? []) as Employee[]).slice(0, 5)
   const recentLeaves = ((leaves ?? []) as LeaveRecord[]).slice(0, 5)
@@ -342,273 +459,324 @@ function AdminDashboard() {
       <PendingSuspensionApprovalsCard />
       <PendingInquiryDecisionsCard />
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-        <StatCard
-          label="Total Employees"
-          value={workforceCount}
-          icon={Users}
-          loading={loadingEmployees}
-          error={errorEmployees}
-          iconBg="bg-primary/10 text-primary"
-          subtitle="Active & on-leave staff"
-          to="/employees"
-        />
-        <StatCard
-          label="Portal accounts"
-          value={portalPresence?.withPortalAccount ?? 0}
-          icon={Users}
-          loading={loadingPortalPresence}
-          error={errorPortalPresence}
-          iconBg="bg-sky-100 text-sky-700"
-          subtitle="Employee portal logins"
-          to="/portal-login"
-        />
-        <StatCard
-          label="Logged in to portal"
-          value={portalPresence?.loggedIn ?? 0}
-          icon={Monitor}
-          loading={loadingPortalPresence}
-          error={errorPortalPresence}
-          iconBg="bg-emerald-100 text-emerald-700"
-          subtitle="Successful sign-in at least once"
-          to="/portal-login?status=LOGGED_IN"
-        />
-        <StatCard
-          label="Never logged in"
-          value={portalPresence?.neverLoggedIn ?? 0}
-          icon={Monitor}
-          loading={loadingPortalPresence}
-          error={errorPortalPresence}
-          iconBg="bg-slate-100 text-slate-700"
-          subtitle="Portal account unused"
-          to="/portal-login?status=NEVER_LOGGED_IN"
-          alertWhenPositive
-        />
-        <StatCard
-          label="Unmarked Today"
-          value={unmarkedToday}
-          icon={CircleDashed}
-          loading={loadingAttendance}
-          error={errorAttendance}
-          iconBg="bg-slate-100 text-slate-700"
-          subtitle="Awaiting check-in"
-          to="/attendance?date=today&status=UNMARKED"
-          alertWhenPositive
-        />
-        <StatCard
-          label="Present Today"
-          value={presentToday}
-          icon={Clock}
-          loading={loadingAttendance}
-          error={errorAttendance}
-          iconBg="bg-accent/10 text-accent-dark"
-          subtitle={format(new Date(), 'dd MMM yyyy')}
-          to="/attendance?date=today&status=PRESENT"
-        />
-        <StatCard
-          label="Absent Today"
-          value={absentToday}
-          icon={UserX}
-          loading={loadingAttendance}
-          error={errorAttendance}
-          iconBg="bg-red-100 text-red-600"
-          subtitle="Marked absent"
-          to="/attendance?date=today&status=ABSENT"
-        />
-        <StatCard
-          label="Uninformed Absent"
-          value={uninformedAbsentToday}
-          icon={UserX}
-          loading={loadingAttendance}
-          error={errorAttendance}
-          iconBg="bg-red-100 text-red-600"
-          subtitle="No prior notice"
-          to="/attendance?date=today&status=UNINFORMED_ABSENT"
-          alertWhenPositive
-        />
-        <StatCard
-          label="Late Staff Today"
-          value={lateToday}
-          icon={Timer}
-          loading={loadingAttendance}
-          error={errorAttendance}
-          iconBg="bg-amber-100 text-amber-700"
-          subtitle="Late or late half-day"
-          to="/attendance?date=today&status=LATE"
-        />
-        <StatCard
-          label="Reliever"
-          value={todayRelievers.length}
-          icon={Users}
-          loading={loadingRelievers}
-          error={errorRelievers}
-          iconBg="bg-indigo-100 text-indigo-700"
-          subtitle="Assigned today"
-          to="/leave?tab=relievers"
-        />
-        <StatCard
-          label="Pending Leaves"
-          value={(leaves ?? []).length}
-          icon={Calendar}
-          loading={loadingLeaves}
-          error={errorLeaves}
-          iconBg="bg-yellow-100 text-yellow-700"
-          subtitle="Awaiting approval"
-          to="/leave?status=PENDING"
-        />
-        <StatCard
-          label="On Leave Today"
-          value={onLeaveToday}
-          icon={Calendar}
-          loading={loadingAttendance}
-          error={errorAttendance}
-          iconBg="bg-purple-100 text-purple-700"
-          subtitle="On approved leave"
-          to="/attendance?date=today&status=ON_LEAVE"
-        />
-        <StatCard
-          label="Open Disciplinary Cases"
-          value={(disciplinary ?? []).length}
-          icon={AlertTriangle}
-          loading={loadingDisciplinary}
-          error={errorDisciplinary}
-          iconBg="bg-orange-100 text-orange-600"
-          subtitle="Open and under inquiry"
-          to="/letters?section=enquiries"
-        />
-        <StatCard
-          label="Due for Suspension"
-          value={watchBuckets.due.length}
-          icon={AlertTriangle}
-          loading={loadingWatchlist}
-          error={errorWatchlist}
-          iconBg="bg-red-100 text-red-700"
-          subtitle={
-            suspensionWatchlist
-              ? `${watchBuckets.near.length} near · ${suspensionWatchlist.month}`
-              : 'Monthly late / UA threshold'
-          }
-          to="/disciplinary/suspension-watchlist"
-        />
-        <StatCard
-          label="Pending Job Applications"
-          value={(applications ?? []).length}
-          icon={UserPlus}
-          loading={loadingApplications}
-          error={errorApplications}
-          iconBg="bg-primary/10 text-primary"
-          subtitle="New applicants"
-          to="/recruitment?status=APPLIED"
-        />
+        {canEmployees && (
+          <StatCard
+            label="Total Employees"
+            value={workforceCount}
+            icon={Users}
+            loading={loadingEmployees}
+            error={errorEmployees}
+            iconBg="bg-primary/10 text-primary"
+            subtitle="Active & on-leave staff"
+            to="/employees"
+          />
+        )}
+        {canPortalPresence && (
+          <StatCard
+            label="Portal accounts"
+            value={portalPresence?.withPortalAccount ?? 0}
+            icon={Users}
+            loading={loadingPortalPresence}
+            error={errorPortalPresence}
+            iconBg="bg-sky-100 text-sky-700"
+            subtitle="Employee portal logins"
+            to="/portal-login"
+          />
+        )}
+        {canPortalPresence && (
+          <StatCard
+            label="Logged in to portal"
+            value={portalPresence?.loggedIn ?? 0}
+            icon={Monitor}
+            loading={loadingPortalPresence}
+            error={errorPortalPresence}
+            iconBg="bg-emerald-100 text-emerald-700"
+            subtitle="Successful sign-in at least once"
+            to="/portal-login?status=LOGGED_IN"
+          />
+        )}
+        {canPortalPresence && (
+          <StatCard
+            label="Never logged in"
+            value={portalPresence?.neverLoggedIn ?? 0}
+            icon={Monitor}
+            loading={loadingPortalPresence}
+            error={errorPortalPresence}
+            iconBg="bg-slate-100 text-slate-700"
+            subtitle="Portal account unused"
+            to="/portal-login?status=NEVER_LOGGED_IN"
+            alertWhenPositive
+          />
+        )}
+        {canAttendance && (
+          <StatCard
+            label="Unmarked Today"
+            value={unmarkedToday}
+            icon={CircleDashed}
+            loading={loadingAttendance}
+            error={errorAttendance}
+            iconBg="bg-slate-100 text-slate-700"
+            subtitle="Awaiting check-in"
+            to="/attendance?date=today&status=UNMARKED"
+            alertWhenPositive
+          />
+        )}
+        {canAttendance && (
+          <StatCard
+            label="Present Today"
+            value={presentToday}
+            icon={Clock}
+            loading={loadingAttendance}
+            error={errorAttendance}
+            iconBg="bg-accent/10 text-accent-dark"
+            subtitle={format(new Date(), 'dd MMM yyyy')}
+            to="/attendance?date=today&status=PRESENT"
+          />
+        )}
+        {canAttendance && (
+          <StatCard
+            label="Absent Today"
+            value={absentToday}
+            icon={UserX}
+            loading={loadingAttendance}
+            error={errorAttendance}
+            iconBg="bg-red-100 text-red-600"
+            subtitle="Marked absent"
+            to="/attendance?date=today&status=ABSENT"
+          />
+        )}
+        {canAttendance && (
+          <StatCard
+            label="Uninformed Absent"
+            value={uninformedAbsentToday}
+            icon={UserX}
+            loading={loadingAttendance}
+            error={errorAttendance}
+            iconBg="bg-red-100 text-red-600"
+            subtitle="No prior notice"
+            to="/attendance?date=today&status=UNINFORMED_ABSENT"
+            alertWhenPositive
+          />
+        )}
+        {canAttendance && (
+          <StatCard
+            label="Late Staff Today"
+            value={lateToday}
+            icon={Timer}
+            loading={loadingAttendance}
+            error={errorAttendance}
+            iconBg="bg-amber-100 text-amber-700"
+            subtitle="Late or late half-day"
+            to="/attendance?date=today&status=LATE"
+          />
+        )}
+        {canRelievers && (
+          <StatCard
+            label="Reliever"
+            value={todayRelievers.length}
+            icon={Users}
+            loading={loadingRelievers}
+            error={errorRelievers}
+            iconBg="bg-indigo-100 text-indigo-700"
+            subtitle="Assigned today"
+            to="/leave?tab=relievers"
+          />
+        )}
+        {canLeave && (
+          <StatCard
+            label="Pending Leaves"
+            value={(leaves ?? []).length}
+            icon={Calendar}
+            loading={loadingLeaves}
+            error={errorLeaves}
+            iconBg="bg-yellow-100 text-yellow-700"
+            subtitle="Awaiting approval"
+            to="/leave?status=PENDING"
+          />
+        )}
+        {canAttendance && (
+          <StatCard
+            label="On Leave Today"
+            value={onLeaveToday}
+            icon={Calendar}
+            loading={loadingAttendance}
+            error={errorAttendance}
+            iconBg="bg-purple-100 text-purple-700"
+            subtitle="On approved leave"
+            to="/attendance?date=today&status=ON_LEAVE"
+          />
+        )}
+        {canDisciplinary && (
+          <StatCard
+            label="Open Disciplinary Cases"
+            value={(disciplinary ?? []).length}
+            icon={AlertTriangle}
+            loading={loadingDisciplinary}
+            error={errorDisciplinary}
+            iconBg="bg-orange-100 text-orange-600"
+            subtitle="Open and under inquiry"
+            to="/letters?section=enquiries"
+          />
+        )}
+        {canWatchlist && (
+          <StatCard
+            label="Due for Suspension"
+            value={watchBuckets.due.length}
+            icon={AlertTriangle}
+            loading={loadingWatchlist}
+            error={errorWatchlist}
+            iconBg="bg-red-100 text-red-700"
+            subtitle={
+              suspensionWatchlist
+                ? `${watchBuckets.near.length} near · ${suspensionWatchlist.month}`
+                : 'Monthly late / UA threshold'
+            }
+            to="/disciplinary/suspension-watchlist"
+          />
+        )}
+        {canRecruitment && (
+          <StatCard
+            label="Pending Job Applications"
+            value={(applications ?? []).length}
+            icon={UserPlus}
+            loading={loadingApplications}
+            error={errorApplications}
+            iconBg="bg-primary/10 text-primary"
+            subtitle="New applicants"
+            to="/recruitment?status=APPLIED"
+          />
+        )}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-lg">Recent Employees</CardTitle>
-            <ViewAllLink to="/employees" />
-          </CardHeader>
-          <CardContent>
-            {loadingEmployees ? (
-              <div className="space-y-2">
-                {[...Array(5)].map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : recentEmployees.length === 0 ? (
-              <p className="text-sm text-text-secondary">No employees found</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Joined</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentEmployees.map((emp) => (
-                    <TableRow
-                      key={emp.id}
-                      className="cursor-pointer hover:bg-gray-50"
-                      onClick={() =>
-                        navigate(
-                          `/employees/${emp.id}`,
-                          withReturnTo(returnTo),
-                        )
-                      }
-                    >
-                      <TableCell className="font-medium">{emp.employeeCode}</TableCell>
-                      <TableCell>
-                        <EmployeeNameLink employee={emp} />
-                      </TableCell>
-                      <TableCell>{emp.currentDepartment?.name ?? '—'}</TableCell>
-                      <TableCell>{formatBranchLabel(emp.currentBranch)}</TableCell>
-                      <TableCell>{statusBadge(emp.status)}</TableCell>
-                      <TableCell>
-                        {format(new Date(emp.joiningDate), 'dd/MM/yyyy')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+      {(canEmployees || canLeave) && (
+        <div
+          className={cn(
+            'grid grid-cols-1 gap-6',
+            canEmployees && canLeave && 'xl:grid-cols-2',
+          )}
+        >
+          {canEmployees && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-lg">Recent Employees</CardTitle>
+                <ViewAllLink to="/employees" />
+              </CardHeader>
+              <CardContent>
+                {loadingEmployees ? (
+                  <div className="space-y-2">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-10 w-full" />
+                    ))}
+                  </div>
+                ) : recentEmployees.length === 0 ? (
+                  <p className="text-sm text-text-secondary">
+                    No employees found
+                  </p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Code</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Department</TableHead>
+                        <TableHead>Branch</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Joined</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recentEmployees.map((emp) => (
+                        <TableRow
+                          key={emp.id}
+                          className="cursor-pointer hover:bg-gray-50"
+                          onClick={() =>
+                            navigate(
+                              `/employees/${emp.id}`,
+                              withReturnTo(returnTo),
+                            )
+                          }
+                        >
+                          <TableCell className="font-medium">
+                            {emp.employeeCode}
+                          </TableCell>
+                          <TableCell>
+                            <EmployeeNameLink employee={emp} />
+                          </TableCell>
+                          <TableCell>
+                            {emp.currentDepartment?.name ?? '—'}
+                          </TableCell>
+                          <TableCell>
+                            {formatBranchLabel(emp.currentBranch)}
+                          </TableCell>
+                          <TableCell>{statusBadge(emp.status)}</TableCell>
+                          <TableCell>
+                            {format(new Date(emp.joiningDate), 'dd/MM/yyyy')}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-lg">Recent Leave Requests</CardTitle>
-            <ViewAllLink to="/leave" />
-          </CardHeader>
-          <CardContent>
-            {loadingLeaves ? (
-              <div className="space-y-2">
-                {[...Array(5)].map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : recentLeaves.length === 0 ? (
-              <p className="text-sm text-text-secondary">No pending leave requests</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>From</TableHead>
-                    <TableHead>To</TableHead>
-                    <TableHead>Days</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentLeaves.map((leave) => (
-                    <TableRow
-                      key={leave.id}
-                      className="cursor-pointer hover:bg-gray-50"
-                      onClick={() => navigate('/leave')}
-                    >
-                      <TableCell>
-                        <EmployeeNameLink employee={leave.employee} />
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(leave.startDate), 'dd/MM/yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(leave.endDate), 'dd/MM/yyyy')}
-                      </TableCell>
-                      <TableCell>{leave.totalDays}</TableCell>
-                      <TableCell>{statusBadge(leave.status)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          {canLeave && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-lg">Recent Leave Requests</CardTitle>
+                <ViewAllLink to="/leave" />
+              </CardHeader>
+              <CardContent>
+                {loadingLeaves ? (
+                  <div className="space-y-2">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-10 w-full" />
+                    ))}
+                  </div>
+                ) : recentLeaves.length === 0 ? (
+                  <p className="text-sm text-text-secondary">
+                    No pending leave requests
+                  </p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>From</TableHead>
+                        <TableHead>To</TableHead>
+                        <TableHead>Days</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recentLeaves.map((leave) => (
+                        <TableRow
+                          key={leave.id}
+                          className="cursor-pointer hover:bg-gray-50"
+                          onClick={() => navigate('/leave')}
+                        >
+                          <TableCell>
+                            <EmployeeNameLink employee={leave.employee} />
+                          </TableCell>
+                          <TableCell>
+                            {format(new Date(leave.startDate), 'dd/MM/yyyy')}
+                          </TableCell>
+                          <TableCell>
+                            {format(new Date(leave.endDate), 'dd/MM/yyyy')}
+                          </TableCell>
+                          <TableCell>{leave.totalDays}</TableCell>
+                          <TableCell>{statusBadge(leave.status)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   )
 }

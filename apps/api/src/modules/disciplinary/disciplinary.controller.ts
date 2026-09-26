@@ -378,6 +378,7 @@ export class DisciplinaryController {
     UserRole.PRESIDENT,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
+    UserRole.PROGRESS_OFFICER,
   )
   findAll(
     @Query() query: DisciplinaryQueryDto,

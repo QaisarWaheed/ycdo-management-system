@@ -12,6 +12,8 @@ const HR_PORTAL_PRESENCE_ROLES: UserRole[] = [
   UserRole.HR_ADMIN_MANAGER,
   UserRole.HR_EXECUTIVE,
   UserRole.HR_OPERATIONS_MANAGER,
+  // Read-only: Progress Officer dashboard shows portal login counts.
+  UserRole.PROGRESS_OFFICER,
 ];
 
 @Controller('portal-presence')

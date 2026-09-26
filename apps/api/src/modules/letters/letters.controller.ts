@@ -248,9 +248,15 @@ export class LettersController {
   updateLetter(
     @Param('id') id: string,
     @Body() dto: UpdateLetterDto,
-    @CurrentUser() user: { id: string; role: UserRole },
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
   ) {
-    return this.lettersService.updateLetter(id, dto, user.id, user.role);
+    return this.lettersService.updateLetter(
+      id,
+      dto,
+      user.id,
+      user.role,
+      user.roles,
+    );
   }
 
   @Post(':id/send')
@@ -266,9 +272,11 @@ export class LettersController {
   )
   sendLetter(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; role: UserRole },
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
   ) {
-    return this.lettersService.sendLetter(id, user.id, user.role);
+    return this.lettersService.sendLetter(id, user.id, user.role, {
+      actingRoles: user.roles,
+    });
   }
 
   @Post(':id/submit-for-approval')
@@ -284,12 +292,13 @@ export class LettersController {
   )
   submitForApproval(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; role: UserRole },
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
   ) {
     return this.lettersService.submitAppointmentForApproval(
       id,
       user.id,
       user.role,
+      user.roles,
     );
   }
 
@@ -398,6 +407,7 @@ export class LettersController {
     user: {
       id: string;
       role: UserRole;
+      roles?: UserRole[];
     },
   ) {
     return this.lettersService.findPending(user);
@@ -458,8 +468,11 @@ export class LettersController {
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  getWhatsAppShare(@Param('id') id: string) {
-    return this.lettersService.getWhatsAppShare(id);
+  getWhatsAppShare(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
+  ) {
+    return this.lettersService.getWhatsAppShare(id, user);
   }
 
   @Post(':id/mark-whatsapp-shared')
@@ -471,8 +484,11 @@ export class LettersController {
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  markWhatsAppShared(@Param('id') id: string) {
-    return this.lettersService.markWhatsAppShared(id);
+  markWhatsAppShared(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
+  ) {
+    return this.lettersService.markWhatsAppShared(id, user);
   }
 
   @Get(':id')
