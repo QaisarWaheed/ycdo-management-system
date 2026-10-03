@@ -34,6 +34,7 @@ export interface PayslipSlipData {
     mobileLoad: number
     absence: number
     fine: number
+    lateHour: number
     health: number
     providentFund: number
     tax: number
@@ -151,9 +152,11 @@ export function buildPayslipSlipFromEntry(data: {
     .filter(
       (d) =>
         d.reason === 'DISCIPLINARY_FINE' ||
-        d.reason === 'FINE' ||
-        d.reason === 'LATE_ARRIVAL',
+        d.reason === 'FINE',
     )
+    .reduce((s, d) => s + money(d.amount), 0)
+  const lateHourEntries = deductions
+    .filter((d) => d.reason === 'LATE_ARRIVAL')
     .reduce((s, d) => s + money(d.amount), 0)
   const sumReason = (reason: string) =>
     deductions
@@ -181,7 +184,7 @@ export function buildPayslipSlipFromEntry(data: {
         d.reason === 'MEDICINE_PENDING' ||
         d.reason === 'KITCHEN_PENDING' ||
         d.reason === 'ELECTRICITY_BILL' ||
-        d.reason === 'MOBILE_BILL',
+        d.reason === 'MOBILE_BILL'
     ),
   )
   const otherDeduction = deductions
@@ -215,6 +218,7 @@ export function buildPayslipSlipFromEntry(data: {
     mobileLoad: 0,
     absence,
     fine: money(pkg?.fineDeduction) + fineEntries,
+    lateHour: lateHourEntries,
     health: money(pkg?.healthDeduction),
     providentFund: 0,
     tax: 0,
@@ -242,14 +246,15 @@ export function buildPayslipSlipFromEntry(data: {
     deductionsBlock.mobileLoad +
     deductionsBlock.absence +
     deductionsBlock.fine +
+    deductionsBlock.lateHour +
     deductionsBlock.health +
     deductionsBlock.providentFund +
     deductionsBlock.tax +
     deductionsBlock.auditDifference +
     deductionsBlock.staffPendingMed +
-    deductionsBlock.kitchenPending +
-    deductionsBlock.electricityBill +
-    deductionsBlock.mobileBill +
+    (deductionsBlock.kitchenPending ?? 0) +
+    (deductionsBlock.electricityBill ?? 0) +
+    (deductionsBlock.mobileBill ?? 0) +
     deductionsBlock.other
 
   const netPay = money(data.netStipend)

@@ -2133,9 +2133,12 @@ export class PayrollService {
       .filter(
         (d) =>
           d.reason === DeductionType.DISCIPLINARY_FINE ||
-          d.reason === DeductionType.FINE ||
-          d.reason === DeductionType.LATE_ARRIVAL,
+          d.reason === DeductionType.FINE,
       )
+      .reduce((sum, d) => sum + Number(d.amount), 0);
+
+    const lateHourFromEntries = deductions
+      .filter((d) => d.reason === DeductionType.LATE_ARRIVAL)
       .reduce((sum, d) => sum + Number(d.amount), 0);
 
     const sumReason = (reason: DeductionType) =>
@@ -2214,6 +2217,7 @@ export class PayrollService {
       mobileLoad: 0,
       absence: absenceDeduction,
       fine: (pkg.fineDeduction || 0) + fineFromEntries,
+      lateHour: lateHourFromEntries,
       health: pkg.healthDeduction || 0,
       providentFund: 0,
       tax: 0,

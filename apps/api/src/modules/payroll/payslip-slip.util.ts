@@ -38,6 +38,7 @@ export interface PayslipSlipData {
     mobileLoad: number;
     absence: number;
     fine: number;
+    lateHour: number;
     health: number;
     providentFund: number;
     tax: number;
@@ -125,6 +126,7 @@ export function computeDeductionsTotal(
     deductions.mobileLoad +
     deductions.absence +
     deductions.fine +
+    deductions.lateHour +
     deductions.health +
     deductions.providentFund +
     deductions.tax +
