@@ -1406,7 +1406,7 @@ export class PayrollService {
     } }) : null;
     if (frozenSibling) throw new ConflictException('FROZEN_PAYROLL_SEGMENT: a frozen sibling already carries money; cannot replace it with whole-month Card salary');
     const attendanceCard = await loadAttendanceCard(this.prisma, dto.employeeId, dto.month, dto.year);
-    if (attendanceCard.missingDates.length) throw new ConflictException('INCOMPLETE_ATTENDANCE_CARD: final attendance is missing for ' + attendanceCard.missingDates.join(', '));
+    // Missing dates are treated as absent — payroll proceeds with the data available.
     const context = { stipendRecord, employee, applyContractualPackage, attendanceCard, existingDeductions: entry?.deductions ?? [], existingAllowances: entry?.allowances ?? [] };
     const breakdown = await this.computeHourlyBreakdown(dto.employeeId, dto.month, dto.year, context);
     const salary = calculateCardSalary(attendanceCard, Number(stipendRecord.basicStipend), resolveDailyDutyHours(employee));

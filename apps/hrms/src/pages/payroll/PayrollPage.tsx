@@ -855,6 +855,7 @@ function MonthlyPayrollTab() {
   const [departmentId, setDepartmentId] = useState('')
   const [designationFilter, setDesignationFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState(ALL)
+  const [nameSearch, setNameSearch] = useState('')
   const [viewEntry, setViewEntry] = useState<PayrollEntry | null>(null)
   const [addDeductionEntry, setAddDeductionEntry] = useState<PayrollEntry | null>(
     null,
@@ -926,9 +927,21 @@ function MonthlyPayrollTab() {
     queryFn: () => payrollApi.getEntries(filters),
   })
 
+  const filteredEntries = useMemo(() => {
+    const q = nameSearch.trim().toLowerCase()
+    if (!q) return entries
+    return entries.filter((e) => {
+      const emp = e.stipendRecord?.employee
+      return (
+        emp?.fullName?.toLowerCase().includes(q) ||
+        emp?.employeeCode?.toLowerCase().includes(q)
+      )
+    })
+  }, [entries, nameSearch])
+
   const { page, setPage, totalPages, paginated, total } = usePagination(
-    entries,
-    [filters],
+    filteredEntries,
+    [filters, nameSearch],
   )
 
   const [printSlips, setPrintSlips] = useState<PayslipSlipData[] | null>(null)
@@ -1215,6 +1228,16 @@ function MonthlyPayrollTab() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-1">
+            <Label>Search by name / code</Label>
+            <Input
+              placeholder="Search employee…"
+              value={nameSearch}
+              onChange={(e) => { setNameSearch(e.target.value); setPage(0) }}
+              className="w-[200px]"
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -1232,12 +1255,12 @@ function MonthlyPayrollTab() {
             variant="outline"
             disabled={entries.length === 0 || payslipsMutation.isPending}
             onClick={() => payslipsMutation.mutate()}
-            title="Print the payslips of all filtered employees, 4 per A4 page"
+            title="Print the payslips of all filtered employees, 3 per A4 page"
           >
             <Printer className="mr-2 h-4 w-4" />
             {payslipsMutation.isPending
               ? `Preparing ${entries.length} payslips...`
-              : 'Print Payslips (4 per page)'}
+              : 'Print Payslips (3 per page)'}
           </Button>
           {printSlips && printSlips.length > 0 && (
             <PayslipPrintSheet slips={printSlips} onDone={clearPrintSlips} />

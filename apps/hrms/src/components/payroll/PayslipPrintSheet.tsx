@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom'
 import { PayslipDocument } from '@/components/payroll/PayslipDocument'
 import type { PayslipSlipData } from '@/lib/payslipSlip'
 
-const PER_PAGE = 4
+const PER_PAGE = 3
 
 /*
  * Printed only while `body.printing-payslips` is set, so the page's other
  * print views (e.g. the monthly summary report) stay out of the printout.
- * A4 portrait, 6mm margins → 198 × 285mm, split into a 2 × 2 grid.
+ * A4 portrait, 6mm margins → 198 × 285mm, split into a 1 × 3 grid so each
+ * slip occupies a full-width row and text stays large and legible.
  */
 const PRINT_CSS = `
 #payslip-print-root { display: none; }
@@ -20,8 +21,8 @@ const PRINT_CSS = `
     width: 198mm;
     height: 285mm;
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
     gap: 3mm;
     break-after: page;
     page-break-after: always;

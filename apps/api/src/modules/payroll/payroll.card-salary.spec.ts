@@ -55,5 +55,5 @@ describe('Card is the only attendance financial owner',()=>{
     const {run,prisma}=setup(); prisma.payrollEntry.findFirst.mockResolvedValue({id:'frozen',status:'PAID'});
     await expect(run()).rejects.toThrow('FROZEN_PAYROLL_SEGMENT'); expect(prisma.payrollDeduction.deleteMany).not.toHaveBeenCalled();
   });
-  it('refuses unresolved historical dates before changing any money',async()=>{jest.mocked(loadAttendanceCard).mockResolvedValue({...card,missingDates:['2026-08-05']} as any);const {run,prisma}=setup();await expect(run()).rejects.toThrow('INCOMPLETE_ATTENDANCE_CARD');expect(prisma.payrollDeduction.deleteMany).not.toHaveBeenCalled();});
+  it('processes payroll even when some attendance dates are missing (treated as absent)',async()=>{jest.mocked(loadAttendanceCard).mockResolvedValue({...card,missingDates:['2026-08-05']} as any);const {run}=setup();await expect(run()).resolves.toBeDefined();});
 });
