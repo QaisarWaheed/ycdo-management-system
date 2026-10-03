@@ -31,10 +31,8 @@ export function PayslipDocument({
   const extraDayCount = dayCount(slip.earnings.extraDuty, slip.earnings.stipend, slip.totalDays)
   const fineDayCount = dayCount(d.fine, slip.earnings.stipend, slip.totalDays)
 
-  // contractualRow is display-only and must not be summed into earningsTotal
-  const contractualRow = { label: 'Actual Basic Stipend', amount: slip.earnings.contractualStipend ?? slip.earnings.stipend, displayOnly: true }
   const earningsData = [
-    contractualRow,
+    { label: 'Actual Basic Stipend', amount: slip.earnings.contractualStipend ?? slip.earnings.stipend },
     { label: 'Basic Stipend', amount: slip.earnings.stipend },
     {
       label: extraDayCount > 0
@@ -71,9 +69,10 @@ export function PayslipDocument({
     .map((l) => l.trim())
     .filter(Boolean)
 
+  // earningsData[0] is the display-only contractual row; skip it in the fallback sum
   const earningsTotal =
     slip.earningsTotal ??
-    earningsData.reduce((s, r) => s + (r.displayOnly ? 0 : r.amount), 0)
+    earningsData.slice(1).reduce((s, r) => s + r.amount, 0)
   const deductionsTotal =
     slip.deductionsTotal ??
     deductionsData.reduce((s, r) => s + r.amount, 0)
