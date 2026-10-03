@@ -32,7 +32,7 @@ export function PayslipDocument({
   const fineDayCount = dayCount(d.fine, slip.earnings.stipend, slip.totalDays)
 
   const earningsData = [
-    { label: 'Stipend', amount: slip.earnings.stipend },
+    { label: 'Basic Stipend', amount: slip.earnings.stipend },
     {
       label: extraDayCount > 0
         ? `Extra Days  ${String(extraDayCount).padStart(2, '0')} Day`

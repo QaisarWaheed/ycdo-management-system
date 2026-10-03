@@ -1260,7 +1260,7 @@ function MonthlyPayrollTab() {
             <Printer className="mr-2 h-4 w-4" />
             {payslipsMutation.isPending
               ? `Preparing ${entries.length} payslips...`
-              : 'Print Payslips (3 per page)'}
+              : 'Print Payslips (2 per page)'}
           </Button>
           {printSlips && printSlips.length > 0 && (
             <PayslipPrintSheet slips={printSlips} onDone={clearPrintSlips} />

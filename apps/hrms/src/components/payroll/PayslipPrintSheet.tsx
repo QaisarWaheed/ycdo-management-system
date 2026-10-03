@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { PayslipDocument } from '@/components/payroll/PayslipDocument'
 import type { PayslipSlipData } from '@/lib/payslipSlip'
 
-const PER_PAGE = 3
+const PER_PAGE = 2
 
 /*
  * Printed only while `body.printing-payslips` is set, so the page's other
@@ -22,7 +22,7 @@ const PRINT_CSS = `
     height: 285mm;
     display: grid;
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
     gap: 3mm;
     break-after: page;
     page-break-after: always;
