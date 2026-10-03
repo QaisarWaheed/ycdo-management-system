@@ -27,7 +27,7 @@ jest.mock('fs', () => {
   };
 });
 
-import { generatePdf } from './pdf.helper';
+import { generatePdf, type PdfOptions } from './pdf.helper';
 import { LettersService } from './letters.service';
 
 describe('LettersService appointment Phase 3A', () => {
@@ -636,6 +636,12 @@ describe('LettersService appointment Phase 3A', () => {
       ]?.[0] ?? '',
     );
     expect(html).not.toContain(APPOINTMENT_DRAFT_WATERMARK_TEXT);
+    const lastOptions = (generatePdf as jest.Mock).mock.calls[
+      (generatePdf as jest.Mock).mock.calls.length - 1
+    ]?.[1] as PdfOptions | undefined;
+    expect(lastOptions?.employeeSignature).toEqual(
+      expect.objectContaining({ letterNo: '9/YCDO/2026' }),
+    );
   });
 
   it('getPdf does not mark a DRAFT as SENT', async () => {

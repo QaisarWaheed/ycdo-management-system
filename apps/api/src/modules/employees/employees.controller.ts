@@ -35,6 +35,11 @@ import { photoMulterConfig } from './photo.multer.config';
 import { privatePhotoMulterConfig } from './private-photo.multer.config';
 import { PermissionsService } from '../permissions/permissions.service';
 import { ROLE_ASSIGNERS } from '../../common/user-roles.util';
+import {
+  assertCanDownloadEmployeeFiles,
+  fileResponse,
+  type FileActor,
+} from '../../common/employee-files.util';
 
 /** Any system role can hit these routes; EMPLOYEES_EDIT permission is enforced. */
 const EMPLOYEE_EDIT_ROLES = Object.values(UserRole);
@@ -98,6 +103,28 @@ export class EmployeesController {
     user: { id: string; role: UserRole; branchId?: string | null },
   ) {
     return this.employeesService.findAll(query, user);
+  }
+
+  /** Personal details of the filtered list as Excel (EMPLOYEES_EXPORT). */
+  @Get('export')
+  async exportPersonalDetails(
+    @Query() query: EmployeeQueryDto,
+    @CurrentUser() user: FileActor & { branchId?: string | null },
+  ) {
+    await assertCanDownloadEmployeeFiles(this.permissionsService, user);
+    const { buffer, filename } =
+      await this.employeesService.exportPersonalDetails(query, user);
+    return fileResponse(buffer, filename);
+  }
+
+  @Get(':id/photo/file')
+  async downloadPhoto(@Param('id') id: string, @CurrentUser() user: FileActor) {
+    await assertCanDownloadEmployeeFiles(this.permissionsService, user, id);
+    const { body, filename } = await this.employeesService.getPhotoFile(
+      id,
+      user.employeeId === id,
+    );
+    return fileResponse(body, filename);
   }
 
   @Get('stats')

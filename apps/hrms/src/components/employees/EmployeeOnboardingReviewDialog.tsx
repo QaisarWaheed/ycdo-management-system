@@ -158,6 +158,7 @@ export function EmployeeOnboardingReviewDialog({
         <div className="employee-information-form-print-area min-h-0 flex-1 overflow-y-auto bg-gray-100 px-4 py-4 sm:px-6">
           {tab === 'physical' ? (
             <PhysicalFormViewer
+              approvalId={record.id}
               url={record.physicalFormUrl}
               mimeType={record.physicalFormMimeType}
               fileName={record.physicalFormFileName}

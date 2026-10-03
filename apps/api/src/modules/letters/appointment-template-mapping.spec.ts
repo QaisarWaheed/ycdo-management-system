@@ -63,6 +63,34 @@ describe('resolveAppointmentTemplateMapping', () => {
     expect(result.templateCode).toBe('APPOINTMENT_FIXTURE_UR');
   });
 
+  it('matches the designation title ignoring case and extra spaces', async () => {
+    const database = db({
+      designationId: 'des-1',
+      mappings: [
+        {
+          id: 'map-1',
+          departmentId: 'dept-a',
+          designationId: 'des-1',
+          language: AppointmentLetterLanguage.EN,
+          templateCode: 'APPT_LAB_SUPPORT_EN',
+        },
+      ],
+    });
+    const result = await resolveAppointmentTemplateMapping(database, {
+      departmentId: 'dept-a',
+      designationTitle: '  Lab   staff ',
+    });
+    expect(result.match).toBe('EXACT');
+    expect(database.designation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          title: { equals: 'Lab staff', mode: 'insensitive' },
+          isDeleted: false,
+        },
+      }),
+    );
+  });
+
   it('rewrites a stored Lab Support Urdu mapping to the English family', async () => {
     const result = await resolveAppointmentTemplateMapping(
       db({

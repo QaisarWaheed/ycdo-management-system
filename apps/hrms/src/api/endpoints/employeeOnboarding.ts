@@ -87,6 +87,10 @@ export const employeeOnboardingApi = {
     api.get<unknown, EmployeeOnboardingApproval>(
       `/employee-onboarding/${id}`,
     ),
+  getPhysicalForm: (id: string) =>
+    api.get<unknown, Blob>(`/employee-onboarding/${id}/physical-form`, {
+      responseType: 'blob',
+    }),
   getWhatsAppShare: (params: {
     approverTarget?: EmployeeApproverTarget
     employeeId?: string

@@ -82,6 +82,25 @@ export const employeesApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   getDocuments: (id: string) => api.get(`/employees/${id}/documents`),
+  downloadDocument: (employeeId: string, documentId: string) =>
+    api.get<unknown, Blob>(
+      `/employees/${employeeId}/documents/${documentId}/file`,
+      { responseType: 'blob' },
+    ),
+  downloadDocumentsZip: (employeeId: string, documentIds: string[]) =>
+    api.get<unknown, Blob>(`/employees/${employeeId}/documents/zip`, {
+      params: { ids: documentIds.join(',') },
+      responseType: 'blob',
+    }),
+  downloadPhoto: (employeeId: string) =>
+    api.get<unknown, Blob>(`/employees/${employeeId}/photo/file`, {
+      responseType: 'blob',
+    }),
+  exportPersonalDetails: (params: Record<string, unknown>) =>
+    api.get<unknown, Blob>('/employees/export', {
+      params,
+      responseType: 'blob',
+    }),
   deleteDocument: (employeeId: string, documentId: string) =>
     api.delete(`/employees/${employeeId}/documents/${documentId}`),
   getWorkingHours: (id: string) =>

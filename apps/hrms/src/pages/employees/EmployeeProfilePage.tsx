@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Clock,
   Download,
+  ExternalLink,
   FileText,
   Fingerprint,
   History,
@@ -102,6 +103,7 @@ import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { letterTypeLabel } from '@/lib/letterFieldConfig'
 import { openOnboardingWhatsAppShare } from '@/lib/openOnboardingWhatsAppShare'
 import { maritalStatusToLabel } from '@/lib/searchableSelectOptions'
+import { fetchBlob, saveBlobFrom } from '@/lib/downloadLetterPdf'
 import type {
   AcademicQualification,
   AttendanceLog,
@@ -660,6 +662,24 @@ export function EmployeeProfilePage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [uploadType, setUploadType] = useState<DocumentType>('CNIC')
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
+  const [downloading, setDownloading] = useState<string | null>(null)
+
+  /** Run one authenticated download; `key` drives the button spinner. */
+  const runDownload = async (key: string, task: () => Promise<void>) => {
+    setDownloading(key)
+    try {
+      await task()
+    } catch (err) {
+      toast({
+        title: 'Download failed',
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'destructive',
+      })
+    } finally {
+      setDownloading(null)
+    }
+  }
 
   const [letterOpen, setLetterOpen] = useState(false)
   const [editAppointmentLetter, setEditAppointmentLetter] =
@@ -1150,6 +1170,12 @@ export function EmployeeProfilePage() {
 
   const canManagePersonalData = isItTeam || isHrTeam || canEditEmployeeProfile
 
+  const canDownloadFiles = hasPermission('EMPLOYEES_EXPORT')
+  const selectedDocs = documents.filter((d) => selectedDocIds.includes(d.id))
+  const allDocsSelected =
+    documents.length > 0 && selectedDocs.length === documents.length
+  const fileBase = `${employee.employeeCode}-${employee.fullName}`
+
   const canEditJobInfo = isHrTeam || isItTeam || canEditEmployeeProfile
 
   const canAssignRoles = hasRole([...ROLE_ASSIGNER_ROLES])
@@ -1469,6 +1495,28 @@ export function EmployeeProfilePage() {
               >
                 <Printer className="mr-2 h-4 w-4" />
                 Print Profile
+              </Button>
+            )}
+            {canDownloadFiles && photoSrc && !employee.hideProfilePhoto && (
+              <Button
+                variant="outline"
+                className="w-full"
+                disabled={downloading === 'photo'}
+                onClick={() =>
+                  runDownload('photo', () =>
+                    saveBlobFrom(
+                      () => employeesApi.downloadPhoto(employee.id),
+                      `${fileBase}-photo.jpg`,
+                    ),
+                  )
+                }
+              >
+                {downloading === 'photo' ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                Download Photo
               </Button>
             )}
             {canManagePersonalData && (
@@ -2206,6 +2254,48 @@ export function EmployeeProfilePage() {
           </div>
           )}
 
+          {canDownloadFiles && documents.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={allDocsSelected}
+                  onChange={(e) =>
+                    setSelectedDocIds(
+                      e.target.checked ? documents.map((d) => d.id) : [],
+                    )
+                  }
+                />
+                Select all ({documents.length})
+              </label>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!selectedDocs.length || downloading === 'zip'}
+                onClick={() =>
+                  runDownload('zip', () =>
+                    saveBlobFrom(
+                      () =>
+                        employeesApi.downloadDocumentsZip(
+                          employee.id,
+                          selectedDocs.map((d) => d.id),
+                        ),
+                      `${fileBase}-documents.zip`,
+                    ),
+                  )
+                }
+              >
+                {downloading === 'zip' ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <Download className="mr-1 h-3 w-3" />
+                )}
+                Download selected ({selectedDocs.length})
+              </Button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {documents.length === 0 ? (
               <p className="text-sm text-text-secondary">No documents uploaded</p>
@@ -2213,9 +2303,26 @@ export function EmployeeProfilePage() {
               documents.map((doc) => (
                 <Card key={doc.id}>
                   <CardContent className="space-y-3 p-4">
-                    <Badge variant="outline">
-                      {doc.documentType.replace(/_/g, ' ')}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {canDownloadFiles && (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${doc.fileName}`}
+                          className="h-4 w-4 accent-primary"
+                          checked={selectedDocIds.includes(doc.id)}
+                          onChange={(e) =>
+                            setSelectedDocIds((ids) =>
+                              e.target.checked
+                                ? [...ids, doc.id]
+                                : ids.filter((id) => id !== doc.id),
+                            )
+                          }
+                        />
+                      )}
+                      <Badge variant="outline">
+                        {doc.documentType.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
                     <div className="flex items-start gap-2">
                       <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
                       <p className="break-all text-sm font-medium">{doc.fileName}</p>
@@ -2224,16 +2331,58 @@ export function EmployeeProfilePage() {
                       {format(new Date(doc.uploadedAt), 'dd/MM/yyyy')}
                     </p>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" asChild>
-                        <a
-                          href={resolveFileUrl(doc.fileUrl)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <Download className="mr-1 h-3 w-3" />
-                          Download
-                        </a>
-                      </Button>
+                      {canDownloadFiles && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={downloading === `view-${doc.id}`}
+                            onClick={() => {
+                              // Open the tab synchronously so pop-up blockers allow it.
+                              const tab = window.open('', '_blank')
+                              void runDownload(`view-${doc.id}`, async () => {
+                                try {
+                                  const blob = await fetchBlob(() =>
+                                    employeesApi.downloadDocument(
+                                      employee.id,
+                                      doc.id,
+                                    ),
+                                  )
+                                  if (tab) {
+                                    tab.location.href = URL.createObjectURL(blob)
+                                  }
+                                } catch (err) {
+                                  tab?.close()
+                                  throw err
+                                }
+                              })
+                            }}
+                          >
+                            <ExternalLink className="mr-1 h-3 w-3" />
+                            View
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={downloading === `file-${doc.id}`}
+                            onClick={() =>
+                              runDownload(`file-${doc.id}`, () =>
+                                saveBlobFrom(
+                                  () =>
+                                    employeesApi.downloadDocument(
+                                      employee.id,
+                                      doc.id,
+                                    ),
+                                  doc.fileName,
+                                ),
+                              )
+                            }
+                          >
+                            <Download className="mr-1 h-3 w-3" />
+                            Download
+                          </Button>
+                        </>
+                      )}
                       {canManagePersonalData && (
                       <Button
                         variant="outline"

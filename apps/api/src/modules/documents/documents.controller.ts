@@ -7,6 +7,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -18,6 +19,11 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { HR_PERSONAL_EDIT_ROLES } from '../../common/hr-executive.util';
+import {
+  assertCanDownloadEmployeeFiles,
+  fileResponse,
+  type FileActor,
+} from '../../common/employee-files.util';
 import { PermissionsService } from '../permissions/permissions.service';
 import { UploadDocumentDto } from './documents.dto';
 import { DocumentsService } from './documents.service';
@@ -77,6 +83,36 @@ export class DocumentsController {
       throw new ForbiddenException('Access denied');
     }
     return this.documentsService.findAll(id);
+  }
+
+  /** Selected documents as one ZIP: `?ids=a,b` (omit for all). */
+  @Get('zip')
+  async downloadZip(
+    @Param('id') id: string,
+    @Query('ids') ids: string | undefined,
+    @CurrentUser() user: FileActor,
+  ) {
+    await assertCanDownloadEmployeeFiles(this.permissionsService, user, id);
+    const documentIds = (ids ?? '').split(',').filter(Boolean);
+    const { stream, filename } = await this.documentsService.zipFiles(
+      id,
+      documentIds,
+    );
+    return fileResponse(stream, filename);
+  }
+
+  @Get(':documentId/file')
+  async downloadFile(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+    @CurrentUser() user: FileActor,
+  ) {
+    await assertCanDownloadEmployeeFiles(this.permissionsService, user, id);
+    const { document, stream } = await this.documentsService.openFile(
+      id,
+      documentId,
+    );
+    return fileResponse(stream, document.fileName);
   }
 
   @Delete(':documentId')

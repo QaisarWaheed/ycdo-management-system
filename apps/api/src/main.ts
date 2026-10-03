@@ -34,6 +34,20 @@ function resolveCorsOrigins(): string[] {
 async function bootstrap() {
   initCloudinary();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Personal scans and letters are never public: they are served only through
+  // the authenticated /employees/:id/documents/..., onboarding and
+  // /letters/:id/pdf endpoints (WhatsApp delivery reads letters from disk).
+  // Registered before both static handlers (here and ServeStaticModule).
+  app.use(
+    [
+      '/uploads/documents',
+      '/uploads/onboarding-forms',
+      '/uploads/letters',
+      '/uploads/letter-smoke',
+    ],
+    (_req: unknown, res: { status: (code: number) => { end: () => void } }) =>
+      res.status(404).end(),
+  );
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
   });

@@ -4,10 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  AppointmentLetterLanguage,
-  EmployeeStatus,
-} from '@prisma/client';
+import { AppointmentLetterLanguage, EmployeeStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   APPOINTMENT_TEMPLATE_CODES,
@@ -129,14 +126,18 @@ export class AppointmentMappingsService {
       throw new NotFoundException('Appointment mapping not found');
     }
     if (dto.departmentId !== undefined && !dto.departmentId) {
-      throw new BadRequestException('Global Appointment mappings are not allowed.');
+      throw new BadRequestException(
+        'Global Appointment mappings are not allowed.',
+      );
     }
 
     const applyAll =
       dto.applyToUnmappedDesignations ?? current.designationId == null;
     const departmentId = dto.departmentId ?? current.departmentId;
     if (!departmentId) {
-      throw new BadRequestException('Department is required for Appointment mappings.');
+      throw new BadRequestException(
+        'Department is required for Appointment mappings.',
+      );
     }
     const designationId = applyAll
       ? null
@@ -185,7 +186,9 @@ export class AppointmentMappingsService {
     });
     if (!current) throw new NotFoundException('Appointment mapping not found');
     if (!current.departmentId) {
-      throw new BadRequestException('Global Appointment mappings cannot be activated.');
+      throw new BadRequestException(
+        'Global Appointment mappings cannot be activated.',
+      );
     }
     try {
       return await this.prisma.appointmentTemplateMapping.update({
@@ -219,7 +222,9 @@ export class AppointmentMappingsService {
       select: {
         currentDepartmentId: true,
         currentDesignation: true,
-        currentDepartment: { select: { id: true, name: true, isDeleted: true } },
+        currentDepartment: {
+          select: { id: true, name: true, isDeleted: true },
+        },
       },
     });
 
@@ -246,7 +251,8 @@ export class AppointmentMappingsService {
     const groups = new Map<string, Agg>();
     for (const emp of employees) {
       const department = emp.currentDepartment?.name ?? '—';
-      const designation = (emp.currentDesignation ?? '').trim() || '—';
+      const designation =
+        (emp.currentDesignation ?? '').trim().replace(/\s+/g, ' ') || '—';
       const key = `${emp.currentDepartmentId ?? ''}::${designation.toUpperCase()}`;
       const existing = groups.get(key);
       if (existing) {
@@ -334,7 +340,8 @@ export class AppointmentMappingsService {
         (r) => r.status === 'MISSING_DESIGNATION_CATALOG',
       ).length,
       invalidRole: rows.filter((r) => r.status === 'INVALID_ROLE').length,
-      inactiveMapping: rows.filter((r) => r.status === 'INACTIVE_MAPPING').length,
+      inactiveMapping: rows.filter((r) => r.status === 'INACTIVE_MAPPING')
+        .length,
     };
 
     return { summary, rows };
@@ -358,14 +365,18 @@ export class AppointmentMappingsService {
           designation: { select: { title: true } },
         },
       });
-      if (!mapping) throw new NotFoundException('Appointment mapping not found');
+      if (!mapping)
+        throw new NotFoundException('Appointment mapping not found');
       templateCode = mapping.templateCode;
       language = mapping.language;
       departmentName = mapping.department?.name ?? departmentName;
       designation = mapping.designation?.title ?? 'UNMAPPED DESIGNATIONS';
     }
 
-    if (!isAppointmentTemplateCode(templateCode) || REJECTED_TEMPLATE_CODES.has(templateCode)) {
+    if (
+      !isAppointmentTemplateCode(templateCode) ||
+      REJECTED_TEMPLATE_CODES.has(templateCode)
+    ) {
       throw new BadRequestException(
         'Preview is only available for active Appointment family templates (APPT_*).',
       );
@@ -440,7 +451,9 @@ export class AppointmentMappingsService {
       }),
     ]);
     if (!designation) {
-      throw new BadRequestException('Designation was not found or is inactive.');
+      throw new BadRequestException(
+        'Designation was not found or is inactive.',
+      );
     }
     if (isInvalidAppointmentAssignment(department?.name, designation.title)) {
       throw new BadRequestException(

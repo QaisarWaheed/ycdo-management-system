@@ -10,6 +10,8 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   EMPLOYEES_VIEW: 'View employees (list, profiles, employee pickers)',
   EMPLOYEES_CREATE: 'Create employees',
   EMPLOYEES_EDIT: 'Edit employee personal info and job info',
+  EMPLOYEES_EXPORT:
+    'Download employee documents, photos and personal details (Excel)',
   DISCIPLINARY_MANAGE: 'Manage disciplinary cases',
   LETTERS_GENERATE: 'Generate letters',
   INCENTIVES_VIEW: 'View incentives',
@@ -95,6 +97,12 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
     UserRole.IT_ADMIN,
+  ],
+  EMPLOYEES_EXPORT: [
+    UserRole.HR_EXECUTIVE,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
   ],
   DISCIPLINARY_MANAGE: [
     UserRole.HR_MANAGER,

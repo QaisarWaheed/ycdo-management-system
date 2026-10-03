@@ -151,4 +151,68 @@ describe('PayrollService.updateActiveStipend', () => {
       }),
     );
   });
+
+  it('dated correction only recomputes months from the earlier start date on', async () => {
+    const previousFrom = new Date('2026-08-01T00:00:00.000Z');
+    const active = {
+      id: 'sr-open',
+      basicStipend: 30000,
+      allowances: 5000,
+      effectiveFrom: previousFrom,
+    };
+    const prisma = {
+      employee: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'emp-1',
+          stipendRecords: [active],
+        }),
+      },
+      stipendRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { ...active, effectiveTo: null },
+          { id: 'prior', effectiveFrom: new Date('2020-01-01'), effectiveTo: previousFrom },
+        ]),
+        update: jest.fn().mockResolvedValue({ ...active, lumpsumTotal: 40000 }),
+        create: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      auditLog: { create: jest.fn() },
+      // July is PENDING with an incomplete card; the edit starts in August.
+      payrollEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          { month: 7, year: 2026 },
+          { month: 8, year: 2026 },
+        ]),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: async (fn: (tx: unknown) => unknown): Promise<unknown> => fn(prisma),
+    };
+    const service = new PayrollService(prisma as never, {} as never);
+    // The save runs on a transaction-bound copy of the service, so spy on the prototype.
+    const recompute = jest
+      .spyOn(
+        PayrollService.prototype as never as {
+          recomputeEmployeeMonth: () => Promise<void>;
+        },
+        'recomputeEmployeeMonth',
+      )
+      .mockResolvedValue(undefined);
+
+    await service.updateActiveStipend(
+      {
+        employeeId: 'emp-1',
+        basicStipend: 35000,
+        allowances: 5000,
+        effectiveFrom: '2026-08-01',
+        reason: 'Correct August package',
+      },
+      'user-1',
+    );
+
+    expect(recompute).toHaveBeenCalledTimes(1);
+    expect(recompute).toHaveBeenCalledWith(
+      expect.objectContaining({ month: 8, year: 2026 }),
+    );
+    recompute.mockRestore();
+  });
 });

@@ -14,7 +14,7 @@ async function findDepartment(
   const names = [name, ...aliases];
   for (const candidate of names) {
     const row = await prisma.department.findFirst({
-      where: { name: candidate, isDeleted: false },
+      where: { name: { equals: candidate, mode: 'insensitive' }, isDeleted: false },
       select: { id: true, name: true },
     });
     if (row) return row;
@@ -76,7 +76,7 @@ export async function seedAppointmentTemplateMappings(prisma: PrismaClient) {
         continue;
       }
       const designation = await prisma.designation.findFirst({
-        where: { title, isDeleted: false },
+        where: { title: { equals: title, mode: 'insensitive' }, isDeleted: false },
         select: { id: true },
       });
       if (!designation) {
@@ -151,7 +151,7 @@ export async function reportAppointmentMappingCoverage(prisma: PrismaClient) {
         continue;
       }
       const designation = await prisma.designation.findFirst({
-        where: { title, isDeleted: false },
+        where: { title: { equals: title, mode: 'insensitive' }, isDeleted: false },
         select: { id: true, title: true },
       });
       if (!designation) {

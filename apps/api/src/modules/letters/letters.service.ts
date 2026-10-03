@@ -76,7 +76,7 @@ import {
   sanitizeRefForFilename,
   templateCodeForLetterType,
 } from './letter-templates.helper';
-import { generatePdf } from './pdf.helper';
+import { generatePdf, type PdfOptions } from './pdf.helper';
 import { rebuildStoredLetterHtml } from './letter-html.rebuild';
 import { APPOINTMENT_CHAIRMAN_ADMIN_NAME } from './appointment-signatory';
 import { resolveAppointmentTemplateMapping } from './appointment-template-mapping';
@@ -117,6 +117,19 @@ const SYSTEM_GENERATED_LETTER_TYPES: LetterType[] = [
   LetterType.SUSPENSION_ELIGIBILITY,
   LetterType.NEAR_SUSPENSION_WARNING,
 ];
+
+/** Appointment PDFs: employee signature line + page numbers on every page. */
+function appointmentPdfOptions(
+  variables: Record<string, unknown>,
+  letterNo: string,
+): PdfOptions {
+  return {
+    employeeSignature: {
+      name: String(variables.employeeName ?? ''),
+      letterNo,
+    },
+  };
+}
 
 function isSystemGeneratedLetterType(letterType: LetterType): boolean {
   return SYSTEM_GENERATED_LETTER_TYPES.includes(letterType);
@@ -584,7 +597,10 @@ export class LettersService implements OnModuleInit {
     const htmlContent = applyAppointmentDraftWatermark(
       renderHandlebarsTemplate(prepared.bodyHtml, variables),
     );
-    const pdfBuffer = await generatePdf(htmlContent);
+    const pdfBuffer = await generatePdf(
+      htmlContent,
+      appointmentPdfOptions(variables, letterNo),
+    );
     const fileUrl = await this.persistPdf(
       pdfBuffer,
       letterNo,
@@ -1373,7 +1389,12 @@ export class LettersService implements OnModuleInit {
             letterNo,
             dto.templateCode ?? letter.templateCode ?? undefined,
           );
-    const pdfBuffer = await generatePdf(built.htmlContent);
+    const pdfBuffer = await generatePdf(
+      built.htmlContent,
+      letter.letterType === LetterType.APPOINTMENT
+        ? appointmentPdfOptions(built.variables, letterNo)
+        : undefined,
+    );
     const fileUrl = await this.persistPdf(
       pdfBuffer,
       letterNo,
@@ -1739,7 +1760,10 @@ export class LettersService implements OnModuleInit {
         extraFields,
         { letterNo, draft: false },
       );
-      const pdfBuffer = await generatePdf(built.htmlContent);
+      const pdfBuffer = await generatePdf(
+        built.htmlContent,
+        appointmentPdfOptions(built.variables, letterNo),
+      );
       appointmentSend = {
         fileUrl: await this.persistPdf(pdfBuffer, letterNo, letter.employeeId),
         variables: built.variables,
@@ -2770,7 +2794,18 @@ export class LettersService implements OnModuleInit {
 
       const letterNo = letter.letterNo ?? `REISSUE-${letter.id.slice(0, 8)}`;
 
-      const pdfBuffer = await generatePdf(htmlContent);
+      let pdfOptions: PdfOptions | undefined;
+      if (letter.letterType === LetterType.APPOINTMENT) {
+        const employee = await this.prisma.employee.findUnique({
+          where: { id: letter.employeeId },
+          select: { fullName: true },
+        });
+        pdfOptions = appointmentPdfOptions(
+          { employeeName: employee?.fullName },
+          String(letterNo),
+        );
+      }
+      const pdfBuffer = await generatePdf(htmlContent, pdfOptions);
       const fileUrl = await this.persistPdf(
         pdfBuffer,
         String(letterNo),

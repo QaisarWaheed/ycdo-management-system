@@ -20,35 +20,54 @@ async function messageFromBlob(blob: Blob): Promise<string | null> {
 }
 
 /** Download a letter PDF; regenerates server-side if the file was lost. */
-export async function downloadLetterPdf(
+export function downloadLetterPdf(
   letterId: string,
   suggestedName?: string,
 ): Promise<void> {
+  return saveBlobFrom(
+    () => lettersApi.getPdf(letterId),
+    suggestedName ?? `letter-${letterId.slice(0, 8)}.pdf`,
+    'File unavailable — please reissue',
+  )
+}
+
+/** Fetch an authenticated blob and return it, turning JSON error bodies into Errors. */
+export async function fetchBlob(
+  fetcher: () => Promise<Blob>,
+  fallbackMessage = 'File unavailable',
+): Promise<Blob> {
   let blob: Blob
   try {
-    blob = await lettersApi.getPdf(letterId)
+    blob = await fetcher()
   } catch (err) {
-    let message = 'File unavailable — please reissue'
+    let message = fallbackMessage
     if (axios.isAxiosError(err) && err.response?.data instanceof Blob) {
       message = (await messageFromBlob(err.response.data)) ?? message
     } else if (err instanceof Error && err.message) {
       message = err.message
     }
-    throw new Error(message)
+    throw new Error(message, { cause: err })
   }
 
   // Axios success path can still return a JSON error body as a Blob
   // if a proxy rewrites the status.
   if (blob.type?.includes('application/json')) {
-    const message =
-      (await messageFromBlob(blob)) ?? 'File unavailable — please reissue'
-    throw new Error(message)
+    throw new Error((await messageFromBlob(blob)) ?? fallbackMessage)
   }
+  return blob
+}
 
+/** Fetch an authenticated blob and save it under `fileName`. */
+export async function saveBlobFrom(
+  fetcher: () => Promise<Blob>,
+  fileName: string,
+  fallbackMessage?: string,
+): Promise<void> {
+  const blob = await fetchBlob(fetcher, fallbackMessage)
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = suggestedName ?? `letter-${letterId.slice(0, 8)}.pdf`
+  a.download = fileName
   a.rel = 'noopener'
   document.body.appendChild(a)
   a.click()

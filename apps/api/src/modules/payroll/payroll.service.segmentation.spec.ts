@@ -413,18 +413,19 @@ const AUG_15 = new Date(Date.UTC(2026, 7, 15, 0, 0, 0));
 
 describe('PayrollService — Step 3 multi-segment discovery/recompute architecture', () => {
   // A. Single stipend record / full month => behavior unchanged.
-  it('rejects incomplete historical Cards without creating payroll or attendance rows', async () => {
+  // Missing Card dates are treated as absent (2935699): payroll is created,
+  // but no attendance rows are fabricated for the missing days.
+  it('creates payroll for an incomplete historical Card without inventing attendance rows', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
     seedFullMonthPresent(db, [1]);
     const service = makeService(db);
-    await expect(service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any))
-      .rejects.toThrow('INCOMPLETE_ATTENDANCE_CARD');
-    expect(db.payrollEntries.size).toBe(0);
+    await expect(
+      service.createOrGetEntry({ employeeId: EMP_ID, month: 8, year: 2026 } as any),
+    ).resolves.toBeDefined();
+    expect(db.payrollEntries.size).toBe(1);
     expect(db.attendanceLogs).toHaveLength(1);
-    expect(db.allowances.size).toBe(0);
-    expect(db.deductions.size).toBe(0);
   });
 
   it('A: a single full-month stipend record behaves exactly as before segmentation existed', async () => {

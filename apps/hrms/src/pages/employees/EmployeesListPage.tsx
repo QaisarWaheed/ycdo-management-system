@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { MoreHorizontal, Plus, Search, Users } from 'lucide-react'
+import {
+  Download,
+  Loader2,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Users,
+} from 'lucide-react'
 import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { employeesApi } from '@/api/endpoints/employees'
 import { shiftsApi } from '@/api/endpoints/shifts'
@@ -37,6 +44,8 @@ import {
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { useAuth } from '@/hooks/useAuth'
+import { toast } from '@/hooks/use-toast'
+import { saveBlobFrom } from '@/lib/downloadLetterPdf'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePagination } from '@/hooks/usePagination'
 import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
@@ -71,6 +80,7 @@ export function EmployeesListPage() {
   )
 
   const [letterDialog, setLetterDialog] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
   const [statusDialog, setStatusDialog] = useState<{
     id: string
     status: string
@@ -127,6 +137,27 @@ export function EmployeesListPage() {
     setPage(0)
   }
 
+  const canExport = hasPermission('EMPLOYEES_EXPORT')
+
+  /** Personal details of the currently filtered list as Excel. */
+  const exportExcel = async () => {
+    setExporting(true)
+    try {
+      await saveBlobFrom(
+        () => employeesApi.exportPersonalDetails(filters),
+        `Employees-Personal-Details-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      )
+    } catch (err) {
+      toast({
+        title: 'Export failed',
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'destructive',
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handleFiltersChange = (next: typeof employeeFilters) => {
     setEmployeeFilters(next)
     setPage(0)
@@ -136,6 +167,17 @@ export function EmployeesListPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-text-primary">Employees</h1>
+        <div className="flex flex-wrap gap-2">
+        {canExport && (
+          <Button variant="outline" disabled={exporting} onClick={exportExcel}>
+            {exporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Export Excel
+          </Button>
+        )}
         {canCreateEmployee && (
           <Button
             className="bg-primary hover:bg-primary-dark"
@@ -145,6 +187,7 @@ export function EmployeesListPage() {
             Add Employee
           </Button>
         )}
+        </div>
       </div>
 
       {unassignedCount > 0 && (

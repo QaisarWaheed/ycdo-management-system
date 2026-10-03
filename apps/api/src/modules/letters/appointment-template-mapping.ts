@@ -56,7 +56,8 @@ function resolvedMapping(
 
 /**
  * Mapping stores Designation.id. Employees still store currentDesignation as
- * the catalog title string. Resolve via exact unique title, never fuzzy match.
+ * the catalog title string. Resolve via the unique title (case/space-insensitive),
+ * never fuzzy match.
  */
 export async function resolveAppointmentTemplateMapping(
   db: MappingDb,
@@ -66,14 +67,20 @@ export async function resolveAppointmentTemplateMapping(
   },
 ): Promise<AppointmentMappingResolved> {
   const departmentId = input.departmentId?.trim() || null;
-  const designationTitle = input.designationTitle?.trim() || '';
+  // Employee.currentDesignation is free text: collapse spaces and ignore case so
+  // "Lab  staff" still resolves to the unique LAB STAFF designation.
+  const designationTitle =
+    input.designationTitle?.trim().replace(/\s+/g, ' ') || '';
   if (isInvalidAppointmentAssignment(null, designationTitle)) {
     failClosed(APPOINTMENT_INVALID_ASSIGNMENT_MESSAGE);
   }
 
   const designation = designationTitle
     ? await db.designation.findFirst({
-        where: { title: designationTitle, isDeleted: false },
+        where: {
+          title: { equals: designationTitle, mode: 'insensitive' },
+          isDeleted: false,
+        },
         select: { id: true },
       })
     : null;

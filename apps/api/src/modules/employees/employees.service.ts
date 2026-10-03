@@ -81,6 +81,11 @@ import {
 } from './status-effective.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { buildEmployeesWorkbook } from './employees-export.util';
+import {
+  resolveUploadPath,
+  safeFileName,
+} from '../documents/documents.service';
 
 export type EmployeeFilters = EmployeeQueryDto;
 
@@ -906,6 +911,67 @@ export class EmployeesService {
     return {
       ...filtered,
       biometricRegistration,
+    };
+  }
+
+  /** Personal details of every employee matching the list filters, as .xlsx. */
+  async exportPersonalDetails(filters: EmployeeFilters, actingUser: ActingUser) {
+    // Reuse the list query so filters, access scope and ordering match the screen.
+    const listed = (await this.findAll(
+      { ...filters, count: undefined },
+      actingUser,
+    )) as Array<{ id: string }>;
+    const rows = await this.prisma.employee.findMany({
+      where: { id: { in: listed.map((e) => e.id) } },
+      include: {
+        currentBranch: { select: { name: true } },
+        currentDepartment: { select: { name: true } },
+        academicQualifications: { orderBy: { createdAt: 'asc' } },
+        previousEmployments: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const ordered = listed.flatMap((e) => byId.get(e.id) ?? []);
+    const stamp = new Date().toISOString().slice(0, 10);
+    return {
+      buffer: await buildEmployeesWorkbook(ordered),
+      filename: `Employees-Personal-Details-${stamp}.xlsx`,
+    };
+  }
+
+  /** Profile photo bytes (local upload or Cloudinary). Hidden photos stay owner-only. */
+  async getPhotoFile(id: string, isOwner: boolean) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id },
+      select: {
+        employeeCode: true,
+        fullName: true,
+        photoUrl: true,
+        hideProfilePhoto: true,
+      },
+    });
+    if (!employee?.photoUrl || (employee.hideProfilePhoto && !isOwner)) {
+      throw new NotFoundException('No profile photo available');
+    }
+    const base = safeFileName(`${employee.employeeCode}-${employee.fullName}`);
+    const url = employee.photoUrl;
+
+    if (/^https?:\/\//.test(url)) {
+      const res = await fetch(url);
+      if (!res.ok) throw new NotFoundException('No profile photo available');
+      const ext =
+        path.extname(new URL(url).pathname) ||
+        (res.headers.get('content-type')?.includes('png') ? '.png' : '.jpg');
+      return {
+        body: Buffer.from(await res.arrayBuffer()),
+        filename: `${base}-photo${ext}`,
+      };
+    }
+
+    const fullPath = resolveUploadPath(url);
+    return {
+      body: fs.createReadStream(fullPath),
+      filename: `${base}-photo${path.extname(fullPath)}`,
     };
   }
 

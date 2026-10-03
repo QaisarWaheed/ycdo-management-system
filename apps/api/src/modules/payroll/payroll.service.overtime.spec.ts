@@ -421,16 +421,17 @@ describe('PayrollService — Card-only overtime ownership', () => {
     expect(result.totalAllowances).toBe(amount);
     expect(source.overtimePending).toBe(true);
   });
-  it('refuses applying overtime for an incomplete historical Card', async () => {
+  // Missing Card dates are treated as absent (2935699): overtime still applies,
+  // and no attendance rows are fabricated for the missing days.
+  it('applies overtime on an incomplete historical Card without inventing attendance rows', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
     seedOvertime(db, 10, 120, true);
     const service = makeService(db);
-    await expect(service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER)).rejects.toThrow('INCOMPLETE_ATTENDANCE_CARD');
-    expect(db.payrollEntries.size).toBe(0);
+    const result = await service.applyOvertime({ employeeId: EMP_ID, month: 8, year: 2026 } as any, ACTING_USER);
+    expect(result.totalAllowances).toBeGreaterThan(0);
     expect(db.attendanceLogs).toHaveLength(1);
-    expect(db.attendanceLogs[0].overtimePending).toBe(true);
   });
   // I. Single-segment month: overtime preview/apply behaves exactly as
   // before segmentation (no regression for the common case).

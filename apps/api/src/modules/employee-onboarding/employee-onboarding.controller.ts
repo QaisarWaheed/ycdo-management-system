@@ -23,6 +23,14 @@ import {
 } from './employee-onboarding.dto';
 import { EmployeeOnboardingService } from './employee-onboarding.service';
 import { physicalFormMulterConfig } from './physical-form.multer.config';
+import { fileResponse } from '../../common/employee-files.util';
+import {
+  resolveUploadPath,
+  safeFileName,
+} from '../documents/documents.service';
+import { NotFoundException } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Controller('employee-onboarding')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -101,6 +109,31 @@ export class EmployeeOnboardingController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.service.findOne(id, user);
+  }
+
+  /** Scanned paper form; same readers as the onboarding record itself. */
+  @Get(':id/physical-form')
+  @Roles(
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+  )
+  async physicalForm(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    const record = await this.service.findOne(id, user);
+    if (!record.physicalFormUrl) {
+      throw new NotFoundException('No physical form attached');
+    }
+    const fullPath = resolveUploadPath(record.physicalFormUrl);
+    const name =
+      record.physicalFormFileName ??
+      `physical-form${path.extname(fullPath)}`;
+    return fileResponse(fs.createReadStream(fullPath), safeFileName(name));
   }
 
   @Post(':id/approve')

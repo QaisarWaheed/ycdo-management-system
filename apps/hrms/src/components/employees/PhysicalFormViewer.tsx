@@ -1,19 +1,66 @@
-import { FileText, ImageIcon } from 'lucide-react'
-import { resolveFileUrl } from '@/lib/resolveFileUrl'
+import { useEffect, useState } from 'react'
+import { FileText, ImageIcon, Loader2 } from 'lucide-react'
+import { employeeOnboardingApi } from '@/api/endpoints/employeeOnboarding'
+import { fetchBlob } from '@/lib/downloadLetterPdf'
 import { cn } from '@/lib/utils'
 
+/** Scanned paper form. The file is private, so it is fetched with the login token. */
 export function PhysicalFormViewer({
+  approvalId,
   url,
   mimeType,
   fileName,
   className,
 }: {
+  approvalId?: string
   url?: string | null
   mimeType?: string | null
   fileName?: string | null
   className?: string
 }) {
-  const resolved = resolveFileUrl(url)
+  // Keyed by approval id so a stale file never shows for another record.
+  const [loaded, setLoaded] = useState<{
+    id: string
+    src?: string
+    error?: string
+  } | null>(null)
+
+  useEffect(() => {
+    if (!url || !approvalId) return
+    let objectUrl: string | null = null
+    let cancelled = false
+    fetchBlob(() => employeeOnboardingApi.getPhysicalForm(approvalId))
+      .then((blob) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setLoaded({ id: approvalId, src: objectUrl })
+      })
+      .catch(
+        (err: Error) =>
+          !cancelled && setLoaded({ id: approvalId, error: err.message }),
+      )
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [approvalId, url])
+
+  const current = loaded?.id === approvalId ? loaded : null
+  const resolved = current?.src ?? null
+
+  if (url && approvalId && !resolved) {
+    return (
+      <div
+        className={cn(
+          'flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-600',
+          className,
+        )}
+      >
+        {current?.error ?? <Loader2 className="h-6 w-6 animate-spin" />}
+      </div>
+    )
+  }
+
   if (!resolved) {
     return (
       <div
@@ -34,7 +81,7 @@ export function PhysicalFormViewer({
   const isPdf =
     mimeType === 'application/pdf' ||
     fileName?.toLowerCase().endsWith('.pdf') ||
-    resolved.toLowerCase().includes('.pdf')
+    url?.toLowerCase().endsWith('.pdf')
 
   return (
     <div

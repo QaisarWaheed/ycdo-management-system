@@ -110,7 +110,12 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   },
   {
     department: 'LABORATORY MANAGEMENT SYSTEM',
-    titles: ['LAB OPERATION MANAGER', 'LAB STORE MANAGER'],
+    titles: [
+      'LAB OPERATION MANAGER',
+      'LAB STORE MANAGER',
+      'LHV ADMIN MANAGER',
+      'LAB ASSISTANT MANAGER',
+    ],
     templateCode: 'APPT_LAB_MANAGEMENT_EN',
   },
   {
@@ -125,12 +130,18 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
       'DISPERSAL MANAGER',
       'MEDICINE OPERATIONAL MANGER',
       'MEDICINE STORE MANAGER',
+      'MEDICINE MANAGER',
     ],
     templateCode: 'APPT_MEDICINE_MANAGEMENT_EN',
   },
   {
     department: 'MEDICINE MANAGEMENT SYSTEM',
-    titles: ['ASSISTANT DISPERSAL', 'ASSISTANT STORE MANAGER'],
+    titles: [
+      'ASSISTANT DISPERSAL',
+      'ASSISTANT STORE MANAGER',
+      'LAB MEDICINE',
+      'ASSISTANT AUDIT OFFICER',
+    ],
     templateCode: 'APPT_MEDICINE_SUPPORT_EN',
   },
   {
@@ -138,12 +149,18 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
     // Seed alias only if a legacy RADIOLOGISTS department row still exists.
     // Canonical active department name is RADIOLOGY DEPARTMENT.
     aliases: ['RADIOLOGISTS'],
-    titles: ['CONSULTANT RADIOLOGIST', 'RADIOGRAPHER', 'RADIOGRAPHY', 'SONOLOGIST'],
+    titles: [
+      'CONSULTANT RADIOLOGIST',
+      'RADIOGRAPHER',
+      'RADIOGRAPHY',
+      'SONOLOGIST',
+      'MEDICAL IMAGING TECHNOLOGY',
+    ],
     templateCode: 'APPT_RADIOLOGY_EN',
   },
   {
     department: 'SURGICAL DEPARTMENT',
-    titles: ['SURGEON', 'SURGICAL INCHARGE', 'SURGICAL MANAGER'],
+    titles: ['SURGEON', 'SURGICAL INCHARGE', 'SURGICAL MANAGER', 'ANESTHETIC'],
     templateCode: 'APPT_SURGICAL_EN',
   },
   {

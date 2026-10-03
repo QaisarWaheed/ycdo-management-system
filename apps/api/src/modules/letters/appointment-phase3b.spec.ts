@@ -24,6 +24,7 @@ import { renderHandlebarsTemplate } from './selection-letter.helper';
 import { applyAppointmentDraftWatermark } from './appointment-watermark';
 import { APPOINTMENT_DRAFT_WATERMARK_TEXT } from './appointment-watermark';
 import { DEFAULT_MONTHLY_ALLOWED_LEAVES } from '../payroll/payroll-hours.util';
+import { DEPARTMENT_DESIGNATIONS } from '../../common/org-structure';
 import {
   APPOINTMENT_MAPPING_MISSING_MESSAGE,
   resolveAppointmentTemplateMapping,
@@ -81,6 +82,40 @@ describe('Appointment Phase 3B catalog, policy, and templates', () => {
       lookupAppointmentCatalog('ADMIN', 'ADMINISTRATION / ADMIN+LAB'),
     ).toBeNull();
     expect(flattenAppointmentCatalogRows().length).toBeGreaterThan(40);
+  });
+
+  it('maps every org-structure Department + Designation to a family', () => {
+    const missing = Object.entries(DEPARTMENT_DESIGNATIONS).flatMap(
+      ([department, titles]) =>
+        titles
+          .filter((title) => !lookupAppointmentCatalog(department, title))
+          .map((title) => `${department} / ${title}`),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it('maps the designations that previously had no appointment letter', () => {
+    const family = (department: string, title: string) =>
+      lookupAppointmentCatalog(department, title)?.templateCode;
+    expect(family('MEDICINE MANAGEMENT SYSTEM', 'MEDICINE MANAGER')).toBe(
+      'APPT_MEDICINE_MANAGEMENT_EN',
+    );
+    expect(family('MEDICINE MANAGEMENT SYSTEM', 'LAB MEDICINE')).toBe(
+      'APPT_MEDICINE_SUPPORT_EN',
+    );
+    expect(family('MEDICINE MANAGEMENT SYSTEM', 'ASSISTANT AUDIT OFFICER')).toBe(
+      'APPT_MEDICINE_SUPPORT_EN',
+    );
+    expect(family('LABORATORY MANAGEMENT SYSTEM', 'LHV ADMIN MANAGER')).toBe(
+      'APPT_LAB_MANAGEMENT_EN',
+    );
+    expect(family('LABORATORY MANAGEMENT SYSTEM', 'LAB ASSISTANT MANAGER')).toBe(
+      'APPT_LAB_MANAGEMENT_EN',
+    );
+    expect(family('SURGICAL DEPARTMENT', 'ANESTHETIC')).toBe('APPT_SURGICAL_EN');
+    expect(family('RADIOLOGISTS', 'MEDICAL IMAGING TECHNOLOGY')).toBe(
+      'APPT_RADIOLOGY_EN',
+    );
   });
 
   it('resolves exact dept+designation to expected families and languages', () => {

@@ -7,6 +7,11 @@ export const employeesApi = {
     api.patch<unknown, Employee>(`/employees/${id}`, data),
   getDocuments: (id: string) =>
     api.get<unknown, Employee['documents']>(`/employees/${id}/documents`),
+  downloadDocument: (employeeId: string, documentId: string) =>
+    api.get<unknown, Blob>(
+      `/employees/${employeeId}/documents/${documentId}/file`,
+      { responseType: 'blob' },
+    ),
   getWorkingHours: (id: string) =>
     api.get<unknown, WorkingHours>(`/employees/${id}/working-hours`),
   uploadPrivatePhoto: (id: string, file: File) => {

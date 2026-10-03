@@ -3245,8 +3245,21 @@ export class PayrollService {
       select: { month: true, year: true },
       distinct: ['month', 'year'],
     });
+    // Only months the edit can change: an undated edit applies from this month;
+    // a dated correction from the earlier of the old and new start dates.
+    // Older PENDING months keep their package, so they are not recomputed
+    // (and an unrelated incomplete attendance card cannot block the save).
+    const firstAffectedMonth = undatedEdit
+      ? currentMonthStart
+      : toUtcMonthStart(
+          effectiveFromChanging &&
+            nextEffectiveFrom &&
+            nextEffectiveFrom < previousEffectiveFrom
+            ? nextEffectiveFrom
+            : previousEffectiveFrom,
+        );
     for (const row of pendingMonths) {
-      if (undatedEdit && Date.UTC(row.year, row.month - 1, 1) < currentMonthStart.getTime()) continue;
+      if (Date.UTC(row.year, row.month - 1, 1) < firstAffectedMonth.getTime()) continue;
       await this.recomputeEmployeeMonth({
         employeeId: dto.employeeId,
         month: row.month,

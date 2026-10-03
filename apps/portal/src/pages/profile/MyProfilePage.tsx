@@ -31,6 +31,24 @@ export function MyProfilePage() {
   const queryClient = useQueryClient()
   const employeeId = user?.employeeId ?? ''
 
+  /** Documents are private files, so fetch them with the login token. */
+  const downloadDocument = async (documentId: string, fileName: string) => {
+    try {
+      const blob = await employeesApi.downloadDocument(employeeId, documentId)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      toast({ title: 'Failed to download document', variant: 'destructive' })
+    }
+  }
+
   const [editing, setEditing] = useState(false)
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
@@ -394,14 +412,13 @@ export function MyProfilePage() {
                         {format(new Date(doc.uploadedAt), 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm" asChild>
-                          <a
-                            href={doc.fileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Download ${doc.fileName}`}
+                          onClick={() => downloadDocument(doc.id, doc.fileName)}
+                        >
+                          <ExternalLink className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>

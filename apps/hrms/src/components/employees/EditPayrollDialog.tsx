@@ -373,6 +373,37 @@ export function EditPayrollDialog({
                   )}
                 />
 
+                {!isIncrement &&
+                  watchedEffectiveFrom &&
+                  originalEffectiveFrom &&
+                  watchedEffectiveFrom.slice(0, 7) >
+                    originalEffectiveFrom.slice(0, 7) && (
+                    <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                      <p>
+                        Moving the start to a later month rewrites the current
+                        package (starting {originalEffectiveFrom}) instead of
+                        starting a new one, and recalculates unpaid payroll
+                        from that date. For a raise from a new month, use a
+                        salary increment.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setIsIncrement(true)
+                          form.setValue(
+                            'effectiveFrom',
+                            firstOfMonthIso(watchedEffectiveFrom),
+                            { shouldDirty: true },
+                          )
+                        }}
+                      >
+                        Make this a salary increment
+                      </Button>
+                    </div>
+                  )}
+
                 {(isIncrement ||
                   (watchedEffectiveFrom &&
                     watchedEffectiveFrom !== originalEffectiveFrom)) && (
