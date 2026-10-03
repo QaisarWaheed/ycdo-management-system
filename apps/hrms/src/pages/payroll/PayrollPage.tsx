@@ -1292,6 +1292,7 @@ function MonthlyPayrollTab() {
               <TableHead className="whitespace-nowrap text-right">Late</TableHead>
               <TableHead className="whitespace-nowrap text-right">OT hrs</TableHead>
               <TableHead className="whitespace-nowrap text-right">Extra days</TableHead>
+              <TableHead title="Contractual basic stipend before any deductions">Actual Stipend</TableHead>
               <TableHead>Basic Stipend</TableHead>
               <TableHead>Deductions</TableHead>
               <TableHead>Allowances</TableHead>
@@ -1356,6 +1357,9 @@ function MonthlyPayrollTab() {
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {entry.attendance?.extraWorkingDays ?? 0}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatPKR(entry.stipendRecord?.basicStipend ?? entry.hourlyBreakdown?.contractualBasicStipend ?? entry.basicStipend)}
                     </TableCell>
                     <TableCell>{formatPKR(entry.basicStipend)}</TableCell>
                     <TableCell

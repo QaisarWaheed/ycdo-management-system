@@ -20,6 +20,7 @@ export interface PayslipSlipData {
   presence: number
   earnings: {
     stipend: number
+    contractualStipend: number
     previousMonth: number
     rewardOnProgress: number
     rewards: number
@@ -90,6 +91,7 @@ export function buildPayslipSlipFromEntry(data: {
   deductions?: Array<{ reason: string; amount: number | string; description?: string | null }>
   allowances?: Array<{ type: string; amount: number | string }>
   stipendRecord?: {
+    basicStipend?: number | string | null
     allowances?: number | string | null
     reward?: number | string | null
     progressReward?: number | string | null
@@ -203,6 +205,7 @@ export function buildPayslipSlipFromEntry(data: {
 
   const earnings = {
     stipend: money(data.basicStipend),
+    contractualStipend: money(pkg?.basicStipend) || money(data.basicStipend),
     previousMonth: 0,
     rewardOnProgress: money(pkg?.progressReward),
     rewards: money(pkg?.reward),

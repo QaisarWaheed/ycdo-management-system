@@ -2201,6 +2201,7 @@ export class PayrollService {
 
     const earnings = {
       stipend: Number(entry.basicStipend) || 0,
+      contractualStipend: Number(stipendRecord.basicStipend) || 0,
       previousMonth: 0,
       rewardOnProgress: pkg.progressReward || 0,
       rewards: pkg.reward || 0,

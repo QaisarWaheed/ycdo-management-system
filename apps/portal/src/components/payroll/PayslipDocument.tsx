@@ -113,6 +113,7 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
               </tr>
             </thead>
             <tbody>
+              <MoneyRow label="Actual Basic Stipend" amount={slip.earnings.contractualStipend ?? slip.earnings.stipend} />
               <MoneyRow label="Stipend" amount={slip.earnings.stipend} />
               <MoneyRow label="Extra Day" amount={slip.earnings.extraDuty} />
               <MoneyRow

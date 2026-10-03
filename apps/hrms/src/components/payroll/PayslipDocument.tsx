@@ -31,7 +31,10 @@ export function PayslipDocument({
   const extraDayCount = dayCount(slip.earnings.extraDuty, slip.earnings.stipend, slip.totalDays)
   const fineDayCount = dayCount(d.fine, slip.earnings.stipend, slip.totalDays)
 
+  // contractualRow is display-only and must not be summed into earningsTotal
+  const contractualRow = { label: 'Actual Basic Stipend', amount: slip.earnings.contractualStipend ?? slip.earnings.stipend, displayOnly: true }
   const earningsData = [
+    contractualRow,
     { label: 'Basic Stipend', amount: slip.earnings.stipend },
     {
       label: extraDayCount > 0
@@ -70,13 +73,13 @@ export function PayslipDocument({
 
   const earningsTotal =
     slip.earningsTotal ??
-    earningsData.reduce((s, r) => s + r.amount, 0)
+    earningsData.reduce((s, r) => s + (r.displayOnly ? 0 : r.amount), 0)
   const deductionsTotal =
     slip.deductionsTotal ??
     deductionsData.reduce((s, r) => s + r.amount, 0)
 
-  // Rows = max(earnings.length, deductions.length) = 8
-  const ROW_COUNT = 8
+  // Rows = max(earnings.length, deductions.length); earnings now has 8 items
+  const ROW_COUNT = Math.max(earningsData.length, deductionsData.length)
 
   const fs = compact
     ? { base: '6.5pt', sm: '6.5pt', hdr: '7pt', title: '7.5pt', org: '8pt', sig: '5.5pt' }

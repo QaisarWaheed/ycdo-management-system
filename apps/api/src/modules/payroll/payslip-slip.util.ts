@@ -24,6 +24,7 @@ export interface PayslipSlipData {
   presence: number;
   earnings: {
     stipend: number;
+    contractualStipend: number;
     previousMonth: number;
     rewardOnProgress: number;
     rewards: number;
