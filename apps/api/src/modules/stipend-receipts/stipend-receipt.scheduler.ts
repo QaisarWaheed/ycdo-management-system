@@ -20,8 +20,10 @@ export class StipendReceiptScheduler {
   @Cron('0 9 3 * *')
   async generateMonthlyStipendReceipts() {
     const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
+    // Receipts on the 3rd are for the previous month's payroll
+    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const month = prevMonth.getMonth() + 1;
+    const year = prevMonth.getFullYear();
 
     const result = await this.stipendReceiptsService.generateMonthlyReceipts(
       month,
