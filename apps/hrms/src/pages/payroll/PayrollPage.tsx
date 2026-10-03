@@ -1292,8 +1292,8 @@ function MonthlyPayrollTab() {
               <TableHead className="whitespace-nowrap text-right">Late</TableHead>
               <TableHead className="whitespace-nowrap text-right">OT hrs</TableHead>
               <TableHead className="whitespace-nowrap text-right">Extra days</TableHead>
-              <TableHead title="Contractual basic stipend before any deductions">Actual Stipend</TableHead>
-              <TableHead>Basic Stipend</TableHead>
+              <TableHead title="Contractual basic stipend before any deductions or proration">Actual Stipend</TableHead>
+              <TableHead title="Earned stipend after proration for joining date / days worked">Earned Stipend</TableHead>
               <TableHead>Deductions</TableHead>
               <TableHead>Allowances</TableHead>
               <TableHead>Net Stipend</TableHead>
