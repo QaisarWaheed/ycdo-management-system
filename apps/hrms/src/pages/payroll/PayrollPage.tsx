@@ -93,6 +93,8 @@ import {
   type PayrollDeduction,
   deductionReasonLabel,
   isManualDeduction,
+  EMPLOYEE_STATUSES,
+  type EmployeeStatus,
   type PayrollEntry,
   type PayrollStatus,
   type StipendReceipt,
@@ -116,6 +118,13 @@ function PayrollStatusBadge({ status }: { status: string }) {
       {status}
     </Badge>
   )
+}
+
+function employeeStatusLabel(status: EmployeeStatus) {
+  return status
+    .split('_')
+    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .join(' ')
 }
 
 function DeductionsTable({
@@ -1954,6 +1963,8 @@ function SummaryTab() {
       : 0
 
   const employees = summary?.employees ?? []
+  const paidEmployees = employees.filter((emp) => emp.paymentIncluded)
+  const notPaidEmployees = employees.filter((emp) => !emp.paymentIncluded)
   const hasDateRange = Boolean(summary?.fromDate && summary?.toDate)
 
   const handleMonthYearChange = (next: { month: number; year: number }) => {
@@ -2001,7 +2012,7 @@ function SummaryTab() {
 
   const kpiCards = [
     {
-      label: 'Total Employees on Payroll',
+      label: 'Employees getting paid',
       value: summary?.totalEmployees ?? 0,
     },
     {
@@ -2113,7 +2124,7 @@ function SummaryTab() {
       <div id="payroll-summary-print" className="print-content">
         <div className="hidden print:block print-summary-header mb-6 text-center">
           <h2 className="text-xl font-bold">YCDO Central Hospital</h2>
-          <p className="text-lg">Payroll Summary — {monthLabel}</p>
+          <p className="text-lg">Payroll Report — {monthLabel}</p>
           {hasDateRange ? (
             <p className="text-sm">
               Period: {summary?.fromDate} to {summary?.toDate} (
@@ -2149,7 +2160,7 @@ function SummaryTab() {
             <Card className="mt-6">
               <CardContent className="space-y-4 p-6">
                 <h3 className="font-semibold print:block hidden">
-                  Status Breakdown
+                  Payroll Status Breakdown
                 </h3>
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
@@ -2172,6 +2183,48 @@ function SummaryTab() {
                   </div>
                 </div>
 
+                {summary.byEmployeeStatus ? (
+                  <div className="border-t border-border pt-4">
+                    <h3 className="mb-3 font-semibold">
+                      Employee Status Breakdown
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
+                      {EMPLOYEE_STATUSES.map((status) => (
+                        <div
+                          key={status}
+                          className="rounded-md border border-border p-3"
+                        >
+                          <p className="text-lg font-semibold">
+                            {summary.byEmployeeStatus[status] ?? 0}
+                          </p>
+                          <p className="text-xs text-text-secondary">
+                            {employeeStatusLabel(status)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="grid grid-cols-1 gap-3 border-t border-border pt-4 text-sm sm:grid-cols-2">
+                  <div>
+                    <p className="text-2xl font-bold text-green-700">
+                      {paidEmployees.length}
+                    </p>
+                    <p className="text-text-secondary">
+                      Employees included in this payroll
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-slate-700">
+                      {notPaidEmployees.length}
+                    </p>
+                    <p className="text-text-secondary">
+                      Employees not paid in this report
+                    </p>
+                  </div>
+                </div>
+
                 <div className="space-y-2 no-print">
                   <div className="flex justify-between text-sm">
                     <span>Payroll marked as PAID</span>
@@ -2191,7 +2244,7 @@ function SummaryTab() {
               <CardContent className="p-0">
                 <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
                   <h3 className="font-semibold">
-                    Employees
+                    Payroll Report Detail
                     {hasDateRange
                       ? ` — period stipend (${summary.periodDays} days)`
                       : ''}
@@ -2206,6 +2259,8 @@ function SummaryTab() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Employee</TableHead>
+                        <TableHead>Employee Status</TableHead>
+                        <TableHead>Payment</TableHead>
                         <TableHead className="text-right">Basic</TableHead>
                         <TableHead className="text-right">Deductions</TableHead>
                         <TableHead className="text-right">Allowances</TableHead>
@@ -2221,7 +2276,7 @@ function SummaryTab() {
                       {employees.length === 0 ? (
                         <TableRow>
                           <TableCell
-                            colSpan={8}
+                            colSpan={10}
                             className="py-8 text-center text-text-secondary"
                           >
                             No payroll entries for this period
@@ -2242,6 +2297,22 @@ function SummaryTab() {
                                 {emp.employeeCode}
                               </p>
                             </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">
+                                {employeeStatusLabel(emp.employeeStatus)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {emp.paymentIncluded ? (
+                                <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                                  Included
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-slate-600">
+                                  Not on payroll
+                                </Badge>
+                              )}
+                            </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {formatPKR(emp.basicStipend)}
                             </TableCell>
@@ -2255,7 +2326,13 @@ function SummaryTab() {
                               {formatPKR(emp.netStipend)}
                             </TableCell>
                             <TableCell>
-                              <PayrollStatusBadge status={emp.status} />
+                              {emp.status ? (
+                                <PayrollStatusBadge status={emp.status} />
+                              ) : (
+                                <span className="text-sm text-text-secondary">
+                                  —
+                                </span>
+                              )}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {emp.periodDays}

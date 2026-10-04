@@ -2930,15 +2930,20 @@ export class PayrollService {
       PROCESSED: 0,
       PAID: 0,
     };
+    const byEmployeeStatus = Object.fromEntries(
+      Object.values(EmployeeStatus).map((status) => [status, 0]),
+    ) as Record<EmployeeStatus, number>;
 
     let totalBasicSalary = 0;
     let totalDeductions = 0;
     let totalAllowances = 0;
     let totalNetSalary = 0;
     let periodStipendTotal = 0;
+    const payrollEmployeeIds = new Set<string>();
 
     const employees = entries.map((entry) => {
       byStatus[entry.status]++;
+      payrollEmployeeIds.add(entry.stipendRecord.employee.id);
       const earnedBasic = Math.max(0, Number(entry.basicStipend));
       const contractualBasic = Number(entry.stipendRecord.basicStipend);
       const deductions = Math.max(0, Number(entry.totalDeductions));
@@ -2961,6 +2966,8 @@ export class PayrollService {
         employeeId: entry.stipendRecord.employee.id,
         fullName: entry.stipendRecord.employee.fullName,
         employeeCode: entry.stipendRecord.employee.employeeCode,
+        employeeStatus: entry.stipendRecord.employee.status,
+        paymentIncluded: true,
         basicStipend: earnedBasic,
         contractualBasic,
         totalDeductions: deductions,
@@ -2971,6 +2978,41 @@ export class PayrollService {
         periodStipend,
       };
     });
+
+    const employeesInScope = await this.prisma.employee.findMany({
+      where: branchId ? { currentBranchId: branchId } : {},
+      select: {
+        id: true,
+        fullName: true,
+        employeeCode: true,
+        status: true,
+      },
+      orderBy: { fullName: 'asc' },
+    });
+
+    for (const employee of employeesInScope) {
+      byEmployeeStatus[employee.status]++;
+    }
+
+    for (const employee of employeesInScope) {
+      if (payrollEmployeeIds.has(employee.id)) continue;
+      employees.push({
+        entryId: `no-payroll-${employee.id}`,
+        employeeId: employee.id,
+        fullName: employee.fullName,
+        employeeCode: employee.employeeCode,
+        employeeStatus: employee.status,
+        paymentIncluded: false,
+        basicStipend: 0,
+        contractualBasic: 0,
+        totalDeductions: 0,
+        totalAllowances: 0,
+        netStipend: 0,
+        status: null,
+        periodDays,
+        periodStipend: 0,
+      });
+    }
 
     // A stipend change mid-month can legitimately produce more than one
     // PayrollEntry row for the same employee/month (one per segment — see
@@ -2993,6 +3035,7 @@ export class PayrollService {
       totalAllowances,
       totalNetSalary,
       byStatus,
+      byEmployeeStatus,
       fromDate: fromDate || null,
       toDate: toDate || null,
       periodDays,

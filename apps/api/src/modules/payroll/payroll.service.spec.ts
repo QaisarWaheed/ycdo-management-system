@@ -1,7 +1,7 @@
 /** Salary service regressions for canonical stored Card values. Arithmetic tests may use partial Cards; generation completeness is covered in payroll.card-salary.spec.ts. */
 import * as fs from 'fs';
 import * as path from 'path';
-import { AttendanceStatus, PayrollStatus } from '@prisma/client';
+import { AttendanceStatus, EmployeeStatus, PayrollStatus } from '@prisma/client';
 import { PayrollService } from './payroll.service';
 import { computeHourlyRate, roundMoney } from './payroll-hours.util';
 
@@ -393,6 +393,82 @@ describe('PayrollService.computeHourlyBreakdown — Attendance Card status credi
     expect(b.workedMinutes).toBe(0);
     expect(b.hourlyBasicEarned).toBe(roundMoney(35000 * 18 / 31));
     expect(b.hourlyBasicEarned).toBeGreaterThan(20000);
+  });
+});
+
+describe('PayrollService.getMonthlyPayrollSummary report shape', () => {
+  it('reports real payroll totals and employee employment statuses, including employees not on payroll', async () => {
+    const activeEmployee = {
+      id: 'emp-active',
+      fullName: 'Ayesha Khan',
+      employeeCode: 'YCDO-001',
+      status: EmployeeStatus.ACTIVE,
+      currentBranchId: 'branch-1',
+    };
+    const suspendedEmployee = {
+      id: 'emp-suspended',
+      fullName: 'Bilal Khan',
+      employeeCode: 'YCDO-002',
+      status: EmployeeStatus.SUSPENDED,
+      currentBranchId: 'branch-1',
+    };
+    const prisma = {
+      payrollEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'entry-1',
+            month: 8,
+            year: 2026,
+            basicStipend: 30000,
+            totalDeductions: 2500,
+            totalAllowances: 1000,
+            netStipend: 28500,
+            status: PayrollStatus.PENDING,
+            stipendRecord: {
+              basicStipend: 30000,
+              employeeId: activeEmployee.id,
+              employee: activeEmployee,
+            },
+          },
+        ]),
+      },
+      employee: {
+        findMany: jest.fn().mockResolvedValue([activeEmployee, suspendedEmployee]),
+      },
+    };
+    const service = new PayrollService(prisma as any, {} as any);
+
+    const summary = await service.getMonthlyPayrollSummary(8, 2026, 'branch-1');
+
+    expect(summary.totalBasicSalary).toBe(30000);
+    expect(summary.totalDeductions).toBe(2500);
+    expect(summary.totalNetSalary).toBe(28500);
+    expect(summary.byEmployeeStatus).toEqual({
+      ACTIVE: 1,
+      APPOINTED: 0,
+      DISMISSED: 0,
+      ON_LEAVE: 0,
+      ON_REST: 0,
+      PENDING_APPROVAL: 0,
+      RESIGNED: 0,
+      SUSPENDED: 1,
+      TERMINATED: 0,
+      TRAINEE: 0,
+    });
+    expect(summary.employees).toEqual([
+      expect.objectContaining({
+        employeeId: activeEmployee.id,
+        employeeStatus: EmployeeStatus.ACTIVE,
+        paymentIncluded: true,
+        netStipend: 28500,
+      }),
+      expect.objectContaining({
+        employeeId: suspendedEmployee.id,
+        employeeStatus: EmployeeStatus.SUSPENDED,
+        paymentIncluded: false,
+        netStipend: 0,
+      }),
+    ]);
   });
 });
 

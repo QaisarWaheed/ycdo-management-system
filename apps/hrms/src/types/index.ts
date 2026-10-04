@@ -781,12 +781,14 @@ export interface PayrollSummaryEmployee {
   employeeId: string
   fullName: string
   employeeCode: string
+  employeeStatus: EmployeeStatus
+  paymentIncluded: boolean
   basicStipend: number
   contractualBasic: number
   totalDeductions: number
   totalAllowances: number
   netStipend: number
-  status: PayrollStatus
+  status: PayrollStatus | null
   periodDays: number
   periodStipend: number
 }
@@ -804,6 +806,7 @@ export interface PayrollSummary {
     PROCESSED: number
     PAID: number
   }
+  byEmployeeStatus: Record<EmployeeStatus, number>
   fromDate?: string | null
   toDate?: string | null
   periodDays?: number
