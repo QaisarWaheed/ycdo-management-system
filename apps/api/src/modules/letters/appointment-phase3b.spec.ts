@@ -113,8 +113,27 @@ describe('Appointment Phase 3B catalog, policy, and templates', () => {
       'APPT_LAB_MANAGEMENT_EN',
     );
     expect(family('SURGICAL DEPARTMENT', 'ANESTHETIC')).toBe('APPT_SURGICAL_EN');
+    expect(family('SURGICAL DEPARTMENT', 'SURGICAL INCHARGE')).toBe(
+      'APPT_SURGICAL_EN',
+    );
+    expect(family('SURGICAL DEPARTMENT', 'SURGICAL MANAGER')).toBe(
+      'APPT_SURGICAL_EN',
+    );
     expect(family('RADIOLOGISTS', 'MEDICAL IMAGING TECHNOLOGY')).toBe(
       'APPT_RADIOLOGY_EN',
+    );
+  });
+
+  it('keeps surgical appointment roles in the designation seed source', () => {
+    expect(DEPARTMENT_DESIGNATIONS['SURGICAL DEPARTMENT']).toEqual(
+      expect.arrayContaining([
+        'SURGEON',
+        'SURGICAL INCHARGE',
+        'SURGICAL MANAGER',
+        'ANESTHETIC',
+        'OPERATION THEATER ASSISTANT',
+        'OPERATION THEATER TECHNICIAN',
+      ]),
     );
   });
 
