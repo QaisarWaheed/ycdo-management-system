@@ -1152,6 +1152,7 @@ export class LettersService implements OnModuleInit {
     const mapping = await resolveAppointmentTemplateMapping(this.prisma, {
       departmentId: snapshot.currentDepartmentId,
       designationTitle: snapshot.currentDesignation,
+      departmentName: snapshot.departmentName,
     });
 
     let template: {

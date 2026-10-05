@@ -6,6 +6,7 @@ import {
   canonicalizeAppointmentTemplateCode,
   isInvalidAppointmentAssignment,
 } from './appointment-families';
+import { lookupAppointmentCatalog } from './appointment-catalog';
 
 export const APPOINTMENT_MAPPING_MISSING_MESSAGE =
   'No Appointment Letter template is configured for this Department / Designation.';
@@ -64,6 +65,8 @@ export async function resolveAppointmentTemplateMapping(
   input: {
     departmentId: string | null | undefined;
     designationTitle: string | null | undefined;
+    /** Department name used as catalog fallback when no DB mapping exists. */
+    departmentName?: string | null | undefined;
   },
 ): Promise<AppointmentMappingResolved> {
   const departmentId = input.departmentId?.trim() || null;
@@ -120,6 +123,24 @@ export async function resolveAppointmentTemplateMapping(
   });
   if (global) {
     return resolvedMapping(global, 'GLOBAL', null, null);
+  }
+
+  // Catalog fallback: use the in-memory APPOINTMENT_MAPPING_SPECS so the
+  // letter can be generated even when the DB mapping rows are absent
+  // (e.g. migration not yet applied on a freshly deployed instance).
+  if (input.departmentName && designationTitle) {
+    const catalog = lookupAppointmentCatalog(input.departmentName, designationTitle);
+    if (catalog) {
+      const templateCode = canonicalizeAppointmentTemplateCode(catalog.templateCode);
+      return {
+        mappingId: 'CATALOG_FALLBACK',
+        templateCode,
+        language: catalog.language,
+        match: 'EXACT',
+        departmentId,
+        designationId: designation?.id ?? null,
+      };
+    }
   }
 
   failClosed();
