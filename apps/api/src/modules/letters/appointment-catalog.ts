@@ -70,7 +70,7 @@ export const APPOINTMENT_MAPPING_SPECS: AppointmentMappingSpec[] = [
   },
   {
     department: 'OPD',
-    titles: ['DOCTOR', 'MEDICAL OFFICER', 'WOMAN MEDICAL OFFICER', 'SONOLOGIST'],
+    titles: ['DOCTOR', 'MEDICAL OFFICER', 'WOMAN MEDICAL OFFICER', 'SONOLOGIST', 'ANESTHETIC PHYSICIAN'],
     templateCode: 'APPT_MEDICAL_CLINICAL_EN',
   },
   {
