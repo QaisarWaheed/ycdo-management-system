@@ -865,6 +865,8 @@ function MonthlyPayrollTab() {
   const [departmentId, setDepartmentId] = useState('')
   const [designationFilter, setDesignationFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState(ALL)
+  const [empStatusFilter, setEmpStatusFilter] = useState(ALL)
+  const [selectedPrintIds, setSelectedPrintIds] = useState<Set<string>>(new Set())
   const [nameSearch, setNameSearch] = useState('')
   const [viewEntry, setViewEntry] = useState<PayrollEntry | null>(null)
   const [addDeductionEntry, setAddDeductionEntry] = useState<PayrollEntry | null>(
@@ -936,15 +938,25 @@ function MonthlyPayrollTab() {
 
   const filteredEntries = useMemo(() => {
     const q = nameSearch.trim().toLowerCase()
-    if (!q) return entries
     return entries.filter((e) => {
       const emp = e.stipendRecord?.employee
-      return (
-        emp?.fullName?.toLowerCase().includes(q) ||
-        emp?.employeeCode?.toLowerCase().includes(q)
-      )
+      // hide entries with 0 working days
+      const present = e.attendance?.present ?? 0
+      const onLeave = e.attendance?.onLeave ?? 0
+      const extraDays = e.attendance?.extraWorkingDays ?? 0
+      if (present + onLeave + extraDays === 0) return false
+      // employee status filter
+      if (empStatusFilter !== ALL && emp?.status !== empStatusFilter) return false
+      // name/code search
+      if (q) {
+        return (
+          emp?.fullName?.toLowerCase().includes(q) ||
+          emp?.employeeCode?.toLowerCase().includes(q)
+        )
+      }
+      return true
     })
-  }, [entries, nameSearch])
+  }, [entries, nameSearch, empStatusFilter])
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
     filteredEntries,
@@ -954,12 +966,20 @@ function MonthlyPayrollTab() {
   const [printSlips, setPrintSlips] = useState<PayslipSlipData[] | null>(null)
   const clearPrintSlips = useCallback(() => setPrintSlips(null), [])
   const payslipsMutation = useMutation({
-    mutationFn: () => payrollApi.getPayslips(entries.map((e) => e.id)),
+    mutationFn: () => {
+      const toPrint = selectedPrintIds.size > 0
+        ? filteredEntries.filter((e) => selectedPrintIds.has(e.id))
+        : filteredEntries
+      return payrollApi.getPayslips(toPrint.map((e) => e.id))
+    },
     onSuccess: (rows) => {
       const byId = new Map(rows.map((row) => [row.entryId, row.slip]))
+      const toPrint = selectedPrintIds.size > 0
+        ? filteredEntries.filter((e) => selectedPrintIds.has(e.id))
+        : filteredEntries
       // Keep the on-screen order of the filtered list.
       setPrintSlips(
-        entries
+        toPrint
           .map((e) => byId.get(e.id))
           .filter((slip): slip is PayslipSlipData => !!slip),
       )
@@ -1216,6 +1236,23 @@ function MonthlyPayrollTab() {
           </div>
 
           <div className="space-y-1">
+            <Label>Emp. Status</Label>
+            <Select value={empStatusFilter} onValueChange={(v) => { setEmpStatusFilter(v); setPage(0) }}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All</SelectItem>
+                {EMPLOYEE_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {employeeStatusLabel(s)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
             <Label>Department</Label>
             <Select
               value={departmentId || 'all'}
@@ -1279,13 +1316,15 @@ function MonthlyPayrollTab() {
           <PrintPayrollReportButton disabled={entries.length === 0} />
           <Button
             variant="outline"
-            disabled={entries.length === 0 || payslipsMutation.isPending}
+            disabled={filteredEntries.length === 0 || payslipsMutation.isPending}
             onClick={() => payslipsMutation.mutate()}
-            title="Print the payslips of all filtered employees, 3 per A4 page"
+            title={selectedPrintIds.size > 0 ? `Print ${selectedPrintIds.size} selected payslips` : 'Print payslips of all visible employees (2 per A4 page)'}
           >
             <Printer className="mr-2 h-4 w-4" />
             {payslipsMutation.isPending
-              ? `Preparing ${entries.length} payslips...`
+              ? `Preparing payslips...`
+              : selectedPrintIds.size > 0
+              ? `Print ${selectedPrintIds.size} Selected (2 per page)`
               : 'Print Payslips (2 per page)'}
           </Button>
           {printSlips && printSlips.length > 0 && (
@@ -1307,6 +1346,29 @@ function MonthlyPayrollTab() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[40px]">
+                <input
+                  type="checkbox"
+                  title="Select all for printing"
+                  checked={paginated.length > 0 && paginated.every((e) => selectedPrintIds.has(e.id))}
+                  onChange={(ev) => {
+                    if (ev.target.checked) {
+                      setSelectedPrintIds((prev) => {
+                        const next = new Set(prev)
+                        for (const e of paginated) next.add(e.id)
+                        return next
+                      })
+                    } else {
+                      setSelectedPrintIds((prev) => {
+                        const next = new Set(prev)
+                        for (const e of paginated) next.delete(e.id)
+                        return next
+                      })
+                    }
+                  }}
+                  className="cursor-pointer"
+                />
+              </TableHead>
               <TableHead>Employee</TableHead>
               <TableHead className="whitespace-nowrap text-right" title="Present + swap covered">
                 Present
@@ -1332,7 +1394,7 @@ function MonthlyPayrollTab() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(14)].map((__, j) => (
+                  {[...Array(15)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -1341,7 +1403,7 @@ function MonthlyPayrollTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={14} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={15} className="h-32 text-center text-text-secondary">
                   No payroll entries for this period
                 </TableCell>
               </TableRow>
@@ -1350,6 +1412,21 @@ function MonthlyPayrollTab() {
                 const emp = entry.stipendRecord?.employee
                 return (
                   <TableRow key={entry.id}>
+                    <TableCell className="w-[40px]">
+                      <input
+                        type="checkbox"
+                        checked={selectedPrintIds.has(entry.id)}
+                        onChange={(ev) => {
+                          setSelectedPrintIds((prev) => {
+                            const next = new Set(prev)
+                            if (ev.target.checked) next.add(entry.id)
+                            else next.delete(entry.id)
+                            return next
+                          })
+                        }}
+                        className="cursor-pointer"
+                      />
+                    </TableCell>
                     <TableCell>
                       <div>
                         <EmployeeNameLink employee={emp} />
