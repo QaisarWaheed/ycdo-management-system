@@ -697,6 +697,7 @@ export class EmployeesService {
         fullName: true,
         currentDesignation: true,
         status: true,
+        statusEffectiveFrom: true,
         joiningDate: true,
         dutyStartTime: true,
         dutyEndTime: true,

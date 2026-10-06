@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, Fragment } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { MoreHorizontal, Plus, Printer } from 'lucide-react'
+import { MoreHorizontal, Plus, Printer, X } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { branchesApi } from '@/api/endpoints/branches'
@@ -94,6 +94,7 @@ import {
   deductionReasonLabel,
   isManualDeduction,
   EMPLOYEE_STATUSES,
+  type Employee,
   type EmployeeStatus,
   type PayrollEntry,
   type PayrollStatus,
@@ -878,10 +879,7 @@ function MonthlyPayrollTab() {
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetAllUnpaidMonths, setResetAllUnpaidMonths] = useState(false)
   const [createSingleOpen, setCreateSingleOpen] = useState(false)
-  const [singleEmployeeId, setSingleEmployeeId] = useState('')
-  const [singleEmployeeStatus, setSingleEmployeeStatus] = useState<string | null>(
-    null,
-  )
+  const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([])
   const [approvalReason, setApprovalReason] = useState('')
   const [confirmStatus, setConfirmStatus] = useState<{
     id: string
@@ -1063,45 +1061,64 @@ function MonthlyPayrollTab() {
     },
   })
 
-  const needsForceApproval =
-    !!singleEmployeeStatus &&
-    singleEmployeeStatus !== 'ACTIVE' &&
-    singleEmployeeStatus !== 'ON_REST'
+  const isNonActiveForPayroll = (status?: string | null) =>
+    !!status && status !== 'ACTIVE' && status !== 'ON_REST'
+
+  const needsForceApproval = selectedEmployees.some((e) =>
+    isNonActiveForPayroll(e.status),
+  )
+
+  const resetCreateSingle = () => {
+    setSelectedEmployees([])
+    setApprovalReason('')
+  }
 
   const createSingleMutation = useMutation({
     mutationFn: async () => {
-      if (!singleEmployeeId) throw new Error('Select an employee')
-      return payrollApi.createEntry({
-        employeeId: singleEmployeeId,
-        month: monthYear.month,
-        year: monthYear.year,
-        ...(needsForceApproval
-          ? {
-              allowNonActive: true,
-              approvalReason: approvalReason.trim(),
-            }
-          : {}),
-      })
+      if (selectedEmployees.length === 0) throw new Error('Select an employee')
+      // Sequential, one audited single-entry call per employee, so one
+      // employee's failure does not block the rest.
+      const created: Employee[] = []
+      const failed: Array<{ employee: Employee; message: string }> = []
+      for (const emp of selectedEmployees) {
+        try {
+          await payrollApi.createEntry({
+            employeeId: emp.id,
+            month: monthYear.month,
+            year: monthYear.year,
+            ...(isNonActiveForPayroll(emp.status)
+              ? {
+                  allowNonActive: true,
+                  approvalReason: approvalReason.trim(),
+                }
+              : {}),
+          })
+          created.push(emp)
+        } catch (err) {
+          failed.push({ employee: emp, message: getApiErrorMessage(err, 'Error') })
+        }
+      }
+      return { created, failed }
     },
-    onSuccess: () => {
+    onSuccess: ({ created, failed }) => {
+      if (created.length > 0) invalidatePayrollViews(queryClient)
+      if (failed.length === 0) {
+        toast({
+          title: `Created ${created.length} payroll ${created.length === 1 ? 'entry' : 'entries'}`,
+        })
+        setCreateSingleOpen(false)
+        resetCreateSingle()
+        return
+      }
       toast({
-        title: needsForceApproval
-          ? 'Forced payroll entry created'
-          : 'Payroll entry created',
-      })
-      invalidatePayrollViews(queryClient)
-      setCreateSingleOpen(false)
-      setSingleEmployeeId('')
-      setSingleEmployeeStatus(null)
-      setApprovalReason('')
-    },
-    onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
-      const msg = err.response?.data?.message
-      toast({
-        title: 'Failed to create entry',
-        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        title: `Created ${created.length}, failed ${failed.length}`,
+        description: failed
+          .map((f) => `${f.employee.employeeCode} ${f.employee.fullName}: ${f.message}`)
+          .join(' | '),
         variant: 'destructive',
       })
+      // Keep only the failed employees selected so they can be fixed and retried.
+      setSelectedEmployees(failed.map((f) => f.employee))
     },
   })
 
@@ -1590,32 +1607,72 @@ function MonthlyPayrollTab() {
         open={createSingleOpen}
         onOpenChange={(open) => {
           setCreateSingleOpen(open)
-          if (!open) {
-            setSingleEmployeeId('')
-            setSingleEmployeeStatus(null)
-            setApprovalReason('')
-          }
+          if (!open) resetCreateSingle()
         }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add payroll entry</DialogTitle>
+            <DialogTitle>Add payroll entries</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-text-secondary">
               Month: {format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy')}
-              . Default eligibility is ACTIVE / ON REST. Suspended (or other)
-              employees require an approval reason from higher authorities.
+              . Default eligibility is ACTIVE / ON REST. Resigned, terminated,
+              suspended (or other) employees require an approval reason from
+              higher authorities. You can add several employees at once.
             </p>
             <EmployeeSearchSelect
-              label="Employee"
-              value={singleEmployeeId}
+              label="Add employee"
+              value=""
+              excludeIds={selectedEmployees.map((e) => e.id)}
               onChange={(id, emp) => {
-                setSingleEmployeeId(id)
-                setSingleEmployeeStatus(emp?.status ?? null)
-                if (!id) setApprovalReason('')
+                if (!id || !emp) return
+                setSelectedEmployees((prev) =>
+                  prev.some((e) => e.id === id) ? prev : [...prev, emp],
+                )
               }}
             />
+            {selectedEmployees.length > 0 ? (
+              <div className="max-h-56 space-y-1 overflow-auto rounded-md border border-border p-2">
+                {selectedEmployees.map((emp) => (
+                  <div
+                    key={emp.id}
+                    className="flex items-center justify-between gap-2 rounded px-2 py-1 text-sm hover:bg-muted"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate">
+                        <span className="font-mono text-xs text-text-secondary">
+                          {emp.employeeCode}
+                        </span>{' '}
+                        — {emp.fullName}
+                      </p>
+                      {isNonActiveForPayroll(emp.status) ? (
+                        <p className="text-xs text-amber-700">
+                          {emp.status}
+                          {emp.statusEffectiveFrom
+                            ? ` · effective from ${format(new Date(emp.statusEffectiveFrom), 'dd MMM yyyy')}`
+                            : ' · no effective-from date set, check before paying'}
+                        </p>
+                      ) : null}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 shrink-0 p-0"
+                      aria-label={`Remove ${emp.fullName}`}
+                      onClick={() =>
+                        setSelectedEmployees((prev) =>
+                          prev.filter((e) => e.id !== emp.id),
+                        )
+                      }
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             {needsForceApproval ? (
               <div className="space-y-2">
                 <Label>Approval reason (required)</Label>
@@ -1626,8 +1683,8 @@ function MonthlyPayrollTab() {
                   rows={3}
                 />
                 <p className="text-xs text-amber-700">
-                  Employee status: {singleEmployeeStatus}. This will create a
-                  forced payroll entry and write an audit log.
+                  Non-active employees selected. This reason applies to all of
+                  them; each gets a forced payroll entry and an audit log.
                 </p>
               </div>
             ) : null}
@@ -1642,13 +1699,17 @@ function MonthlyPayrollTab() {
             <Button
               className="bg-primary hover:bg-primary-dark"
               disabled={
-                !singleEmployeeId ||
+                selectedEmployees.length === 0 ||
                 createSingleMutation.isPending ||
                 (needsForceApproval && !approvalReason.trim())
               }
               onClick={() => createSingleMutation.mutate()}
             >
-              {createSingleMutation.isPending ? 'Creating…' : 'Create entry'}
+              {createSingleMutation.isPending
+                ? 'Creating…'
+                : selectedEmployees.length > 1
+                  ? `Create ${selectedEmployees.length} entries`
+                  : 'Create entry'}
             </Button>
           </DialogFooter>
         </DialogContent>
