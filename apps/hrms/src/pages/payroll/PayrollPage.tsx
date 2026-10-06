@@ -2638,17 +2638,169 @@ function StipendReceiptsTab() {
   )
 }
 
+/** Payslip printing for resigned / terminated / other non-active employees. */
+function NonActivePayslipsTab() {
+  const now = new Date()
+  const [monthYear, setMonthYear] = useState({
+    month: now.getMonth() + 1,
+    year: now.getFullYear(),
+  })
+
+  const { data: entries = [], isLoading } = useQuery({
+    queryKey: ['payroll-entries', { month: monthYear.month, year: monthYear.year }],
+    queryFn: () =>
+      payrollApi.getEntries({ month: monthYear.month, year: monthYear.year }),
+  })
+
+  const nonActiveEntries = useMemo(
+    () =>
+      entries.filter((e) => {
+        const status = e.stipendRecord?.employee?.status
+        return (
+          e.forcedNonActive === true ||
+          (!!status && status !== 'ACTIVE' && status !== 'ON_REST')
+        )
+      }),
+    [entries],
+  )
+
+  const [printSlips, setPrintSlips] = useState<PayslipSlipData[] | null>(null)
+  const clearPrintSlips = useCallback(() => setPrintSlips(null), [])
+  const printMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      payrollApi.getPayslips(ids).then((rows) => ({ ids, rows })),
+    onSuccess: ({ ids, rows }) => {
+      const byId = new Map(rows.map((row) => [row.entryId, row.slip]))
+      setPrintSlips(
+        ids
+          .map((id) => byId.get(id))
+          .filter((slip): slip is PayslipSlipData => !!slip),
+      )
+    },
+    onError: (err) =>
+      toast({
+        title: 'Could not load payslips',
+        description: getApiErrorMessage(err, 'Please try again'),
+        variant: 'destructive',
+      }),
+  })
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="flex flex-wrap items-end justify-between gap-4 pt-6">
+          <div className="space-y-1">
+            <MonthYearPicker value={monthYear} onChange={setMonthYear} />
+            <p className="text-xs text-text-secondary">
+              Resigned, terminated and other non-active employees whose payroll
+              entry was created for this month. Use "Add entry for employee" on
+              Monthly Payroll to add more.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            disabled={nonActiveEntries.length === 0 || printMutation.isPending}
+            onClick={() => printMutation.mutate(nonActiveEntries.map((e) => e.id))}
+          >
+            <Printer className="mr-2 h-4 w-4" />
+            {printMutation.isPending
+              ? 'Preparing…'
+              : `Print all payslips (${nonActiveEntries.length})`}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="overflow-x-auto p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Employee</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Net stipend</TableHead>
+                <TableHead>Payroll</TableHead>
+                <TableHead className="text-right">Payslip</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5}>
+                    <Skeleton className="h-8 w-full" />
+                  </TableCell>
+                </TableRow>
+              ) : nonActiveEntries.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-8 text-center text-text-secondary">
+                    No non-active employee payroll for this month.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                nonActiveEntries.map((entry) => {
+                  const emp = entry.stipendRecord?.employee
+                  return (
+                    <TableRow key={entry.id}>
+                      <TableCell>
+                        <EmployeeNameLink employee={emp} />
+                        <p className="font-mono text-xs text-text-secondary">
+                          {emp?.employeeCode ?? '—'}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className="border-amber-200 bg-amber-50 text-amber-800"
+                        >
+                          {emp?.status
+                            ? employeeStatusLabel(emp.status as EmployeeStatus)
+                            : '—'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatPKR(entry.netStipend)}
+                      </TableCell>
+                      <TableCell>
+                        <PayrollStatusBadge status={entry.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={printMutation.isPending}
+                          onClick={() => printMutation.mutate([entry.id])}
+                        >
+                          <Printer className="mr-1 h-4 w-4" />
+                          Print
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {printSlips && printSlips.length > 0 && (
+        <PayslipPrintSheet slips={printSlips} onDone={clearPrintSlips} />
+      )}
+    </div>
+  )
+}
+
 export function PayrollPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-text-primary sm:text-2xl">Payroll</h1>
 
       <Tabs defaultValue="monthly">
-        <TabsList className="w-full justify-start sm:w-auto">
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
           <TabsTrigger value="monthly">Monthly Payroll</TabsTrigger>
           <TabsTrigger value="increment">Stipend Increment</TabsTrigger>
           <TabsTrigger value="summary">Summary</TabsTrigger>
           <TabsTrigger value="receipts">Stipend Receipts</TabsTrigger>
+          <TabsTrigger value="non-active">Non-active Payslips</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monthly" className="mt-4">
@@ -2665,6 +2817,10 @@ export function PayrollPage() {
 
         <TabsContent value="receipts" className="mt-4">
           <StipendReceiptsTab />
+        </TabsContent>
+
+        <TabsContent value="non-active" className="mt-4">
+          <NonActivePayslipsTab />
         </TabsContent>
       </Tabs>
     </div>
