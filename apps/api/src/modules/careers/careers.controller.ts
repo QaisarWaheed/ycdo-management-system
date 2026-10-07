@@ -6,7 +6,6 @@ import {
   Param,
   Patch,
   Post,
-  Put,
   Query,
   Request,
   UseGuards,
@@ -84,7 +83,7 @@ export class CareersController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Put('admin/jobs/:id')
+  @Patch('admin/jobs/:id')
   updateJob(@Param('id') id: string, @Body() dto: UpdateJobDto) {
     return this.careersService.updateJob(id, dto);
   }
