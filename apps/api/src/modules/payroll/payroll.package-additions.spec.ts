@@ -54,7 +54,7 @@ describe('global stored package additions to generated Card salary and payslip',
     expect(slip.earnings.previousMonth).toBe(0);
     expect(slip.earningsTotal - slip.deductionsTotal).toBe(input.expected);
     expect(slip.netPay).toBe(input.expected);
-    if (input.name === 'zero additions') for (const [key, amount] of Object.entries(slip.earnings)) if (key !== 'stipend') expect(formatSlipMoney(amount as number)).toBe('Nil');
+    if (input.name === 'zero additions') for (const [key, amount] of Object.entries(slip.earnings)) if (key !== 'stipend' && key !== 'contractualStipend') expect(formatSlipMoney(amount as number)).toBe('Nil');
   });
   it('renders 30,000 + 5,000 + 5,000 + 70.16 as 40,070.16', () => {
     const service: any = new PayrollService({} as any, {} as any);

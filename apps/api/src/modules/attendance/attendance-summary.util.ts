@@ -63,6 +63,8 @@ export type PayrollAttendanceReport = {
   late: number;
   overtimeHours: number;
   extraWorkingDays: number;
+  /** At least one Present/Late/Short Leave/Half Day — salary is only paid then. */
+  worked: boolean;
 };
 
 export function toPayrollAttendanceReport(
@@ -76,6 +78,8 @@ export function toPayrollAttendanceReport(
     late: summary.late,
     overtimeHours: Math.round((summary.overtimeMinutes / 60) * 100) / 100,
     extraWorkingDays,
+    worked:
+      summary.present + summary.late + summary.shortLeave + summary.halfDay > 0,
   };
 }
 
@@ -86,4 +90,5 @@ export const EMPTY_PAYROLL_ATTENDANCE_REPORT: PayrollAttendanceReport = {
   late: 0,
   overtimeHours: 0,
   extraWorkingDays: 0,
+  worked: false,
 };

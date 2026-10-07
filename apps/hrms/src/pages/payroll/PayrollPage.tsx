@@ -940,11 +940,12 @@ function MonthlyPayrollTab() {
     const q = nameSearch.trim().toLowerCase()
     return entries.filter((e) => {
       const emp = e.stipendRecord?.employee
-      // hide entries with 0 working days
-      const present = e.attendance?.present ?? 0
-      const onLeave = e.attendance?.onLeave ?? 0
-      const extraDays = e.attendance?.extraWorkingDays ?? 0
-      if (present + onLeave + extraDays === 0) return false
+      // No salary without at least one working day (Present/Late/Short
+      // Leave/Half Day) — e.g. staff on rest for months. Same rule as the API.
+      const worked =
+        e.attendance?.worked ??
+        (e.attendance?.present ?? 0) + (e.attendance?.late ?? 0) > 0
+      if (!worked) return false
       // employee status filter
       if (empStatusFilter !== ALL && emp?.status !== empStatusFilter) return false
       // name/code search

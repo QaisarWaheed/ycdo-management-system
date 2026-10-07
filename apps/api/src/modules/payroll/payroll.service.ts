@@ -1,7 +1,7 @@
 import { resolvePackageComponents, validatePackageTimeline } from './stipend-package-integrity.util';
 import { loadAttendanceCard, type AttendanceCard } from '../attendance/attendance-card.util';
 import { isManualDeduction } from './manual-deduction.util';
-import { calculateCardSalary, isLegacyAttendanceDeduction, CARD_ABSENCE_DESCRIPTION, CARD_LATE_DESCRIPTION } from './attendance-card-salary.util';
+import { calculateCardSalary, hasPresenceInMonth, isLegacyAttendanceDeduction, CARD_ABSENCE_DESCRIPTION, CARD_LATE_DESCRIPTION } from './attendance-card-salary.util';
 import { payrollTransactionClient, withPayrollEmployeeTransaction } from './payroll-write-lock.util';
 import {
   calculateLumpsumTotal,
@@ -1406,17 +1406,21 @@ export class PayrollService {
     } }) : null;
     if (frozenSibling) throw new ConflictException('FROZEN_PAYROLL_SEGMENT: a frozen sibling already carries money; cannot replace it with whole-month Card salary');
     const attendanceCard = await loadAttendanceCard(this.prisma, dto.employeeId, dto.month, dto.year);
-    // Missing dates are treated as absent — payroll proceeds with the data available.
+    // Missing dates are left unpaid (not counted as Absent); payroll proceeds with the data available.
     const context = { stipendRecord, employee, applyContractualPackage, attendanceCard, existingDeductions: entry?.deductions ?? [], existingAllowances: entry?.allowances ?? [] };
     const breakdown = await this.computeHourlyBreakdown(dto.employeeId, dto.month, dto.year, context);
     const salary = calculateCardSalary(attendanceCard, Number(stipendRecord.basicStipend), resolveDailyDutyHours(employee));
-    if (!entry) entry = await this.prisma.payrollEntry.create({ data: { stipendRecordId: stipendRecord.id, month: dto.month, year: dto.year, ...this.clampPayrollTotals(breakdown), status: PayrollStatus.PENDING, forcedNonActive: forceNonActiveOverride === true }, include: { deductions: true, allowances: true } });
+    // No working day in the month (e.g. on rest for months) → no salary at all:
+    // no basic, package allowances or Card extras. Manual HR/Finance rows stay stored.
+    const worked = hasPresenceInMonth(attendanceCard);
+    const totals = worked ? this.clampPayrollTotals(breakdown) : { basicStipend: 0, totalAllowances: 0, totalDeductions: 0, netStipend: 0 };
+    if (!entry) entry = await this.prisma.payrollEntry.create({ data: { stipendRecordId: stipendRecord.id, month: dto.month, year: dto.year, ...totals, status: PayrollStatus.PENDING, forcedNonActive: forceNonActiveOverride === true }, include: { deductions: true, allowances: true } });
     // Card owns all attendance money. Replace legacy managed rows, retain unrelated stored adjustments.
     const legacyDeductions = entry.deductions.filter(isLegacyAttendanceDeduction);
     if (legacyDeductions.length) await this.prisma.payrollDeduction.deleteMany({ where: { id: { in: legacyDeductions.map(d => d.id) } } });
     const legacyAllowances = entry.allowances.filter(a => [AllowanceType.ADDITIONAL_WORKING_DAYS, AllowanceType.OVERTIME, AllowanceType.RELIEVER].includes(a.type as any));
     if (legacyAllowances.length) await this.prisma.allowance.deleteMany({ where: { id: { in: legacyAllowances.map(a => a.id) } } });
-    if (applyContractualPackage) {
+    if (applyContractualPackage && worked) {
       for (const [reason, description, amount] of [[DeductionType.UNINFORMED_ABSENCE, CARD_ABSENCE_DESCRIPTION, salary.absencePenalty], [DeductionType.LATE_ARRIVAL, CARD_LATE_DESCRIPTION, salary.latePenalty]] as const) {
         if (amount > 0) await this.prisma.payrollDeduction.create({ data: { payrollEntryId: entry.id, reason, description, amount } });
       }
@@ -1424,7 +1428,7 @@ export class PayrollService {
         if (amount > 0) await this.prisma.allowance.create({ data: { payrollEntryId: entry.id, type, description, amount, hours } });
       }
     }
-    return this.prisma.payrollEntry.update({ where: { id: entry.id }, data: { ...this.clampPayrollTotals(breakdown), forcedNonActive: forceNonActiveOverride === true || entry.forcedNonActive === true }, include: { deductions: true, allowances: true } });
+    return this.prisma.payrollEntry.update({ where: { id: entry.id }, data: { ...totals, forcedNonActive: forceNonActiveOverride === true || entry.forcedNonActive === true }, include: { deductions: true, allowances: true } });
   }
 
   /** Saves every filled deduction cause in one transaction, so none are half-applied. */

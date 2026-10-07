@@ -65,6 +65,74 @@ describe('aggregateMonthlyPayrollByEmployee', () => {
     expect(rows[0]!.attendance).toEqual({ present: 17, absent: 0 });
   });
 
+  it('day-1 increment: the old package entry adds only HR/Finance manual items', () => {
+    const employee = { id: 'emp-1', fullName: 'Sample' };
+    const rows = aggregateMonthlyPayrollByEmployee([
+      {
+        // Leftover on the old 20,000 package; its effectiveTo is the 1st, so it
+        // no longer covers September.
+        id: 'pe-old',
+        month: 9,
+        year: 2026,
+        basicStipend: 20000,
+        totalAllowances: 1833.33,
+        totalDeductions: 1500,
+        netStipend: 20333.33,
+        status: PayrollStatus.PENDING,
+        stipendRecord: {
+          employeeId: 'emp-1',
+          employee,
+          effectiveFrom: new Date('2025-01-01T00:00:00.000Z'),
+          effectiveTo: new Date('2026-09-01T00:00:00.000Z'),
+        },
+        allowances: [
+          { type: 'ADDITIONAL_WORKING_DAYS', amount: 1333.33 },
+          { type: 'CUSTOM', amount: 500, description: 'Incentive' },
+        ],
+        deductions: [
+          { reason: 'LOAN', amount: 1000, description: 'Loan instalment' },
+          { reason: 'UNINFORMED_ABSENCE', amount: 500, description: 'Attendance Card: additional absence penalty' },
+        ],
+      },
+      {
+        id: 'pe-new',
+        month: 9,
+        year: 2026,
+        basicStipend: 25000,
+        totalAllowances: 6666.67,
+        totalDeductions: 0,
+        netStipend: 31666.67,
+        status: PayrollStatus.PENDING,
+        stipendRecord: {
+          employeeId: 'emp-1',
+          employee,
+          effectiveFrom: new Date('2026-09-01T00:00:00.000Z'),
+          effectiveTo: null,
+        },
+        allowances: [{ type: 'ADDITIONAL_WORKING_DAYS', amount: 1666.67 }],
+        deductions: [],
+      },
+    ]);
+
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+    expect(row.id).toBe('pe-new');
+    expect(Number(row.basicStipend)).toBe(25000); // not 45,000
+    expect(Number(row.totalAllowances)).toBe(7166.67); // new entry + 500 incentive
+    expect(Number(row.totalDeductions)).toBe(1000); // loan kept, card absence dropped
+    expect(Number(row.netStipend)).toBe(31166.67); // 31,666.67 + 500 - 1,000
+    expect(row.allowances).toHaveLength(2);
+    expect(row.allowances).toEqual(
+      expect.arrayContaining([
+        { type: 'ADDITIONAL_WORKING_DAYS', amount: 1666.67 },
+        { type: 'CUSTOM', amount: 500, description: 'Incentive' },
+      ]),
+    );
+    expect(row.deductions).toEqual([
+      { reason: 'LOAN', amount: 1000, description: 'Loan instalment' },
+    ]);
+  });
+
   it('keeps different employees as separate rows', () => {
     const rows = aggregateMonthlyPayrollByEmployee([
       {

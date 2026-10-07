@@ -24,6 +24,15 @@ export function calculateCardSalary(card: SalaryAttendanceCard, basic: number, w
     attendanceSalary: round(earnedBasic - absencePenalty - latePenalty + additionalWorkingDayPay + overtimePay) };
 }
 
+/**
+ * Salary is only calculated when the employee worked at least one day in the
+ * month (Present, Late, Short Leave or Half Day). Leave, holidays or swaps
+ * alone do not count — staff on rest for months must not draw a salary.
+ */
+export function hasPresenceInMonth(card: Pick<SalaryAttendanceCard, 'present' | 'late' | 'shortLeave' | 'halfDay'>): boolean {
+  return card.present + card.late + card.shortLeave + card.halfDay > 0;
+}
+
 /** These categories now belong exclusively to the Card; legitimate unrelated fines remain. */
 export function isLegacyAttendanceDeduction(row: { reason?: string; description?: string | null }) {
   if (['LATE_ARRIVAL', 'UNINFORMED_ABSENCE', 'UNPAID_LEAVE', 'HALF_DAY', 'EXTRA_LEAVE_REJECTED'].includes(row.reason ?? '')) return true;

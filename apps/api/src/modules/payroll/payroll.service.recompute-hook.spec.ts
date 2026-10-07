@@ -408,6 +408,9 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
     seedPayrollEntry(db, sr.id, 8, 2026, PayrollStatus.PENDING);
     seedPresentDay(db, 10);
+    // A second worked day keeps the month payable (no salary at all with 0
+    // present days), so only day 10's own change is measured.
+    seedPresentDay(db, 11);
     const service = makeService(db);
 
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
@@ -418,8 +421,8 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     await service.recomputePendingPayrollForAttendanceDate(EMP_ID, augustDate(10));
     const afterAbsent = [...db.payrollEntries.values()][0].basicStipend;
 
-    expect(afterPresent).toBe(800);
-    expect(afterAbsent).toBe(0);
+    expect(afterPresent).toBe(1600);
+    expect(afterAbsent).toBe(800);
     expect([...db.payrollEntries.values()][0].totalDeductions).toBe(800);
   });
 

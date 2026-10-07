@@ -773,6 +773,8 @@ export interface PayrollEntry {
     late: number
     overtimeHours: number
     extraWorkingDays: number
+    /** At least one Present/Late/Short Leave/Half Day in the month. */
+    worked?: boolean
   }
 }
 

@@ -56,4 +56,16 @@ describe('Card is the only attendance financial owner',()=>{
     await expect(run()).rejects.toThrow('FROZEN_PAYROLL_SEGMENT'); expect(prisma.payrollDeduction.deleteMany).not.toHaveBeenCalled();
   });
   it('processes payroll even when some attendance dates are missing (treated as absent)',async()=>{jest.mocked(loadAttendanceCard).mockResolvedValue({...card,missingDates:['2026-08-05']} as any);const {run}=setup();await expect(run()).resolves.toBeDefined();});
+  it('pays nothing when the employee has no working day in the month (e.g. on rest)',async()=>{
+    jest.mocked(loadAttendanceCard).mockResolvedValue({...card,present:0,late:0,halfDay:0,shortLeave:0,absent:0,onLeave:0,unmarked:31,additionalWorkingDays:1,overtimeHours:8} as any);
+    const {run,view,prisma}=setup(); await run(); const a=view();
+    expect(a.basicStipend).toBe(0); expect(a.totalAllowances).toBe(0); expect(a.totalDeductions).toBe(0); expect(a.netStipend).toBe(0);
+    expect(prisma.allowance.create).not.toHaveBeenCalled(); expect(prisma.payrollDeduction.create).not.toHaveBeenCalled();
+    expect(a.deductions.find(d=>d.id==='fine')).toBeDefined(); // manual row stays stored
+  });
+  it('still pays an employee who was late every working day',async()=>{
+    jest.mocked(loadAttendanceCard).mockResolvedValue({...card,present:0,late:30,absent:1} as any);
+    const {run,view}=setup(); await run();
+    expect(view().basicStipend).toBeGreaterThan(0);
+  });
 });

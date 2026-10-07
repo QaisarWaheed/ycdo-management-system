@@ -70,6 +70,7 @@ describe('summarizeAttendanceLogs', () => {
       late: 1,
       overtimeHours: 1.5,
       extraWorkingDays: 2,
+      worked: true,
     });
   });
 
