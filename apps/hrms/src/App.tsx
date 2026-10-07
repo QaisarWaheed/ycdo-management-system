@@ -1,5 +1,11 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
+import JobsPublicPage from '@/pages/careers/JobsPublicPage'
+import JobDetailPublicPage from '@/pages/careers/JobDetailPublicPage'
+import ApplicantAuthPage from '@/pages/careers/ApplicantAuthPage'
+import MyApplicationsPage from '@/pages/careers/MyApplicationsPage'
+import HRCareersPage from '@/pages/careers/HRCareersPage'
+import HRApplicationsPage from '@/pages/careers/HRApplicationsPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import {
@@ -295,6 +301,30 @@ export default function App() {
         path="/admin/user-passwords"
         element={<Navigate to="/admin/employee-passwords" replace />}
       />
+      {/* ── Public Careers pages (no ProtectedRoute) ── */}
+      <Route path="/jobs" element={<JobsPublicPage />} />
+      <Route path="/jobs/auth" element={<ApplicantAuthPage />} />
+      <Route path="/jobs/my-applications" element={<MyApplicationsPage />} />
+      <Route path="/jobs/:id" element={<JobDetailPublicPage />} />
+
+      {/* ── HR Careers admin (ProtectedRoute) ── */}
+      <Route
+        path="/careers"
+        element={
+          <ProtectedRoute>
+            <HRCareersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/careers/applications"
+        element={
+          <ProtectedRoute>
+            <HRApplicationsPage />
+          </ProtectedRoute>
+        }
+      />
+
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )

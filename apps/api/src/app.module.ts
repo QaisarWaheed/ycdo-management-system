@@ -41,6 +41,7 @@ import { MutualSwapModule } from './modules/mutual-swap/mutual-swap.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { PortalPresenceModule } from './modules/portal-presence/portal-presence.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { CareersModule } from './modules/careers/careers.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { PrismaModule } from './prisma/prisma.module';
     FaceSyncModule,
     LocationValuesModule,
     MutualSwapModule,
+    CareersModule,
   ],
 })
 export class AppModule {}
