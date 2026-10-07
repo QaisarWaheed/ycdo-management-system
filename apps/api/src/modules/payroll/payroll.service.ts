@@ -1892,23 +1892,18 @@ export class PayrollService {
 
   /**
    * Payslips for many entries, built exactly as the single payslip view builds
-   * them. A few at a time: opening a PENDING entry recomputes it first.
+   * them. Strictly one at a time: opening a PENDING entry recomputes it in a
+   * serializable transaction, and parallel recomputes failed with P2034
+   * (write conflict / deadlock) → "Could not load payslips" on bulk print.
    */
   async getPayslips(
     dto: PayslipBatchDto,
     actingUser?: { id: string; role: UserRole; employeeId?: string | null },
   ) {
-    const ids = [...new Set(dto.entryIds)];
     const results: { entryId: string; slip: PayslipSlipData }[] = [];
-    const concurrency = 4;
-    for (let i = 0; i < ids.length; i += concurrency) {
-      const chunk = await Promise.all(
-        ids.slice(i, i + concurrency).map(async (entryId) => {
-          const full = await this.getEntryWithAllowances(entryId, actingUser);
-          return { entryId, slip: full.slip };
-        }),
-      );
-      results.push(...chunk);
+    for (const entryId of new Set(dto.entryIds)) {
+      const full = await this.getEntryWithAllowances(entryId, actingUser);
+      results.push({ entryId, slip: full.slip });
     }
     return results;
   }
