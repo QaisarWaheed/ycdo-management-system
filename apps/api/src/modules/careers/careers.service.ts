@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import type {
   CreateJobDto,
@@ -138,8 +138,8 @@ export class CareersService {
         cnic: dto.cnic,
         address: dto.address,
         city: dto.city,
-        academicRecords: dto.academicRecords ?? [],
-        experiences: dto.experiences ?? [],
+        academicRecords: (dto.academicRecords ?? []) as unknown as any,
+        experiences: (dto.experiences ?? []) as unknown as any,
         coverLetter: dto.coverLetter,
       },
       select: APP_SELECT,
