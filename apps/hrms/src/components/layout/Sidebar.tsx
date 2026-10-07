@@ -5,6 +5,7 @@ import {
   BarChart3,
   Bell,
   BookOpen,
+  Briefcase,
   Building2,
   Calendar,
   Clock,
@@ -45,6 +46,7 @@ const allNavItems = [
   { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/letters', label: 'Letters', icon: FileText },
   { to: '/recruitment', label: 'Recruitment', icon: UserPlus },
+  { to: '/careers', label: 'Careers Portal', icon: Briefcase },
   { to: '/broadcasts', label: 'Broadcasts', icon: Bell },
   { to: '/branches', label: 'Branches & Projects', icon: Building2 },
 ]
@@ -233,6 +235,7 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
     ],
   },
   '/recruitment': { roles: ['HR_MANAGER', 'HR_EXECUTIVE', 'ADMIN_MANAGER'] },
+  '/careers': { roles: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_EXECUTIVE', 'ADMIN_MANAGER', 'IT_ADMIN', 'SUPER_ADMIN'] },
   '/broadcasts': { roles: ['IT_ADMIN', 'HR_EXECUTIVE'] },
   // The Activity Trail page only renders its data for Super Admin.
   '/activity-trail': { roles: [] },
