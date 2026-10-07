@@ -12,7 +12,11 @@ import {
   resolveAttendanceDutyTimes,
 } from '../../common/duty.util';
 import { is24HourShift } from './attendance-biometric.util';
-import { reverseLateDisciplineForDate } from './discipline.helper';
+import {
+  isEarlyCheckoutEligibleForDiscipline,
+  reverseEarlyCheckoutDisciplineForDate,
+  reverseLateDisciplineForDate,
+} from './discipline.helper';
 import {
   computeShiftEndDateTime,
   computeShiftStartDateTime,
@@ -361,6 +365,17 @@ export async function reconcileShortLeaveAttendance(
 
   if (wasLatenessDriven && side !== 'EARLY') {
     await reverseLateDisciplineForDate(tx, employeeId, date);
+  }
+
+  // Leaving early is covered by the approved short leave — void that day's
+  // early-checkout letter/fine too (its own track, independent of lateness).
+  if (isEarlyCheckoutEligibleForDiscipline(existing)) {
+    await reverseEarlyCheckoutDisciplineForDate(
+      tx,
+      employeeId,
+      date,
+      'SHORT_LEAVE_APPROVED',
+    );
   }
 
   // update(), never upsert() — existing is guaranteed present above, so

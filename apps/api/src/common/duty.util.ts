@@ -169,6 +169,9 @@ export function dutyWindowsOverlap(a: DutyWindow, b: DutyWindow): boolean {
 /** Minutes after duty start that are still counted as on time. */
 export const LATE_GRACE_MINUTES = 15;
 
+/** Minutes before duty end a check-out may happen without counting as an early check-out. */
+export const EARLY_OUT_GRACE_MINUTES = 15;
+
 /**
  * A check-in earlier than this many minutes before duty start is credited as
  * overtime instead of treated as a plain early arrival. Arriving up to and

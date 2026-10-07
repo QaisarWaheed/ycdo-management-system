@@ -36,6 +36,8 @@ describe('summarizeAttendanceLogs', () => {
       weeklyOff: 0,
       overtimeMinutes: 30,
       totalLateMinutes: 12,
+      earlyCheckout: 0,
+      totalEarlyOutMinutes: 0,
     });
   });
 
@@ -68,6 +70,7 @@ describe('summarizeAttendanceLogs', () => {
       absent: 2,
       onLeave: 1,
       late: 1,
+      earlyCheckout: 0,
       overtimeHours: 1.5,
       extraWorkingDays: 2,
       worked: true,
@@ -90,6 +93,8 @@ describe('summarizeAttendanceLogs', () => {
       weeklyOff: 0,
       overtimeMinutes: 0,
       totalLateMinutes: 0,
+      earlyCheckout: 0,
+      totalEarlyOutMinutes: 0,
     });
   });
 

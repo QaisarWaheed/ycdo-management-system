@@ -409,6 +409,9 @@ model AttendanceLog {
   checkOut              DateTime?
   status                AttendanceStatus
   lateMinutes           Int               @default(0)
+  /// Minutes the employee checked out before duty end (beyond the 15-min
+  /// grace). Tracked separately from lateMinutes — never makes a day LATE.
+  earlyOutMinutes       Int               @default(0)
   overtimeMinutes       Int               @default(0)
   overtimePending       Boolean           @default(false)
   overtimeApprovedBy    String?
@@ -493,6 +496,7 @@ enum DisciplineCategory {
   LATE
   UNINFORMED_ABSENT
   MISSING_CHECKOUT
+  EARLY_CHECKOUT
 }
 
 /// Atomic idempotency gate for discipline.helper.ts's monthly-cycle

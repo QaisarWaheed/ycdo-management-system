@@ -22,13 +22,16 @@ describe('duty windows and saved Card overtime',()=>{
   expect(get().overtimeMinutes).toBe(120);
  });
  it.each([
-  ['08:00','19:45',0,'PRESENT'],['08:00','19:30',30,'LATE'],
-  ['08:35','19:30',50,'LATE'],['09:45','19:30',120,'LATE'],
-  ['09:46','19:30',121,'HALF_DAY'],['06:30','21:00',0,'PRESENT'],
- ])('check-in %s checkout %s gives combined %s (%s)',async(checkIn,checkOut,minutes,status)=>{
+  // Lateness comes from check-in only; leaving early is earlyOutMinutes
+  // (beyond the 15-min grace) and never makes the day LATE/HALF_DAY.
+  ['08:00','19:45',0,0,'PRESENT'],['08:00','19:30',0,30,'PRESENT'],
+  ['08:35','19:30',20,30,'LATE'],['09:45','19:30',90,30,'LATE'],
+  ['09:46','19:30',91,30,'LATE'],['10:16','20:00',121,0,'HALF_DAY'],
+  ['06:30','21:00',0,0,'PRESENT'],
+ ])('check-in %s checkout %s gives late %s, early out %s (%s)',async(checkIn,checkOut,minutes,early,status)=>{
   const {service,employee,get}=fixture({checkIn:at(String(checkIn)),overtimeMinutes:120});
   await service.biometricRegularCheckout(employee,'b',at(String(checkOut)),day,false);
-  expect(get().lateMinutes).toBe(minutes);expect(get().status).toBe(status);
+  expect(get().lateMinutes).toBe(minutes);expect(get().earlyOutMinutes).toBe(early);expect(get().status).toBe(status);
   expect(get().overtimeMinutes).toBe(120);
   expect(summarizeAttendanceLogs([get()]).overtimeMinutes).toBe(120);
  });
@@ -68,7 +71,7 @@ describe('checkout boundary and saved OT edge cases',()=>{
   it('uses snapshotted overnight duty for early departure',async()=>{
   const {service,employee,get}=fixture({checkIn:at('20:00'),dutyStartTimeSnapshot:'20:00',dutyEndTimeSnapshot:'08:00'});
   await service.biometricRegularCheckout(employee,'b',new Date('2026-08-15T07:30:00+05:00'),day,false);
-  expect(get().status).toBe('LATE');expect(get().lateMinutes).toBe(30);
+  expect(get().status).toBe('PRESENT');expect(get().lateMinutes).toBe(0);expect(get().earlyOutMinutes).toBe(30);
  });
 });
 

@@ -643,6 +643,8 @@ export interface AttendanceLog {
   checkIn?: string | null
   checkOut?: string | null
   lateMinutes?: number
+  /** Minutes checked out before duty end (separate from lateness). */
+  earlyOutMinutes?: number
   overtimeMinutes?: number
   overtimePending?: boolean
   overtimeApprovedBy?: string | null
@@ -771,6 +773,8 @@ export interface PayrollEntry {
     absent: number
     onLeave: number
     late: number
+    /** Days checked out before duty end (own track, not counted as late). */
+    earlyCheckout?: number
     overtimeHours: number
     extraWorkingDays: number
     /** At least one Present/Late/Short Leave/Half Day in the month. */

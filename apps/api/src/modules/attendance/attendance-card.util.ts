@@ -56,6 +56,7 @@ export async function loadAttendanceCard(
         status: true,
         overtimeMinutes: true,
         lateMinutes: true,
+        earlyOutMinutes: true,
         overtimePending: true,
         overtimeApprovedAt: true,
       },

@@ -1,8 +1,24 @@
-import { resolvePackageComponents, validatePackageTimeline } from './stipend-package-integrity.util';
-import { loadAttendanceCard, type AttendanceCard } from '../attendance/attendance-card.util';
+import {
+  resolvePackageComponents,
+  validatePackageTimeline,
+} from './stipend-package-integrity.util';
+import {
+  loadAttendanceCard,
+  type AttendanceCard,
+} from '../attendance/attendance-card.util';
 import { isManualDeduction } from './manual-deduction.util';
-import { calculateCardSalary, hasPresenceInMonth, isLegacyAttendanceDeduction, CARD_ABSENCE_DESCRIPTION, CARD_LATE_DESCRIPTION } from './attendance-card-salary.util';
-import { payrollTransactionClient, withPayrollEmployeeTransaction } from './payroll-write-lock.util';
+import {
+  calculateCardSalary,
+  hasPresenceInMonth,
+  isLegacyAttendanceDeduction,
+  CARD_ABSENCE_DESCRIPTION,
+  CARD_LATE_DESCRIPTION,
+  CARD_EARLY_CHECKOUT_DESCRIPTION,
+} from './attendance-card-salary.util';
+import {
+  payrollTransactionClient,
+  withPayrollEmployeeTransaction,
+} from './payroll-write-lock.util';
 import {
   calculateLumpsumTotal,
   dailyStipendRate,
@@ -119,7 +135,9 @@ const PK_OFFSET_MS = 5 * 60 * 60 * 1000;
  * in-progress month's gap-day crediting never reaches into the future. */
 function pakistanDateOnly(d: Date): Date {
   const pk = new Date(d.getTime() + PK_OFFSET_MS);
-  return new Date(Date.UTC(pk.getUTCFullYear(), pk.getUTCMonth(), pk.getUTCDate()));
+  return new Date(
+    Date.UTC(pk.getUTCFullYear(), pk.getUTCMonth(), pk.getUTCDate()),
+  );
 }
 
 @Injectable()
@@ -127,12 +145,18 @@ export class PayrollService {
   private readonly logger = new Logger(PayrollService.name);
   private transactionBound = false;
   private inTransaction(tx: Prisma.TransactionClient): PayrollService {
-    const service = new PayrollService(payrollTransactionClient(tx), this.accessScopeService);
+    const service = new PayrollService(
+      payrollTransactionClient(tx),
+      this.accessScopeService,
+    );
     service.transactionBound = true;
     return service;
   }
   private async entryEmployeeId(entryId: string): Promise<string> {
-    const entry = await this.prisma.payrollEntry.findUnique({ where: { id: entryId }, include: { stipendRecord: true } });
+    const entry = await this.prisma.payrollEntry.findUnique({
+      where: { id: entryId },
+      include: { stipendRecord: true },
+    });
     if (!entry) throw new NotFoundException('Payroll entry not found');
     return entry.stipendRecord.employeeId;
   }
@@ -146,7 +170,10 @@ export class PayrollService {
     dto: CreatePayrollEntryDto,
     actingUser?: { id: string; role: UserRole },
   ) {
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, tx => this.inTransaction(tx).createOrGetEntry(dto, actingUser));
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, (tx) =>
+        this.inTransaction(tx).createOrGetEntry(dto, actingUser),
+      );
 
     if (actingUser?.id) {
       await this.accessScopeService.assertEmployeeAccess(
@@ -272,7 +299,9 @@ export class PayrollService {
         stipendRecord,
         dto,
         employee,
-        forceNonActive && !defaultEligible && stipendRecord.id === packageBearingId
+        forceNonActive &&
+          !defaultEligible &&
+          stipendRecord.id === packageBearingId
           ? true
           : undefined,
         unpaidLeaveDatesForMonth,
@@ -329,7 +358,10 @@ export class PayrollService {
       }> | null;
     }>
   > {
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, tx => this.inTransaction(tx).recomputeEmployeeMonth(dto, actingUser));
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, (tx) =>
+        this.inTransaction(tx).recomputeEmployeeMonth(dto, actingUser),
+      );
 
     if (actingUser?.id) {
       await this.accessScopeService.assertEmployeeAccess(
@@ -601,7 +633,12 @@ export class PayrollService {
           totalDeductions: acc.totalDeductions + Number(r.totalDeductions),
           netStipend: acc.netStipend + Number(r.netStipend),
         }),
-        { basicStipend: 0, totalAllowances: 0, totalDeductions: 0, netStipend: 0 },
+        {
+          basicStipend: 0,
+          totalAllowances: 0,
+          totalDeductions: 0,
+          netStipend: 0,
+        },
       );
 
     // Deterministic ordering — sorted by employeeId so consecutive calls
@@ -829,9 +866,7 @@ export class PayrollService {
 
     const unpaidWhere: Prisma.PayrollEntryWhereInput = {
       status: { in: [PayrollStatus.PENDING, PayrollStatus.PROCESSED] },
-      ...(dto.allUnpaidMonths
-        ? {}
-        : { month: dto.month, year: dto.year }),
+      ...(dto.allUnpaidMonths ? {} : { month: dto.month, year: dto.year }),
       ...(dto.branchId
         ? {
             stipendRecord: {
@@ -842,8 +877,15 @@ export class PayrollService {
     };
 
     if (!this.transactionBound) {
-      const candidates = await this.prisma.payrollEntry.findMany({ where: unpaidWhere, select: { stipendRecord: { select: { employeeId: true } } } });
-      return withPayrollEmployeeTransaction(this.prisma, candidates.map(row => row.stipendRecord.employeeId), tx => this.inTransaction(tx).resetUnpaidPayroll(dto, actingUser));
+      const candidates = await this.prisma.payrollEntry.findMany({
+        where: unpaidWhere,
+        select: { stipendRecord: { select: { employeeId: true } } },
+      });
+      return withPayrollEmployeeTransaction(
+        this.prisma,
+        candidates.map((row) => row.stipendRecord.employeeId),
+        (tx) => this.inTransaction(tx).resetUnpaidPayroll(dto, actingUser),
+      );
     }
     const unpaid = await this.prisma.payrollEntry.findMany({
       where: unpaidWhere,
@@ -873,9 +915,7 @@ export class PayrollService {
     const paidSkipped = await this.prisma.payrollEntry.count({
       where: {
         status: PayrollStatus.PAID,
-        ...(dto.allUnpaidMonths
-          ? {}
-          : { month: dto.month, year: dto.year }),
+        ...(dto.allUnpaidMonths ? {} : { month: dto.month, year: dto.year }),
         ...(dto.branchId
           ? {
               stipendRecord: {
@@ -1084,7 +1124,10 @@ export class PayrollService {
    * Ordered oldest-first so callers can reliably pick "the active one" as
    * either the null-effectiveTo record or, failing that, the most recent.
    */
-  private pakistanMonthWindow(year: number, month: number): {
+  private pakistanMonthWindow(
+    year: number,
+    month: number,
+  ): {
     monthStart: Date;
     monthEnd: Date;
   } {
@@ -1123,7 +1166,9 @@ export class PayrollService {
     month: number,
     year: number,
   ): Promise<{
-    records: Awaited<ReturnType<PayrollService['findOverlappingStipendRecords']>>;
+    records: Awaited<
+      ReturnType<PayrollService['findOverlappingStipendRecords']>
+    >;
     backfillFromAttendance: boolean;
   }> {
     const overlapping = await this.findOverlappingStipendRecords(
@@ -1223,7 +1268,10 @@ export class PayrollService {
   ): boolean {
     if (date.getTime() < segmentStart.getTime()) return false;
     if (date.getTime() > monthEnd.getTime()) return false;
-    if (segmentEndExclusive && date.getTime() >= segmentEndExclusive.getTime()) {
+    if (
+      segmentEndExclusive &&
+      date.getTime() >= segmentEndExclusive.getTime()
+    ) {
       return false;
     }
     return true;
@@ -1338,7 +1386,13 @@ export class PayrollService {
     monthlyAllowedLeaves: number | null | undefined,
   ): Promise<Date[]> {
     const card = await loadAttendanceCard(this.prisma, employeeId, month, year);
-    return card.days.filter(d => d.status === AttendanceStatus.ON_LEAVE && !card.paidLeaveDateKeys.includes(d.date)).map(d => new Date(d.date));
+    return card.days
+      .filter(
+        (d) =>
+          d.status === AttendanceStatus.ON_LEAVE &&
+          !card.paidLeaveDateKeys.includes(d.date),
+      )
+      .map((d) => new Date(d.date));
   }
 
   /**
@@ -1397,51 +1451,189 @@ export class PayrollService {
       backfillContractualFromEmployment?: boolean;
     } = {},
   ) {
-    let entry = await this.prisma.payrollEntry.findUnique({ where: { stipendRecordId_month_year: { stipendRecordId: stipendRecord.id, month: dto.month, year: dto.year } }, include: { deductions: true, allowances: true } });
+    let entry = await this.prisma.payrollEntry.findUnique({
+      where: {
+        stipendRecordId_month_year: {
+          stipendRecordId: stipendRecord.id,
+          month: dto.month,
+          year: dto.year,
+        },
+      },
+      include: { deductions: true, allowances: true },
+    });
     if (entry && entry.status !== PayrollStatus.PENDING) return entry;
-    const frozenSibling = applyContractualPackage ? await this.prisma.payrollEntry.findFirst({ where: {
-      month: dto.month, year: dto.year, stipendRecord: { employeeId: dto.employeeId },
-      stipendRecordId: { not: stipendRecord.id }, status: { in: [PayrollStatus.PROCESSED, PayrollStatus.PAID] },
-      OR: [{ basicStipend: { gt: 0 } }, { totalAllowances: { gt: 0 } }, { totalDeductions: { gt: 0 } }],
-    } }) : null;
-    if (frozenSibling) throw new ConflictException('FROZEN_PAYROLL_SEGMENT: a frozen sibling already carries money; cannot replace it with whole-month Card salary');
-    const attendanceCard = await loadAttendanceCard(this.prisma, dto.employeeId, dto.month, dto.year);
+    const frozenSibling = applyContractualPackage
+      ? await this.prisma.payrollEntry.findFirst({
+          where: {
+            month: dto.month,
+            year: dto.year,
+            stipendRecord: { employeeId: dto.employeeId },
+            stipendRecordId: { not: stipendRecord.id },
+            status: { in: [PayrollStatus.PROCESSED, PayrollStatus.PAID] },
+            OR: [
+              { basicStipend: { gt: 0 } },
+              { totalAllowances: { gt: 0 } },
+              { totalDeductions: { gt: 0 } },
+            ],
+          },
+        })
+      : null;
+    if (frozenSibling)
+      throw new ConflictException(
+        'FROZEN_PAYROLL_SEGMENT: a frozen sibling already carries money; cannot replace it with whole-month Card salary',
+      );
+    const attendanceCard = await loadAttendanceCard(
+      this.prisma,
+      dto.employeeId,
+      dto.month,
+      dto.year,
+    );
     // Missing dates are left unpaid (not counted as Absent); payroll proceeds with the data available.
-    const context = { stipendRecord, employee, applyContractualPackage, attendanceCard, existingDeductions: entry?.deductions ?? [], existingAllowances: entry?.allowances ?? [] };
-    const breakdown = await this.computeHourlyBreakdown(dto.employeeId, dto.month, dto.year, context);
-    const salary = calculateCardSalary(attendanceCard, Number(stipendRecord.basicStipend), resolveDailyDutyHours(employee));
+    const context = {
+      stipendRecord,
+      employee,
+      applyContractualPackage,
+      attendanceCard,
+      existingDeductions: entry?.deductions ?? [],
+      existingAllowances: entry?.allowances ?? [],
+    };
+    const breakdown = await this.computeHourlyBreakdown(
+      dto.employeeId,
+      dto.month,
+      dto.year,
+      context,
+    );
+    const salary = calculateCardSalary(
+      attendanceCard,
+      Number(stipendRecord.basicStipend),
+      resolveDailyDutyHours(employee),
+    );
     // No working day in the month (e.g. on rest for months) → no salary at all:
     // no basic, package allowances or Card extras. Manual HR/Finance rows stay stored.
     const worked = hasPresenceInMonth(attendanceCard);
-    const totals = worked ? this.clampPayrollTotals(breakdown) : { basicStipend: 0, totalAllowances: 0, totalDeductions: 0, netStipend: 0 };
-    if (!entry) entry = await this.prisma.payrollEntry.create({ data: { stipendRecordId: stipendRecord.id, month: dto.month, year: dto.year, ...totals, status: PayrollStatus.PENDING, forcedNonActive: forceNonActiveOverride === true }, include: { deductions: true, allowances: true } });
+    const totals = worked
+      ? this.clampPayrollTotals(breakdown)
+      : {
+          basicStipend: 0,
+          totalAllowances: 0,
+          totalDeductions: 0,
+          netStipend: 0,
+        };
+    if (!entry)
+      entry = await this.prisma.payrollEntry.create({
+        data: {
+          stipendRecordId: stipendRecord.id,
+          month: dto.month,
+          year: dto.year,
+          ...totals,
+          status: PayrollStatus.PENDING,
+          forcedNonActive: forceNonActiveOverride === true,
+        },
+        include: { deductions: true, allowances: true },
+      });
     // Card owns all attendance money. Replace legacy managed rows, retain unrelated stored adjustments.
-    const legacyDeductions = entry.deductions.filter(isLegacyAttendanceDeduction);
-    if (legacyDeductions.length) await this.prisma.payrollDeduction.deleteMany({ where: { id: { in: legacyDeductions.map(d => d.id) } } });
-    const legacyAllowances = entry.allowances.filter(a => [AllowanceType.ADDITIONAL_WORKING_DAYS, AllowanceType.OVERTIME, AllowanceType.RELIEVER].includes(a.type as any));
-    if (legacyAllowances.length) await this.prisma.allowance.deleteMany({ where: { id: { in: legacyAllowances.map(a => a.id) } } });
+    const legacyDeductions = entry.deductions.filter(
+      isLegacyAttendanceDeduction,
+    );
+    if (legacyDeductions.length)
+      await this.prisma.payrollDeduction.deleteMany({
+        where: { id: { in: legacyDeductions.map((d) => d.id) } },
+      });
+    const legacyAllowances = entry.allowances.filter((a) =>
+      [
+        AllowanceType.ADDITIONAL_WORKING_DAYS,
+        AllowanceType.OVERTIME,
+        AllowanceType.RELIEVER,
+      ].includes(a.type as any),
+    );
+    if (legacyAllowances.length)
+      await this.prisma.allowance.deleteMany({
+        where: { id: { in: legacyAllowances.map((a) => a.id) } },
+      });
     if (applyContractualPackage && worked) {
-      for (const [reason, description, amount] of [[DeductionType.UNINFORMED_ABSENCE, CARD_ABSENCE_DESCRIPTION, salary.absencePenalty], [DeductionType.LATE_ARRIVAL, CARD_LATE_DESCRIPTION, salary.latePenalty]] as const) {
-        if (amount > 0) await this.prisma.payrollDeduction.create({ data: { payrollEntryId: entry.id, reason, description, amount } });
+      for (const [reason, description, amount] of [
+        [
+          DeductionType.UNINFORMED_ABSENCE,
+          CARD_ABSENCE_DESCRIPTION,
+          salary.absencePenalty,
+        ],
+        [DeductionType.LATE_ARRIVAL, CARD_LATE_DESCRIPTION, salary.latePenalty],
+        [
+          DeductionType.DISCIPLINARY_FINE,
+          CARD_EARLY_CHECKOUT_DESCRIPTION,
+          salary.earlyCheckoutPenalty,
+        ],
+      ] as const) {
+        if (amount > 0)
+          await this.prisma.payrollDeduction.create({
+            data: { payrollEntryId: entry.id, reason, description, amount },
+          });
       }
-      for (const [type, description, amount, hours] of [[AllowanceType.ADDITIONAL_WORKING_DAYS, 'Attendance Card: Additional Working Days', salary.additionalWorkingDayPay, attendanceCard.additionalWorkingDays * resolveDailyDutyHours(employee)], [AllowanceType.OVERTIME, 'Attendance Card: Overtime', salary.overtimePay, attendanceCard.overtimeHours]] as const) {
-        if (amount > 0) await this.prisma.allowance.create({ data: { payrollEntryId: entry.id, type, description, amount, hours } });
+      for (const [type, description, amount, hours] of [
+        [
+          AllowanceType.ADDITIONAL_WORKING_DAYS,
+          'Attendance Card: Additional Working Days',
+          salary.additionalWorkingDayPay,
+          attendanceCard.additionalWorkingDays *
+            resolveDailyDutyHours(employee),
+        ],
+        [
+          AllowanceType.OVERTIME,
+          'Attendance Card: Overtime',
+          salary.overtimePay,
+          attendanceCard.overtimeHours,
+        ],
+      ] as const) {
+        if (amount > 0)
+          await this.prisma.allowance.create({
+            data: {
+              payrollEntryId: entry.id,
+              type,
+              description,
+              amount,
+              hours,
+            },
+          });
       }
     }
-    return this.prisma.payrollEntry.update({ where: { id: entry.id }, data: { ...totals, forcedNonActive: forceNonActiveOverride === true || entry.forcedNonActive === true }, include: { deductions: true, allowances: true } });
+    return this.prisma.payrollEntry.update({
+      where: { id: entry.id },
+      data: {
+        ...totals,
+        forcedNonActive:
+          forceNonActiveOverride === true || entry.forcedNonActive === true,
+      },
+      include: { deductions: true, allowances: true },
+    });
   }
 
   /** Saves every filled deduction cause in one transaction, so none are half-applied. */
   async addDeductions(dto: AddDeductionsDto) {
     for (const item of dto.items) {
-      if (isLegacyAttendanceDeduction(item)) throw new BadRequestException('Attendance deductions are owned by the Attendance Card');
-      if (!isManualDeduction(item)) throw new BadRequestException('Only manual deduction causes can be added from payroll');
+      if (isLegacyAttendanceDeduction(item))
+        throw new BadRequestException(
+          'Attendance deductions are owned by the Attendance Card',
+        );
+      if (!isManualDeduction(item))
+        throw new BadRequestException(
+          'Only manual deduction causes can be added from payroll',
+        );
     }
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.entryEmployeeId(dto.payrollEntryId), tx => this.inTransaction(tx).addDeductions(dto));
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(
+        this.prisma,
+        await this.entryEmployeeId(dto.payrollEntryId),
+        (tx) => this.inTransaction(tx).addDeductions(dto),
+      );
 
-    let updated: Awaited<ReturnType<PayrollService['addDeduction']>> | undefined;
+    let updated:
+      | Awaited<ReturnType<PayrollService['addDeduction']>>
+      | undefined;
     for (const item of dto.items) {
-      updated = await this.addDeduction({ payrollEntryId: dto.payrollEntryId, ...item });
+      updated = await this.addDeduction({
+        payrollEntryId: dto.payrollEntryId,
+        ...item,
+      });
     }
     return updated;
   }
@@ -1478,8 +1670,17 @@ export class PayrollService {
     return this.entryEmployeeId(found.payrollEntryId);
   }
 
-  async updateDeduction(id: string, dto: UpdateDeductionDto, actingUserId: string) {
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.deductionEmployeeId(id), tx => this.inTransaction(tx).updateDeduction(id, dto, actingUserId));
+  async updateDeduction(
+    id: string,
+    dto: UpdateDeductionDto,
+    actingUserId: string,
+  ) {
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(
+        this.prisma,
+        await this.deductionEmployeeId(id),
+        (tx) => this.inTransaction(tx).updateDeduction(id, dto, actingUserId),
+      );
 
     const deduction = await this.findEditableManualDeduction(id);
     const next = {
@@ -1491,7 +1692,9 @@ export class PayrollService {
           : dto.description?.trim() || null,
     };
     if (!isManualDeduction(next)) {
-      throw new BadRequestException('Only manual deduction causes can be used here');
+      throw new BadRequestException(
+        'Only manual deduction causes can be used here',
+      );
     }
     const delta = next.amount - Number(deduction.amount);
     const entry = deduction.payrollEntry;
@@ -1525,7 +1728,12 @@ export class PayrollService {
   }
 
   async removeDeduction(id: string, actingUserId: string) {
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.deductionEmployeeId(id), tx => this.inTransaction(tx).removeDeduction(id, actingUserId));
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(
+        this.prisma,
+        await this.deductionEmployeeId(id),
+        (tx) => this.inTransaction(tx).removeDeduction(id, actingUserId),
+      );
 
     const deduction = await this.findEditableManualDeduction(id);
     const amount = Number(deduction.amount);
@@ -1557,9 +1765,20 @@ export class PayrollService {
   }
 
   async addDeduction(dto: AddDeductionDto) {
-    if (isLegacyAttendanceDeduction(dto)) throw new BadRequestException('Attendance deductions are owned by the Attendance Card');
-    if (!isManualDeduction(dto)) throw new BadRequestException('Only manual deduction causes can be added from payroll');
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.entryEmployeeId(dto.payrollEntryId), tx => this.inTransaction(tx).addDeduction(dto));
+    if (isLegacyAttendanceDeduction(dto))
+      throw new BadRequestException(
+        'Attendance deductions are owned by the Attendance Card',
+      );
+    if (!isManualDeduction(dto))
+      throw new BadRequestException(
+        'Only manual deduction causes can be added from payroll',
+      );
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(
+        this.prisma,
+        await this.entryEmployeeId(dto.payrollEntryId),
+        (tx) => this.inTransaction(tx).addDeduction(dto),
+      );
 
     const entry = await this.prisma.payrollEntry.findUnique({
       where: { id: dto.payrollEntryId },
@@ -1604,7 +1823,12 @@ export class PayrollService {
     dto: UpdatePayrollStatusDto,
     actingUserId: string,
   ) {
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.entryEmployeeId(entryId), tx => this.inTransaction(tx).updateStatus(entryId, dto, actingUserId));
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(
+        this.prisma,
+        await this.entryEmployeeId(entryId),
+        (tx) => this.inTransaction(tx).updateStatus(entryId, dto, actingUserId),
+      );
 
     const entry = await this.prisma.payrollEntry.findUnique({
       where: { id: entryId },
@@ -1659,8 +1883,16 @@ export class PayrollService {
   }
 
   async addAllowance(dto: AddAllowanceDto) {
-    if (['ADDITIONAL_WORKING_DAYS','OVERTIME','RELIEVER'].includes(dto.type)) throw new BadRequestException('Attendance extras must be recorded on the Attendance Card');
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, await this.entryEmployeeId(dto.payrollEntryId), tx => this.inTransaction(tx).addAllowance(dto));
+    if (['ADDITIONAL_WORKING_DAYS', 'OVERTIME', 'RELIEVER'].includes(dto.type))
+      throw new BadRequestException(
+        'Attendance extras must be recorded on the Attendance Card',
+      );
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(
+        this.prisma,
+        await this.entryEmployeeId(dto.payrollEntryId),
+        (tx) => this.inTransaction(tx).addAllowance(dto),
+      );
 
     const entry = await this.prisma.payrollEntry.findUnique({
       where: { id: dto.payrollEntryId },
@@ -1783,7 +2015,7 @@ export class PayrollService {
     const monthlyWorkingHours = dailyHours * daysInMonth;
 
     // Preview the same Card overtime used by salary; this endpoint does not approve attendance.
-    const card = await loadAttendanceCard(this.prisma,employeeId,month,year);
+    const card = await loadAttendanceCard(this.prisma, employeeId, month, year);
     const existingEntries = await this.prisma.payrollEntry.findMany({
       where: {
         month,
@@ -1796,18 +2028,28 @@ export class PayrollService {
     });
 
     const segments = overlappingStipendRecords.map((stipendRecord) => {
-      const { segmentStart, segmentEndExclusive, monthEnd: segMonthEnd } =
-        this.resolveSegmentDateBounds(stipendRecord, month, year);
-      const segOvertimeHours = stipendRecord.id === activeStipendRecord.id ? card.overtimeHours : 0;
+      const {
+        segmentStart,
+        segmentEndExclusive,
+        monthEnd: segMonthEnd,
+      } = this.resolveSegmentDateBounds(stipendRecord, month, year);
+      const segOvertimeHours =
+        stipendRecord.id === activeStipendRecord.id ? card.overtimeHours : 0;
       const segOvertimeMinutes = segOvertimeHours * 60;
-      const segPendingOvertimeMinutes = stipendRecord.id === activeStipendRecord.id ? card.pendingOvertimeMinutes : 0;
+      const segPendingOvertimeMinutes =
+        stipendRecord.id === activeStipendRecord.id
+          ? card.pendingOvertimeMinutes
+          : 0;
       const segBasicStipend = Number(stipendRecord.basicStipend);
       const segHourlyRate = computeHourlyRate(
         segBasicStipend,
         dailyHours,
         daysInMonth,
       );
-      const segAmount = stipendRecord.id === activeStipendRecord.id ? calculateCardSalary(card, segBasicStipend, dailyHours).overtimePay : 0;
+      const segAmount =
+        stipendRecord.id === activeStipendRecord.id
+          ? calculateCardSalary(card, segBasicStipend, dailyHours).overtimePay
+          : 0;
 
       const existingEntry = existingEntries.find(
         (e) => e.stipendRecordId === stipendRecord.id,
@@ -1844,9 +2086,7 @@ export class PayrollService {
       0,
     );
     const overtimeHours = Math.round((overtimeMinutes / 60) * 100) / 100;
-    const amount = roundMoney(
-      segments.reduce((sum, s) => sum + s.amount, 0),
-    );
+    const amount = roundMoney(segments.reduce((sum, s) => sum + s.amount, 0));
 
     return {
       employeeId,
@@ -1886,8 +2126,16 @@ export class PayrollService {
     dto: ApplyOvertimeDto,
     actingUser: { id: string; role: UserRole },
   ) {
-    await this.accessScopeService.assertEmployeeAccess(actingUser.id,actingUser.role,Permission.PAYROLL_MANAGE,dto.employeeId);
-    return this.createOrGetEntry({ employeeId: dto.employeeId, month: dto.month, year: dto.year },actingUser);
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUser.id,
+      actingUser.role,
+      Permission.PAYROLL_MANAGE,
+      dto.employeeId,
+    );
+    return this.createOrGetEntry(
+      { employeeId: dto.employeeId, month: dto.month, year: dto.year },
+      actingUser,
+    );
   }
 
   /**
@@ -1996,9 +2244,17 @@ export class PayrollService {
       seg.id === current.id ? current : seg,
     );
     const kept = keepPayrollSegmentsForMonth(segmentsForMerge);
-    const orderedPackages = siblingEntries.map(s => s.stipendRecord).sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime());
-    const monthlyPackage = orderedPackages.find(s => s.effectiveTo == null) ?? orderedPackages[0] ?? entry.stipendRecord;
-    const displayPackage = { ...monthlyPackage, employee: entry.stipendRecord.employee };
+    const orderedPackages = siblingEntries
+      .map((s) => s.stipendRecord)
+      .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime());
+    const monthlyPackage =
+      orderedPackages.find((s) => s.effectiveTo == null) ??
+      orderedPackages[0] ??
+      entry.stipendRecord;
+    const displayPackage = {
+      ...monthlyPackage,
+      employee: entry.stipendRecord.employee,
+    };
     current =
       kept.length > 0
         ? { ...mergePayrollSegments(kept), stipendRecord: displayPackage }
@@ -2010,12 +2266,13 @@ export class PayrollService {
     // purely-for-display breakdown never disagrees with what was actually
     // saved (the same class of tab/modal/payslip mismatch bug fixed
     // 2026-09-04 for the old hourly formula).
-    const unpaidLeaveDatesForBreakdown = await this.computeMonthlyUnpaidLeaveDates(
-      entry.stipendRecord.employeeId,
-      entry.month,
-      entry.year,
-      employee.monthlyAllowedLeaves,
-    );
+    const unpaidLeaveDatesForBreakdown =
+      await this.computeMonthlyUnpaidLeaveDates(
+        entry.stipendRecord.employeeId,
+        entry.month,
+        entry.year,
+        employee.monthlyAllowedLeaves,
+      );
     const breakdown = await this.computeHourlyBreakdown(
       entry.stipendRecord.employeeId,
       entry.month,
@@ -2032,10 +2289,24 @@ export class PayrollService {
       },
     );
 
-    const card = await loadAttendanceCard(this.prisma, entry.stipendRecord.employeeId, entry.month, entry.year);
+    const card = await loadAttendanceCard(
+      this.prisma,
+      entry.stipendRecord.employeeId,
+      entry.month,
+      entry.year,
+    );
     const totalRelieverMinutes = 0; // AWD is the sole extra-day source; no duration-based salary credit.
-    const presenceDays = card.present + card.late + card.shortLeave + card.swapCovered + card.halfDay * 0.5;
-    const leaveSplit = { leaveDays: card.onLeave, paidLeaveDays: card.paidLeaveDays, unpaidLeaveDays: card.unpaidLeaveDays };
+    const presenceDays =
+      card.present +
+      card.late +
+      card.shortLeave +
+      card.swapCovered +
+      card.halfDay * 0.5;
+    const leaveSplit = {
+      leaveDays: card.onLeave,
+      paidLeaveDays: card.paidLeaveDays,
+      unpaidLeaveDays: card.unpaidLeaveDays,
+    };
     const slip = this.buildPayslipSlipData({
       entry: current,
       stipendRecord: displayPackage,
@@ -2193,10 +2464,13 @@ export class PayrollService {
 
     const dailyDutyHours = resolveDailyDutyHours(employee);
     const totalDays = daysInPayrollMonth(entry.year, entry.month);
-    const payPeriod = new Date(Date.UTC(entry.year, entry.month - 1, 1)).toLocaleString(
-      'en-US',
-      { month: 'long', year: 'numeric', timeZone: 'UTC' },
-    );
+    const payPeriod = new Date(
+      Date.UTC(entry.year, entry.month - 1, 1),
+    ).toLocaleString('en-US', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
 
     const earnings = {
       stipend: Number(entry.basicStipend) || 0,
@@ -2230,21 +2504,41 @@ export class PayrollService {
     };
 
     const deductionItems = deductions.flatMap((d) => {
-      const item = { reason: String(d.reason), description: d.description ?? null, amount: Number(d.amount) || 0 };
+      const item = {
+        reason: String(d.reason),
+        description: d.description ?? null,
+        amount: Number(d.amount) || 0,
+      };
       const counts = input.absenceCounts;
-      if (d.reason !== DeductionType.UNINFORMED_ABSENCE ||
-          d.description !== CARD_ABSENCE_DESCRIPTION || !counts ||
-          counts.absent + counts.uninformedAbsent === 0) return [item];
+      if (
+        d.reason !== DeductionType.UNINFORMED_ABSENCE ||
+        d.description !== CARD_ABSENCE_DESCRIPTION ||
+        !counts ||
+        counts.absent + counts.uninformedAbsent === 0
+      )
+        return [item];
 
       // Presentation only: allocate the stored penalty, never recalculate or add a charge.
-      const description = 'Attendance Card: additional absence penalty; the unpaid day is already reflected in earned stipend.';
-      if (!counts.uninformedAbsent) return [{ ...item, reason: 'ABSENCE', description }];
-      if (!counts.absent) return [{ ...item, reason: 'UNINFORMED ABSENCE', description }];
-      const absenceAmount = Math.round((item.amount * counts.absent /
-        (counts.absent + counts.uninformedAbsent) + Number.EPSILON) * 100) / 100;
+      const description =
+        'Attendance Card: additional absence penalty; the unpaid day is already reflected in earned stipend.';
+      if (!counts.uninformedAbsent)
+        return [{ ...item, reason: 'ABSENCE', description }];
+      if (!counts.absent)
+        return [{ ...item, reason: 'UNINFORMED ABSENCE', description }];
+      const absenceAmount =
+        Math.round(
+          ((item.amount * counts.absent) /
+            (counts.absent + counts.uninformedAbsent) +
+            Number.EPSILON) *
+            100,
+        ) / 100;
       return [
         { reason: 'ABSENCE', description, amount: absenceAmount },
-        { reason: 'UNINFORMED ABSENCE', description, amount: Math.round((item.amount - absenceAmount) * 100) / 100 },
+        {
+          reason: 'UNINFORMED ABSENCE',
+          description,
+          amount: Math.round((item.amount - absenceAmount) * 100) / 100,
+        },
       ];
     });
 
@@ -2256,9 +2550,7 @@ export class PayrollService {
       title: formatSlipMonthTitle(entry.month, entry.year),
       hospital: employee.currentBranch?.name || '',
       workPlace:
-        employee.currentBranch?.address ||
-        employee.currentBranch?.name ||
-        '',
+        employee.currentBranch?.address || employee.currentBranch?.name || '',
       phone: employee.currentBranch?.phone || '',
       employeeId: employee.employeeCode,
       cnic: employee.cnic || '',
@@ -2313,12 +2605,11 @@ export class PayrollService {
       currentBranchId: branchId,
     };
     if (actingUser?.id) {
-      employeeWhere =
-        await this.accessScopeService.narrowEmployeeWhereForActor(
-          actingUser.id,
-          actingUser.role,
-          employeeWhere,
-        );
+      employeeWhere = await this.accessScopeService.narrowEmployeeWhereForActor(
+        actingUser.id,
+        actingUser.role,
+        employeeWhere,
+      );
     }
 
     const entries = await this.prisma.payrollEntry.findMany({
@@ -2414,10 +2705,7 @@ export class PayrollService {
     };
   }
 
-  private writePayslipSheet(
-    ws: ExcelJS.Worksheet,
-    slip: PayslipSlipData,
-  ) {
+  private writePayslipSheet(ws: ExcelJS.Worksheet, slip: PayslipSlipData) {
     const money = (n: number) => (n ? Math.round(n * 100) / 100 : 'Nil');
 
     ws.getCell('A1').value = slip.orgName;
@@ -2553,7 +2841,11 @@ export class PayrollService {
         weeklyOffWeekdays?: number[] | null;
       };
       attendanceCard?: AttendanceCard;
-      existingDeductions: Array<{ amount: unknown; reason?: string; description?: string | null }>;
+      existingDeductions: Array<{
+        amount: unknown;
+        reason?: string;
+        description?: string | null;
+      }>;
       existingAllowances: Array<{ amount: unknown; type?: string }>;
       /** Calendar dates (as dateKey strings) this employee is ON_LEAVE
        * beyond the monthly paid-leave quota — see computeMonthlyUnpaidLeaveDates
@@ -2588,29 +2880,81 @@ export class PayrollService {
       asOf?: Date;
     },
   ): Promise<HourlyPayrollBreakdown> {
-    const card = context.attendanceCard ?? await loadAttendanceCard(this.prisma, employeeId, month, year);
+    const card =
+      context.attendanceCard ??
+      (await loadAttendanceCard(this.prisma, employeeId, month, year));
     const pkg = stipendRecordToPackage(context.stipendRecord);
     const hours = resolveDailyDutyHours(context.employee);
     const salary = calculateCardSalary(card, pkg.basicStipend, hours);
     // Preserve the existing month-wide package-bearing convention. Other segments cannot pay the Card twice.
-    const ownsMonth = context.applyContractualPackage ?? context.stipendRecord.effectiveTo == null;
+    const ownsMonth =
+      context.applyContractualPackage ??
+      context.stipendRecord.effectiveTo == null;
     const { monthStart, monthEnd } = this.pakistanMonthWindow(year, month);
-    const fixedAllowances = ownsMonth ? prorateMonthlyPackageAmount({
-      monthlyAmount: (pkg.allowances || 0) + (pkg.reward || 0) + (pkg.progressReward || 0) + (pkg.fuelAllowance || 0),
-      year, month, segmentStart: monthStart, segmentEndExclusive: null, monthEnd,
-      employmentStart: context.backfillFromAttendance ? null : context.employee.joiningDate,
-      employmentEndExclusive: context.employee.status && isExitEmployeeStatus(context.employee.status) ? context.employee.statusEffectiveFrom : null,
-    }) : 0;
-    const fixedPackageDeductions = ownsMonth ? (pkg.loanDeduction || 0) + (pkg.advanceDeduction || 0) + (pkg.fineDeduction || 0) + (pkg.healthDeduction || 0) : 0;
-    const storedDeductions = context.existingDeductions.filter(d => !isLegacyAttendanceDeduction(d)).reduce((sum,d) => sum + Number(d.amount),0);
-    const storedAllowances = context.existingAllowances.filter(a => !['ADDITIONAL_WORKING_DAYS','OVERTIME','RELIEVER'].includes(a.type ?? '')).reduce((sum,a) => sum + Number(a.amount),0);
-    return buildHourlyPayrollBreakdown({ contractualBasicStipend: ownsMonth ? pkg.basicStipend : 0, payrollBasicStipend: ownsMonth ? salary.earnedBasic : 0, dailyDutyHours: hours, daysInMonth: card.calendarDays,
-      workedMinutes: 0, paidLeaveMinutes: ownsMonth ? card.paidLeaveDays * hours * 60 : 0,
-      policyCreditMinutes: ownsMonth ? (salary.paidDays - card.paidLeaveDays) * hours * 60 : 0,
-      payableDays: ownsMonth ? salary.paidDays : 0, creditedAttendanceDays: ownsMonth ? salary.paidDays : 0,
-      fixedAllowances, fixedPackageDeductions,
-      disciplineDeductions: storedDeductions + (ownsMonth ? salary.absencePenalty + salary.latePenalty : 0),
-      extraAllowances: storedAllowances + (ownsMonth ? salary.additionalWorkingDayPay + salary.overtimePay : 0) });
+    const fixedAllowances = ownsMonth
+      ? prorateMonthlyPackageAmount({
+          monthlyAmount:
+            (pkg.allowances || 0) +
+            (pkg.reward || 0) +
+            (pkg.progressReward || 0) +
+            (pkg.fuelAllowance || 0),
+          year,
+          month,
+          segmentStart: monthStart,
+          segmentEndExclusive: null,
+          monthEnd,
+          employmentStart: context.backfillFromAttendance
+            ? null
+            : context.employee.joiningDate,
+          employmentEndExclusive:
+            context.employee.status &&
+            isExitEmployeeStatus(context.employee.status)
+              ? context.employee.statusEffectiveFrom
+              : null,
+        })
+      : 0;
+    const fixedPackageDeductions = ownsMonth
+      ? (pkg.loanDeduction || 0) +
+        (pkg.advanceDeduction || 0) +
+        (pkg.fineDeduction || 0) +
+        (pkg.healthDeduction || 0)
+      : 0;
+    const storedDeductions = context.existingDeductions
+      .filter((d) => !isLegacyAttendanceDeduction(d))
+      .reduce((sum, d) => sum + Number(d.amount), 0);
+    const storedAllowances = context.existingAllowances
+      .filter(
+        (a) =>
+          !['ADDITIONAL_WORKING_DAYS', 'OVERTIME', 'RELIEVER'].includes(
+            a.type ?? '',
+          ),
+      )
+      .reduce((sum, a) => sum + Number(a.amount), 0);
+    return buildHourlyPayrollBreakdown({
+      contractualBasicStipend: ownsMonth ? pkg.basicStipend : 0,
+      payrollBasicStipend: ownsMonth ? salary.earnedBasic : 0,
+      dailyDutyHours: hours,
+      daysInMonth: card.calendarDays,
+      workedMinutes: 0,
+      paidLeaveMinutes: ownsMonth ? card.paidLeaveDays * hours * 60 : 0,
+      policyCreditMinutes: ownsMonth
+        ? (salary.paidDays - card.paidLeaveDays) * hours * 60
+        : 0,
+      payableDays: ownsMonth ? salary.paidDays : 0,
+      creditedAttendanceDays: ownsMonth ? salary.paidDays : 0,
+      fixedAllowances,
+      fixedPackageDeductions,
+      disciplineDeductions:
+        storedDeductions +
+        (ownsMonth
+          ? salary.absencePenalty +
+            salary.latePenalty +
+            salary.earlyCheckoutPenalty
+          : 0),
+      extraAllowances:
+        storedAllowances +
+        (ownsMonth ? salary.additionalWorkingDayPay + salary.overtimePay : 0),
+    });
   }
 
   async findAll(
@@ -2729,12 +3073,28 @@ export class PayrollService {
     T extends {
       stipendRecord?: { employee?: { id?: string } | null } | null;
     },
-  >(entries: T[], month: number, year: number): Promise<
+  >(
+    entries: T[],
+    month: number,
+    year: number,
+  ): Promise<
     Array<T & { attendance: ReturnType<typeof toPayrollAttendanceReport> }>
   > {
     const cards = new Map<string, AttendanceCard>();
-    for (const entry of entries) { const id = entry.stipendRecord?.employee?.id; if (id && !cards.has(id)) cards.set(id, await loadAttendanceCard(this.prisma,id,month,year)); }
-    return entries.map(entry => { const card = cards.get(entry.stipendRecord?.employee?.id ?? ''); return { ...entry, attendance: card ? toPayrollAttendanceReport(card,card.additionalWorkingDays) : EMPTY_PAYROLL_ATTENDANCE_REPORT }; });
+    for (const entry of entries) {
+      const id = entry.stipendRecord?.employee?.id;
+      if (id && !cards.has(id))
+        cards.set(id, await loadAttendanceCard(this.prisma, id, month, year));
+    }
+    return entries.map((entry) => {
+      const card = cards.get(entry.stipendRecord?.employee?.id ?? '');
+      return {
+        ...entry,
+        attendance: card
+          ? toPayrollAttendanceReport(card, card.additionalWorkingDays)
+          : EMPTY_PAYROLL_ATTENDANCE_REPORT,
+      };
+    });
   }
 
   async findOne(entryId: string) {
@@ -2794,41 +3154,41 @@ export class PayrollService {
 
     return this.aggregatePayrollHistoryByMonth(
       await this.prisma.payrollEntry.findMany({
-      where: {
-        stipendRecord: { employeeId },
-      },
-      include: {
-        deductions: true,
-        allowances: true,
-        stipendRecord: {
-          include: {
-            employee: {
-              select: {
-                id: true,
-                fullName: true,
-                employeeCode: true,
-                cnic: true,
-                currentDesignation: true,
-                dutyStartTime: true,
-                dutyEndTime: true,
-                dutyTotalHours: true,
-                currentBranch: {
-                  select: {
-                    id: true,
-                    name: true,
-                    address: true,
-                    phone: true,
+        where: {
+          stipendRecord: { employeeId },
+        },
+        include: {
+          deductions: true,
+          allowances: true,
+          stipendRecord: {
+            include: {
+              employee: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  employeeCode: true,
+                  cnic: true,
+                  currentDesignation: true,
+                  dutyStartTime: true,
+                  dutyEndTime: true,
+                  dutyTotalHours: true,
+                  currentBranch: {
+                    select: {
+                      id: true,
+                      name: true,
+                      address: true,
+                      phone: true,
+                    },
                   },
+                  currentDepartment: { select: { id: true, name: true } },
+                  shift: { select: { startTime: true, endTime: true } },
                 },
-                currentDepartment: { select: { id: true, name: true } },
-                shift: { select: { startTime: true, endTime: true } },
               },
             },
           },
         },
-      },
-      orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    }),
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      }),
     );
   }
 
@@ -3046,7 +3406,10 @@ export class PayrollService {
   }
 
   async salaryIncrement(dto: SalaryIncrementDto, actingUserId: string) {
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, tx => this.inTransaction(tx).salaryIncrement(dto, actingUserId));
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, (tx) =>
+        this.inTransaction(tx).salaryIncrement(dto, actingUserId),
+      );
 
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
@@ -3066,7 +3429,9 @@ export class PayrollService {
     }
 
     if (employee.stipendRecords.length > 1) {
-      throw new BadRequestException('Multiple open stipend packages; resolve package history before editing');
+      throw new BadRequestException(
+        'Multiple open stipend packages; resolve package history before editing',
+      );
     }
     const activeStipendRecord = employee.stipendRecords[0];
     if (!activeStipendRecord) {
@@ -3079,9 +3444,15 @@ export class PayrollService {
     if (Number.isNaN(effectiveFrom.getTime())) {
       throw new BadRequestException('effectiveFrom is not a valid date');
     }
-    const history = await this.prisma.stipendRecord.findMany({ where: { employeeId: dto.employeeId } });
+    const history = await this.prisma.stipendRecord.findMany({
+      where: { employeeId: dto.employeeId },
+    });
     validatePackageTimeline([
-      ...history.map(record => record.id === activeStipendRecord.id ? { ...record, effectiveTo: effectiveFrom } : record),
+      ...history.map((record) =>
+        record.id === activeStipendRecord.id
+          ? { ...record, effectiveTo: effectiveFrom }
+          : record,
+      ),
       { id: 'new-package', effectiveFrom, effectiveTo: null },
     ]);
     const previousSalary = Number(activeStipendRecord.basicStipend);
@@ -3121,9 +3492,15 @@ export class PayrollService {
             previousSalary,
             newBasicStipend: dto.basicStipend,
             lumpsumTotal,
-            previousPackage: { ...resolvePackageComponents(activeStipendRecord, { basicStipend: Number(activeStipendRecord.basicStipend) }) },
+            previousPackage: {
+              ...resolvePackageComponents(activeStipendRecord, {
+                basicStipend: Number(activeStipendRecord.basicStipend),
+              }),
+            },
             newPackage: { ...packageValues },
-            suppliedComponents: Object.keys(packageValues).filter(key => dto[key] != null),
+            suppliedComponents: Object.keys(packageValues).filter(
+              (key) => dto[key] != null,
+            ),
             reason: dto.reason,
           },
         },
@@ -3138,7 +3515,10 @@ export class PayrollService {
    * package versions. Explicit dates retain the validated correction path.
    */
   async updateActiveStipend(dto: UpdateActiveStipendDto, actingUserId: string) {
-    if (!this.transactionBound) return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, tx => this.inTransaction(tx).updateActiveStipend(dto, actingUserId));
+    if (!this.transactionBound)
+      return withPayrollEmployeeTransaction(this.prisma, dto.employeeId, (tx) =>
+        this.inTransaction(tx).updateActiveStipend(dto, actingUserId),
+      );
 
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
@@ -3158,7 +3538,9 @@ export class PayrollService {
     }
 
     if (employee.stipendRecords.length > 1) {
-      throw new BadRequestException('Multiple open stipend packages; resolve package history before editing');
+      throw new BadRequestException(
+        'Multiple open stipend packages; resolve package history before editing',
+      );
     }
     const activeStipendRecord = employee.stipendRecords[0];
     if (!activeStipendRecord) {
@@ -3173,13 +3555,21 @@ export class PayrollService {
     const previousEffectiveFrom = activeStipendRecord.effectiveFrom;
     const currentMonthStart = toUtcMonthStart(pakistanDateOnly(new Date()));
     const undatedEdit = !dto.effectiveFrom;
-    if (undatedEdit && toUtcMonthStart(previousEffectiveFrom) > currentMonthStart) {
-      throw new BadRequestException('Cannot edit a future stipend package without an explicit effective date');
+    if (
+      undatedEdit &&
+      toUtcMonthStart(previousEffectiveFrom) > currentMonthStart
+    ) {
+      throw new BadRequestException(
+        'Cannot edit a future stipend package without an explicit effective date',
+      );
     }
-    const createMonthlyVersion = undatedEdit && toUtcMonthStart(previousEffectiveFrom) < currentMonthStart;
+    const createMonthlyVersion =
+      undatedEdit && toUtcMonthStart(previousEffectiveFrom) < currentMonthStart;
     const nextEffectiveFrom = dto.effectiveFrom
       ? new Date(dto.effectiveFrom)
-      : createMonthlyVersion ? currentMonthStart : null;
+      : createMonthlyVersion
+        ? currentMonthStart
+        : null;
     const effectiveFromChanging =
       !!nextEffectiveFrom &&
       nextEffectiveFrom.getTime() !== previousEffectiveFrom.getTime();
@@ -3196,15 +3586,27 @@ export class PayrollService {
     }
 
     if (effectiveFromChanging && nextEffectiveFrom) {
-      const history = await this.prisma.stipendRecord.findMany({ where: { employeeId: dto.employeeId } });
-      const proposed = history.map(record => {
-        if (createMonthlyVersion) return record.id === activeStipendRecord.id
-          ? { ...record, effectiveTo: currentMonthStart } : record;
-        if (record.id === activeStipendRecord.id) return { ...record, effectiveFrom: nextEffectiveFrom };
-        return record.effectiveTo?.getTime() === previousEffectiveFrom.getTime()
-          ? { ...record, effectiveTo: nextEffectiveFrom } : record;
+      const history = await this.prisma.stipendRecord.findMany({
+        where: { employeeId: dto.employeeId },
       });
-      if (createMonthlyVersion) proposed.push({ ...activeStipendRecord, id: 'new-monthly-package', effectiveFrom: currentMonthStart, effectiveTo: null });
+      const proposed = history.map((record) => {
+        if (createMonthlyVersion)
+          return record.id === activeStipendRecord.id
+            ? { ...record, effectiveTo: currentMonthStart }
+            : record;
+        if (record.id === activeStipendRecord.id)
+          return { ...record, effectiveFrom: nextEffectiveFrom };
+        return record.effectiveTo?.getTime() === previousEffectiveFrom.getTime()
+          ? { ...record, effectiveTo: nextEffectiveFrom }
+          : record;
+      });
+      if (createMonthlyVersion)
+        proposed.push({
+          ...activeStipendRecord,
+          id: 'new-monthly-package',
+          effectiveFrom: currentMonthStart,
+          effectiveTo: null,
+        });
       validatePackageTimeline(proposed);
     }
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -3228,18 +3630,23 @@ export class PayrollService {
 
       const record = createMonthlyVersion
         ? await tx.stipendRecord.create({
-            data: { employeeId: dto.employeeId, ...packageValues, lumpsumTotal, effectiveFrom: currentMonthStart },
+            data: {
+              employeeId: dto.employeeId,
+              ...packageValues,
+              lumpsumTotal,
+              effectiveFrom: currentMonthStart,
+            },
           })
         : await tx.stipendRecord.update({
-        where: { id: activeStipendRecord.id },
-        data: {
-          ...packageValues,
-          lumpsumTotal,
-          ...(effectiveFromChanging && nextEffectiveFrom
-            ? { effectiveFrom: nextEffectiveFrom }
-            : {}),
-        },
-      });
+            where: { id: activeStipendRecord.id },
+            data: {
+              ...packageValues,
+              lumpsumTotal,
+              ...(effectiveFromChanging && nextEffectiveFrom
+                ? { effectiveFrom: nextEffectiveFrom }
+                : {}),
+            },
+          });
 
       if (createMonthlyVersion) {
         // Preserve the pending entry and its child rows while changing its package owner.
@@ -3249,7 +3656,10 @@ export class PayrollService {
             status: PayrollStatus.PENDING,
             OR: [
               { year: { gt: currentMonthStart.getUTCFullYear() } },
-              { year: currentMonthStart.getUTCFullYear(), month: { gte: currentMonthStart.getUTCMonth() + 1 } },
+              {
+                year: currentMonthStart.getUTCFullYear(),
+                month: { gte: currentMonthStart.getUTCMonth() + 1 },
+              },
             ],
           },
           data: { stipendRecordId: record.id },
@@ -3265,9 +3675,15 @@ export class PayrollService {
             previousBasicStipend: Number(activeStipendRecord.basicStipend),
             newBasicStipend: dto.basicStipend,
             lumpsumTotal,
-            previousPackage: { ...resolvePackageComponents(activeStipendRecord, { basicStipend: Number(activeStipendRecord.basicStipend) }) },
+            previousPackage: {
+              ...resolvePackageComponents(activeStipendRecord, {
+                basicStipend: Number(activeStipendRecord.basicStipend),
+              }),
+            },
             newPackage: { ...packageValues },
-            suppliedComponents: Object.keys(packageValues).filter(key => dto[key] != null),
+            suppliedComponents: Object.keys(packageValues).filter(
+              (key) => dto[key] != null,
+            ),
             reason: dto.reason?.trim() || null,
             previousEffectiveFrom,
             newEffectiveFrom: effectiveFromChanging
@@ -3302,7 +3718,8 @@ export class PayrollService {
             : previousEffectiveFrom,
         );
     for (const row of pendingMonths) {
-      if (Date.UTC(row.year, row.month - 1, 1) < firstAffectedMonth.getTime()) continue;
+      if (Date.UTC(row.year, row.month - 1, 1) < firstAffectedMonth.getTime())
+        continue;
       await this.recomputeEmployeeMonth({
         employeeId: dto.employeeId,
         month: row.month,

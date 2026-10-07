@@ -4,6 +4,7 @@ export type AttendanceLogSummaryInput = {
   status: AttendanceStatus;
   overtimeMinutes: number;
   lateMinutes: number;
+  earlyOutMinutes?: number | null;
 };
 
 export type AttendanceMonthSummary = {
@@ -28,6 +29,9 @@ export type AttendanceMonthSummary = {
   weeklyOff: number;
   overtimeMinutes: number;
   totalLateMinutes: number;
+  /** Days checked out before duty end (beyond grace). Separate from `late`. */
+  earlyCheckout: number;
+  totalEarlyOutMinutes: number;
 };
 
 export function summarizeAttendanceLogs(
@@ -52,6 +56,11 @@ export function summarizeAttendanceLogs(
     weeklyOff,
     overtimeMinutes: logs.reduce((sum, log) => sum + log.overtimeMinutes, 0),
     totalLateMinutes: logs.reduce((sum, log) => sum + log.lateMinutes, 0),
+    earlyCheckout: logs.filter((log) => (log.earlyOutMinutes ?? 0) > 0).length,
+    totalEarlyOutMinutes: logs.reduce(
+      (sum, log) => sum + (log.earlyOutMinutes ?? 0),
+      0,
+    ),
   };
 }
 
@@ -61,6 +70,7 @@ export type PayrollAttendanceReport = {
   absent: number;
   onLeave: number;
   late: number;
+  earlyCheckout: number;
   overtimeHours: number;
   extraWorkingDays: number;
   /** At least one Present/Late/Short Leave/Half Day — salary is only paid then. */
@@ -76,6 +86,7 @@ export function toPayrollAttendanceReport(
     absent: summary.absent + summary.uninformedAbsent,
     onLeave: summary.onLeave,
     late: summary.late,
+    earlyCheckout: summary.earlyCheckout ?? 0,
     overtimeHours: Math.round((summary.overtimeMinutes / 60) * 100) / 100,
     extraWorkingDays,
     worked:
@@ -88,6 +99,7 @@ export const EMPTY_PAYROLL_ATTENDANCE_REPORT: PayrollAttendanceReport = {
   absent: 0,
   onLeave: 0,
   late: 0,
+  earlyCheckout: 0,
   overtimeHours: 0,
   extraWorkingDays: 0,
   worked: false,

@@ -2,6 +2,8 @@ jest.mock('./discipline.helper', () => ({
   applyDisciplineRules: jest.fn().mockResolvedValue(undefined),
   reverseAbsenceDeductionForDate: jest.fn(),
   reverseLateDisciplineForDate: jest.fn(),
+  isEarlyCheckoutEligibleForDiscipline: jest.fn(() => false),
+  reverseEarlyCheckoutDisciplineForDate: jest.fn(),
 }));
 
 import {

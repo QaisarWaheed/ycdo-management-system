@@ -581,12 +581,13 @@ function PayrollDetailDialog({
 
         <div className={detailTab === 'payslip' ? 'hidden' : undefined}>
         {data.attendance && (
-          <div className="mb-4 grid grid-cols-3 gap-2 rounded-lg border border-border bg-surface p-3 text-sm no-print sm:grid-cols-6">
+          <div className="mb-4 grid grid-cols-3 gap-2 rounded-lg border border-border bg-surface p-3 text-sm no-print sm:grid-cols-7">
             {[
               ['Present', data.attendance.present],
               ['Absent', data.attendance.absent],
               ['On leave', data.attendance.onLeave],
               ['Late', data.attendance.late],
+              ['Early out', data.attendance.earlyCheckout ?? 0],
               ['Overtime', `${data.attendance.overtimeHours} hrs`],
               ['Extra days', data.attendance.extraWorkingDays],
             ].map(([label, value]) => (
@@ -1379,6 +1380,12 @@ function MonthlyPayrollTab() {
               </TableHead>
               <TableHead className="whitespace-nowrap text-right">On leave</TableHead>
               <TableHead className="whitespace-nowrap text-right">Late</TableHead>
+              <TableHead
+                className="whitespace-nowrap text-right"
+                title="Days checked out before duty end (beyond 15 min grace)"
+              >
+                Early out
+              </TableHead>
               <TableHead className="whitespace-nowrap text-right">OT hrs</TableHead>
               <TableHead className="whitespace-nowrap text-right">Extra days</TableHead>
               <TableHead title="Contractual basic stipend before any deductions or proration">Actual Stipend</TableHead>
@@ -1455,6 +1462,9 @@ function MonthlyPayrollTab() {
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {entry.attendance?.late ?? 0}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {entry.attendance?.earlyCheckout ?? 0}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {entry.attendance?.overtimeHours ?? 0}

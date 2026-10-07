@@ -269,13 +269,14 @@ export function MyAttendancePage() {
                   <TableHead>Hours</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Late</TableHead>
+                  <TableHead>Early out</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loadingLogs ? (
                   [...Array(5)].map((_, i) => (
                     <TableRow key={i}>
-                      {[...Array(6)].map((__, j) => (
+                      {[...Array(7)].map((__, j) => (
                         <TableCell key={j}>
                           <Skeleton className="h-5 w-full" />
                         </TableCell>
@@ -285,7 +286,7 @@ export function MyAttendancePage() {
                 ) : sortedLogs.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-8 text-center text-text-secondary"
                     >
                       No attendance records for this period
@@ -311,6 +312,9 @@ export function MyAttendancePage() {
                       </TableCell>
                       <TableCell>
                         {log.lateMinutes ? `${log.lateMinutes} min` : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {log.earlyOutMinutes ? `${log.earlyOutMinutes} min` : '—'}
                       </TableCell>
                     </TableRow>
                   ))

@@ -176,6 +176,12 @@ function letterDisciplineReason(letter: Letter): string {
   ) {
     return 'Missing Checkout'
   }
+  if (
+    category === 'EARLY_CHECKOUT' ||
+    v.monthlyEarlyCheckoutOccurrence != null
+  ) {
+    return 'Early Checkout'
+  }
   if (category === 'UNINFORMED_ABSENT') return 'Uninformed Absence'
   if (category === 'ABSENT') return 'Absence'
   if (v.warningNumber != null) return 'Manual Disciplinary Action'
@@ -187,6 +193,7 @@ function letterOccurrence(letter: Letter): string {
   const n =
     v.monthlyLateOccurrence ??
     v.monthlyMissingCheckoutOccurrence ??
+    v.monthlyEarlyCheckoutOccurrence ??
     v.monthlyAbsenceOccurrence ??
     v.warningNumber
   return n != null ? String(n) : '—'
@@ -220,6 +227,7 @@ function letterStatus(letter: Letter): {
   const hasTrackMeta =
     v.monthlyLateOccurrence != null ||
     v.monthlyMissingCheckoutOccurrence != null ||
+    v.monthlyEarlyCheckoutOccurrence != null ||
     v.disciplineCategory != null
   if (!hasTrackMeta && !v.incidentDate) {
     return {

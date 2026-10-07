@@ -62,6 +62,8 @@ export interface AttendanceLog {
   checkOut?: string | null
   status: string
   lateMinutes?: number
+  /** Minutes checked out before duty end (separate from lateness). */
+  earlyOutMinutes?: number
   overtimeMinutes?: number
 }
 

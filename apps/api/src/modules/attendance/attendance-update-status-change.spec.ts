@@ -216,6 +216,30 @@ function makeLateStatusUpdateService() {
       ),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       findFirst: jest.fn().mockResolvedValue(null),
+      // Chronological-rank helpers used by the dated (early checkout) track.
+      count: jest.fn(
+        ({ where }: { where: { category: string } }) =>
+          disciplineEvents.filter((e) => e.category === where.category).length - 0,
+      ),
+      findMany: jest.fn(({ where }: { where: { category: string } }) =>
+        disciplineEvents
+          .filter((e) => e.category === where.category)
+          .map((e, i) => ({ id: `ev-${i}`, occurrence: e.occurrence })),
+      ),
+      update: jest.fn(),
+      findUnique: jest.fn(
+        ({
+          where,
+        }: {
+          where: {
+            employeeId_category_incidentDate: { category: string };
+          };
+        }) =>
+          disciplineEvents.find(
+            (e) =>
+              e.category === where.employeeId_category_incidentDate.category,
+          ) ?? null,
+      ),
     },
     letter: {
       findMany: jest.fn(() => letters),
@@ -328,13 +352,16 @@ describe('AttendanceService.updateAttendance — status-changing check-in edits'
 });
 
 describe('manual checkout and saved OT',()=>{
- it('checkout edit adds early departure exactly once',async()=>{
+ it('checkout edit records early departure separately, exactly once',async()=>{
   const {service,getCapturedUpdate,getDisciplineEvents}=makeLateStatusUpdateService();
   const dto={checkOut:'2026-08-20T15:30:00+05:00'};
   await service.updateAttendance('log-1',dto as any,ACTING_USER);
-  expect(getCapturedUpdate()).toMatchObject({status:AttendanceStatus.LATE,lateMinutes:30});
+  // On-time arrival + leaving 30 min early: not LATE — tracked as early out.
+  expect(getCapturedUpdate()).toMatchObject({status:AttendanceStatus.PRESENT,lateMinutes:0,earlyOutMinutes:30});
   await service.updateAttendance('log-1',dto as any,ACTING_USER);
-  expect(getCapturedUpdate()?.lateMinutes).toBe(30);expect(getDisciplineEvents()).toHaveLength(1);
+  expect(getCapturedUpdate()?.earlyOutMinutes).toBe(30);
+  expect(getDisciplineEvents()).toHaveLength(1);
+  expect(getDisciplineEvents()[0]).toMatchObject({category:'EARLY_CHECKOUT',occurrence:1});
  });
  it.each([0,120])('manual OT %i is stored exactly alongside timestamp edits',async overtimeMinutes=>{
   const {service,getCapturedUpdate}=makeLateStatusUpdateService();

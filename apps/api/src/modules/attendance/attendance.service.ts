@@ -1302,10 +1302,12 @@ export class AttendanceService {
       }
     }
 
+    let earlyOutMinutes = 0;
     if (checkIn && checkOut && !swapExempt) {
       const classification = classifyDutyCheckout({ ...existing, date: dateOnly, checkIn, status, lateMinutes }, employee, checkOut);
       status = classification.status ?? status;
       lateMinutes = classification.lateMinutes ?? lateMinutes;
+      earlyOutMinutes = classification.earlyOutMinutes;
     }
     const canSaveOvertime = FULL_ATTENDANCE_EDIT_ROLES.includes(actingUser.role);
     if (dto.overtimeMinutes !== undefined && !canSaveOvertime) {
@@ -1375,6 +1377,7 @@ export class AttendanceService {
           checkOut,
           status,
           lateMinutes,
+          earlyOutMinutes,
           overtimeMinutes,
           overtimePending,
           ...(checkIn
@@ -1389,6 +1392,7 @@ export class AttendanceService {
           checkOut,
           status,
           lateMinutes,
+          earlyOutMinutes,
           overtimeMinutes,
           overtimePending,
           ...(checkIn
@@ -1666,6 +1670,14 @@ export class AttendanceService {
       data.checkOut = null;
       data.lateMinutes = 0;
     }
+    // Early check-out only exists for a worked day that still has a checkout.
+    if (
+      data.checkOut === null ||
+      (dto.status !== undefined &&
+        !([AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.HALF_DAY] as AttendanceStatus[]).includes(dto.status))
+    ) {
+      data.earlyOutMinutes = 0;
+    }
 
     const effectiveCheckIn =
       dto.checkIn !== undefined
@@ -1759,6 +1771,7 @@ export class AttendanceService {
             ? AttendanceStatus.SWAP_COVERED
             : AttendanceStatus.PRESENT;
         data.lateMinutes = 0;
+        data.earlyOutMinutes = 0;
       } else {
         // The duty that applied when this record actually happened —
         // AttendanceLog's own snapshot when present, current employee duty

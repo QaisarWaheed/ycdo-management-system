@@ -325,6 +325,53 @@ async function applyMissingCheckoutFineDeduction(
   });
 }
 
+export function earlyCheckoutDeductionDescription(occurrence: number): string {
+  return `Early checkout deduction — monthly occurrence ${occurrence}`;
+}
+
+/** One day's stipend for the 3rd/6th early checkout in a month (same rate as the late fine). */
+async function applyEarlyCheckoutFineDeduction(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  occurrence: number,
+): Promise<void> {
+  const basicStipend = await getBasicStipend(tx, employeeId, date);
+  if (basicStipend <= 0) return;
+
+  const payrollEntry = await getOrCreatePayrollEntry(tx, employeeId, date);
+  if (!payrollEntry || isPayrollFinanciallyFrozen(payrollEntry.status)) return;
+
+  const deductionAmount = dailyStipendRate(basicStipend, date);
+  const description = earlyCheckoutDeductionDescription(occurrence);
+
+  const alreadyDeducted = await tx.payrollDeduction.findFirst({
+    where: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.DISCIPLINARY_FINE,
+      description,
+    },
+  });
+  if (alreadyDeducted) return;
+
+  await tx.payrollDeduction.create({
+    data: {
+      payrollEntryId: payrollEntry.id,
+      reason: DeductionType.DISCIPLINARY_FINE,
+      amount: deductionAmount,
+      description,
+    },
+  });
+
+  await tx.payrollEntry.update({
+    where: { id: payrollEntry.id },
+    data: {
+      totalDeductions: { increment: deductionAmount },
+      netStipend: { decrement: deductionAmount },
+    },
+  });
+}
+
 function parseLetterIncidentDate(raw: unknown): Date | null {
   if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
   const date = new Date(`${raw}T00:00:00.000Z`);
@@ -364,6 +411,19 @@ export async function applyDisciplineDeductionOnLetterSend(
     const occurrence = Number(vars.monthlyMissingCheckoutOccurrence);
     if (occurrence > 0) {
       await applyMissingCheckoutFineDeduction(
+        tx,
+        letter.employeeId,
+        date,
+        occurrence,
+      );
+    }
+    return;
+  }
+
+  if (letter.letterType === LetterType.FINE && category === 'EARLY_CHECKOUT') {
+    const occurrence = Number(vars.monthlyEarlyCheckoutOccurrence);
+    if (occurrence > 0) {
+      await applyEarlyCheckoutFineDeduction(
         tx,
         letter.employeeId,
         date,
@@ -1535,6 +1595,21 @@ export async function resolveMissingCheckoutOccurrenceForDate(
   employeeId: string,
   incidentDate: Date,
 ): Promise<number> {
+  return resolveCategoryOccurrenceForDate(
+    tx,
+    employeeId,
+    DisciplineCategory.MISSING_CHECKOUT,
+    incidentDate,
+  );
+}
+
+/** Chronological rank of `incidentDate` among this month's claimed events of `category`. */
+async function resolveCategoryOccurrenceForDate(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  category: DisciplineCategory,
+  incidentDate: Date,
+): Promise<number> {
   const dayStart = new Date(incidentDate);
   dayStart.setUTCHours(0, 0, 0, 0);
   const { startOfMonth } = pakistanMonthWindowFromDate(dayStart);
@@ -1542,7 +1617,7 @@ export async function resolveMissingCheckoutOccurrenceForDate(
   const priorCount = await tx.disciplineEvent.count({
     where: {
       employeeId,
-      category: DisciplineCategory.MISSING_CHECKOUT,
+      category,
       incidentDate: { gte: startOfMonth, lt: dayStart },
     },
   });
@@ -1561,11 +1636,25 @@ export async function renumberMissingCheckoutOccurrencesForMonth(
   employeeId: string,
   monthDate: Date,
 ): Promise<{ updated: number }> {
+  return renumberCategoryOccurrencesForMonth(
+    tx,
+    employeeId,
+    DisciplineCategory.MISSING_CHECKOUT,
+    monthDate,
+  );
+}
+
+async function renumberCategoryOccurrencesForMonth(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  category: DisciplineCategory,
+  monthDate: Date,
+): Promise<{ updated: number }> {
   const { startOfMonth, endOfMonth } = pakistanMonthWindowFromDate(monthDate);
   const events = await tx.disciplineEvent.findMany({
     where: {
       employeeId,
-      category: DisciplineCategory.MISSING_CHECKOUT,
+      category,
       incidentDate: { gte: startOfMonth, lte: endOfMonth },
     },
     orderBy: { incidentDate: 'asc' },
@@ -1867,6 +1956,260 @@ async function issueMissingCheckoutLetterIfNotAlready(
     },
     notificationMessage: notif.message(missingCount),
     notificationType: notif.type,
+  });
+}
+
+// ─── EARLY CHECKOUT (separate category from lateness — never mixed) ───────
+
+export type EarlyCheckoutOptions = {
+  checkOut: Date;
+  /** Minutes before duty end (already beyond the 15-min grace). */
+  earlyOutMinutes: number;
+};
+
+/**
+ * Monthly early-checkout cycle, same cadence as lateness: 1/4/7 -> Advice,
+ * 2/5/8 -> Warning, 3/6 -> Fine + one day's stipend, 9 -> suspension
+ * recommendation draft. Counted separately from LATE via
+ * DisciplineEvent(EARLY_CHECKOUT) chronological rank, and deduped via its own
+ * Letter.variables key (monthlyEarlyCheckoutOccurrence), so it never collides
+ * with the late or missing-checkout tracks that reuse ADVICE/WARNING/FINE.
+ * Early checkout never changes the attendance status or salary otherwise.
+ */
+export async function applyEarlyCheckoutDiscipline(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  options: EarlyCheckoutOptions,
+): Promise<void> {
+  if (!(options.earlyOutMinutes > 0)) return;
+
+  const employee = await tx.employee.findUnique({
+    where: { id: employeeId },
+    include: { shift: true },
+  });
+  if (!employee || is24HourShift(employee)) return;
+  if (isWeeklyOffDate(employee.weeklyOffWeekdays, date)) return;
+
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayKey = dayStart.toISOString().slice(0, 10);
+
+  const provisional = await resolveCategoryOccurrenceForDate(
+    tx,
+    employeeId,
+    DisciplineCategory.EARLY_CHECKOUT,
+    dayStart,
+  );
+  const claimed = await claimDisciplineEvent(
+    tx,
+    employeeId,
+    DisciplineCategory.EARLY_CHECKOUT,
+    dayStart,
+    provisional,
+  );
+  if (!claimed) return; // already processed for this date — true no-op
+
+  await renumberCategoryOccurrencesForMonth(
+    tx,
+    employeeId,
+    DisciplineCategory.EARLY_CHECKOUT,
+    dayStart,
+  );
+  const claimedEvent = await tx.disciplineEvent.findUnique({
+    where: {
+      employeeId_category_incidentDate: {
+        employeeId,
+        category: DisciplineCategory.EARLY_CHECKOUT,
+        incidentDate: dayStart,
+      },
+    },
+    select: { occurrence: true },
+  });
+  const count = claimedEvent?.occurrence ?? provisional;
+
+  const checkOutMinutes = toPakistanMinutesOfDay(options.checkOut);
+  const checkOutLabel = formatMinutesAsHHmm(checkOutMinutes);
+  const dutyEndLabel = formatMinutesAsHHmm(
+    checkOutMinutes + options.earlyOutMinutes,
+  );
+  const baseDetail = `تاریخ: ${dayKey}، ڈیوٹی ختم ہونے کا مقررہ وقت: ${dutyEndLabel}، چیک آؤٹ کا اصل وقت: ${checkOutLabel}، قبل از وقت روانگی: ${options.earlyOutMinutes} منٹ۔ ڈیوٹی کا مقررہ وقت پورا کیے بغیر چیک آؤٹ کیا گیا۔`;
+  const shouldIssueLetters = AUTO_DISCIPLINE.lettersAndSuspendEnabled;
+  const position = ((count - 1) % 3) + 1; // 1, 2, or 3
+
+  if (position === 1) {
+    if (shouldIssueLetters) {
+      await issueEarlyCheckoutLetterIfNotAlready(tx, employeeId, LetterType.ADVICE, count, date, {
+        violations: `اس ماہ ${count} مرتبہ ڈیوٹی ختم ہونے سے پہلے چیک آؤٹ۔ ${baseDetail} آئندہ ڈیوٹی کا پورا وقت مکمل کرنے کی ہدایت کی جاتی ہے۔`,
+        incidentDate: dayKey,
+      });
+    }
+    return;
+  }
+
+  if (position === 2) {
+    if (shouldIssueLetters) {
+      await issueEarlyCheckoutLetterIfNotAlready(tx, employeeId, LetterType.WARNING, count, date, {
+        violations: `اس ماہ ${count} مرتبہ ڈیوٹی ختم ہونے سے پہلے چیک آؤٹ (اس ماہ کی دوسری تنبیہ)۔ ${baseDetail}`,
+        incidentDate: dayKey,
+      });
+    }
+    return;
+  }
+
+  if (count === 9) {
+    // Suspension recommendation only — no additional deduction at the 9th.
+    if (!shouldIssueLetters) return;
+    await issueEarlyCheckoutLetterIfNotAlready(tx, employeeId, LetterType.SUSPENSION, count, date, {
+      suspensionReason: `اس ماہ ${count} مرتبہ ڈیوٹی ختم ہونے سے پہلے چیک آؤٹ کی بنا پر معطلی کی سفارش۔ ${baseDetail}`,
+      suspensionStartDate: dayKey,
+      suspensionDuration: 'Pending HR review',
+      incidentDate: dayKey,
+    });
+    return;
+  }
+
+  // 3rd / 6th: Fine + one day's stipend (from the confirmed incident; the
+  // letter is documentation only and never gates the deduction).
+  const basicStipend = await getBasicStipend(tx, employeeId, date);
+  const deductionAmount = dailyStipendRate(basicStipend, date);
+  const monthLabel = date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+  await applyEarlyCheckoutFineDeduction(tx, employeeId, date, count);
+
+  if (shouldIssueLetters) {
+    await issueEarlyCheckoutLetterIfNotAlready(tx, employeeId, LetterType.FINE, count, date, {
+      fineReason: `اس ماہ ${count} مرتبہ ڈیوٹی ختم ہونے سے پہلے چیک آؤٹ کی بنا پر یک روزہ تنخواہ کی کٹوتی۔ ${baseDetail}`,
+      fineAmount: `Rs. ${deductionAmount.toFixed(2)}`,
+      deductionMonth: monthLabel,
+      incidentDate: dayKey,
+    });
+  }
+}
+
+async function hasLetterForMonthlyEarlyCheckoutOccurrence(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  letterType: LetterType,
+  count: number,
+  date: Date,
+): Promise<boolean> {
+  const { startOfMonth } = pakistanMonthWindowFromDate(date);
+  const existing = await tx.letter.findMany({
+    where: { employeeId, letterType, generatedAt: { gte: startOfMonth } },
+    select: { variables: true },
+  });
+  const dateLabel = date.toISOString().slice(0, 10);
+  return existing.some((letter) => {
+    const vars = letter.variables as {
+      monthlyEarlyCheckoutOccurrence?: number;
+      incidentDate?: string;
+      reversedDueToShortLeave?: boolean;
+      reversed?: boolean;
+    } | null;
+    if (vars?.reversedDueToShortLeave || vars?.reversed) return false;
+    if (vars?.monthlyEarlyCheckoutOccurrence !== count) return false;
+    if (!vars.incidentDate) return true;
+    return vars.incidentDate === dateLabel;
+  });
+}
+
+const EARLY_CHECKOUT_LETTER_NOTIFICATION: Record<
+  'ADVICE' | 'WARNING' | 'FINE',
+  { message: (n: number) => string; type: string }
+> = {
+  ADVICE: {
+    message: (n) =>
+      `Advice notice issued — you checked out before duty end ${n} time(s) this month.`,
+    type: 'EARLY_CHECKOUT_ADVICE_ISSUED',
+  },
+  WARNING: {
+    message: (n) =>
+      `Warning Letter has been issued due to ${n} early checkouts this month.`,
+    type: 'EARLY_CHECKOUT_WARNING_ISSUED',
+  },
+  FINE: {
+    message: (n) =>
+      `A one-day stipend deduction and Fine Letter have been issued due to ${n} early checkouts this month.`,
+    type: 'EARLY_CHECKOUT_FINE_ISSUED',
+  },
+};
+
+async function issueEarlyCheckoutLetterIfNotAlready(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  letterType: LetterType,
+  count: number,
+  date: Date,
+  extraFields: Record<string, unknown>,
+): Promise<void> {
+  if (
+    await hasLetterForMonthlyEarlyCheckoutOccurrence(tx, employeeId, letterType, count, date)
+  ) {
+    return;
+  }
+  const trackFields = {
+    ...extraFields,
+    monthlyEarlyCheckoutOccurrence: count,
+    disciplineCategory: 'EARLY_CHECKOUT',
+  };
+
+  if (letterType === LetterType.SUSPENSION) {
+    await recommendHrSuspensionDraft(
+      tx,
+      employeeId,
+      date,
+      trackFields,
+      String(
+        extraFields.suspensionReason ??
+          `Attendance threshold recommends suspension (${count} early checkouts this month).`,
+      ),
+    );
+    return;
+  }
+
+  const notif =
+    EARLY_CHECKOUT_LETTER_NOTIFICATION[letterType as 'ADVICE' | 'WARNING' | 'FINE'];
+  await issueAutoTemplatedLetter(tx, {
+    employeeId,
+    letterType,
+    extraFields: trackFields,
+    notificationMessage: notif.message(count),
+    notificationType: notif.type,
+  });
+}
+
+/** Does this row currently count as an early check-out for discipline? */
+export function isEarlyCheckoutEligibleForDiscipline(row: {
+  status: AttendanceStatus;
+  checkOut?: Date | null;
+  earlyOutMinutes?: number | null;
+}): boolean {
+  return (
+    (row.earlyOutMinutes ?? 0) > 0 &&
+    row.checkOut != null &&
+    (
+      [
+        AttendanceStatus.PRESENT,
+        AttendanceStatus.LATE,
+        AttendanceStatus.HALF_DAY,
+      ] as AttendanceStatus[]
+    ).includes(row.status)
+  );
+}
+
+/** Reverse the early-checkout letter/fine/claim of one exact date (checkout corrected, Short Leave, status change). */
+export async function reverseEarlyCheckoutDisciplineForDate(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  reversalTrigger = 'EARLY_CHECKOUT_CORRECTED',
+): Promise<MissingCheckoutReversalResult> {
+  return reverseDatedDisciplineTrack(tx, employeeId, date, {
+    category: DisciplineCategory.EARLY_CHECKOUT,
+    occurrenceKey: 'monthlyEarlyCheckoutOccurrence',
+    deductionDescription: earlyCheckoutDeductionDescription,
+    reversalTrigger,
   });
 }
 
@@ -2410,6 +2753,41 @@ export async function reverseMissingCheckoutDisciplineForDate(
   employeeId: string,
   date: Date,
 ): Promise<MissingCheckoutReversalResult> {
+  return reverseDatedDisciplineTrack(tx, employeeId, date, {
+    category: DisciplineCategory.MISSING_CHECKOUT,
+    occurrenceKey: 'monthlyMissingCheckoutOccurrence',
+    deductionDescription: (n) =>
+      `Missing checkout deduction — monthly occurrence ${n}`,
+    reversalTrigger: 'CHECKOUT_PROVIDED',
+  });
+}
+
+type DatedDisciplineTrack = {
+  category: DisciplineCategory;
+  /** Letter.variables key holding this track's monthly occurrence number. */
+  occurrenceKey:
+    | 'monthlyMissingCheckoutOccurrence'
+    | 'monthlyEarlyCheckoutOccurrence';
+  /** Exact DISCIPLINARY_FINE description written by the track's fine. */
+  deductionDescription: (occurrence: number) => string;
+  reversalTrigger: string;
+};
+
+/**
+ * Reverse one incident date of a dated discipline track (missing checkout,
+ * early checkout): soft-void its ADVICE/WARNING/FINE letter, remove the
+ * PENDING-only fine, release the DisciplineEvent and renumber the month.
+ */
+async function reverseDatedDisciplineTrack(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  date: Date,
+  track: DatedDisciplineTrack,
+): Promise<MissingCheckoutReversalResult> {
+  const occurrenceOf = (l: { variables: Prisma.JsonValue }) =>
+    (l.variables as Record<string, unknown> | null)?.[track.occurrenceKey] as
+      | number
+      | undefined;
   const dayStart = new Date(date);
   dayStart.setUTCHours(0, 0, 0, 0);
   const dateLabel = dayStart.toISOString().slice(0, 10);
@@ -2438,12 +2816,11 @@ export async function reverseMissingCheckoutDisciplineForDate(
 
   const letter = candidates.find((l) => {
     const vars = l.variables as {
-      monthlyMissingCheckoutOccurrence?: number;
       incidentDate?: string;
       reversed?: boolean;
     } | null;
-    if (vars?.monthlyMissingCheckoutOccurrence == null) return false;
-    return vars.incidentDate === dateLabel && !vars.reversed;
+    if (occurrenceOf(l) == null) return false;
+    return vars?.incidentDate === dateLabel && !vars.reversed;
   });
 
   if (!letter) {
@@ -2451,23 +2828,27 @@ export async function reverseMissingCheckoutDisciplineForDate(
     // reverse path may have left the DisciplineEvent claim behind.
     const reversedForDate = candidates.find((l) => {
       const vars = l.variables as {
-        monthlyMissingCheckoutOccurrence?: number;
         incidentDate?: string;
         reversed?: boolean;
       } | null;
-      if (vars?.monthlyMissingCheckoutOccurrence == null) return false;
-      return vars.incidentDate === dateLabel && vars.reversed === true;
+      if (occurrenceOf(l) == null) return false;
+      return vars?.incidentDate === dateLabel && vars.reversed === true;
     });
     if (reversedForDate) {
       const deletedEvents = await tx.disciplineEvent.deleteMany({
         where: {
           employeeId,
-          category: DisciplineCategory.MISSING_CHECKOUT,
+          category: track.category,
           incidentDate: dayStart,
         },
       });
       if (deletedEvents.count > 0) {
-        await renumberMissingCheckoutOccurrencesForMonth(tx, employeeId, date);
+        await renumberCategoryOccurrencesForMonth(
+          tx,
+          employeeId,
+          track.category,
+          date,
+        );
       }
       return {
         ...noOpResult,
@@ -2477,10 +2858,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
     return noOpResult; // no structured link to this exact date — nothing safely reversible
   }
 
-  const vars = letter.variables as {
-    monthlyMissingCheckoutOccurrence?: number;
-  } | null;
-  const occurrence = vars?.monthlyMissingCheckoutOccurrence;
+  const occurrence = occurrenceOf(letter);
 
   let deductionReversed = false;
   let deductionAmount: number | null = null;
@@ -2507,7 +2885,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
 
       if (payrollEntry) {
         payrollStatus = payrollEntry.status;
-        const deductionDescription = `Missing checkout deduction — monthly occurrence ${occurrence}`;
+        const deductionDescription = track.deductionDescription(occurrence);
         const deduction = await tx.payrollDeduction.findFirst({
           where: {
             payrollEntryId: payrollEntry.id,
@@ -2547,7 +2925,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
         reversed: true,
         reversedDueToShortLeave: true,
         reversedAt: new Date().toISOString(),
-        reversalTrigger: 'CHECKOUT_PROVIDED',
+        reversalTrigger: track.reversalTrigger,
         ...(blockedByPayrollStatus
           ? { reversalBlockedByPayrollStatus: true }
           : {}),
@@ -2559,12 +2937,17 @@ export async function reverseMissingCheckoutDisciplineForDate(
   const deletedEvents = await tx.disciplineEvent.deleteMany({
     where: {
       employeeId,
-      category: DisciplineCategory.MISSING_CHECKOUT,
+      category: track.category,
       incidentDate: dayStart,
     },
   });
 
-  await renumberMissingCheckoutOccurrencesForMonth(tx, employeeId, date);
+  await renumberCategoryOccurrencesForMonth(
+    tx,
+    employeeId,
+    track.category,
+    date,
+  );
 
   return {
     reversed: true,
@@ -2583,6 +2966,7 @@ export async function reverseMissingCheckoutDisciplineForDate(
 export type AttendanceConsequenceSnapshot = {
   status: AttendanceStatus;
   lateMinutes: number;
+  earlyOutMinutes?: number | null;
   note?: string | null;
   checkIn?: Date | null;
   checkOut?: Date | null;
@@ -2592,6 +2976,7 @@ export type ReconcileAttendanceFinancialConsequencesResult = {
   lateReversal: LateDisciplineReversalResult | null;
   absenceReversal: AbsenceDeductionReversalResult | null;
   missingCheckoutReversal: MissingCheckoutReversalResult | null;
+  earlyCheckoutReversal: MissingCheckoutReversalResult | null;
   /** True when a NEW absence-family deduction was actually created this
    * call (family entry: before was not ABSENT_FAMILY, after newly is). */
   deductionApplied: boolean;
@@ -2705,6 +3090,7 @@ export async function reconcileAttendanceFinancialConsequences(
     lateReversal: null,
     absenceReversal: null,
     missingCheckoutReversal: null,
+    earlyCheckoutReversal: null,
     deductionApplied: false,
     blockedByPayrollStatus: false,
     payrollStatus: null,
@@ -2819,6 +3205,22 @@ export async function reconcileAttendanceFinancialConsequences(
   if (beforeWasMissingCheckout && !afterIsMissingCheckout) {
     result.missingCheckoutReversal =
       await reverseMissingCheckoutDisciplineForDate(tx, employeeId, date);
+  }
+
+  // EARLY CHECKOUT axis — its own track, independent of status/lateness.
+  const beforeWasEarly = before ? isEarlyCheckoutEligibleForDiscipline(before) : false;
+  const afterIsEarly = isEarlyCheckoutEligibleForDiscipline(after);
+  if (beforeWasEarly && !afterIsEarly) {
+    result.earlyCheckoutReversal = await reverseEarlyCheckoutDisciplineForDate(
+      tx,
+      employeeId,
+      date,
+    );
+  } else if (!beforeWasEarly && afterIsEarly) {
+    await applyEarlyCheckoutDiscipline(tx, employeeId, date, {
+      checkOut: after.checkOut!,
+      earlyOutMinutes: after.earlyOutMinutes ?? 0,
+    });
   }
 
   return result;

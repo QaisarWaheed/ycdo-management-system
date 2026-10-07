@@ -11,6 +11,7 @@ export type PayrollReportRow = {
   absent?: string
   onLeave?: string
   late?: string
+  earlyCheckout?: string
   overtime?: string
   extraWorkingDays?: string
   basic: string
@@ -57,6 +58,7 @@ export function buildMonthlyPayrollReportRows(
       absent: String(entry.attendance?.absent ?? 0),
       onLeave: String(entry.attendance?.onLeave ?? 0),
       late: String(entry.attendance?.late ?? 0),
+      earlyCheckout: String(entry.attendance?.earlyCheckout ?? 0),
       overtime: String(entry.attendance?.overtimeHours ?? 0),
       extraWorkingDays: String(entry.attendance?.extraWorkingDays ?? 0),
       basic: formatPKR(entry.basicStipend),
@@ -164,6 +166,7 @@ export function PayrollReportPrintSection({
                 <th className="num">Absent</th>
                 <th className="num">On leave</th>
                 <th className="num">Late</th>
+                <th className="num">Early out</th>
                 <th className="num">OT hrs</th>
                 <th className="num">Extra days</th>
               </>
@@ -211,6 +214,7 @@ export function PayrollReportPrintSection({
                     <td className="num">{row.absent ?? '0'}</td>
                     <td className="num">{row.onLeave ?? '0'}</td>
                     <td className="num">{row.late ?? '0'}</td>
+                    <td className="num">{row.earlyCheckout ?? '0'}</td>
                     <td className="num">{row.overtime ?? '0'}</td>
                     <td className="num">{row.extraWorkingDays ?? '0'}</td>
                   </>
