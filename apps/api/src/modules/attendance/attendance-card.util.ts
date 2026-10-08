@@ -17,6 +17,7 @@ import {
 } from './attendance-calendar.util';
 import { toPakistanDateOnly } from './attendance-late.util';
 import { summarizeAttendanceLogs } from './attendance-summary.util';
+import { MISSING_CHECKOUT_CYCLE_FROM } from './missing-checkout-policy';
 
 /** Read-only monthly card. Stored final statuses are never reconstructed from punches or today's roster. */
 export async function loadAttendanceCard(
@@ -151,7 +152,11 @@ export async function loadAttendanceCard(
         where: {
           employeeId,
           category: DisciplineCategory.MISSING_CHECKOUT,
-          incidentDate: { gte: start, lte: end },
+          // Only incidents under the new rule count toward the payroll penalty.
+          incidentDate: {
+            gte: start > MISSING_CHECKOUT_CYCLE_FROM ? start : MISSING_CHECKOUT_CYCLE_FROM,
+            lte: end,
+          },
         },
       })
     : 0;

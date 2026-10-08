@@ -69,7 +69,7 @@ function makeTx(seed?: { letters?: FakeLetter[] }) {
       findUnique: jest.fn(async () => ({
         id: 'pe-1',
         stipendRecordId: 'sr-1',
-        month: 8,
+        month: 12,
         year: 2026,
         status: 'PENDING',
         totalDeductions: 0,
@@ -272,7 +272,7 @@ afterEach(() => {
 describe('missing-checkout chronological occurrence', () => {
   it('normal sequence: 1 Advice, 2 Warning, 3 Fine, 4 Advice', async () => {
     const { tx, getEvents } = makeTx();
-    const days = ['2026-08-05', '2026-08-10', '2026-08-14', '2026-08-21'];
+    const days = ['2026-12-05', '2026-12-10', '2026-12-14', '2026-12-21'];
 
     for (const day of days) {
       await applyMissingCheckoutDiscipline(
@@ -284,10 +284,10 @@ describe('missing-checkout chronological occurrence', () => {
     }
 
     expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
-      ['2026-08-05', 1],
-      ['2026-08-10', 2],
-      ['2026-08-14', 3],
-      ['2026-08-21', 4],
+      ['2026-12-05', 1],
+      ['2026-12-10', 2],
+      ['2026-12-14', 3],
+      ['2026-12-21', 4],
     ]);
 
     const types = issueMock.mock.calls.map((c) => c[1].letterType);
@@ -306,7 +306,7 @@ describe('missing-checkout chronological occurrence', () => {
 
   it('repair in random order still ends with chronological occurrences', async () => {
     const { tx, getEvents } = makeTx();
-    const order = ['2026-08-20', '2026-08-05', '2026-08-15', '2026-08-10'];
+    const order = ['2026-12-20', '2026-12-05', '2026-12-15', '2026-12-10'];
 
     for (const day of order) {
       await applyMissingCheckoutDiscipline(
@@ -318,19 +318,19 @@ describe('missing-checkout chronological occurrence', () => {
     }
 
     expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
-      ['2026-08-05', 1],
-      ['2026-08-10', 2],
-      ['2026-08-15', 3],
-      ['2026-08-20', 4],
+      ['2026-12-05', 1],
+      ['2026-12-10', 2],
+      ['2026-12-15', 3],
+      ['2026-12-20', 4],
     ]);
   });
 
   it('idempotent: second apply for same date creates no new event or letter', async () => {
     const { tx, getEvents, getLetters } = makeTx();
-    const day = new Date('2026-08-17T00:00:00.000Z');
+    const day = new Date('2026-12-17T00:00:00.000Z');
 
-    await applyMissingCheckoutDiscipline(tx, EMP_ID, day, opts('2026-08-17'));
-    await applyMissingCheckoutDiscipline(tx, EMP_ID, day, opts('2026-08-17'));
+    await applyMissingCheckoutDiscipline(tx, EMP_ID, day, opts('2026-12-17'));
+    await applyMissingCheckoutDiscipline(tx, EMP_ID, day, opts('2026-12-17'));
 
     expect(getEvents()).toHaveLength(1);
     expect(getLetters()).toHaveLength(1);
@@ -345,26 +345,26 @@ describe('missing-checkout chronological occurrence', () => {
     await applyMissingCheckoutDiscipline(
       tx,
       EMP_ID,
-      new Date('2026-08-17T00:00:00.000Z'),
-      opts('2026-08-17'),
+      new Date('2026-12-17T00:00:00.000Z'),
+      opts('2026-12-17'),
     );
     await applyMissingCheckoutDiscipline(
       tx,
       EMP_ID,
-      new Date('2026-08-21T00:00:00.000Z'),
-      opts('2026-08-21'),
+      new Date('2026-12-21T00:00:00.000Z'),
+      opts('2026-12-21'),
     );
 
     expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
-      ['2026-08-17', 1],
-      ['2026-08-21', 2],
+      ['2026-12-17', 1],
+      ['2026-12-21', 2],
     ]);
     expect(issueMock.mock.calls[1][1].letterType).toBe(LetterType.WARNING);
   });
 
   it('renumber helper is idempotent', async () => {
     const { tx, getEvents } = makeTx();
-    for (const day of ['2026-08-05', '2026-08-10']) {
+    for (const day of ['2026-12-05', '2026-12-10']) {
       await applyMissingCheckoutDiscipline(
         tx,
         EMP_ID,
@@ -375,12 +375,12 @@ describe('missing-checkout chronological occurrence', () => {
     const first = await renumberMissingCheckoutOccurrencesForMonth(
       tx,
       EMP_ID,
-      new Date('2026-08-05T00:00:00.000Z'),
+      new Date('2026-12-05T00:00:00.000Z'),
     );
     const second = await renumberMissingCheckoutOccurrencesForMonth(
       tx,
       EMP_ID,
-      new Date('2026-08-05T00:00:00.000Z'),
+      new Date('2026-12-05T00:00:00.000Z'),
     );
     expect(first.updated).toBe(0);
     expect(second.updated).toBe(0);
@@ -392,7 +392,7 @@ describe('reverseMissingCheckoutDisciplineForDate occurrence renumbering', () =>
   it('occurrences 1,2,3 — resolving #2 leaves remaining events as 1,2', async () => {
     const { tx, getEvents, getLetters } = makeTx();
 
-    for (const day of ['2026-08-05', '2026-08-10', '2026-08-15']) {
+    for (const day of ['2026-12-05', '2026-12-10', '2026-12-15']) {
       await applyMissingCheckoutDiscipline(
         tx,
         EMP_ID,
@@ -401,25 +401,25 @@ describe('reverseMissingCheckoutDisciplineForDate occurrence renumbering', () =>
       );
     }
     expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
-      ['2026-08-05', 1],
-      ['2026-08-10', 2],
-      ['2026-08-15', 3],
+      ['2026-12-05', 1],
+      ['2026-12-10', 2],
+      ['2026-12-15', 3],
     ]);
 
     const result = await reverseMissingCheckoutDisciplineForDate(
       tx,
       EMP_ID,
-      new Date('2026-08-10T00:00:00.000Z'),
+      new Date('2026-12-10T00:00:00.000Z'),
     );
 
     expect(result.reversed).toBe(true);
     expect(result.disciplineEventRemoved).toBe(true);
     expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
-      ['2026-08-05', 1],
-      ['2026-08-15', 2],
+      ['2026-12-05', 1],
+      ['2026-12-15', 2],
     ]);
     const reversed = getLetters().find(
-      (l) => (l.variables as { incidentDate?: string }).incidentDate === '2026-08-10',
+      (l) => (l.variables as { incidentDate?: string }).incidentDate === '2026-12-10',
     );
     expect(reversed?.variables.reversed).toBe(true);
     expect(reversed?.variables.reversalTrigger).toBe('CHECKOUT_PROVIDED');
@@ -429,7 +429,7 @@ describe('reverseMissingCheckoutDisciplineForDate occurrence renumbering', () =>
   it('resolving occurrence 1 shifts the later event down to 1', async () => {
     const { tx, getEvents } = makeTx();
 
-    for (const day of ['2026-08-05', '2026-08-12']) {
+    for (const day of ['2026-12-05', '2026-12-12']) {
       await applyMissingCheckoutDiscipline(
         tx,
         EMP_ID,
@@ -441,11 +441,11 @@ describe('reverseMissingCheckoutDisciplineForDate occurrence renumbering', () =>
     await reverseMissingCheckoutDisciplineForDate(
       tx,
       EMP_ID,
-      new Date('2026-08-05T00:00:00.000Z'),
+      new Date('2026-12-05T00:00:00.000Z'),
     );
 
     expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
-      ['2026-08-12', 1],
+      ['2026-12-12', 1],
     ]);
   });
 
@@ -455,23 +455,23 @@ describe('reverseMissingCheckoutDisciplineForDate occurrence renumbering', () =>
     await applyMissingCheckoutDiscipline(
       tx,
       EMP_ID,
-      new Date('2026-08-05T00:00:00.000Z'),
-      opts('2026-08-05'),
+      new Date('2026-12-05T00:00:00.000Z'),
+      opts('2026-12-05'),
     );
     await reverseMissingCheckoutDisciplineForDate(
       tx,
       EMP_ID,
-      new Date('2026-08-05T00:00:00.000Z'),
+      new Date('2026-12-05T00:00:00.000Z'),
     );
     await applyMissingCheckoutDiscipline(
       tx,
       EMP_ID,
-      new Date('2026-08-12T00:00:00.000Z'),
-      opts('2026-08-12'),
+      new Date('2026-12-12T00:00:00.000Z'),
+      opts('2026-12-12'),
     );
 
     expect(getEvents().map((e) => [e.incidentDate, e.occurrence])).toEqual([
-      ['2026-08-12', 1],
+      ['2026-12-12', 1],
     ]);
     const lastCall = issueMock.mock.calls[issueMock.mock.calls.length - 1];
     expect(lastCall?.[1].letterType).toBe(LetterType.ADVICE);
@@ -483,19 +483,19 @@ describe('reverseMissingCheckoutDisciplineForDate occurrence renumbering', () =>
     await applyMissingCheckoutDiscipline(
       tx,
       EMP_ID,
-      new Date('2026-08-05T00:00:00.000Z'),
-      opts('2026-08-05'),
+      new Date('2026-12-05T00:00:00.000Z'),
+      opts('2026-12-05'),
     );
 
     const first = await reverseMissingCheckoutDisciplineForDate(
       tx,
       EMP_ID,
-      new Date('2026-08-05T00:00:00.000Z'),
+      new Date('2026-12-05T00:00:00.000Z'),
     );
     const second = await reverseMissingCheckoutDisciplineForDate(
       tx,
       EMP_ID,
-      new Date('2026-08-05T00:00:00.000Z'),
+      new Date('2026-12-05T00:00:00.000Z'),
     );
 
     expect(first.reversed).toBe(true);
@@ -509,7 +509,7 @@ describe('reverseMissingCheckoutDisciplineForDate occurrence renumbering', () =>
 describe('live missing-checkout warning-only mode',()=>{
  it('creates warning drafts through the existing helper at every occurrence, without payroll writes',async()=>{
   const {tx,getEvents}=makeTx();
-  for(const day of ['2026-08-05','2026-08-10','2026-08-14']){
+  for(const day of ['2026-12-05','2026-12-10','2026-12-14']){
    const options={...opts(day),warningOnly:true};
    await applyMissingCheckoutDiscipline(tx,EMP_ID,new Date(day),options);
    await applyMissingCheckoutDiscipline(tx,EMP_ID,new Date(day),options);

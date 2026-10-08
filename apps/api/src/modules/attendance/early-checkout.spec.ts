@@ -361,12 +361,17 @@ describe('payroll: early checkout has its own every-3 rule', () => {
   });
 });
 
+// Missed-checkout cycle applies from 2026-10-09 (MISSING_CHECKOUT_CYCLE_FROM).
+const nov = (d: number) => new Date(Date.UTC(2026, 10, d));
+const npkt = (d: number, hhmm: string) =>
+  new Date(`2026-11-${String(d).padStart(2, '0')}T${hhmm}:00+05:00`);
+
 describe('missed checkout — same cycle as late and early checkout', () => {
   it('Advice, Warning, Fine, repeating, suspension draft at the 9th', async () => {
     const { tx, letters, suspensionDrafts } = fakeTx();
     for (let d = 1; d <= 9; d++) {
-      await applyMissingCheckoutDiscipline(tx, EMP, day(d), {
-        checkIn: pkt(d, '09:00'),
+      await applyMissingCheckoutDiscipline(tx, EMP, nov(d), {
+        checkIn: npkt(d, '09:00'),
         dutyEndTime: '17:00',
       });
     }
@@ -391,8 +396,8 @@ describe('missed checkout — same cycle as late and early checkout', () => {
 
   it('an auto-closed day still counts until a real checkout replaces it', () => {
     const autoClosed = {
-      checkIn: pkt(2, '09:00'),
-      checkOut: pkt(2, '17:00'),
+      checkIn: npkt(2, '09:00'),
+      checkOut: npkt(2, '17:00'),
       note: MISSING_CHECKOUT_AUTO_NOTE,
     };
     expect(isMissingCheckoutEligibleForDiscipline(autoClosed)).toBe(true);
@@ -401,7 +406,7 @@ describe('missed checkout — same cycle as late and early checkout', () => {
     ).toBe(false);
     expect(
       isMissingCheckoutEligibleForDiscipline({
-        checkIn: pkt(2, '09:00'),
+        checkIn: npkt(2, '09:00'),
         checkOut: null,
       }),
     ).toBe(true);
@@ -409,22 +414,22 @@ describe('missed checkout — same cycle as late and early checkout', () => {
 
   it('HR entering the real checkout reverses that day letter', async () => {
     const { tx, letters, events } = fakeTx();
-    await applyMissingCheckoutDiscipline(tx, EMP, day(4), {
-      checkIn: pkt(4, '09:00'),
+    await applyMissingCheckoutDiscipline(tx, EMP, nov(4), {
+      checkIn: npkt(4, '09:00'),
       dutyEndTime: '17:00',
     });
     const autoClosed = {
       status: AttendanceStatus.PRESENT,
       lateMinutes: 0,
-      checkIn: pkt(4, '09:00'),
-      checkOut: pkt(4, '17:00'),
+      checkIn: npkt(4, '09:00'),
+      checkOut: npkt(4, '17:00'),
       note: MISSING_CHECKOUT_AUTO_NOTE,
     };
     await reconcileAttendanceFinancialConsequences(tx, {
       employeeId: EMP,
-      date: day(4),
+      date: nov(4),
       before: autoClosed,
-      after: { ...autoClosed, checkOut: pkt(4, '17:10'), note: '' },
+      after: { ...autoClosed, checkOut: npkt(4, '17:10'), note: '' },
     });
     expect(letters[0].variables.reversed).toBe(true);
     expect(
@@ -458,5 +463,28 @@ describe('missed checkout — same cycle as late and early checkout', () => {
     expect(salary.missingCheckoutPenalty).toBe(1000);
     expect(salary.latePenalty).toBe(0);
     expect(salary.attendanceSalary).toBe(30000);
+  });
+
+  it('missed checkouts before the rollout date stay warning-only and are not counted', async () => {
+    const { tx, letters } = fakeTx();
+    // 1-8 October: old behaviour (warning only), never escalates to a Fine.
+    for (let d = 1; d <= 8; d++) {
+      await applyMissingCheckoutDiscipline(tx, EMP, day(d), {
+        checkIn: pkt(d, '09:00'),
+        dutyEndTime: '17:00',
+      });
+    }
+    expect(letters.every((l) => l.letterType === LetterType.WARNING)).toBe(
+      true,
+    );
+    // 9 October is the first incident under the new rule -> Advice (1st), not a Fine.
+    await applyMissingCheckoutDiscipline(tx, EMP, day(9), {
+      checkIn: pkt(9, '09:00'),
+      dutyEndTime: '17:00',
+    });
+    expect(letters[letters.length - 1].letterType).toBe(LetterType.ADVICE);
+    expect(
+      letters[letters.length - 1].variables.monthlyMissingCheckoutOccurrence,
+    ).toBe(1);
   });
 });
