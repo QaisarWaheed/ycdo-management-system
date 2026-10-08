@@ -29,7 +29,15 @@ import {
   toPakistanMinutesOfDay,
 } from './attendance-late.util';
 import { isWeeklyOffDate } from './weekly-off.util';
-import { isTemporaryAutoCheckoutEnabled } from './temporary-auto-checkout';
+
+/**
+ * Note stamped by ShiftMissingCheckoutScheduler when it closes an open session
+ * at scheduled duty end. The checkOut it writes is not a real punch, so this
+ * marker is what keeps the day recognisable as a missed checkout until HR or
+ * the employee supplies the real time (which strips the marker).
+ */
+export const MISSING_CHECKOUT_AUTO_NOTE =
+  'Auto checkout at scheduled duty end: missing checkout';
 
 /**
  * When false: attendance still claims DisciplineEvents and may apply payroll
@@ -1691,13 +1699,6 @@ export async function applyMissingCheckoutDiscipline(
   date: Date,
   options: MissingCheckoutOptions,
 ): Promise<void> {
-  // Temporary ops mode: auto-checkout path owns closure; do not issue
-  // Advice/Warning/Fine or deductions. Flip TEMPORARY_AUTO_CHECKOUT off to
-  // restore this function's normal behaviour — no other edits required.
-  if (isTemporaryAutoCheckoutEnabled() && !options.warningOnly) {
-    return;
-  }
-
   const basicStipend = await getBasicStipend(tx, employeeId, date);
 
   const { startOfMonth } = pakistanMonthWindowFromDate(date);
@@ -1817,8 +1818,41 @@ export async function applyMissingCheckoutDiscipline(
     return;
   }
 
-  // positionInCycle === 3 -> 3rd / 6th / 9th ... this month: Fine + 1-day
-  // deduction, then the cycle resets. No suspension at any point.
+  // 9th this month: suspension recommendation only (same cadence as late /
+  // early checkout) — no additional deduction.
+  if (missingCount === 9) {
+    if (!AUTO_DISCIPLINE.lettersAndSuspendEnabled) return;
+    if (
+      await hasLetterForMonthlyMissingCheckoutOccurrence(
+        tx,
+        employeeId,
+        LetterType.SUSPENSION,
+        missingCount,
+        date,
+      )
+    ) {
+      return;
+    }
+    const reason = `اس ماہ ${missingCount} مرتبہ چیک آؤٹ نہ کرنے کی بنا پر معطلی کی سفارش۔ ${baseDetail}`;
+    await recommendHrSuspensionDraft(
+      tx,
+      employeeId,
+      date,
+      {
+        suspensionReason: reason,
+        suspensionStartDate: dayKey,
+        suspensionDuration: 'Pending HR review',
+        incidentDate: dayKey,
+        disciplineCategory: 'MISSING_CHECKOUT',
+        monthlyMissingCheckoutOccurrence: missingCount,
+      },
+      reason,
+    );
+    return;
+  }
+
+  // positionInCycle === 3 -> 3rd / 6th this month: Fine + 1-day deduction,
+  // then the cycle resets.
   const deductionAmount = dailyStipendRate(basicStipend, date);
   const monthLabel = date.toLocaleString('en-US', {
     month: 'long',
@@ -2517,8 +2551,14 @@ export function isAbsentFamilyEligibleForDiscipline(row: {
 export function isMissingCheckoutEligibleForDiscipline(row: {
   checkIn?: Date | null;
   checkOut?: Date | null;
+  note?: string | null;
 }): boolean {
-  return row.checkIn != null && row.checkOut == null;
+  if (row.checkIn == null) return false;
+  // Still open, or closed only by the scheduler's auto checkout (not a real punch).
+  return (
+    row.checkOut == null ||
+    (row.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE)
+  );
 }
 
 export type AbsenceDeductionReversalResult = {

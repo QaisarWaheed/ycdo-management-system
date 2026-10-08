@@ -775,6 +775,8 @@ export interface PayrollEntry {
     late: number
     /** Days checked out before duty end (own track, not counted as late). */
     earlyCheckout?: number
+    /** Days not checked out (closed automatically at duty end). */
+    missingCheckout?: number
     overtimeHours: number
     extraWorkingDays: number
     /** At least one Present/Late/Short Leave/Half Day in the month. */

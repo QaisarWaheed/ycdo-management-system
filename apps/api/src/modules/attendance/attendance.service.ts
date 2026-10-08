@@ -74,6 +74,7 @@ import {
 import {
   applyDisciplineRules,
   reconcileAttendanceFinancialConsequences,
+  MISSING_CHECKOUT_AUTO_NOTE,
 } from './discipline.helper';
 import {
   countShortLeaveOccurrencesThisMonth,
@@ -158,6 +159,18 @@ const ACTIVE_LEAVE_STATUSES: LeaveStatus[] = [
   LeaveStatus.APPROVED,
   LeaveStatus.PENDING_APPROVAL,
 ];
+
+/**
+ * A real checkout replaces the scheduler's auto checkout: drop its marker so
+ * the day stops counting as a missed checkout (reconcile then reverses the
+ * missed-checkout letter/claim).
+ */
+function stripMissingCheckoutMarker(note: string | null | undefined): string {
+  return (note ?? '')
+    .split(' | ')
+    .filter((part) => part.trim() !== MISSING_CHECKOUT_AUTO_NOTE)
+    .join(' | ');
+}
 
 @Injectable()
 export class AttendanceService {
@@ -1398,7 +1411,10 @@ export class AttendanceService {
           ...(checkIn
             ? punchSourcesForManualCheckIn(Boolean(checkOut))
             : { source: AttendanceSource.MANUAL }),
-          note: dto.note,
+          note:
+            checkOut && (existing?.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE)
+              ? stripMissingCheckoutMarker(dto.note ?? existing?.note)
+              : dto.note,
         },
       });
 
@@ -1805,6 +1821,14 @@ export class AttendanceService {
     }
     if (dto.note !== undefined) {
       data.note = dto.note;
+    }
+    if (
+      dto.checkOut !== undefined &&
+      (log.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE)
+    ) {
+      data.note = stripMissingCheckoutMarker(
+        dto.note !== undefined ? dto.note : log.note,
+      );
     }
     if (
       dto.overtimeMinutes !== undefined &&

@@ -7,7 +7,10 @@ import { issueAutoTemplatedLetter } from '../letters/auto-letter.helper';
 import { classifyDutyCheckout } from './checkout-classification.util';
 import {
   applyEarlyCheckoutDiscipline,
+  applyMissingCheckoutDiscipline,
   isEarlyCheckoutEligibleForDiscipline,
+  isMissingCheckoutEligibleForDiscipline,
+  MISSING_CHECKOUT_AUTO_NOTE,
   reconcileAttendanceFinancialConsequences,
   reverseEarlyCheckoutDisciplineForDate,
 } from './discipline.helper';
@@ -355,5 +358,105 @@ describe('payroll: early checkout has its own every-3 rule', () => {
       calculateCardSalary({ ...card, earlyCheckout: 2 }, 31000, 8)
         .earlyCheckoutPenalty,
     ).toBe(0);
+  });
+});
+
+describe('missed checkout — same cycle as late and early checkout', () => {
+  it('Advice, Warning, Fine, repeating, suspension draft at the 9th', async () => {
+    const { tx, letters, suspensionDrafts } = fakeTx();
+    for (let d = 1; d <= 9; d++) {
+      await applyMissingCheckoutDiscipline(tx, EMP, day(d), {
+        checkIn: pkt(d, '09:00'),
+        dutyEndTime: '17:00',
+      });
+    }
+    expect(letters.map((l) => l.letterType)).toEqual([
+      LetterType.ADVICE,
+      LetterType.WARNING,
+      LetterType.FINE,
+      LetterType.ADVICE,
+      LetterType.WARNING,
+      LetterType.FINE,
+      LetterType.ADVICE,
+      LetterType.WARNING,
+    ]);
+    expect(
+      letters.map((l) => l.variables.monthlyMissingCheckoutOccurrence),
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(suspensionDrafts).toHaveLength(1);
+    expect(suspensionDrafts[0]).toMatchObject({
+      letterType: LetterType.SUSPENSION,
+    });
+  });
+
+  it('an auto-closed day still counts until a real checkout replaces it', () => {
+    const autoClosed = {
+      checkIn: pkt(2, '09:00'),
+      checkOut: pkt(2, '17:00'),
+      note: MISSING_CHECKOUT_AUTO_NOTE,
+    };
+    expect(isMissingCheckoutEligibleForDiscipline(autoClosed)).toBe(true);
+    expect(
+      isMissingCheckoutEligibleForDiscipline({ ...autoClosed, note: '' }),
+    ).toBe(false);
+    expect(
+      isMissingCheckoutEligibleForDiscipline({
+        checkIn: pkt(2, '09:00'),
+        checkOut: null,
+      }),
+    ).toBe(true);
+  });
+
+  it('HR entering the real checkout reverses that day letter', async () => {
+    const { tx, letters, events } = fakeTx();
+    await applyMissingCheckoutDiscipline(tx, EMP, day(4), {
+      checkIn: pkt(4, '09:00'),
+      dutyEndTime: '17:00',
+    });
+    const autoClosed = {
+      status: AttendanceStatus.PRESENT,
+      lateMinutes: 0,
+      checkIn: pkt(4, '09:00'),
+      checkOut: pkt(4, '17:00'),
+      note: MISSING_CHECKOUT_AUTO_NOTE,
+    };
+    await reconcileAttendanceFinancialConsequences(tx, {
+      employeeId: EMP,
+      date: day(4),
+      before: autoClosed,
+      after: { ...autoClosed, checkOut: pkt(4, '17:10'), note: '' },
+    });
+    expect(letters[0].variables.reversed).toBe(true);
+    expect(
+      events.filter((e) => e.category === 'MISSING_CHECKOUT'),
+    ).toHaveLength(0);
+  });
+
+  it('payroll: every 3 missed checkouts = one day, separate from late', () => {
+    const card = {
+      calendarDays: 31,
+      present: 31,
+      absent: 0,
+      uninformedAbsent: 0,
+      late: 0,
+      halfDay: 0,
+      shortLeave: 0,
+      onLeave: 0,
+      paidLeaveDays: 0,
+      unpaidLeaveDays: 0,
+      holiday: 0,
+      swapCovered: 0,
+      unmarked: 0,
+      additionalWorkingDays: 0,
+      overtimeHours: 0,
+    };
+    const salary = calculateCardSalary(
+      { ...card, missingCheckout: 4 },
+      31000,
+      8,
+    );
+    expect(salary.missingCheckoutPenalty).toBe(1000);
+    expect(salary.latePenalty).toBe(0);
+    expect(salary.attendanceSalary).toBe(30000);
   });
 });

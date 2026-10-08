@@ -1,6 +1,6 @@
 jest.mock('../letters/pdf.helper',()=>({}));
 jest.mock('../letters/letters.service',()=>({LettersService:class {}}));
-jest.mock('./discipline.helper',()=>({applyMissingCheckoutDiscipline:jest.fn(),reconcileAttendanceFinancialConsequences:jest.fn()}));
+jest.mock('./discipline.helper',()=>({applyMissingCheckoutDiscipline:jest.fn(),MISSING_CHECKOUT_AUTO_NOTE:'Auto checkout at scheduled duty end: missing checkout',reconcileAttendanceFinancialConsequences:jest.fn()}));
 import { AttendanceService } from './attendance.service';
 import { ShiftMissingCheckoutScheduler } from './shift-missing-checkout.scheduler';
 import { applyMissingCheckoutDiscipline } from './discipline.helper';
@@ -50,7 +50,9 @@ describe('duty windows and saved Card overtime',()=>{
    await scheduler.flagMissingCheckouts();await scheduler.flagMissingCheckouts();
    expect(get().checkOut).toEqual(at('20:00'));expect(get().status).toBe(status);expect(get().overtimeMinutes).toBe(120);
    expect(applyMissingCheckoutDiscipline).toHaveBeenCalledTimes(1);
-   expect(applyMissingCheckoutDiscipline).toHaveBeenCalledWith(expect.anything(),'e',day,expect.objectContaining({warningOnly:true}));
+   // Full monthly cycle now (Advice/Warning/Fine), not warning-only.
+   expect(applyMissingCheckoutDiscipline).toHaveBeenCalledWith(expect.anything(),'e',day,expect.not.objectContaining({warningOnly:true}));
+   expect(get().note).toContain('Auto checkout at scheduled duty end: missing checkout');
   } finally {jest.useRealTimers();}
  });
 });

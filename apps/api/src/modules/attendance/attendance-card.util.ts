@@ -3,7 +3,12 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { AttendanceLogType, AttendanceStatus, Prisma } from '@prisma/client';
+import {
+  AttendanceLogType,
+  AttendanceStatus,
+  DisciplineCategory,
+  Prisma,
+} from '@prisma/client';
 import { isExitEmployeeStatus } from '../employees/status-effective.util';
 import { splitPaidUnpaidLeaveDays } from '../payroll/payroll-hours.util';
 import {
@@ -18,7 +23,8 @@ export async function loadAttendanceCard(
   prisma: Pick<
     Prisma.TransactionClient,
     'employee' | 'attendanceLog' | 'additionalWorkingDay'
-  >,
+  > &
+    Partial<Pick<Prisma.TransactionClient, 'disciplineEvent'>>,
   employeeId: string,
   month: number,
   year: number,
@@ -138,8 +144,20 @@ export async function loadAttendanceCard(
       'Exit eligibility is uncertain because the employee has no status effective date.',
     );
   }
+  // Missed checkouts = claimed MISSING_CHECKOUT incidents this month (a real
+  // checkout supplied later releases the claim, so corrected days drop out).
+  const missingCheckout = prisma.disciplineEvent
+    ? await prisma.disciplineEvent.count({
+        where: {
+          employeeId,
+          category: DisciplineCategory.MISSING_CHECKOUT,
+          incidentDate: { gte: start, lte: end },
+        },
+      })
+    : 0;
   return {
     ...summary,
+    missingCheckout,
     employeeId,
     month,
     year,
