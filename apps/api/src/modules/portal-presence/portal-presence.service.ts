@@ -1,17 +1,24 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { EmployeeStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   PortalPresenceQueryDto,
   PortalPresenceStatus,
 } from './portal-presence.dto';
 
-/** Same base set as Login Access → Employee (Portal): linked employee logins. */
+/**
+ * Active staff only: an enabled login linked to an employee whose status is
+ * ACTIVE. Disabled accounts and resigned/terminated/suspended/on-rest staff
+ * are left out of every count and list on the portal-presence screens.
+ */
 function employeePortalWhere(
   extra?: Prisma.UserWhereInput,
+  employeeFilter: Prisma.EmployeeWhereInput = {},
 ): Prisma.UserWhereInput {
   return {
     employeeId: { not: null },
+    isActive: true,
+    employee: { status: EmployeeStatus.ACTIVE, ...employeeFilter },
     ...extra,
   };
 }
@@ -60,11 +67,11 @@ export class PortalPresenceService {
         this.prisma.user.count({
           where: employeePortalWhere(neverLoggedIntoPortalWhere()),
         }),
+        this.prisma.user.count({ where: baseWhere }),
+        // Disabled logins are outside the active-staff scope; report them
+        // separately (any linked employee) for reference only.
         this.prisma.user.count({
-          where: employeePortalWhere({ isActive: true }),
-        }),
-        this.prisma.user.count({
-          where: employeePortalWhere({ isActive: false }),
+          where: { employeeId: { not: null }, isActive: false },
         }),
       ]);
 
@@ -78,30 +85,26 @@ export class PortalPresenceService {
   }
 
   async findAll(query: PortalPresenceQueryDto) {
-    const where: Prisma.UserWhereInput = employeePortalWhere({
-      employee: {
-        ...(query.branchId
-          ? { currentBranchId: query.branchId }
-          : {}),
-        ...(query.search?.trim()
-          ? {
-              OR: [
-                {
-                  fullName: {
-                    contains: query.search.trim(),
-                    mode: 'insensitive',
-                  },
+    const where: Prisma.UserWhereInput = employeePortalWhere(undefined, {
+      ...(query.branchId ? { currentBranchId: query.branchId } : {}),
+      ...(query.search?.trim()
+        ? {
+            OR: [
+              {
+                fullName: {
+                  contains: query.search.trim(),
+                  mode: 'insensitive',
                 },
-                {
-                  employeeCode: {
-                    contains: query.search.trim(),
-                    mode: 'insensitive',
-                  },
+              },
+              {
+                employeeCode: {
+                  contains: query.search.trim(),
+                  mode: 'insensitive',
                 },
-              ],
-            }
-          : {}),
-      },
+              },
+            ],
+          }
+        : {}),
     });
 
     if (query.status === 'LOGGED_IN') {
@@ -129,7 +132,11 @@ export class PortalPresenceService {
           },
         },
       },
-      orderBy: [{ lastPortalLogin: 'desc' }, { lastLogin: 'desc' }, { email: 'asc' }],
+      orderBy: [
+        { lastPortalLogin: 'desc' },
+        { lastLogin: 'desc' },
+        { email: 'asc' },
+      ],
     });
 
     return users.map((u) => {
