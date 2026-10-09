@@ -1,5 +1,6 @@
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { employeeStatusLabel } from '@/lib/employeeStatus'
 import { formatPKR } from '@/lib/stipendUtils'
 import type { PayrollEntry } from '@/types'
 
@@ -33,15 +34,6 @@ type PayrollReportPrintProps = {
   footer?: string
 }
 
-/** Plain-text employee status label (same wording as StatusBadge). */
-function employeeStatusPrintLabel(status?: string | null): string {
-  if (!status) return '—'
-  if (status === 'DISMISSED') return 'Dismissed'
-  if (status === 'ON_REST') return 'On Rest'
-  if (status === 'APPOINTED') return 'Active'
-  return status.replace(/_/g, ' ')
-}
-
 export function buildMonthlyPayrollReportRows(
   entries: PayrollEntry[],
 ): PayrollReportRow[] {
@@ -64,7 +56,7 @@ export function buildMonthlyPayrollReportRows(
     return {
       employee: emp?.fullName ?? '—',
       employeeCode: emp?.employeeCode ?? '',
-      employeeStatus: employeeStatusPrintLabel(emp?.status),
+      employeeStatus: emp?.status ? employeeStatusLabel(emp.status) : '—',
       period: `${entry.month}/${entry.year}`,
       present: String(entry.attendance?.present ?? 0),
       absent: String(entry.attendance?.absent ?? 0),

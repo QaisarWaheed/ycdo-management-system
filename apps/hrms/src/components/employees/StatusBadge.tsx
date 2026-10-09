@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import type { EmployeeStatus } from '@/types'
 import { cn } from '@/lib/utils'
+import { employeeStatusLabel } from '@/lib/employeeStatus'
 
 const statusStyles: Record<EmployeeStatus, string> = {
   ACTIVE: 'bg-green-100 text-green-800 border-green-200',
@@ -27,14 +28,7 @@ export function StatusBadge({
     statusStyles[normalized as EmployeeStatus] ??
     'bg-gray-100 text-gray-700 border-gray-200'
 
-  const label =
-    status === 'DISMISSED'
-      ? 'Dismissed'
-      : status === 'ON_REST'
-        ? 'On Rest'
-      : status === 'APPOINTED'
-        ? 'Active'
-        : status.replace(/_/g, ' ')
+  const label = employeeStatusLabel(status)
 
   return (
     <Badge variant="outline" className={cn(style, className)}>

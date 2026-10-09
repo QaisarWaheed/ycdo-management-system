@@ -1,4 +1,5 @@
 import type React from 'react'
+import { employeeStatusLabel } from '@/lib/employeeStatus'
 import type { PayslipSlipData } from '@/lib/payslipSlip'
 import { cn } from '@/lib/utils'
 
@@ -145,7 +146,9 @@ export function PayslipDocument({
             </tr>
             <tr>
               <td className={cell('font-semibold')}>Total Day</td>
-              <td className={cell()}>{/* value in next row */}</td>
+              <td className={cell('font-semibold')}>
+                Status  <span>{slip.employeeStatus ? employeeStatusLabel(slip.employeeStatus) : '—'}</span>
+              </td>
               <td className={cell('font-semibold')}>Time</td>
               <td className={cell()}>{slip.dutyTime || '—'}</td>
             </tr>

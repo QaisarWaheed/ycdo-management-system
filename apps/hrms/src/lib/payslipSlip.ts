@@ -9,6 +9,8 @@ export interface PayslipSlipData {
   employeeName: string
   department: string
   designation: string
+  /** Employee.status (e.g. ACTIVE, ON_REST); absent on slips from older API builds */
+  employeeStatus?: string
   period: string
   payPeriod: string
   totalDays: number
@@ -105,6 +107,7 @@ export function buildPayslipSlipFromEntry(data: {
       employeeCode?: string
       cnic?: string | null
       currentDesignation?: string | null
+      status?: string | null
       dutyStartTime?: string | null
       dutyEndTime?: string | null
       dutyTotalHours?: number | null
@@ -277,6 +280,7 @@ export function buildPayslipSlipFromEntry(data: {
     employeeName: emp?.fullName || '',
     department: emp?.currentDepartment?.name || '',
     designation: emp?.currentDesignation || '',
+    employeeStatus: emp?.status || '',
     period: periodLabel(data.month, data.year),
     payPeriod,
     totalDays: new Date(data.year, data.month, 0).getDate(),

@@ -13,6 +13,8 @@ export interface PayslipSlipData {
   employeeName: string;
   department: string;
   designation: string;
+  /** Employee.status (e.g. ACTIVE, ON_REST) so signatories can see it on the slip */
+  employeeStatus: string;
   period: string;
   payPeriod: string;
   totalDays: number;

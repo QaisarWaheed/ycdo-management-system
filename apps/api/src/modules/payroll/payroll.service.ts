@@ -2367,6 +2367,7 @@ export class PayrollService {
       employeeCode: string;
       cnic?: string | null;
       currentDesignation?: string | null;
+      status?: string | null;
       dutyStartTime?: string | null;
       dutyEndTime?: string | null;
       dutyTotalHours?: number | null;
@@ -2563,6 +2564,7 @@ export class PayrollService {
       employeeName: employee.fullName,
       department: employee.currentDepartment?.name || '',
       designation: employee.currentDesignation || '',
+      employeeStatus: employee.status || '',
       period: formatSlipPeriod(entry.month, entry.year),
       payPeriod,
       totalDays,
