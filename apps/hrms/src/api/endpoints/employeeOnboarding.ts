@@ -23,6 +23,7 @@ export interface EmployeeOnboardingApproval {
     id: string
     fullName: string
     employeeCode: string
+    status?: string
     photoUrl?: string | null
     currentDesignation?: string | null
     joiningDate: string

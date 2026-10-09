@@ -1,5 +1,5 @@
 import api from '../axios'
-import type { Shift } from '@/types'
+import type { EmployeeStatus, Shift } from '@/types'
 
 export interface MutualSwapEmployee {
   id: string
@@ -8,6 +8,7 @@ export interface MutualSwapEmployee {
   dutyStartTime?: string | null
   dutyEndTime?: string | null
   currentDesignation?: string | null
+  status?: EmployeeStatus | string
   shift?: Pick<Shift, 'id' | 'name' | 'startTime' | 'endTime'> | null
 }
 

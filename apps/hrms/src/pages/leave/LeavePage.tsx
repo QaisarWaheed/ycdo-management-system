@@ -8,6 +8,7 @@ import { useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 import { leaveApi } from '@/api/endpoints/leave'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { ApprovalTrail } from '@/components/leave/ApprovalTrail'
 import {
   ApproveRejectDialog,
@@ -158,8 +159,10 @@ function TodayRelieversModal({
             <TableHeader>
               <TableRow>
                 <TableHead>Employee on Leave</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Reliever</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Reliever Dept</TableHead>
                 <TableHead>Assignment Type</TableHead>
               </TableRow>
@@ -168,7 +171,7 @@ function TodayRelieversModal({
               {isLoading ? (
                 [...Array(3)].map((_, i) => (
                   <TableRow key={i}>
-                    {[...Array(5)].map((__, j) => (
+                    {[...Array(7)].map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-5 w-full" />
                       </TableCell>
@@ -177,7 +180,7 @@ function TodayRelieversModal({
                 ))
               ) : sortedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-text-secondary">
+                  <TableCell colSpan={7} className="py-8 text-center text-text-secondary">
                     No employees on leave with relievers today
                   </TableCell>
                 </TableRow>
@@ -195,6 +198,13 @@ function TodayRelieversModal({
                         </p>
                       </div>
                     </TableCell>
+                    <TableCell>
+                      {row.employee.status ? (
+                        <StatusBadge status={row.employee.status} />
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
                     <TableCell>{row.employee.department ?? '—'}</TableCell>
                     <TableCell>
                       {row.reliever ? (
@@ -207,6 +217,13 @@ function TodayRelieversModal({
                             {row.reliever.code}
                           </p>
                         </div>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {row.reliever?.status ? (
+                        <StatusBadge status={row.reliever.status} />
                       ) : (
                         '—'
                       )}
@@ -418,6 +435,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Applied On</TableHead>
               <TableHead>From</TableHead>
@@ -434,7 +452,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(11)].map((__, j) => (
+                  {[...Array(12)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -443,7 +461,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={12} className="h-32 text-center text-text-secondary">
                   No leave requests found
                 </TableCell>
               </TableRow>
@@ -458,6 +476,13 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
                           {leave.employee?.employeeCode ?? '—'}
                         </p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {leave.employee?.status ? (
+                        <StatusBadge status={leave.employee.status} />
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">
@@ -541,7 +566,7 @@ function LeaveRequestsTab({ onOpenToday }: { onOpenToday: () => void }) {
                   </TableRow>
                   {expandedLeaveId === leave.id && (
                     <TableRow>
-                      <TableCell colSpan={11}>
+                      <TableCell colSpan={12}>
                         <ApprovalTrail leave={leave} />
                       </TableCell>
                     </TableRow>

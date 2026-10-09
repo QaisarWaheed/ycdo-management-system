@@ -7,6 +7,7 @@ import { mutualSwapApi, type MutualSwapEmployee, type MutualSwapRecord } from '@
 import { DateInput } from '@/components/common/DateInput'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -473,8 +474,10 @@ export function MutualSwapTab() {
             <TableRow>
               <TableHead>Date</TableHead>
               <TableHead>Covering Employee</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Shift</TableHead>
               <TableHead>Covered Employee</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Shift</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -483,13 +486,13 @@ export function MutualSwapTab() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={9}>
                   <Skeleton className="h-8 w-full" />
                 </TableCell>
               </TableRow>
             ) : swaps.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-text-secondary">
+                <TableCell colSpan={9} className="text-center text-text-secondary">
                   No mutual swaps found
                 </TableCell>
               </TableRow>
@@ -503,6 +506,13 @@ export function MutualSwapTab() {
                       {swap.coveringEmployee.employeeCode}
                     </div>
                   </TableCell>
+                  <TableCell>
+                    {swap.coveringEmployee.status ? (
+                      <StatusBadge status={swap.coveringEmployee.status} />
+                    ) : (
+                      '—'
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm text-text-secondary">
                     {formatEmployeeShift(swap.coveringEmployee)}
                   </TableCell>
@@ -511,6 +521,13 @@ export function MutualSwapTab() {
                     <div className="text-xs text-text-secondary">
                       {swap.coveredEmployee.employeeCode}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {swap.coveredEmployee.status ? (
+                      <StatusBadge status={swap.coveredEmployee.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-text-secondary">
                     {formatEmployeeShift(swap.coveredEmployee)}

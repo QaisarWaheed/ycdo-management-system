@@ -9,6 +9,7 @@ import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -190,6 +191,7 @@ export function IncentivesPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Reason</TableHead>
@@ -203,7 +205,7 @@ export function IncentivesPage() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(canDelete ? 8 : 7)].map((__, j) => (
+                  {[...Array(canDelete ? 9 : 8)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -213,7 +215,7 @@ export function IncentivesPage() {
             ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={canDelete ? 8 : 7}
+                  colSpan={canDelete ? 9 : 8}
                   className="h-32 text-center text-text-secondary"
                 >
                   No incentives found
@@ -224,6 +226,13 @@ export function IncentivesPage() {
                 <TableRow key={item.id}>
                   <TableCell>
                     <EmployeeNameLink employee={item.employee} />
+                  </TableCell>
+                  <TableCell>
+                    {item.employee?.status ? (
+                      <StatusBadge status={item.employee.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>
                     {formatBranchLabel(item.employee?.currentBranch)}

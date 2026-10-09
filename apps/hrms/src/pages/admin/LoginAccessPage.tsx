@@ -23,6 +23,7 @@ import { PortalCredentialsWhatsAppDialog } from '@/components/admin/PortalCreden
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import {
   HospitalScopeSelect,
   type SelectedScope,
@@ -878,6 +879,7 @@ export function LoginAccessPage() {
               <TableRow>
                 <TableHead>Type</TableHead>
                 <TableHead>Account</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
@@ -890,7 +892,7 @@ export function LoginAccessPage() {
               {isLoading ? (
                 [...Array(5)].map((_, i) => (
                   <TableRow key={i}>
-                    {[...Array(8)].map((__, j) => (
+                    {[...Array(9)].map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-5 w-full" />
                       </TableCell>
@@ -899,7 +901,7 @@ export function LoginAccessPage() {
                 ))
               ) : paginated.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-text-secondary">
+                  <TableCell colSpan={9} className="text-center text-text-secondary">
                     {isError
                       ? 'Could not load logins — ensure API is updated and migration is applied on the server'
                       : 'No login accounts found'}
@@ -925,6 +927,13 @@ export function LoginAccessPage() {
                             fullName: record.employee.fullName,
                           }}
                         />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {record.employee?.status ? (
+                        <StatusBadge status={record.employee?.status} />
+                      ) : (
+                        '—'
                       )}
                     </TableCell>
                     <TableCell>

@@ -13,6 +13,7 @@ export type SuspensionWatchlistEntry = {
   employeeId: string;
   fullName: string;
   employeeCode: string | null;
+  status?: EmployeeStatus;
   biometricId: string | null;
   phone: string | null;
   branchId: string | null;
@@ -236,6 +237,7 @@ export async function buildSuspensionWatchlist(
       employeeId: emp.id,
       fullName: emp.fullName,
       employeeCode: emp.employeeCode,
+      status: emp.status,
       biometricId: emp.biometricId,
       phone: emp.phone,
       branchId: emp.currentBranchId,

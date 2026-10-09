@@ -32,6 +32,7 @@ import {
   employeeFiltersToAttendanceParams,
 } from '@/components/employees/EmployeeFiltersBar'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { formatBranchTableLabel } from '@/lib/formatBranchLabel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -471,6 +472,7 @@ function DailyLogTab({
             <TableRow>
               <TableHead>Code</TableHead>
               <TableHead>Employee Name</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Department</TableHead>
               <TableHead>Designation</TableHead>
               <TableHead>Contact</TableHead>
@@ -489,7 +491,7 @@ function DailyLogTab({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(canFullyEditAttendance ? 14 : 13)].map((__, j) => (
+                  {[...Array(canFullyEditAttendance ? 15 : 14)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -499,7 +501,7 @@ function DailyLogTab({
             ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={canFullyEditAttendance ? 14 : 13}
+                  colSpan={canFullyEditAttendance ? 15 : 14}
                   className="h-32 text-center text-text-secondary"
                 >
                   No attendance records for this date
@@ -518,6 +520,13 @@ function DailyLogTab({
                       employee={log.employee}
                       employeeId={log.employeeId}
                     />
+                  </TableCell>
+                  <TableCell>
+                    {log.employee?.status ? (
+                      <StatusBadge status={log.employee.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>
                     {log.employee?.currentDepartment?.name ?? '—'}
@@ -903,6 +912,7 @@ function RelieverSessionsTab() {
             <TableRow>
               <TableHead>Code</TableHead>
               <TableHead>Reliever</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Covering</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Check In</TableHead>
@@ -916,7 +926,7 @@ function RelieverSessionsTab() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(9)].map((__, j) => (
+                  {[...Array(10)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -926,7 +936,7 @@ function RelieverSessionsTab() {
             ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={9}
+                  colSpan={10}
                   className="py-8 text-center text-text-secondary"
                 >
                   No assigned relievers for this date
@@ -959,6 +969,13 @@ function RelieverSessionsTab() {
                         employee={session.employee}
                         employeeId={session.employeeId}
                       />
+                    </TableCell>
+                    <TableCell>
+                      {session.employee?.status ? (
+                        <StatusBadge status={session.employee.status} />
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                     <TableCell>
                       {session.coveringEmployee ? (

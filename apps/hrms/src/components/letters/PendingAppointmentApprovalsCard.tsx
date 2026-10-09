@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { FileCheck } from 'lucide-react'
 import { lettersApi } from '@/api/endpoints/letters'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -119,6 +120,7 @@ export function PendingAppointmentApprovalsCard() {
             <TableHeader>
               <TableRow>
                 <TableHead>Employee</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Reference</TableHead>
                 <TableHead>Submitted</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -144,6 +146,13 @@ export function PendingAppointmentApprovalsCard() {
                         {letter.employee?.employeeCode}
                         {branch ? ` · ${branch}` : ''}
                       </p>
+                    </TableCell>
+                    <TableCell>
+                      {letter.employee?.status ? (
+                        <StatusBadge status={letter.employee.status} />
+                      ) : (
+                        <span className="text-text-secondary">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {letter.letterNo ?? letterReference(letter)}

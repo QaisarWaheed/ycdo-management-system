@@ -11,6 +11,7 @@ export interface AdvanceLoanRequest {
   employee?: {
     fullName: string
     employeeCode: string
+    status?: string
   }
 }
 

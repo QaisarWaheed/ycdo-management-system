@@ -82,6 +82,7 @@ export class AdvanceLoanService {
             id: true,
             fullName: true,
             employeeCode: true,
+            status: true,
             currentBranch: { select: { name: true } },
           },
         },

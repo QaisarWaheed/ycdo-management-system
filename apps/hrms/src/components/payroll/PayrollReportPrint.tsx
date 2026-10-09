@@ -6,6 +6,7 @@ import type { PayrollEntry } from '@/types'
 export type PayrollReportRow = {
   employee?: string
   employeeCode?: string
+  employeeStatus?: string
   period: string
   present?: string
   absent?: string
@@ -31,6 +32,15 @@ type PayrollReportPrintProps = {
   footer?: string
 }
 
+/** Plain-text employee status label (same wording as StatusBadge). */
+function employeeStatusPrintLabel(status?: string | null): string {
+  if (!status) return '—'
+  if (status === 'DISMISSED') return 'Dismissed'
+  if (status === 'ON_REST') return 'On Rest'
+  if (status === 'APPOINTED') return 'Active'
+  return status.replace(/_/g, ' ')
+}
+
 export function buildMonthlyPayrollReportRows(
   entries: PayrollEntry[],
 ): PayrollReportRow[] {
@@ -53,6 +63,7 @@ export function buildMonthlyPayrollReportRows(
     return {
       employee: emp?.fullName ?? '—',
       employeeCode: emp?.employeeCode ?? '',
+      employeeStatus: employeeStatusPrintLabel(emp?.status),
       period: `${entry.month}/${entry.year}`,
       present: String(entry.attendance?.present ?? 0),
       absent: String(entry.attendance?.absent ?? 0),
@@ -160,6 +171,7 @@ export function PayrollReportPrintSection({
         <thead>
           <tr>
             {isMonthly ? <th>Employee</th> : <th>Period</th>}
+            {isMonthly ? <th>Employee Status</th> : null}
             {isMonthly ? (
               <>
                 <th className="num">Present</th>
@@ -191,7 +203,7 @@ export function PayrollReportPrintSection({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={isMonthly ? 12 : 7} className="text-center">
+              <td colSpan={isMonthly ? 13 : 7} className="text-center">
                 No payroll records
               </td>
             </tr>
@@ -208,6 +220,7 @@ export function PayrollReportPrintSection({
                 ) : (
                   <td>{row.period}</td>
                 )}
+                {isMonthly ? <td>{row.employeeStatus ?? '—'}</td> : null}
                 {isMonthly ? (
                   <>
                     <td className="num">{row.present ?? '0'}</td>

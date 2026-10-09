@@ -98,6 +98,7 @@ export class UserAccessService {
           select: {
             fullName: true,
             employeeCode: true,
+            status: true,
             currentBranch: {
               select: {
                 id: true,

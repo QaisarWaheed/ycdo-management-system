@@ -150,6 +150,7 @@ export interface RelieverSession {
     id?: string
     fullName: string
     employeeCode: string
+    status?: EmployeeStatus | string
   }
   branch?: { name: string; address?: string | null; abbreviation?: string | null }
   coveringEmployee?: {
@@ -370,6 +371,7 @@ export interface BranchChangeRequest {
   employee?: {
     fullName: string
     employeeCode: string
+    status?: EmployeeStatus | string
     currentBranch?: { name: string; address?: string | null; abbreviation?: string | null }
   }
 }
@@ -619,6 +621,7 @@ export interface LeaveRecord {
   employee?: {
     fullName: string
     employeeCode: string
+    status?: EmployeeStatus | string
     currentBranchId?: string
     currentDepartmentId?: string
     currentBranch?: { id: string; name: string; address?: string | null }
@@ -841,6 +844,7 @@ export interface StipendReceipt {
   employee?: {
     fullName: string
     employeeCode: string
+    status?: EmployeeStatus | string
     currentBranch?: { name: string; address?: string | null; abbreviation?: string | null }
   }
 }
@@ -857,6 +861,7 @@ export interface Incentive {
   employee?: {
     fullName: string
     employeeCode: string
+    status?: EmployeeStatus | string
     currentBranch?: { name: string; address?: string | null; abbreviation?: string | null }
   }
 }

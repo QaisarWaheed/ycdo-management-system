@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { whatsappApi } from '@/api/endpoints/whatsapp'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -75,6 +76,7 @@ export function FailedWhatsAppPage({
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Letter</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Error</TableHead>
@@ -87,7 +89,7 @@ export function FailedWhatsAppPage({
             {isLoading ? (
               [...Array(4)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(7)].map((__, j) => (
+                  {[...Array(8)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -96,7 +98,7 @@ export function FailedWhatsAppPage({
               ))
             ) : data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-text-secondary">
+                <TableCell colSpan={8} className="text-text-secondary">
                   No failed WhatsApp letter sends
                 </TableCell>
               </TableRow>
@@ -108,6 +110,13 @@ export function FailedWhatsAppPage({
                     <p className="font-mono text-xs text-text-secondary">
                       {row.employee.employeeCode}
                     </p>
+                  </TableCell>
+                  <TableCell>
+                    {row.employee.status ? (
+                      <StatusBadge status={row.employee.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>
                     <p>{letterTypeLabel(row.letter.letterType)}</p>

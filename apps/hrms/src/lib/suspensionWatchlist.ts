@@ -11,6 +11,7 @@ export type WatchEntry = {
   lateDays: number
   uninformedAbsentDays: number
   reasons: WatchReason[]
+  status?: string | null
 }
 
 export function classifySuspensionWatchBucket(

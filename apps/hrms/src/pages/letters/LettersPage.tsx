@@ -37,6 +37,7 @@ import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { EditDraftLetterDialog } from '@/components/letters/EditDraftLetterDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -1497,6 +1498,7 @@ export function LettersPage() {
                 <TableRow>
                   <TableHead>Reference</TableHead>
                   <TableHead>Employee</TableHead>
+                  <TableHead>Employee Status</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Generated</TableHead>
                   <TableHead>Printed</TableHead>
@@ -1509,7 +1511,7 @@ export function LettersPage() {
                 {isLoading ? (
                   [...Array(5)].map((_, i) => (
                     <TableRow key={i}>
-                      {[...Array(8)].map((__, j) => (
+                      {[...Array(9)].map((__, j) => (
                         <TableCell key={j}>
                           <Skeleton className="h-5 w-full" />
                         </TableCell>
@@ -1519,7 +1521,7 @@ export function LettersPage() {
                 ) : paginated.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="h-32 text-center text-text-secondary"
                     >
                       No letters found
@@ -1550,6 +1552,13 @@ export function LettersPage() {
                             {letter.employee?.employeeCode ?? '—'}
                           </p>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {letter.employee?.status ? (
+                          <StatusBadge status={letter.employee.status} />
+                        ) : (
+                          <span className="text-text-secondary">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -1747,6 +1756,7 @@ export function LettersPage() {
                 <TableRow>
                   <TableHead>Reference</TableHead>
                   <TableHead>Employee</TableHead>
+                  <TableHead>Employee Status</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Generated</TableHead>
                   <TableHead>Phone</TableHead>
@@ -1757,7 +1767,7 @@ export function LettersPage() {
                 {pendingLoading ? (
                   [...Array(5)].map((_, i) => (
                     <TableRow key={i}>
-                      {[...Array(6)].map((__, j) => (
+                      {[...Array(7)].map((__, j) => (
                         <TableCell key={j}>
                           <Skeleton className="h-5 w-full" />
                         </TableCell>
@@ -1767,7 +1777,7 @@ export function LettersPage() {
                 ) : pendingPaginated.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="h-32 text-center text-text-secondary"
                     >
                       No pending letters
@@ -1799,6 +1809,13 @@ export function LettersPage() {
                               {letter.employee?.employeeCode ?? '—'}
                             </p>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {letter.employee?.status ? (
+                            <StatusBadge status={letter.employee.status} />
+                          ) : (
+                            <span className="text-text-secondary">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge

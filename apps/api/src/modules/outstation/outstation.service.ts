@@ -20,6 +20,7 @@ const employeeInclude = {
     select: {
       fullName: true,
       employeeCode: true,
+      status: true,
       currentBranch: { select: { name: true, address: true } },
     },
   },

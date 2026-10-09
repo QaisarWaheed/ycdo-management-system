@@ -12,6 +12,7 @@ import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -463,6 +464,7 @@ function RequestsTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>District</TableHead>
               <TableHead>Purpose</TableHead>
               <TableHead>Start</TableHead>
@@ -476,7 +478,7 @@ function RequestsTab() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(8)].map((__, j) => (
+                  {[...Array(9)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -485,7 +487,7 @@ function RequestsTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={9} className="h-32 text-center text-text-secondary">
                   No branch change requests found
                 </TableCell>
               </TableRow>
@@ -499,6 +501,13 @@ function RequestsTab() {
                         {req.employee?.employeeCode ?? '—'}
                       </p>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {req.employee?.status ? (
+                      <StatusBadge status={req.employee?.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>{req.district}</TableCell>
                   <TableCell className="max-w-[200px] truncate">{req.purpose}</TableCell>

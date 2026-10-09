@@ -15,6 +15,7 @@ export interface UserPasswordRecord {
     employee?: {
       fullName: string
       employeeCode: string
+      status?: string
       biometricId?: string | null
       phone?: string | null
     } | null

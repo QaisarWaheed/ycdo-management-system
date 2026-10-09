@@ -7,6 +7,7 @@ import {
   type FaceSyncJob,
   type FaceSyncJobStatus,
 } from '@/api/endpoints/faceSync'
+import { StatusBadge as EmployeeStatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -148,6 +149,7 @@ export function FaceSyncTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Employee</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Photo</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
@@ -159,7 +161,7 @@ export function FaceSyncTab() {
               {jobsLoading ? (
                 [...Array(4)].map((_, i) => (
                   <TableRow key={i}>
-                    {[...Array(6)].map((__, j) => (
+                    {[...Array(7)].map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-5 w-full" />
                       </TableCell>
@@ -169,7 +171,7 @@ export function FaceSyncTab() {
               ) : jobs.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="py-8 text-center text-text-secondary"
                   >
                     No face sync jobs yet
@@ -185,6 +187,13 @@ export function FaceSyncTab() {
                           {job.employee.employeeCode}
                         </p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {job.employee.status ? (
+                        <EmployeeStatusBadge status={job.employee.status} />
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                     <TableCell>
                       {job.employee.hasPrivatePhoto ? (

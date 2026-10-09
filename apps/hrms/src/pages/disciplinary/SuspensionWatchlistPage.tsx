@@ -4,6 +4,7 @@ import { AlertTriangle, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { attendanceApi } from '@/api/endpoints/attendance'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -86,6 +87,7 @@ function WatchlistTable({
       <TableHeader>
         <TableRow>
           <TableHead>Employee</TableHead>
+          <TableHead>Employee Status</TableHead>
           <TableHead>Branch</TableHead>
           <TableHead className="text-right">Late days</TableHead>
           <TableHead className="text-right">UA days</TableHead>
@@ -96,6 +98,7 @@ function WatchlistTable({
       <TableBody>
         {rows.map((row) => {
           const busy = busyEmployeeId === row.employeeId
+          const employeeStatus = row.status
           return (
             <TableRow key={row.employeeId}>
               <TableCell>
@@ -125,6 +128,9 @@ function WatchlistTable({
                     <span className="text-xs text-text-secondary">No phone</span>
                   )}
                 </div>
+              </TableCell>
+              <TableCell>
+                {employeeStatus ? <StatusBadge status={employeeStatus} /> : '—'}
               </TableCell>
               <TableCell>{row.branchName ?? '—'}</TableCell>
               <TableCell className="text-right tabular-nums">

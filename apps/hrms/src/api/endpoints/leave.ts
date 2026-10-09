@@ -1,11 +1,12 @@
 import api from '../axios'
-import type { Employee, LeaveBalance, LeaveRecord } from '@/types'
+import type { Employee, EmployeeStatus, LeaveBalance, LeaveRecord } from '@/types'
 
 export interface TodayRelieverRow {
   employee: {
     id: string
     name: string
     code: string
+    status?: EmployeeStatus | string
     designation: string
     fullName: string
     branch: string | null
@@ -15,6 +16,7 @@ export interface TodayRelieverRow {
     id: string
     name: string
     code: string
+    status?: EmployeeStatus | string
     branch: string | null
     department: string | null
   } | null

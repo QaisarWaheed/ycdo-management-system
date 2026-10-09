@@ -13,6 +13,7 @@ import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { DateInput } from '@/components/common/DateInput'
 import { TimeInput12Hour } from '@/components/common/TimeInput12Hour'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -529,6 +530,7 @@ export function CheckInManualTab() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Code</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Designation</TableHead>
               <TableHead>Shift</TableHead>
               <TableHead>Check In Time</TableHead>
@@ -538,14 +540,14 @@ export function CheckInManualTab() {
           <TableBody>
             {!effectiveBranchId ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-text-secondary">
+                <TableCell colSpan={7} className="text-text-secondary">
                   Select a branch to load employees
                 </TableCell>
               </TableRow>
             ) : isLoading ? (
               [...Array(4)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(6)].map((__, j) => (
+                  {[...Array(7)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -554,7 +556,7 @@ export function CheckInManualTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-text-secondary">
+                <TableCell colSpan={7} className="text-text-secondary">
                   No employees pending check-in for the current duty hours
                 </TableCell>
               </TableRow>
@@ -566,6 +568,13 @@ export function CheckInManualTab() {
                   </TableCell>
                   <TableCell className="font-mono text-sm">
                     {emp.employeeCode}
+                  </TableCell>
+                  <TableCell>
+                    {emp.status ? (
+                      <StatusBadge status={emp.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>{emp.currentDesignation ?? '—'}</TableCell>
                   <TableCell className="text-sm text-text-secondary">
@@ -819,6 +828,7 @@ export function CheckOutManualTab() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Code</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Duty Date</TableHead>
               <TableHead>Check In</TableHead>
               <TableHead>Duration</TableHead>
@@ -829,14 +839,14 @@ export function CheckOutManualTab() {
           <TableBody>
             {!effectiveBranchId ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-text-secondary">
+                <TableCell colSpan={8} className="text-text-secondary">
                   Select a branch to load employees
                 </TableCell>
               </TableRow>
             ) : isLoading ? (
               [...Array(4)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(7)].map((__, j) => (
+                  {[...Array(8)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -845,7 +855,7 @@ export function CheckOutManualTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-text-secondary">
+                <TableCell colSpan={8} className="text-text-secondary">
                   No employees pending check-out
                   {dutyDateFilter
                     ? ` for ${formatPakistanDate(dutyDateFilter)}`
@@ -863,6 +873,13 @@ export function CheckOutManualTab() {
                   </TableCell>
                   <TableCell className="font-mono text-sm">
                     {log.employee?.employeeCode ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    {log.employee?.status ? (
+                      <StatusBadge status={log.employee.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-sm">
                     {formatPakistanDate(log.date)}
@@ -1153,6 +1170,7 @@ export function MarkLeaveManualTab() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Code</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Designation</TableHead>
               <TableHead>Duty</TableHead>
               <TableHead />
@@ -1161,14 +1179,14 @@ export function MarkLeaveManualTab() {
           <TableBody>
             {!effectiveBranchId ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-text-secondary">
+                <TableCell colSpan={6} className="text-text-secondary">
                   Select a branch to load employees
                 </TableCell>
               </TableRow>
             ) : isLoading ? (
               [...Array(4)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(5)].map((__, j) => (
+                  {[...Array(6)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -1177,7 +1195,7 @@ export function MarkLeaveManualTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-text-secondary">
+                <TableCell colSpan={6} className="text-text-secondary">
                   No employees found
                 </TableCell>
               </TableRow>
@@ -1189,6 +1207,13 @@ export function MarkLeaveManualTab() {
                   </TableCell>
                   <TableCell className="font-mono text-sm">
                     {emp.employeeCode ?? '—'}
+                  </TableCell>
+                  <TableCell>
+                    {emp.status ? (
+                      <StatusBadge status={emp.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell className="text-text-secondary">
                     {emp.currentDesignation ?? '—'}

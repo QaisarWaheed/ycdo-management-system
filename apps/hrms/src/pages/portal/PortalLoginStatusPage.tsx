@@ -7,6 +7,7 @@ import {
   type PortalPresenceStatus,
 } from '@/api/endpoints/portalPresence'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -193,6 +194,7 @@ export function PortalLoginStatusPage() {
               <TableRow>
                 <TableHead>Employee</TableHead>
                 <TableHead>Code</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Account</TableHead>
                 <TableHead>Portal login</TableHead>
@@ -203,7 +205,7 @@ export function PortalLoginStatusPage() {
               {loadingRows
                 ? Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         <Skeleton className="h-8 w-full" />
                       </TableCell>
                     </TableRow>
@@ -219,6 +221,13 @@ export function PortalLoginStatusPage() {
                       </TableCell>
                       <TableCell className="font-mono text-sm">
                         {row.employee?.employeeCode ?? '—'}
+                      </TableCell>
+                      <TableCell>
+                        {row.employee?.status ? (
+                          <StatusBadge status={row.employee?.status} />
+                        ) : (
+                          '—'
+                        )}
                       </TableCell>
                       <TableCell>
                         {formatBranchLabel(row.employee?.branch)}
@@ -244,7 +253,7 @@ export function PortalLoginStatusPage() {
               {!loadingRows && rows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="py-10 text-center text-text-secondary"
                   >
                     No portal accounts match these filters.

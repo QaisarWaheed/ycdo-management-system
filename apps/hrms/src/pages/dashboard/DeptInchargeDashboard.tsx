@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { leaveApi } from '@/api/endpoints/leave'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import {
   ApproveRejectDialog,
   canApproveLeave,
@@ -70,6 +71,7 @@ export function DeptInchargeDashboard({
             <TableHeader>
               <TableRow>
                 <TableHead>Employee</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>From</TableHead>
                 <TableHead>To</TableHead>
                 <TableHead>Days</TableHead>
@@ -82,6 +84,13 @@ export function DeptInchargeDashboard({
                 <TableRow key={leave.id}>
                   <TableCell>
                     <EmployeeNameLink employee={leave.employee} />
+                  </TableCell>
+                  <TableCell>
+                    {leave.employee?.status ? (
+                      <StatusBadge status={leave.employee?.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>
                     {format(new Date(leave.startDate), 'dd/MM/yyyy')}

@@ -15,6 +15,7 @@ import { leaveApi } from '@/api/endpoints/leave'
 import { EmployeeOnboardingReviewDialog } from '@/components/employees/EmployeeOnboardingReviewDialog'
 import { PendingAppointmentApprovalsCard } from '@/components/letters/PendingAppointmentApprovalsCard'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { StageBadge } from '@/components/leave/StageBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -144,6 +145,7 @@ export function ExecutiveDashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>
+                  <TableHead>Employee Status</TableHead>
                   <TableHead>Designation</TableHead>
                   <TableHead>Branch</TableHead>
                   <TableHead>Submitted</TableHead>
@@ -156,6 +158,13 @@ export function ExecutiveDashboard() {
                     <TableCell>
                       {item.employee ? (
                         <EmployeeNameLink employee={item.employee} />
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {item.employee?.status ? (
+                        <StatusBadge status={item.employee?.status} />
                       ) : (
                         '—'
                       )}
@@ -195,6 +204,7 @@ export function ExecutiveDashboard() {
             <TableHeader>
               <TableRow>
                 <TableHead>Employee</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Dates</TableHead>
                 <TableHead>Status</TableHead>
@@ -205,6 +215,13 @@ export function ExecutiveDashboard() {
                 <TableRow key={leave.id}>
                   <TableCell>
                     <EmployeeNameLink employee={leave.employee} />
+                  </TableCell>
+                  <TableCell>
+                    {leave.employee?.status ? (
+                      <StatusBadge status={leave.employee?.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>
                     {formatBranchLabel(leave.employee?.currentBranch)}

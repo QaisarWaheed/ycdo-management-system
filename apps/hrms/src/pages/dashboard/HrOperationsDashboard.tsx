@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { leaveApi } from '@/api/endpoints/leave'
 import { portalPresenceApi } from '@/api/endpoints/portalPresence'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import {
   ApproveRejectDialog,
   canApproveLeave,
@@ -128,6 +129,7 @@ export function HrOperationsDashboard() {
             <TableHeader>
               <TableRow>
                 <TableHead>Employee</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>From</TableHead>
                 <TableHead>To</TableHead>
@@ -140,6 +142,13 @@ export function HrOperationsDashboard() {
                 <TableRow key={leave.id}>
                   <TableCell>
                     <EmployeeNameLink employee={leave.employee} />
+                  </TableCell>
+                  <TableCell>
+                    {leave.employee?.status ? (
+                      <StatusBadge status={leave.employee?.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>
                     {formatBranchLabel(leave.employee?.currentBranch)}

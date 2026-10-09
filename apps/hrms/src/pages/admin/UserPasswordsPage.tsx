@@ -18,6 +18,7 @@ import { PortalCredentialsWhatsAppDialog } from '@/components/admin/PortalCreden
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -308,6 +309,7 @@ export function UserPasswordsPage() {
               <TableRow>
                 <TableHead>Employee</TableHead>
                 <TableHead>Code</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Biometric ID</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Email</TableHead>
@@ -321,7 +323,7 @@ export function UserPasswordsPage() {
               {isLoading ? (
                 [...Array(5)].map((_, i) => (
                   <TableRow key={i}>
-                    {[...Array(9)].map((__, j) => (
+                    {[...Array(10)].map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-5 w-full" />
                       </TableCell>
@@ -331,7 +333,7 @@ export function UserPasswordsPage() {
               ) : paginated.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="text-center text-text-secondary"
                   >
                     No employee login accounts found
@@ -345,6 +347,13 @@ export function UserPasswordsPage() {
                     </TableCell>
                     <TableCell className="font-mono text-sm">
                       {record.user.employee?.employeeCode ?? '—'}
+                    </TableCell>
+                    <TableCell>
+                      {record.user.employee?.status ? (
+                        <StatusBadge status={record.user.employee?.status} />
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                     <TableCell className="font-mono text-sm">
                       {record.user.employee?.biometricId ?? '—'}

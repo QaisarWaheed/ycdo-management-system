@@ -12,6 +12,7 @@ import { TableRecordCount } from '@/components/common/TableRecordCount'
 import { DateInput } from '@/components/common/DateInput'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { PrepareSuspensionDialog } from '@/components/disciplinary/PrepareSuspensionDialog'
 import { CloseInquiryDialog } from '@/components/disciplinary/CloseInquiryDialog'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
@@ -1106,6 +1107,7 @@ function InquiriesTab({
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Officer</TableHead>
               <TableHead>Action Type</TableHead>
               <TableHead>Reason</TableHead>
@@ -1120,7 +1122,7 @@ function InquiriesTab({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(9)].map((__, j) => (
+                  {[...Array(10)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -1129,7 +1131,7 @@ function InquiriesTab({
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={10} className="h-32 text-center text-text-secondary">
                   No inquiries found
                 </TableCell>
               </TableRow>
@@ -1147,6 +1149,13 @@ function InquiriesTab({
                         employee={action.employee}
                         employeeId={action.employeeId}
                       />
+                    </TableCell>
+                    <TableCell>
+                      {action.employee?.status ? (
+                        <StatusBadge status={action.employee.status} />
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                     <TableCell>{inquiryOfficerLabel(inquiry)}</TableCell>
                     <TableCell>

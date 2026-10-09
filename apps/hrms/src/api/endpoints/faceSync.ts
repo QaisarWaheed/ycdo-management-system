@@ -54,6 +54,7 @@ export interface FaceSyncJob {
     id: string
     fullName: string
     employeeCode: string
+    status?: string
     photoUrl?: string | null
     hideProfilePhoto?: boolean
     hasPrivatePhoto?: boolean

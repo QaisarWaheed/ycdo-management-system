@@ -91,6 +91,7 @@ export class UserPasswordsService {
               select: {
                 fullName: true,
                 employeeCode: true,
+                status: true,
                 biometricId: true,
                 phone: true,
               },

@@ -117,6 +117,7 @@ export type SuspensionApprovalRequest = {
     id: string
     fullName: string
     employeeCode: string
+    status?: string
     currentBranch?: { name: string; abbreviation?: string | null } | null
   }
   inquiryOfficer?: {

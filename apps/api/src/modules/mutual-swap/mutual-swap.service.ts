@@ -322,6 +322,7 @@ export class MutualSwapService {
           select: {
             fullName: true,
             employeeCode: true,
+            status: true,
             shift: true,
           },
         },
@@ -329,6 +330,7 @@ export class MutualSwapService {
           select: {
             fullName: true,
             employeeCode: true,
+            status: true,
             shift: true,
           },
         },

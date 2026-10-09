@@ -60,6 +60,7 @@ export interface UserAccessRecord {
   employee?: {
     fullName: string
     employeeCode: string
+    status?: string
     currentBranch?: {
       id: string
       name: string

@@ -7,6 +7,7 @@ import {
   type SuspensionApprovalRequest,
 } from '@/api/endpoints/disciplinary'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -144,6 +145,7 @@ export function PendingSuspensionApprovalsCard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>
+                  <TableHead>Employee Status</TableHead>
                   <TableHead>Branch</TableHead>
                   <TableHead>Period</TableHead>
                   <TableHead>Inquiry officer</TableHead>
@@ -163,6 +165,13 @@ export function PendingSuspensionApprovalsCard() {
                             {item.employee.employeeCode}
                           </p>
                         </div>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {item.employee?.status ? (
+                        <StatusBadge status={item.employee.status} />
                       ) : (
                         '—'
                       )}

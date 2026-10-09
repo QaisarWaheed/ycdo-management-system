@@ -15,6 +15,7 @@ export type WhatsAppLetterSend = {
     id: string
     fullName: string
     employeeCode: string
+    status?: string
     phone: string | null
   }
   letter: {

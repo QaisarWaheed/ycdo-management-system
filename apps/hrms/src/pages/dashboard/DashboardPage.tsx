@@ -20,6 +20,7 @@ import { leaveApi } from '@/api/endpoints/leave'
 import { portalPresenceApi } from '@/api/endpoints/portalPresence'
 import { recruitmentApi } from '@/api/endpoints/recruitment'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
 import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
 import { PendingSuspensionApprovalsCard } from '@/components/disciplinary/PendingSuspensionApprovalsCard'
@@ -743,6 +744,7 @@ function AdminDashboard() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Employee</TableHead>
+                        <TableHead>Employee Status</TableHead>
                         <TableHead>From</TableHead>
                         <TableHead>To</TableHead>
                         <TableHead>Days</TableHead>
@@ -758,6 +760,13 @@ function AdminDashboard() {
                         >
                           <TableCell>
                             <EmployeeNameLink employee={leave.employee} />
+                          </TableCell>
+                          <TableCell>
+                            {leave.employee?.status ? (
+                              <StatusBadge status={leave.employee?.status} />
+                            ) : (
+                              '—'
+                            )}
                           </TableCell>
                           <TableCell>
                             {format(new Date(leave.startDate), 'dd/MM/yyyy')}

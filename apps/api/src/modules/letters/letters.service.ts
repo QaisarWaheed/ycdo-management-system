@@ -1639,6 +1639,7 @@ export class LettersService implements OnModuleInit {
             fullName: true,
             employeeCode: true,
             currentDesignation: true,
+            status: true,
             currentBranch: { select: { name: true, abbreviation: true } },
           },
         },
@@ -2568,6 +2569,7 @@ export class LettersService implements OnModuleInit {
             fullName: true,
             employeeCode: true,
             phone: true,
+            status: true,
           },
         },
         whatsappSend: {

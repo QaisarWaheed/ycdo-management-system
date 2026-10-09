@@ -19,6 +19,7 @@ import { DateInput } from '@/components/common/DateInput'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { MonthYearPicker } from '@/components/common/MonthYearPicker'
 import { PKRInput } from '@/components/common/PKRInput'
 import { PayslipDocument } from '@/components/payroll/PayslipDocument'
@@ -1372,6 +1373,7 @@ function MonthlyPayrollTab() {
                 />
               </TableHead>
               <TableHead>Employee</TableHead>
+              <TableHead className="whitespace-nowrap">Employee Status</TableHead>
               <TableHead className="whitespace-nowrap text-right" title="Present + swap covered">
                 Present
               </TableHead>
@@ -1402,7 +1404,7 @@ function MonthlyPayrollTab() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(15)].map((__, j) => (
+                  {[...Array(16)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -1411,7 +1413,7 @@ function MonthlyPayrollTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={15} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={16} className="h-32 text-center text-text-secondary">
                   No payroll entries for this period
                 </TableCell>
               </TableRow>
@@ -1450,6 +1452,9 @@ function MonthlyPayrollTab() {
                           </Badge>
                         ) : null}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {emp?.status ? <StatusBadge status={emp.status} /> : '—'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {entry.attendance?.present ?? 0}
@@ -2622,6 +2627,7 @@ function StipendReceiptsTab() {
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
+              <TableHead>Employee Status</TableHead>
               <TableHead>Month/Year</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
@@ -2634,7 +2640,7 @@ function StipendReceiptsTab() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  {[...Array(7)].map((__, j) => (
+                  {[...Array(8)].map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -2643,7 +2649,7 @@ function StipendReceiptsTab() {
               ))
             ) : paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-text-secondary">
+                <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
                   No stipend receipts found
                 </TableCell>
               </TableRow>
@@ -2653,6 +2659,13 @@ function StipendReceiptsTab() {
                   <TableRow>
                     <TableCell>
                       <EmployeeNameLink employee={receipt.employee} />
+                    </TableCell>
+                    <TableCell>
+                      {receipt.employee?.status ? (
+                        <StatusBadge status={receipt.employee.status} />
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                     <TableCell>
                       {receipt.month}/{receipt.year}
@@ -2694,7 +2707,7 @@ function StipendReceiptsTab() {
                   </TableRow>
                   {expandedId === receipt.id && receipt.rejectionReason && (
                     <TableRow key={`${receipt.id}-reason`}>
-                      <TableCell colSpan={7} className="bg-red-50 text-sm text-red-800">
+                      <TableCell colSpan={8} className="bg-red-50 text-sm text-red-800">
                         Rejection reason: {receipt.rejectionReason}
                       </TableCell>
                     </TableRow>

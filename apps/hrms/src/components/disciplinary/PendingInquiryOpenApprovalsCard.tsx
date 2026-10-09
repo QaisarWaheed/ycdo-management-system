@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { disciplinaryApi } from '@/api/endpoints/disciplinary'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -120,6 +121,7 @@ export function PendingInquiryOpenApprovalsCard() {
             <TableHeader>
               <TableRow>
                 <TableHead>Employee</TableHead>
+                <TableHead>Employee Status</TableHead>
                 <TableHead>Officer</TableHead>
                 <TableHead>Days</TableHead>
                 <TableHead />
@@ -130,6 +132,13 @@ export function PendingInquiryOpenApprovalsCard() {
                 <TableRow key={item.id}>
                   <TableCell>
                     <EmployeeNameLink employee={item.disciplinaryAction?.employee} />
+                  </TableCell>
+                  <TableCell>
+                    {item.disciplinaryAction?.employee?.status ? (
+                      <StatusBadge status={item.disciplinaryAction.employee.status} />
+                    ) : (
+                      '—'
+                    )}
                   </TableCell>
                   <TableCell>{personLabel(item.inquiryOfficer)}</TableCell>
                   <TableCell>{item.durationDays ?? '—'}</TableCell>

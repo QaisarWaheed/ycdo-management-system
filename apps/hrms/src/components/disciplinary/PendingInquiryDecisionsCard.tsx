@@ -6,6 +6,7 @@ import {
   type InquiryDecisionPending,
 } from '@/api/endpoints/disciplinary'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { StatusBadge } from '@/components/employees/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -124,6 +125,7 @@ export function PendingInquiryDecisionsCard() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>
+                  <TableHead>Employee Status</TableHead>
                   <TableHead>Finding</TableHead>
                   <TableHead>Final action</TableHead>
                   <TableHead>Officer</TableHead>
@@ -138,6 +140,13 @@ export function PendingInquiryDecisionsCard() {
                         <EmployeeNameLink
                           employee={item.disciplinaryAction.employee}
                         />
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {item.disciplinaryAction?.employee?.status ? (
+                        <StatusBadge status={item.disciplinaryAction.employee.status} />
                       ) : (
                         '—'
                       )}
