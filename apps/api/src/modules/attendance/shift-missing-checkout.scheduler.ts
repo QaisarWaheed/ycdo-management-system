@@ -6,7 +6,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollService } from '../payroll/payroll.service';
 import { isEmployeeEligibleForAttendance } from './attendance-eligibility.util';
 import { is24HourShift, isOvernightShift } from './attendance-biometric.util';
-import { applyMissingCheckoutDiscipline } from './discipline.helper';
+import {
+  applyMissingCheckoutDiscipline,
+  MISSING_CHECKOUT_AUTO_NOTE,
+} from './discipline.helper';
 import { computeShiftEndDateTime, toPakistanDateOnly } from './shift-time.util';
 
 /**
@@ -78,7 +81,7 @@ export function evaluateMissingCheckoutEligibility(
   return { eligible: true, shiftEnd, minutesPastEnd };
 }
 
-/** At duty end + 30 minutes, close at scheduled end and create a discipline-only warning draft. */
+/** At duty end + 30 minutes, close at scheduled end and apply the missed-checkout discipline cycle. */
 @Injectable()
 export class ShiftMissingCheckoutScheduler {
   private readonly logger = new Logger(ShiftMissingCheckoutScheduler.name);
@@ -108,11 +111,13 @@ export class ShiftMissingCheckoutScheduler {
         const changed = await tx.attendanceLog.updateMany({
           where: { id: log.id, checkOut: null, sessionClosedAt: null, checkIn: log.checkIn },
           data: { checkOut: evaluation.shiftEnd, sessionClosedAt: now,
-            note: [log.note?.trim(), 'Auto checkout at scheduled duty end: missing checkout'].filter(Boolean).join(' | ') },
+            note: [log.note?.trim(), MISSING_CHECKOUT_AUTO_NOTE].filter(Boolean).join(' | ') },
         });
         if (!changed.count) return;
+        // Same monthly cycle as late / early checkout: Advice, Warning, Fine
+        // (every 3 missed checkouts = 1 day in payroll), suspension draft at the 9th.
         await applyMissingCheckoutDiscipline(tx, log.employeeId, log.date, {
-          checkIn: log.checkIn!, dutyEndTime: duty.dutyEndTime, warningOnly: true,
+          checkIn: log.checkIn!, dutyEndTime: duty.dutyEndTime,
         });
       });
     }

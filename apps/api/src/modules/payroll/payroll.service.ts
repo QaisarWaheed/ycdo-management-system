@@ -14,6 +14,7 @@ import {
   CARD_ABSENCE_DESCRIPTION,
   CARD_LATE_DESCRIPTION,
   CARD_EARLY_CHECKOUT_DESCRIPTION,
+  CARD_MISSING_CHECKOUT_DESCRIPTION,
 } from './attendance-card-salary.util';
 import {
   payrollTransactionClient,
@@ -1563,6 +1564,11 @@ export class PayrollService {
           CARD_EARLY_CHECKOUT_DESCRIPTION,
           salary.earlyCheckoutPenalty,
         ],
+        [
+          DeductionType.DISCIPLINARY_FINE,
+          CARD_MISSING_CHECKOUT_DESCRIPTION,
+          salary.missingCheckoutPenalty,
+        ],
       ] as const) {
         if (amount > 0)
           await this.prisma.payrollDeduction.create({
@@ -2949,7 +2955,8 @@ export class PayrollService {
         (ownsMonth
           ? salary.absencePenalty +
             salary.latePenalty +
-            salary.earlyCheckoutPenalty
+            salary.earlyCheckoutPenalty +
+            salary.missingCheckoutPenalty
           : 0),
       extraAllowances:
         storedAllowances +

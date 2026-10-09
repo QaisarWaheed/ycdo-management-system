@@ -71,6 +71,7 @@ describe('summarizeAttendanceLogs', () => {
       onLeave: 1,
       late: 1,
       earlyCheckout: 0,
+      missingCheckout: 0,
       overtimeHours: 1.5,
       extraWorkingDays: 2,
       worked: true,

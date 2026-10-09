@@ -92,7 +92,7 @@ function makeFreezeFakeTx(seed: {
     stipendRecords.map((r, i) => ({
       id: `pe-default-${i}`,
       stipendRecordId: r.id,
-      month: 8,
+      month: 12,
       year: 2026,
       status: 'PENDING' as const,
       totalDeductions: 0,
@@ -408,7 +408,7 @@ function makeFreezeFakeTx(seed: {
 
 const OLD_RATE_BASIC = 24800; // /31 = 800/day
 const NEW_RATE_BASIC = 31000; // /31 = 1000/day
-const AUG_15 = new Date('2026-08-15T00:00:00.000Z'); // increment transition
+const AUG_15 = new Date('2026-12-15T00:00:00.000Z'); // increment transition
 const oldSr: FakeStipend = {
   id: 'sr-old',
   employeeId: EMP_ID,
@@ -434,10 +434,10 @@ const singleSr: FakeStipend = {
 // 3rd missing-checkout day this month -> Fine branch (the only branch with
 // a financial mutation), so every scenario below seeds exactly 2 prior
 // open days.
-const FINE_INCIDENT_DATE = new Date('2026-08-05T00:00:00.000Z');
-const FINE_PRIOR_DATES = ['2026-08-03', '2026-08-04'];
+const FINE_INCIDENT_DATE = new Date('2026-12-05T00:00:00.000Z');
+const FINE_PRIOR_DATES = ['2026-12-03', '2026-12-04'];
 const CHECKOUT_OPTIONS = {
-  checkIn: new Date('2026-08-05T04:00:00.000Z'),
+  checkIn: new Date('2026-12-05T04:00:00.000Z'),
   dutyEndTime: '17:00',
 };
 
@@ -490,7 +490,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const frozenEntry: FakePayrollEntry = {
       id: 'pe-processed',
       stipendRecordId: singleSr.id,
-      month: 8,
+      month: 12,
       year: 2026,
       status: 'PROCESSED',
       totalDeductions: 1200,
@@ -516,7 +516,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const frozenEntry: FakePayrollEntry = {
       id: 'pe-paid',
       stipendRecordId: singleSr.id,
-      month: 8,
+      month: 12,
       year: 2026,
       status: 'PAID',
       totalDeductions: 800,
@@ -543,7 +543,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const frozenOld: FakePayrollEntry = {
       id: 'pe-old-processed',
       stipendRecordId: oldSr.id,
-      month: 8,
+      month: 12,
       year: 2026,
       status: 'PROCESSED',
       totalDeductions: 0,
@@ -570,7 +570,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const frozenOld: FakePayrollEntry = {
       id: 'pe-old-paid',
       stipendRecordId: oldSr.id,
-      month: 8,
+      month: 12,
       year: 2026,
       status: 'PAID',
       totalDeductions: 0,
@@ -596,11 +596,11 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
   it('F: transition-date missing-checkout processing does not charge either segment', async () => {
     const { tx, getPayrollEntries } = makeFreezeFakeTx({
       stipendRecords: [oldSr, newSr],
-      priorOpenDates: ['2026-08-13', '2026-08-14'],
+      priorOpenDates: ['2026-12-13', '2026-12-14'],
     });
 
     await applyMcFineThenSend(tx, AUG_15, {
-      checkIn: new Date('2026-08-15T04:00:00.000Z'),
+      checkIn: new Date('2026-12-15T04:00:00.000Z'),
       dutyEndTime: '17:00',
     });
 
@@ -613,7 +613,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const entry: FakePayrollEntry = {
       id: 'pe-pending-rev',
       stipendRecordId: singleSr.id,
-      month: 8,
+      month: 12,
       year: 2026,
       status: 'PENDING',
       totalDeductions: 800,
@@ -629,10 +629,10 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const letter: FakeLetter = {
       id: 'letter-1',
       letterType: LetterType.FINE,
-      generatedAt: new Date('2026-08-05T00:00:00.000Z'),
+      generatedAt: new Date('2026-12-05T00:00:00.000Z'),
       variables: {
         monthlyMissingCheckoutOccurrence: 3,
-        incidentDate: '2026-08-05',
+        incidentDate: '2026-12-05',
       },
       requiresAcknowledgement: true,
     };
@@ -661,7 +661,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const entry: FakePayrollEntry = {
       id: 'pe-processed-rev',
       stipendRecordId: singleSr.id,
-      month: 8,
+      month: 12,
       year: 2026,
       status: 'PROCESSED',
       totalDeductions: 800,
@@ -677,10 +677,10 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const letter: FakeLetter = {
       id: 'letter-1',
       letterType: LetterType.FINE,
-      generatedAt: new Date('2026-08-05T00:00:00.000Z'),
+      generatedAt: new Date('2026-12-05T00:00:00.000Z'),
       variables: {
         monthlyMissingCheckoutOccurrence: 3,
-        incidentDate: '2026-08-05',
+        incidentDate: '2026-12-05',
       },
       requiresAcknowledgement: true,
     };
@@ -709,7 +709,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const entry: FakePayrollEntry = {
       id: 'pe-paid-rev',
       stipendRecordId: singleSr.id,
-      month: 8,
+      month: 12,
       year: 2026,
       status: 'PAID',
       totalDeductions: 800,
@@ -725,10 +725,10 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const letter: FakeLetter = {
       id: 'letter-1',
       letterType: LetterType.FINE,
-      generatedAt: new Date('2026-08-05T00:00:00.000Z'),
+      generatedAt: new Date('2026-12-05T00:00:00.000Z'),
       variables: {
         monthlyMissingCheckoutOccurrence: 3,
-        incidentDate: '2026-08-05',
+        incidentDate: '2026-12-05',
       },
       requiresAcknowledgement: true,
     };
@@ -760,7 +760,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     const frozenEntry: FakePayrollEntry = {
       id: 'pe-processed-2',
       stipendRecordId: singleSr.id,
-      month: 8,
+      month: 12,
       year: 2026,
       status: 'PROCESSED',
       totalDeductions: 0,
@@ -775,7 +775,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     await applyMcFineThenSend(tx);
 
     expect(
-      getDisciplineEvents().filter((e) => e.incidentDate === '2026-08-05'),
+      getDisciplineEvents().filter((e) => e.incidentDate === '2026-12-05'),
     ).toHaveLength(1); // incident still tracked
     expect(issueAutoTemplatedLetterMock).toHaveBeenCalledTimes(1); // FINE letter still issued
     const call = issueAutoTemplatedLetterMock.mock.calls[0][1];
@@ -785,7 +785,7 @@ describe('discipline.helper — missing-checkout fine PROCESSED/PAID financial f
     // DisciplineEvent, no second letter call) even though it's frozen.
     await applyMcFineThenSend(tx);
     expect(
-      getDisciplineEvents().filter((e) => e.incidentDate === '2026-08-05'),
+      getDisciplineEvents().filter((e) => e.incidentDate === '2026-12-05'),
     ).toHaveLength(1);
     expect(issueAutoTemplatedLetterMock).toHaveBeenCalledTimes(1);
   });

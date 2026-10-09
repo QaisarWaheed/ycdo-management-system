@@ -6,6 +6,8 @@ export type SalaryAttendanceCard = {
   unmarked: number; additionalWorkingDays: number; overtimeHours: number;
   /** Days checked out before duty end (own track, never counted as late). */
   earlyCheckout?: number;
+  /** Days the employee did not check out (closed by the scheduler). */
+  missingCheckout?: number;
 };
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 export function calculateCardSalary(card: SalaryAttendanceCard, basic: number, workingHours: number) {
@@ -22,10 +24,12 @@ export function calculateCardSalary(card: SalaryAttendanceCard, basic: number, w
   const latePenalty = round(Math.floor(card.late / 3) * dailyRate);
   // Same cadence as lateness, on its own count: every 3 early checkouts = 1 day.
   const earlyCheckoutPenalty = round(Math.floor((card.earlyCheckout ?? 0) / 3) * dailyRate);
+  // Same cadence again for missed checkouts: every 3 = 1 day.
+  const missingCheckoutPenalty = round(Math.floor((card.missingCheckout ?? 0) / 3) * dailyRate);
   const additionalWorkingDayPay = round(card.additionalWorkingDays * dailyRate);
   const overtimePay = round(card.overtimeHours * hourlyRate);
-  return { dailyRate, hourlyRate, paidDays, earnedBasic, absencePenalty, latePenalty, earlyCheckoutPenalty, additionalWorkingDayPay, overtimePay,
-    attendanceSalary: round(earnedBasic - absencePenalty - latePenalty - earlyCheckoutPenalty + additionalWorkingDayPay + overtimePay) };
+  return { dailyRate, hourlyRate, paidDays, earnedBasic, absencePenalty, latePenalty, earlyCheckoutPenalty, missingCheckoutPenalty, additionalWorkingDayPay, overtimePay,
+    attendanceSalary: round(earnedBasic - absencePenalty - latePenalty - earlyCheckoutPenalty - missingCheckoutPenalty + additionalWorkingDayPay + overtimePay) };
 }
 
 /**
@@ -40,9 +44,10 @@ export function hasPresenceInMonth(card: Pick<SalaryAttendanceCard, 'present' | 
 /** These categories now belong exclusively to the Card; legitimate unrelated fines remain. */
 export function isLegacyAttendanceDeduction(row: { reason?: string; description?: string | null }) {
   if (['LATE_ARRIVAL', 'UNINFORMED_ABSENCE', 'UNPAID_LEAVE', 'HALF_DAY', 'EXTRA_LEAVE_REJECTED'].includes(row.reason ?? '')) return true;
-  if (row.reason === 'DISCIPLINARY_FINE' && /^(Missing checkout deduction|Late arrival deduction|Early checkout deduction|Attendance Card: every 3 Early Checkout)/.test(row.description ?? '')) return true;
+  if (row.reason === 'DISCIPLINARY_FINE' && /^(Missing checkout deduction|Late arrival deduction|Early checkout deduction|Attendance Card: every 3 Early Checkout|Attendance Card: every 3 Missing Checkout)/.test(row.description ?? '')) return true;
   return row.reason === 'OTHER' && /^Unmarked day \(/.test(row.description ?? '');
 }
 export const CARD_ABSENCE_DESCRIPTION = 'Attendance Card: additional absence penalty';
 export const CARD_LATE_DESCRIPTION = 'Attendance Card: every 3 Late';
 export const CARD_EARLY_CHECKOUT_DESCRIPTION = 'Attendance Card: every 3 Early Checkout';
+export const CARD_MISSING_CHECKOUT_DESCRIPTION = 'Attendance Card: every 3 Missing Checkout';

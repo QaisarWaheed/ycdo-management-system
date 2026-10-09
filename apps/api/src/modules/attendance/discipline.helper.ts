@@ -29,7 +29,12 @@ import {
   toPakistanMinutesOfDay,
 } from './attendance-late.util';
 import { isWeeklyOffDate } from './weekly-off.util';
-import { isTemporaryAutoCheckoutEnabled } from './temporary-auto-checkout';
+
+import {
+  MISSING_CHECKOUT_AUTO_NOTE,
+  MISSING_CHECKOUT_CYCLE_FROM,
+} from './missing-checkout-policy';
+export { MISSING_CHECKOUT_AUTO_NOTE, MISSING_CHECKOUT_CYCLE_FROM };
 
 /**
  * When false: attendance still claims DisciplineEvents and may apply payroll
@@ -1691,13 +1696,6 @@ export async function applyMissingCheckoutDiscipline(
   date: Date,
   options: MissingCheckoutOptions,
 ): Promise<void> {
-  // Temporary ops mode: auto-checkout path owns closure; do not issue
-  // Advice/Warning/Fine or deductions. Flip TEMPORARY_AUTO_CHECKOUT off to
-  // restore this function's normal behaviour — no other edits required.
-  if (isTemporaryAutoCheckoutEnabled() && !options.warningOnly) {
-    return;
-  }
-
   const basicStipend = await getBasicStipend(tx, employeeId, date);
 
   const { startOfMonth } = pakistanMonthWindowFromDate(date);
@@ -1736,7 +1734,24 @@ export async function applyMissingCheckoutDiscipline(
     },
     select: { occurrence: true },
   });
-  const missingCount = claimedEvent?.occurrence ?? provisionalCount;
+  // Cycle position counts only incidents on/after the rollout date, so
+  // pre-rollout (warning-only) missed checkouts never push anyone to a Fine.
+  const beforeRollout = dayStart < MISSING_CHECKOUT_CYCLE_FROM;
+  const missingCount = beforeRollout
+    ? claimedEvent?.occurrence ?? provisionalCount
+    : await tx.disciplineEvent.count({
+        where: {
+          employeeId,
+          category: DisciplineCategory.MISSING_CHECKOUT,
+          incidentDate: {
+            gte:
+              startOfMonth > MISSING_CHECKOUT_CYCLE_FROM
+                ? startOfMonth
+                : MISSING_CHECKOUT_CYCLE_FROM,
+            lt: new Date(dayStart.getTime() + 24 * 60 * 60 * 1000), // through this day
+          },
+        },
+      });
 
   // Belt-and-suspenders: if an active (non-reversed) letter already exists
   // for this incident date on the missing-checkout track, never issue another.
@@ -1770,7 +1785,7 @@ export async function applyMissingCheckoutDiscipline(
   const expectedCheckoutLabel = options.dutyEndTime ?? 'نامعلوم';
   const baseDetail = `تاریخ: ${dayKey}، حاضری کا وقت: ${checkInLabel}، متوقع چیک آؤٹ کا وقت: ${expectedCheckoutLabel}۔ ڈیوٹی مکمل ہونے کے باوجود چیک آؤٹ نہیں کیا گیا، جو کہ ہر ملازم کی ذمہ داری ہے۔`;
 
-  if (options.warningOnly) {
+  if (options.warningOnly || beforeRollout) {
     if (AUTO_DISCIPLINE.lettersAndSuspendEnabled) {
       await issueMissingCheckoutLetterIfNotAlready(tx, employeeId, LetterType.WARNING, missingCount, date, {
         violations: baseDetail, incidentDate: dayKey, disciplineCategory: 'MISSING_CHECKOUT',
@@ -1817,8 +1832,41 @@ export async function applyMissingCheckoutDiscipline(
     return;
   }
 
-  // positionInCycle === 3 -> 3rd / 6th / 9th ... this month: Fine + 1-day
-  // deduction, then the cycle resets. No suspension at any point.
+  // 9th this month: suspension recommendation only (same cadence as late /
+  // early checkout) — no additional deduction.
+  if (missingCount === 9) {
+    if (!AUTO_DISCIPLINE.lettersAndSuspendEnabled) return;
+    if (
+      await hasLetterForMonthlyMissingCheckoutOccurrence(
+        tx,
+        employeeId,
+        LetterType.SUSPENSION,
+        missingCount,
+        date,
+      )
+    ) {
+      return;
+    }
+    const reason = `اس ماہ ${missingCount} مرتبہ چیک آؤٹ نہ کرنے کی بنا پر معطلی کی سفارش۔ ${baseDetail}`;
+    await recommendHrSuspensionDraft(
+      tx,
+      employeeId,
+      date,
+      {
+        suspensionReason: reason,
+        suspensionStartDate: dayKey,
+        suspensionDuration: 'Pending HR review',
+        incidentDate: dayKey,
+        disciplineCategory: 'MISSING_CHECKOUT',
+        monthlyMissingCheckoutOccurrence: missingCount,
+      },
+      reason,
+    );
+    return;
+  }
+
+  // positionInCycle === 3 -> 3rd / 6th this month: Fine + 1-day deduction,
+  // then the cycle resets.
   const deductionAmount = dailyStipendRate(basicStipend, date);
   const monthLabel = date.toLocaleString('en-US', {
     month: 'long',
@@ -2517,8 +2565,14 @@ export function isAbsentFamilyEligibleForDiscipline(row: {
 export function isMissingCheckoutEligibleForDiscipline(row: {
   checkIn?: Date | null;
   checkOut?: Date | null;
+  note?: string | null;
 }): boolean {
-  return row.checkIn != null && row.checkOut == null;
+  if (row.checkIn == null) return false;
+  // Still open, or closed only by the scheduler's auto checkout (not a real punch).
+  return (
+    row.checkOut == null ||
+    (row.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE)
+  );
 }
 
 export type AbsenceDeductionReversalResult = {

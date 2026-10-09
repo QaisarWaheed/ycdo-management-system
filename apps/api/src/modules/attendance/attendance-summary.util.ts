@@ -71,6 +71,7 @@ export type PayrollAttendanceReport = {
   onLeave: number;
   late: number;
   earlyCheckout: number;
+  missingCheckout: number;
   overtimeHours: number;
   extraWorkingDays: number;
   /** At least one Present/Late/Short Leave/Half Day — salary is only paid then. */
@@ -78,7 +79,7 @@ export type PayrollAttendanceReport = {
 };
 
 export function toPayrollAttendanceReport(
-  summary: AttendanceMonthSummary,
+  summary: AttendanceMonthSummary & { missingCheckout?: number },
   extraWorkingDays = 0,
 ): PayrollAttendanceReport {
   return {
@@ -87,6 +88,7 @@ export function toPayrollAttendanceReport(
     onLeave: summary.onLeave,
     late: summary.late,
     earlyCheckout: summary.earlyCheckout ?? 0,
+    missingCheckout: summary.missingCheckout ?? 0,
     overtimeHours: Math.round((summary.overtimeMinutes / 60) * 100) / 100,
     extraWorkingDays,
     worked:
@@ -100,6 +102,7 @@ export const EMPTY_PAYROLL_ATTENDANCE_REPORT: PayrollAttendanceReport = {
   onLeave: 0,
   late: 0,
   earlyCheckout: 0,
+  missingCheckout: 0,
   overtimeHours: 0,
   extraWorkingDays: 0,
   worked: false,
