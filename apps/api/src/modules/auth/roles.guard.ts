@@ -5,6 +5,7 @@ import {
   ALSO_ALLOW_PERMISSIONS_KEY,
   ROLES_KEY,
   ROUTE_PERMISSION_KEY,
+  STRICT_ROLES_KEY,
 } from './roles.decorator';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
@@ -56,6 +57,14 @@ export class RolesGuard implements CanActivate {
 
     if (hasAnyRole(effectiveRoles, [UserRole.SUPER_ADMIN])) {
       return true;
+    }
+
+    const strict = this.reflector.getAllAndOverride<boolean>(STRICT_ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (strict) {
+      return !!requiredRoles?.length && hasAnyRole(effectiveRoles, requiredRoles);
     }
 
     // Permission-tied routes follow Login Access: an IT Deny closes the

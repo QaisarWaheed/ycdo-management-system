@@ -81,7 +81,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
 import { isPendingApproval } from '@/api/endpoints/payApprovals'
-import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
+import {
+  ApproverSelect,
+  useCanEditPay,
+  useNeedsPayApproval,
+} from '@/components/payroll/ApproverSelect'
 import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
 import { PayTypesTab } from '@/components/payroll/PayTypesTab'
 import { PayrollReportsTab } from '@/components/payroll/PayrollReportsTab'
@@ -94,7 +98,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { getApiErrorMessage } from '@/lib/apiErrorMessage'
 import { usePagination } from '@/hooks/usePagination'
-import { useAuth } from '@/hooks/useAuth'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
 import { cn } from '@/lib/utils'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
@@ -398,7 +401,9 @@ function AddDeductionForm({
         ))}
       </div>
       <div className="space-y-1">
-        <Label htmlFor="deduction-description">Description (optional)</Label>
+        <Label htmlFor="deduction-description">
+          What is it for? <span className="text-destructive">*</span> (printed on the payslip)
+        </Label>
         <Textarea
           id="deduction-description"
           value={description}
@@ -409,7 +414,11 @@ function AddDeductionForm({
         <p className="text-sm text-text-secondary">
           Total: <span className="font-medium text-foreground">{formatPKR(total)}</span>
         </p>
-        <Button type="submit" disabled={mutation.isPending || !items.length} size="sm">
+        <Button
+          type="submit"
+          disabled={mutation.isPending || !items.length || description.trim().length < 3}
+          size="sm"
+        >
           {mutation.isPending ? 'Adding...' : 'Add Deduction'}
         </Button>
       </div>
@@ -495,8 +504,14 @@ function AddAllowanceForm({
         </Select>
       </div>
       <div className="space-y-2">
-        <Label>Description</Label>
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+        <Label>
+          What is it for? <span className="text-destructive">*</span> (printed on the payslip)
+        </Label>
+        <Input
+          value={description}
+          placeholder="e.g. Extra duty in place of Dr. Atika"
+          onChange={(e) => setDescription(e.target.value)}
+        />
       </div>
       <div className="space-y-2">
         <Label>Hours</Label>
@@ -528,7 +543,12 @@ function AddAllowanceForm({
       {needsApproval ? <ApproverSelect value={approver} onChange={setApprover} /> : null}
       <Button
         type="submit"
-        disabled={mutation.isPending || !canSubmit || (needsApproval && !approver)}
+        disabled={
+          mutation.isPending ||
+          !canSubmit ||
+          description.trim().length < 3 ||
+          (needsApproval && !approver)
+        }
         size="sm"
       >
         {mutation.isPending ? 'Adding...' : needsApproval ? 'Send for approval' : 'Add Allowance'}
@@ -550,8 +570,7 @@ function PayrollDetailDialog({
 }) {
   const queryClient = useQueryClient()
   const [detailTab, setDetailTab] = useState('deductions')
-  const { hasPermission } = useAuth()
-  const canManagePayroll = hasPermission('PAYROLL_MANAGE')
+  const canManagePayroll = useCanEditPay()
 
   const { data: fullEntry, refetch } = useQuery({
     queryKey: ['payroll-entry-full', entry?.id],
@@ -778,7 +797,7 @@ function PayrollDetailDialog({
             <p className="text-right font-semibold">
               Total Deductions: {formatPKR(totalDeductions)}
             </p>
-            {entry.status === 'PENDING' && (
+            {entry.status === 'PENDING' && canManagePayroll && (
               <AddDeductionForm payrollEntryId={entry.id} onSuccess={refresh} />
             )}
           </TabsContent>
@@ -823,7 +842,7 @@ function PayrollDetailDialog({
                 {relieverH} hrs {relieverM} mins
               </strong>
             </p>
-            {entry.status === 'PENDING' && (
+            {entry.status === 'PENDING' && canManagePayroll && (
               <AddAllowanceForm
                 payrollEntryId={entry.id}
                 hourlyRate={data.hourlyBreakdown?.hourlyRate}
@@ -906,6 +925,7 @@ function MonthlyPayrollTab() {
   const [viewEntry, setViewEntry] = useState<PayrollEntry | null>(null)
   const [allowancesFor, setAllowancesFor] = useState<{ id: string; name: string } | null>(null)
   const canFinalize = useCanFinalizePayroll()
+  const canFinanceEdit = useCanEditPay()
   const [finalizeOpen, setFinalizeOpen] = useState(false)
   const [addDeductionEntry, setAddDeductionEntry] = useState<PayrollEntry | null>(
     null,
@@ -913,8 +933,7 @@ function MonthlyPayrollTab() {
   const [incentiveEmployeeId, setIncentiveEmployeeId] = useState<string | null>(
     null,
   )
-  const { hasPermission } = useAuth()
-  const canAddIncentive = hasPermission('INCENTIVES_MANAGE')
+  const canAddIncentive = useCanEditPay()
   const [confirmGenerate, setConfirmGenerate] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetAllUnpaidMonths, setResetAllUnpaidMonths] = useState(false)
@@ -1609,11 +1628,13 @@ function MonthlyPayrollTab() {
                                   Mark as Processed
                                 </DropdownMenuItem>
                               ) : null}
-                              <DropdownMenuItem
-                                onClick={() => setAddDeductionEntry(entry)}
-                              >
-                                Add Deduction
-                              </DropdownMenuItem>
+                              {canFinanceEdit ? (
+                                <DropdownMenuItem
+                                  onClick={() => setAddDeductionEntry(entry)}
+                                >
+                                  Add Deduction
+                                </DropdownMenuItem>
+                              ) : null}
                             </>
                           )}
                           {entry.stipendRecord?.employee?.id ? (
@@ -2998,6 +3019,7 @@ function NonActivePayslipsTab() {
 }
 
 export function PayrollPage() {
+  const canEditPay = useCanEditPay()
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-text-primary sm:text-2xl">Payroll</h1>
@@ -3018,7 +3040,14 @@ export function PayrollPage() {
         </TabsContent>
 
         <TabsContent value="increment" className="mt-4">
-          <StipendIncrementTab />
+          {canEditPay ? (
+            <StipendIncrementTab />
+          ) : (
+            <p className="rounded-md border border-border bg-muted/40 p-4 text-sm text-text-secondary">
+              Salary changes are made by Finance (Payroll Officer). HR sets the salary only when
+              adding a new employee.
+            </p>
+          )}
         </TabsContent>
 
         <TabsContent value="summary" className="mt-4">

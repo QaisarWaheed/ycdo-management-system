@@ -85,10 +85,11 @@ export class AssignAllowanceDto {
   @Matches(MONTH, { message: MONTH_MSG })
   endMonth?: string;
 
-  @IsOptional()
+  /** What it is for; shown with the allowance. */
   @IsString()
+  @IsNotEmpty({ message: 'Write what this allowance is for' })
   @MaxLength(500)
-  note?: string;
+  note: string;
 
   /** Who approves it when the sender is not an executive. */
   @IsOptional()

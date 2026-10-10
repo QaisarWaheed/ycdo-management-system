@@ -9,7 +9,11 @@ import { DateInput } from '@/components/common/DateInput'
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
 import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
 import { isPendingApproval } from '@/api/endpoints/payApprovals'
-import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
+import {
+  ApproverSelect,
+  useCanEditPay,
+  useNeedsPayApproval,
+} from '@/components/payroll/ApproverSelect'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -147,6 +151,8 @@ export function EditPayrollDialog({
   }, [open, originalJoiningDate, latestStipend, form])
 
   const needsApproval = useNeedsPayApproval()
+  // HR sets salary only when adding the employee; later changes are Finance's.
+  const canEditPay = useCanEditPay()
   const [approver, setApprover] = useState<EmployeeApproverTarget>()
   const mutation = useMutation({
     mutationFn: async (
@@ -283,7 +289,7 @@ export function EditPayrollDialog({
               )}
             />
 
-            {latestStipend ? (
+            {latestStipend && canEditPay ? (
               <>
                 <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-text-secondary">
                   Saving updates the current package only. Tick salary
@@ -450,11 +456,13 @@ export function EditPayrollDialog({
               </>
             ) : (
               <p className="text-sm text-text-secondary">
-                No stipend record found. Only joining date can be updated.
+                {latestStipend
+                  ? 'Salary changes are made by Finance (Payroll Officer). Only the joining date can be updated here.'
+                  : 'No stipend record found. Only joining date can be updated.'}
               </p>
             )}
 
-            {needsApproval && latestStipend ? (
+            {needsApproval && latestStipend && canEditPay ? (
               <ApproverSelect value={approver} onChange={setApprover} id="edit-payroll-approver" />
             ) : null}
 

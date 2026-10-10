@@ -1,7 +1,8 @@
 export interface PayslipSection {
   key: 'earnings' | 'attendance' | 'discipline' | 'other'
   title: string
-  lines: Array<{ label: string; amount: number }>
+  /** note = what the line is for (days, hours, reason). */
+  lines: Array<{ label: string; amount: number; note?: string }>
 }
 
 export interface PayslipSlipData {
@@ -39,7 +40,11 @@ export interface PayslipSlipData {
     mobileLoad: number
     extraDuty: number
   }
+  /** Employee photo for the slip header. */
+  photoUrl?: string | null
   deductions: {
+    /** Basic for days not paid; slip Basic is the full contract. */
+    unpaidBasic?: number
     advance: number
     loan: number
     mobileLoad: number

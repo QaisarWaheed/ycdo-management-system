@@ -1,3 +1,4 @@
+import { useCanEditPay } from '@/components/payroll/ApproverSelect'
 import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
 import { selectCurrentStipend } from '@/lib/stipendUtils'
 import { useMemo, useState } from 'react'
@@ -95,6 +96,8 @@ function ProfileDeductionDialog({
   }
 
   const refresh = () => { void refetch(); onChanged() }
+  // Deductions are Finance's (Payroll Officer / executives); HR sees them read-only.
+  const canEditPay = useCanEditPay()
 
   const saveMutation = useMutation({
     mutationFn: (id: string) => payrollApi.updateDeduction(id, { reason: draftReason, amount: draftAmount, description: draftDescription.trim() || null }),
@@ -171,12 +174,12 @@ function ProfileDeductionDialog({
                   <TableCell className="text-red-600">{formatPKR(d.amount)}</TableCell>
                   <TableCell>{d.description ?? '—'}</TableCell>
                   <TableCell className="text-right">
-                    {isManualDeduction(d) ? (
+                    {isManualDeduction(d) && canEditPay ? (
                       <div className="flex justify-end gap-1">
                         <Button size="sm" variant="outline" disabled={!!editingId} onClick={() => startEdit(d)}>Edit</Button>
                         <Button size="sm" variant="outline" className="text-red-600" disabled={!!editingId} onClick={() => setRemoving(d)}>Remove</Button>
                       </div>
-                    ) : <span className="text-xs text-text-secondary">System</span>}
+                    ) : <span className="text-xs text-text-secondary">{isManualDeduction(d) ? 'Finance' : 'System'}</span>}
                   </TableCell>
                 </TableRow>
               )
@@ -184,6 +187,7 @@ function ProfileDeductionDialog({
           </TableBody>
         </Table>
 
+        {canEditPay ? (
         <div className="space-y-3 border-t border-border pt-4">
           <p className="text-sm font-medium">Add Deduction</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -195,15 +199,22 @@ function ProfileDeductionDialog({
             ))}
           </div>
           <div className="space-y-1">
-            <Label>Description (optional)</Label>
+            <Label>
+              What is it for? <span className="text-destructive">*</span> (printed on the payslip)
+            </Label>
             <Textarea value={addDescription} onChange={(e) => setAddDescription(e.target.value)} />
           </div>
           <div className="flex justify-end">
-            <Button size="sm" disabled={addMutation.isPending || !addItems.length} onClick={() => addMutation.mutate()}>
+            <Button
+              size="sm"
+              disabled={addMutation.isPending || !addItems.length || addDescription.trim().length < 3}
+              onClick={() => addMutation.mutate()}
+            >
               {addMutation.isPending ? 'Adding…' : 'Add Deduction'}
             </Button>
           </div>
         </div>
+        ) : null}
 
         <ConfirmDialog
           open={!!removing}

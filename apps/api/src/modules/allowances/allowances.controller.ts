@@ -11,7 +11,7 @@ import {
 import { PayChangeKind, UserRole } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, StrictRoles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
   isPayExecutive,
@@ -64,6 +64,7 @@ export class AllowancesController {
 
   @Post('allowance-types')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
+  @StrictRoles()
   createType(
     @Body() dto: CreateAllowanceTypeDto,
     @CurrentUser() user: PayActor,
@@ -73,6 +74,7 @@ export class AllowancesController {
 
   @Patch('allowance-types/:id')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
+  @StrictRoles()
   updateType(
     @Param('id') id: string,
     @Body() dto: UpdateAllowanceTypeDto,
@@ -89,6 +91,7 @@ export class AllowancesController {
 
   @Post('incentive-types')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
+  @StrictRoles()
   createIncentiveType(
     @Body() dto: CreateIncentiveTypeDto,
     @CurrentUser() user: PayActor,
@@ -98,6 +101,7 @@ export class AllowancesController {
 
   @Patch('incentive-types/:id')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
+  @StrictRoles()
   updateIncentiveType(
     @Param('id') id: string,
     @Body() dto: UpdateIncentiveTypeDto,
@@ -122,6 +126,7 @@ export class AllowancesController {
   /** Executives apply at once; an increase from Accounts goes for approval. */
   @Post('employee-allowances')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
+  @StrictRoles()
   async assign(@Body() dto: AssignAllowanceDto, @CurrentUser() user: PayActor) {
     if (!isPayExecutive(user)) {
       const { isIncrease, summary } = await this.allowances.describeAssign(dto);
@@ -144,6 +149,7 @@ export class AllowancesController {
 
   @Patch('employee-allowances/:id/end')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
+  @StrictRoles()
   end(
     @Param('id') id: string,
     @Body() dto: EndAllowanceDto,

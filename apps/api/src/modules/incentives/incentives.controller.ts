@@ -11,7 +11,7 @@ import {
 import { Permission, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles, RoutePermission } from '../auth/roles.decorator';
+import { Roles, RoutePermission, StrictRoles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CreateIncentiveDto, IncentiveQueryDto } from './incentives.dto';
 import { PayChangeKind } from '@prisma/client';
@@ -30,16 +30,15 @@ export class IncentivesController {
     private payChangeRequests: PayChangeRequestsService,
   ) {}
 
+  /** Finance (and executives) only; HR cannot add pay. */
   @Post()
-  @RoutePermission(Permission.INCENTIVES_MANAGE)
+  @StrictRoles()
   @Roles(
-    UserRole.HR_MANAGER,
-    UserRole.HR_ADMIN_MANAGER,
-    UserRole.ADMIN_OFFICER,
     UserRole.PAYROLL_OFFICER,
     UserRole.PRESIDENT,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
+    UserRole.SUPER_ADMIN,
   )
   async create(
     @Body() dto: CreateIncentiveDto,
@@ -103,7 +102,14 @@ export class IncentivesController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_ADMIN_MANAGER)
+  @StrictRoles()
+  @Roles(
+    UserRole.PAYROLL_OFFICER,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+    UserRole.SUPER_ADMIN,
+  )
   delete(
     @Param('id') id: string,
     @CurrentUser() user: { id: string },

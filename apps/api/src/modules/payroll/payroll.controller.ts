@@ -21,6 +21,7 @@ import {
   AlsoAllowPermission,
   Roles,
   RoutePermission,
+  StrictRoles,
 } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
@@ -72,11 +73,11 @@ const PAYROLL_WRITE_ROLES = [
  * executives (and Super Admin) apply them directly.
  */
 const PAY_CHANGE_ROLES = [
-  ...PAYROLL_WRITE_ROLES,
   UserRole.PAYROLL_OFFICER,
   UserRole.PRESIDENT,
   UserRole.FOUNDER,
   UserRole.CHAIRMAN,
+  UserRole.SUPER_ADMIN,
 ];
 
 const OVERTIME_APPLY_ROLES = [
@@ -211,22 +212,22 @@ export class PayrollController {
   }
 
   @Post('deductions')
-  @Roles(...PAYROLL_WRITE_ROLES)
-  @RoutePermission(Permission.PAYROLL_MANAGE)
+  @Roles(...PAY_CHANGE_ROLES)
+  @StrictRoles()
   addDeduction(@Body() dto: AddDeductionDto, @CurrentUser() user: { id: string }) {
     return this.payrollService.addDeduction(dto, user.id);
   }
 
   @Post('deductions/batch')
-  @Roles(...PAYROLL_WRITE_ROLES)
-  @RoutePermission(Permission.PAYROLL_MANAGE)
+  @Roles(...PAY_CHANGE_ROLES)
+  @StrictRoles()
   addDeductions(@Body() dto: AddDeductionsDto, @CurrentUser() user: { id: string }) {
     return this.payrollService.addDeductions(dto, user.id);
   }
 
   @Patch('deductions/:id')
-  @Roles(...PAYROLL_WRITE_ROLES)
-  @RoutePermission(Permission.PAYROLL_MANAGE)
+  @Roles(...PAY_CHANGE_ROLES)
+  @StrictRoles()
   updateDeduction(
     @Param('id') id: string,
     @Body() dto: UpdateDeductionDto,
@@ -236,8 +237,8 @@ export class PayrollController {
   }
 
   @Delete('deductions/:id')
-  @Roles(...PAYROLL_WRITE_ROLES)
-  @RoutePermission(Permission.PAYROLL_MANAGE)
+  @Roles(...PAY_CHANGE_ROLES)
+  @StrictRoles()
   removeDeduction(
     @Param('id') id: string,
     @CurrentUser() user: { id: string },
@@ -247,7 +248,7 @@ export class PayrollController {
 
   @Post('allowances')
   @Roles(...PAY_CHANGE_ROLES)
-  @RoutePermission(Permission.PAYROLL_MANAGE)
+  @StrictRoles()
   async addAllowance(@Body() dto: AddAllowanceDto, @CurrentUser() user: PayActor) {
     if (!isPayExecutive(user)) {
       const { employeeId, summary } =
@@ -427,7 +428,7 @@ export class PayrollController {
 
   @Post('increment')
   @Roles(...PAY_CHANGE_ROLES)
-  @RoutePermission(Permission.PAYROLL_MANAGE)
+  @StrictRoles()
   async salaryIncrement(
     @Body() dto: SalaryIncrementDto,
     @CurrentUser() user: PayActor,
@@ -441,7 +442,7 @@ export class PayrollController {
 
   @Patch('stipend')
   @Roles(...PAY_CHANGE_ROLES)
-  @RoutePermission(Permission.PAYROLL_MANAGE)
+  @StrictRoles()
   async updateActiveStipend(
     @Body() dto: UpdateActiveStipendDto,
     @CurrentUser() user: PayActor,

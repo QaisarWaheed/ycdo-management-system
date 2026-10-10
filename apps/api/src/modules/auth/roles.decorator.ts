@@ -4,6 +4,14 @@ import { Permission, UserRole } from '@prisma/client';
 export const ROLES_KEY = 'roles';
 export const ROUTE_PERMISSION_KEY = 'routePermission';
 export const ALSO_ALLOW_PERMISSIONS_KEY = 'alsoAllowPermissions';
+export const STRICT_ROLES_KEY = 'strictRoles';
+
+/**
+ * Only the listed @Roles may call the route: no HR Executive pass-through and
+ * no Login Access permission shortcut (Super Admin still passes). Used for
+ * pay changes, which belong to Finance and executives only.
+ */
+export const StrictRoles = () => SetMetadata(STRICT_ROLES_KEY, true);
 
 export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES_KEY, roles);
 

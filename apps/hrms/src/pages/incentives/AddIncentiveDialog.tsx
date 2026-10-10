@@ -41,7 +41,11 @@ const schema = z.object({
   year: z.number().min(2020),
   amount: z.number().positive('Amount must be greater than 0'),
   typeId: z.string().min(1, 'Choose an incentive type'),
-  reason: z.string().max(1000, 'Reason must be 1000 characters or less'),
+  reason: z
+    .string()
+    .trim()
+    .min(3, 'Write what this incentive is for (printed on the payslip)')
+    .max(1000, 'Reason must be 1000 characters or less'),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -103,7 +107,7 @@ export function AddIncentiveDialog({
     mutationFn: (values: FormValues) =>
       incentivesApi.create({
         ...values,
-        reason: values.reason.trim() || undefined,
+        reason: values.reason.trim(),
         approverTarget: approver,
       }),
     onSuccess: (res) => {
@@ -266,7 +270,7 @@ export function AddIncentiveDialog({
               name="reason"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Note (optional)</FormLabel>
+                  <FormLabel>What is it for? * (printed on the payslip)</FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Describe the reason for this incentive..."

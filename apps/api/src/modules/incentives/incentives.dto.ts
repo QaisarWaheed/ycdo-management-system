@@ -30,11 +30,11 @@ export class CreateIncentiveDto {
   @IsUUID()
   typeId?: string;
 
-  /** Free-text note; required only when no type is chosen. */
-  @IsOptional()
+  /** What it is for; printed on the payslip. */
   @IsString()
+  @IsNotEmpty({ message: 'Write what this incentive is for — it is printed on the payslip' })
   @MaxLength(1000)
-  reason?: string;
+  reason: string;
 
   @Type(() => Number)
   @IsInt()

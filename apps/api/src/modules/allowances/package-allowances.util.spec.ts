@@ -148,7 +148,7 @@ describe('package allowances', () => {
         other: 0,
       },
       deductionRows: [],
-      allowanceRows: [{ type: 'CUSTOM', amount: 500 }],
+      allowanceRows: [{ type: 'CUSTOM', amount: 500, description: 'Incentive: On Progress' }],
       pkg: { allowances: 0, fineDeduction: 0 },
       packageLines: [
         { label: 'Pharmacy', amount: 2000 },
@@ -159,7 +159,7 @@ describe('package allowances', () => {
     const pay = sections.find((s) => s.key === 'earnings')!;
     expect(pay.lines).toEqual([
       { label: 'Basic Stipend', amount: 30000 },
-      { label: 'Incentives', amount: 500 },
+      { label: 'Incentive', amount: 500, note: 'On Progress' },
       { label: 'Pharmacy', amount: 2000 },
       { label: 'Night Monitoring', amount: 1200 },
     ]);

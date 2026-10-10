@@ -16,6 +16,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  MinLength,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -83,9 +84,11 @@ export class AddDeductionDto {
   @IsNotEmpty()
   amount: number;
 
-  @IsOptional()
+  /** Shown on the payslip next to the amount (what it is for). */
   @IsString()
-  description?: string;
+  @IsNotEmpty({ message: 'Write what this is for — it is printed on the payslip' })
+  @MinLength(3, { message: 'Write what this is for — it is printed on the payslip' })
+  description: string;
 
   /** Only for FINE: the discipline cause (mobile on duty, uniform, ...). */
   @IsOptional()
@@ -103,9 +106,11 @@ export class DeductionItemDto {
   @IsPositive()
   amount: number;
 
-  @IsOptional()
+  /** Shown on the payslip next to the amount (what it is for). */
   @IsString()
-  description?: string;
+  @IsNotEmpty({ message: 'Write what this is for — it is printed on the payslip' })
+  @MinLength(3, { message: 'Write what this is for — it is printed on the payslip' })
+  description: string;
 
   /** Only for FINE: the discipline cause (mobile on duty, uniform, ...). */
   @IsOptional()
@@ -151,9 +156,11 @@ export class AddAllowanceDto {
   @IsNotEmpty()
   type: AllowanceType;
 
-  @IsOptional()
+  /** Shown on the payslip next to the amount (what it is for). */
   @IsString()
-  description?: string;
+  @IsNotEmpty({ message: 'Write what this is for — it is printed on the payslip' })
+  @MinLength(3, { message: 'Write what this is for — it is printed on the payslip' })
+  description: string;
 
   @IsOptional()
   @Type(() => Number)
@@ -445,8 +452,9 @@ export class UpdateActiveStipendDto {
   @IsDateString()
   effectiveFrom?: string;
 
-  @IsOptional()
+  // Required on the request (no @IsOptional); optional in TS for internal callers.
   @IsString()
+  @IsNotEmpty({ message: 'A reason is required to change the salary package' })
   reason?: string;
   /** Executive who approves it when the sender is not an executive. */
   @IsOptional()

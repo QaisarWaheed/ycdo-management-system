@@ -14,6 +14,12 @@ import { useAuth } from '@/hooks/useAuth'
 
 const EXECUTIVE_ROLES = ['PRESIDENT', 'FOUNDER', 'CHAIRMAN', 'SUPER_ADMIN']
 
+/** Salary, incentives, allowances and deductions: Finance (Payroll Officer) and executives only. */
+export function useCanEditPay() {
+  const { hasRole } = useAuth()
+  return hasRole(['PAYROLL_OFFICER', ...EXECUTIVE_ROLES])
+}
+
 /** Executives apply pay increases directly; everyone else sends them for approval. */
 export function useNeedsPayApproval() {
   const { hasRole } = useAuth()

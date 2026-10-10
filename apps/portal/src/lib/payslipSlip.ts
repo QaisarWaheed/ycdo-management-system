@@ -1,12 +1,16 @@
 export interface PayslipSection {
   key: 'earnings' | 'attendance' | 'discipline' | 'other'
   title: string
-  lines: Array<{ label: string; amount: number }>
+  /** note = what the line is for (days, hours, reason). */
+  lines: Array<{ label: string; amount: number; note?: string }>
 }
 
 export interface PayslipSlipData {
   /** Grouped, non-empty lines from the API; absent on client-built slips. */
   sections?: PayslipSection[]
+  /** Employee photo for the slip header. */
+  photoUrl?: string | null
+  employeeStatus?: string
   orgName: string
   title: string
   hospital: string

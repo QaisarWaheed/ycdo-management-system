@@ -87,6 +87,24 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
           <p className="mt-1 text-xs font-semibold sm:text-sm">{slip.title}</p>
         </div>
 
+        {slip.sections ? (
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-lg font-bold leading-tight sm:text-xl">{slip.employeeName}</p>
+              {slip.employeeStatus ? (
+                <span className="mt-1 inline-block rounded border-2 border-black px-2 text-xs font-bold uppercase">
+                  {slip.employeeStatus.replace(/_/g, ' ')}
+                </span>
+              ) : null}
+            </div>
+            <div className="h-24 w-20 shrink-0 overflow-hidden border-2 border-black bg-black/5">
+              {slip.photoUrl ? (
+                <img src={slip.photoUrl} alt="" className="h-full w-full object-cover" />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         <div className="mb-4 grid grid-cols-2 gap-x-6 gap-y-2 border-b border-black/20 pb-3 sm:grid-cols-2">
           <MetaCell label="CNIC" value={slip.cnic} />
           <MetaCell label="Hospital" value={slip.hospital || slip.workPlace} />
@@ -115,7 +133,11 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
             {slip.sections ? (
               <tbody>
                 {(slip.sections.find((s) => s.key === 'earnings')?.lines ?? []).map((l) => (
-                  <MoneyRow key={l.label} label={l.label} amount={l.amount} />
+                  <MoneyRow
+                    key={`${l.label}-${l.note ?? ''}`}
+                    label={l.note ? `${l.label} — ${l.note}` : l.label}
+                    amount={l.amount}
+                  />
                 ))}
                 <MoneyRow label="Stipend & Other Allowances" amount={earningsTotal} bold />
               </tbody>
@@ -173,7 +195,11 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
                       </td>
                     </tr>,
                     ...s.lines.map((l) => (
-                      <MoneyRow key={`${s.key}-${l.label}`} label={l.label} amount={l.amount} />
+                      <MoneyRow
+                        key={`${s.key}-${l.label}-${l.note ?? ''}`}
+                        label={l.note ? `${l.label} — ${l.note}` : l.label}
+                        amount={l.amount}
+                      />
                     )),
                   ])}
                 <MoneyRow label="Deduction" amount={deductionsTotal} bold />

@@ -25,6 +25,8 @@ export function PayslipDocument({
   slip: PayslipSlipData
   compact?: boolean
 }) {
+  // API slips carry grouped sections with notes → the new compact slip.
+  if (slip.sections) return <SectionedPayslip slip={slip} compact={compact} />
   const netPay = slip.netPay ?? slip.totalAmount ?? 0
   const d = slip.deductions
 
@@ -78,26 +80,12 @@ export function PayslipDocument({
     slip.deductionsTotal ??
     deductionsData.reduce((s, r) => s + r.amount, 0)
 
-  // New layout (API sections): only lines that apply, deductions grouped as
-  // Attendance / Discipline Fines / Other with a heading row per group.
+  // Legacy client-built slips (no API sections): fixed rows.
   type Row = { label: string; amount: number | null; heading?: boolean }
-  const sections = slip.sections
-  const sectionEarnings: Row[] | null = sections
-    ? (sections.find((s) => s.key === 'earnings')?.lines ?? []).map((l) => ({ ...l }))
-    : null
-  const sectionDeductions: Row[] | null = sections
-    ? sections
-        .filter((s) => s.key !== 'earnings' && s.lines.length > 0)
-        .flatMap((s) => [
-          { label: s.title, amount: null, heading: true },
-          ...s.lines.map((l) => ({ ...l })),
-        ])
-    : null
-  const leftRows: Row[] = sectionEarnings ?? earningsData
-  const rightRows: Row[] = sectionDeductions ?? deductionsData
+  const leftRows: Row[] = earningsData
+  const rightRows: Row[] = deductionsData
   const ROW_COUNT = Math.max(leftRows.length, rightRows.length, 1)
-  const money = (amount: number | null) =>
-    amount == null ? '' : sections ? amount.toLocaleString('en-PK') : fmt(amount)
+  const money = (amount: number | null) => (amount == null ? '' : fmt(amount))
 
   const fs = compact
     ? { base: '8pt', sm: '7.5pt', hdr: '8.5pt', title: '9pt', org: '10pt', sig: '7pt' }
@@ -263,6 +251,184 @@ export function PayslipDocument({
               </div>
             ),
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const pkr = (n: number) => Math.round(n).toLocaleString('en-PK')
+
+/**
+ * Compact slip (two per A4) with large type: photo, name and status up top,
+ * every line with what it is for, Net Pay the most prominent figure.
+ */
+function SectionedPayslip({ slip, compact }: { slip: PayslipSlipData; compact: boolean }) {
+  const sections = slip.sections ?? []
+  const earnings = sections.find((s) => s.key === 'earnings')?.lines ?? []
+  const deductionGroups = sections.filter((s) => s.key !== 'earnings' && s.lines.length > 0)
+  const earningsTotal = slip.earningsTotal ?? earnings.reduce((s, l) => s + l.amount, 0)
+  const deductionsTotal =
+    slip.deductionsTotal ??
+    deductionGroups.reduce((s, g) => s + g.lines.reduce((t, l) => t + l.amount, 0), 0)
+  const netPay = slip.netPay ?? slip.totalAmount ?? earningsTotal - deductionsTotal
+  const status = slip.employeeStatus ? employeeStatusLabel(slip.employeeStatus) : ''
+  const active = (slip.employeeStatus ?? '').toUpperCase() === 'ACTIVE'
+  const f = compact
+    ? { base: '12pt', note: '9.5pt', name: '18pt', head: '12.5pt', net: '19pt', small: '8.5pt', photo: 28 }
+    : { base: '11.5pt', note: '9pt', name: '18pt', head: '12.5pt', net: '18pt', small: '8.5pt', photo: 30 }
+  const band = { background: '#FFFF00', padding: '0 4px', fontSize: f.head }
+
+  const Line = ({ label, amount, note }: { label: string; amount: number; note?: string }) => (
+    <div className="flex items-baseline justify-between gap-2 border-b border-black/15 py-[1px]">
+      <div className="min-w-0">
+        <span className="font-semibold">{label}</span>
+        {note ? (
+          <span className="ml-1 italic text-black/70" style={{ fontSize: f.note }}>
+            — {note}
+          </span>
+        ) : null}
+      </div>
+      <span className="shrink-0 font-semibold tabular-nums">{pkr(amount)}</span>
+    </div>
+  )
+
+  return (
+    <div
+      className={cn(
+        'print-content bg-white text-black',
+        compact ? 'payslip-compact h-full' : 'mx-auto max-w-[820px] p-2',
+      )}
+      style={{ fontFamily: 'Arial, sans-serif', fontSize: f.base, lineHeight: 1.25 }}
+    >
+      <div
+        className={cn('flex flex-col border-2 border-black', compact ? 'h-full p-[5px]' : 'p-3')}
+        style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
+      >
+        <div className="text-center font-bold" style={{ background: '#FFFF00', padding: '2px 6px' }}>
+          <div style={{ fontSize: f.head, textTransform: 'uppercase' }}>
+            {slip.orgName || 'Youth Community Development Organization'}
+          </div>
+          <div style={{ fontSize: f.base }}>{slip.title}</div>
+        </div>
+
+        <div className="mt-[4px] flex gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold leading-tight" style={{ fontSize: f.name }}>
+                {slip.employeeName || '—'}
+              </span>
+              {status ? (
+                <span
+                  className="rounded border-2 px-2 font-bold uppercase"
+                  style={{
+                    fontSize: f.base,
+                    borderColor: active ? '#15803d' : '#b91c1c',
+                    color: active ? '#15803d' : '#b91c1c',
+                  }}
+                >
+                  {status}
+                </span>
+              ) : null}
+            </div>
+            <div className="font-semibold">
+              {slip.designation || '—'}
+              {slip.hospital || slip.workPlace ? ` · ${slip.hospital || slip.workPlace}` : ''}
+            </div>
+            <div className="mt-[2px] grid grid-cols-2 gap-x-4" style={{ fontSize: f.note }}>
+              <div>
+                <b>CNIC:</b> {slip.cnic || '—'}
+              </div>
+              <div>
+                <b>Period:</b> {slip.period || slip.payPeriod || '—'}
+              </div>
+              <div>
+                <b>Duty:</b> {slip.dutyTime || '—'}
+              </div>
+              <div>
+                <b>Days:</b> {slip.totalDays} · <b>Present</b> {slip.presence ?? 0} ·{' '}
+                <b>Leave</b> {slip.leaveDays ?? 0}
+              </div>
+            </div>
+          </div>
+          <div
+            className="shrink-0 overflow-hidden border-2 border-black bg-black/5"
+            style={{ width: `${f.photo}mm`, height: `${f.photo * 1.2}mm` }}
+          >
+            {slip.photoUrl ? (
+              <img src={slip.photoUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div
+                className="flex h-full items-center justify-center text-center text-black/40"
+                style={{ fontSize: f.small }}
+              >
+                No photo
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-[4px] grid flex-1 grid-cols-2 gap-3">
+          <div>
+            <div className="mb-[2px] font-bold" style={band}>
+              Pay &amp; Allowances
+            </div>
+            {earnings.map((l, i) => (
+              <Line key={`e${i}`} {...l} />
+            ))}
+          </div>
+          <div>
+            <div className="mb-[2px] font-bold" style={band}>
+              Deductions
+            </div>
+            {deductionGroups.length === 0 ? <div className="italic text-black/60">None</div> : null}
+            {deductionGroups.map((g) => (
+              <div key={g.key} className="mb-[2px]">
+                <div className="font-bold uppercase text-black/70" style={{ fontSize: f.note }}>
+                  {g.title}
+                </div>
+                {g.lines.map((l, i) => (
+                  <Line key={`${g.key}${i}`} {...l} />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-[4px] grid grid-cols-3 items-center border-2 border-black text-center font-bold">
+          <div className="border-r-2 border-black py-[2px]">
+            <div style={{ fontSize: f.note }}>Gross Pay</div>
+            <div className="tabular-nums">{pkr(earningsTotal)}</div>
+          </div>
+          <div className="border-r-2 border-black py-[2px]">
+            <div style={{ fontSize: f.note }}>Deductions</div>
+            <div className="tabular-nums">{pkr(deductionsTotal)}</div>
+          </div>
+          <div className="py-[2px]" style={{ background: '#FFFF00' }}>
+            <div style={{ fontSize: f.note }}>NET PAY</div>
+            <div className="tabular-nums" style={{ fontSize: f.net }}>
+              PKR {pkr(netPay)}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-[2px] flex justify-between gap-2" style={{ fontSize: f.small }}>
+          <span>
+            Paid through:{' '}
+            {slip.paidThrough && slip.paidThrough !== 'Nil' ? slip.paidThrough : '—'}
+          </span>
+          <span>Bank charges (if any) will be deducted from stipend by the bank</span>
+        </div>
+        <div className="mt-[6px] grid grid-cols-3 gap-2 text-center" style={{ fontSize: f.small }}>
+          {['President YCDO', 'Chairman Admin YCDO', 'Chairman Finance YCDO'].map((s) => (
+            <div key={s}>
+              <div
+                className="mb-[2px] border-b border-black/50"
+                style={{ height: compact ? '10px' : '18px' }}
+              />
+              {s}
+            </div>
+          ))}
         </div>
       </div>
     </div>

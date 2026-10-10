@@ -1,3 +1,4 @@
+import { useCanEditPay } from '@/components/payroll/ApproverSelect'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -60,6 +61,7 @@ export function IncentivesPage() {
     year: now.getFullYear(),
   })
   const [addOpen, setAddOpen] = useState(false)
+  const canEditPay = useCanEditPay()
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const canDelete =
@@ -115,10 +117,12 @@ export function IncentivesPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-text-primary">Incentives</h1>
+        {canEditPay ? (
         <Button onClick={() => setAddOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Add Incentive
         </Button>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

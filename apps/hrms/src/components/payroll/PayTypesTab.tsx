@@ -36,7 +36,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 
-const MANAGE_ROLES = ['PAYROLL_OFFICER', 'PRESIDENT', 'FOUNDER', 'CHAIRMAN', 'SUPER_ADMIN', 'HR_EXECUTIVE']
+const MANAGE_ROLES = ['PAYROLL_OFFICER', 'PRESIDENT', 'FOUNDER', 'CHAIRMAN', 'SUPER_ADMIN']
 const PRORATION_LABEL: Record<AllowanceProration, string> = {
   FULL_MONTH: 'Full month',
   ATTENDANCE: 'By attendance',

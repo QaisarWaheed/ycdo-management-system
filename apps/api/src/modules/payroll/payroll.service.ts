@@ -2426,6 +2426,7 @@ export class PayrollService {
                 id: true,
                 fullName: true,
                 employeeCode: true,
+                photoUrl: true,
                 cnic: true,
                 currentDesignation: true,
                 dutyStartTime: true,
@@ -2561,6 +2562,25 @@ export class PayrollService {
       paidLeaveDays: card.paidLeaveDays,
       unpaidLeaveDays: card.unpaidLeaveDays,
     };
+    // Slip shows the full contract Basic; days not paid are an Absence deduction.
+    const contractualBasic = Number(displayPackage.basicStipend) || 0;
+    const earnedBasic = Number(current.basicStipend) || 0;
+    const unpaidDays = Math.max(
+      0,
+      Math.round(
+        (card.calendarDays - (breakdown.creditedAttendanceDays ?? card.calendarDays)) * 10,
+      ) / 10,
+    );
+    const byDays = card.calendarDays
+      ? Math.round(((contractualBasic * unpaidDays) / card.calendarDays) * 100) / 100
+      : 0;
+    // One package in the month: exact contract − earned; several (mid-month raise): by days.
+    const unpaidBasic =
+      earnedBasic > 0 && contractualBasic > 0
+        ? Math.abs(contractualBasic - earnedBasic - byDays) <= 1
+          ? Math.max(0, Math.round((contractualBasic - earnedBasic) * 100) / 100)
+          : byDays
+        : 0;
     const slip = this.buildPayslipSlipData({
       entry: current,
       stipendRecord: displayPackage,
@@ -2569,6 +2589,8 @@ export class PayrollService {
       leaveSplit,
       absenceCounts: card,
       packageAllowanceLines: breakdown.packageAllowanceLines,
+      unpaidBasic,
+      unpaidDays: unpaidBasic > 0 ? unpaidDays : 0,
     });
 
     const [withAttendance] = await this.attachPayrollAttendanceReport(
@@ -2590,6 +2612,9 @@ export class PayrollService {
   private buildPayslipSlipData(input: {
     /** Months on the allowance table: per-type, already-prorated amounts. */
     packageAllowanceLines?: Array<{ label: string; amount: number }>;
+    /** Basic for days not paid; shown as an Absence deduction so Basic is the full contract. */
+    unpaidBasic?: number;
+    unpaidDays?: number;
     entry: {
       month: number;
       year: number;
@@ -2631,7 +2656,12 @@ export class PayrollService {
       shift?: { startTime: string; endTime: string } | null;
     };
     presenceDays: number;
-    absenceCounts?: Pick<AttendanceCard, 'absent' | 'uninformedAbsent'>;
+    absenceCounts?: Partial<
+      Pick<
+        AttendanceCard,
+        'absent' | 'uninformedAbsent' | 'late' | 'earlyCheckout' | 'missingCheckout'
+      >
+    >;
     leaveSplit: {
       leaveDays: number;
       paidLeaveDays: number;
@@ -2731,6 +2761,7 @@ export class PayrollService {
     });
 
     const packageLines = input.packageAllowanceLines;
+    const unpaidBasic = input.unpaidBasic ?? 0;
     const packageLinesTotal = (packageLines ?? []).reduce(
       (s, l) => s + l.amount,
       0,
@@ -2739,7 +2770,7 @@ export class PayrollService {
     // employee's allowance lines (shown individually in the sections).
     const earnings = packageLines
       ? {
-          stipend: Number(entry.basicStipend) || 0,
+          stipend: (Number(entry.basicStipend) || 0) + unpaidBasic,
           contractualStipend: Number(stipendRecord.basicStipend) || 0,
           previousMonth: 0,
           rewardOnProgress: 0,
@@ -2751,7 +2782,7 @@ export class PayrollService {
           extraDuty: extraDutyAmount,
         }
       : {
-          stipend: Number(entry.basicStipend) || 0,
+          stipend: (Number(entry.basicStipend) || 0) + unpaidBasic,
           contractualStipend: Number(stipendRecord.basicStipend) || 0,
           previousMonth: 0,
           rewardOnProgress: pkg.progressReward || 0,
@@ -2779,6 +2810,7 @@ export class PayrollService {
       electricityBill: sumReason(DeductionType.ELECTRICITY_BILL),
       mobileBill: sumReason(DeductionType.MOBILE_BILL),
       other: otherDeduction,
+      unpaidBasic,
     };
 
     const deductionItems = deductions.flatMap((d) => {
@@ -2859,12 +2891,20 @@ export class PayrollService {
         },
         packageLines,
         totalDays,
+        unpaidDays: input.unpaidDays,
+        counts: {
+          late: input.absenceCounts?.late,
+          earlyCheckout: input.absenceCounts?.earlyCheckout,
+          missingCheckout: input.absenceCounts?.missingCheckout,
+          uninformedAbsent: input.absenceCounts?.uninformedAbsent,
+        },
       }),
       earningsTotal,
       deductionsTotal,
       netPay: Number(entry.netStipend) || 0,
       totalAmount: Number(entry.netStipend) || 0,
       paidThrough: 'Nil',
+      photoUrl: (employee as { photoUrl?: string | null }).photoUrl ?? null,
     };
   }
 
@@ -3047,7 +3087,8 @@ export class PayrollService {
       ['Advance', slip.deductions.advance],
       ['Loan', slip.deductions.loan],
       ['MobileLoad', slip.deductions.mobileLoad],
-      ['Absence', slip.deductions.absence],
+      // Days not paid + uninformed-absence fine (Stipend row is the full contract).
+      ['Absence', slip.deductions.absence + (slip.deductions.unpaidBasic ?? 0)],
       ['Fine', slip.deductions.fine],
       ['Health', slip.deductions.health],
       ['Provident Fund', slip.deductions.providentFund],

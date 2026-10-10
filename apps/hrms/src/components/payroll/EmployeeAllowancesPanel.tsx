@@ -44,7 +44,7 @@ import { formatPKR } from '@/lib/stipendUtils'
 /** First month the allowance table pays (API PACKAGE_ALLOWANCES_FROM). */
 export const ALLOWANCES_FROM_MONTH = '2026-11'
 
-const MANAGE_ROLES = ['PAYROLL_OFFICER', 'PRESIDENT', 'FOUNDER', 'CHAIRMAN', 'SUPER_ADMIN', 'HR_EXECUTIVE']
+const MANAGE_ROLES = ['PAYROLL_OFFICER', 'PRESIDENT', 'FOUNDER', 'CHAIRMAN', 'SUPER_ADMIN']
 
 const APPROVER_NAMES: Record<string, string> = {
   PRESIDENT: 'President',
@@ -222,7 +222,7 @@ function AssignAllowanceDialog({
         amount,
         startMonth,
         endMonth: endMonth || undefined,
-        note: note.trim() || undefined,
+        note: note.trim(),
         approverTarget: approver,
       }),
     onSuccess: (res) => {
@@ -243,6 +243,7 @@ function AssignAllowanceDialog({
   const valid =
     !!typeId &&
     amount > 0 &&
+    note.trim().length >= 3 &&
     startMonth >= ALLOWANCES_FROM_MONTH &&
     (!endMonth || endMonth >= startMonth)
 
@@ -302,7 +303,7 @@ function AssignAllowanceDialog({
             Difference) set the same month in both.
           </p>
           <div className="space-y-1">
-            <Label htmlFor="allowance-note">Note / reason</Label>
+            <Label htmlFor="allowance-note">What is it for? *</Label>
             <Textarea id="allowance-note" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
           {needsApproval && isIncrease ? (
