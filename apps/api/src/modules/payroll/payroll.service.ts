@@ -2047,6 +2047,9 @@ export class PayrollService {
         allowances: true,
         stipendRecord: {
           select: {
+            employeeId: true,
+            effectiveFrom: true,
+            effectiveTo: true,
             employee: {
               select: {
                 id: true,
@@ -2062,7 +2065,9 @@ export class PayrollService {
         },
       },
     });
-    const employeeIds = [...new Set(entries.map((e) => e.stipendRecord.employee.id))];
+    // Same segment rules as the Monthly Payroll list, so report totals match it.
+    const merged = aggregateMonthlyPayrollByEmployee(entries);
+    const employeeIds = [...new Set(merged.map((e) => e.stipendRecord.employee.id))];
     const incentives = await this.prisma.incentive.findMany({
       where: { month: q.month, year: q.year, employeeId: { in: employeeIds } },
       select: { employeeId: true, amount: true, type: { select: { name: true } } },
@@ -2071,7 +2076,7 @@ export class PayrollService {
       month: q.month,
       year: q.year,
       rows: itemizePayrollEntries(
-        entries.map((e) => ({ ...e, employee: e.stipendRecord.employee })),
+        merged.map((e) => ({ ...e, employee: e.stipendRecord.employee })),
         incentives,
       ),
     };
