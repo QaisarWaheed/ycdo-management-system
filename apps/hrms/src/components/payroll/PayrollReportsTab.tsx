@@ -38,6 +38,13 @@ const itemized = (month: number, year: number) =>
   })
 
 const ALL = '__all__'
+/** Left the organisation; the Monthly Payroll list shows them under Non-active Payslips. */
+const LEFT_STATUSES = ['RESIGNED', 'TERMINATED', 'DISMISSED']
+const STAFF_OPTIONS = [
+  { value: ALL, label: 'All' },
+  { value: 'CURRENT', label: 'Current staff' },
+  { value: 'LEFT', label: 'Resigned / Terminated' },
+]
 const sum = (o: Record<string, number>) => Object.values(o).reduce((s, n) => s + n, 0)
 const r2 = (n: number) => Math.round(n * 100) / 100
 const thisMonth = () => format(new Date(), 'yyyy-MM')
@@ -104,6 +111,7 @@ export function PayrollReportsTab() {
   const [department, setDepartment] = useState(ALL)
   const [designation, setDesignation] = useState(ALL)
   const [search, setSearch] = useState('')
+  const [staff, setStaff] = useState(ALL)
   const [y, m] = monthValue.split('-').map(Number)
   const prev = prevMonth(monthValue)
   const [py, pm] = prev.split('-').map(Number)
@@ -123,6 +131,8 @@ export function PayrollReportsTab() {
   const options = (key: 'branch' | 'department' | 'designation') =>
     [...new Set(allRows.map((r) => r[key]))].sort()
   const keep = (r: ItemizedRow) =>
+    (staff === ALL ||
+      (staff === 'LEFT') === LEFT_STATUSES.includes(r.status ?? '')) &&
     (branch === ALL || r.branch === branch) &&
     (department === ALL || r.department === department) &&
     (designation === ALL || r.designation === designation) &&
@@ -131,7 +141,14 @@ export function PayrollReportsTab() {
   const rows = allRows.filter(keep)
   const prevRows = (previous.data?.rows ?? []).filter(keep)
 
-  const filterLabel = [branch, department, designation].filter((v) => v !== ALL).join(' · ')
+  const filterLabel = [
+    staff === ALL ? ALL : STAFF_OPTIONS.find((o) => o.value === staff)!.label,
+    branch,
+    department,
+    designation,
+  ]
+    .filter((v) => v !== ALL)
+    .join(' · ')
   const filters = [
     { key: 'branch' as const, value: branch, set: setBranch },
     { key: 'department' as const, value: department, set: setDepartment },
@@ -150,6 +167,21 @@ export function PayrollReportsTab() {
             onChange={(e) => setMonthValue(e.target.value)}
             className="w-44"
           />
+        </div>
+        <div className="space-y-1">
+          <Label>Staff</Label>
+          <Select value={staff} onValueChange={setStaff}>
+            <SelectTrigger className="w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STAFF_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         {filters.map(({ key, value, set }) => (
           <div key={key} className="space-y-1">
