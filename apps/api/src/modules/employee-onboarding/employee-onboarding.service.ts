@@ -74,13 +74,13 @@ export class EmployeeOnboardingService {
   async findAll(query: OnboardingQueryDto, user: ActingUser) {
     const target = approverTargetForUserRole(user.role);
     const status = query.status ?? EmployeeOnboardingStatus.PENDING;
-    const seesAll =
-      user.role === UserRole.SUPER_ADMIN || user.role === UserRole.IT_ADMIN;
 
+    // Executives see only their own queue; everyone else the route lets in
+    // (IT, HR, Super Admin) sees all. A null filter would crash Prisma.
     return this.prisma.employeeOnboardingApproval.findMany({
       where: {
         status,
-        ...(seesAll ? {} : { approverTarget: target! }),
+        ...(target ? { approverTarget: target } : {}),
       },
       orderBy: { createdAt: 'desc' },
       include: {

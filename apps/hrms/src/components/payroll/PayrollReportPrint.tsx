@@ -349,7 +349,9 @@ export function exportMonthlyPayrollCsv(rows: PayrollReportRow[], filename: stri
     'On leave', 'Late', 'Early out', 'Missed checkout', 'OT hrs', 'Extra days',
     'Basic', 'Deductions', 'Allowances', 'Net', 'Payroll status',
   ]]
-  const money = (t: ReportTotals) => [t.basic, t.deductions, t.allowances, t.net]
+  const round2 = (n: number) => Math.round(n * 100) / 100
+  const money = (t: ReportTotals) =>
+    [t.basic, t.deductions, t.allowances, t.net].map(round2)
   for (const g of groups) {
     for (const r of g.rows) {
       lines.push([

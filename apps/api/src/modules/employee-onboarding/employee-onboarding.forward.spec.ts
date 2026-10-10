@@ -58,3 +58,24 @@ describe('EmployeeOnboardingService.forward', () => {
     expect(raced.prisma.auditLog.create).not.toHaveBeenCalled();
   });
 });
+
+describe('EmployeeOnboardingService.findAll scope', () => {
+  function whereFor(role: UserRole) {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const service = new EmployeeOnboardingService(
+      { employeeOnboardingApproval: { findMany } } as never,
+      {} as never,
+    );
+    return service.findAll({}, { id: 'u', role }).then(() => findMany.mock.calls[0][0].where);
+  }
+
+  it('limits executives to their own queue and never sends a null filter', async () => {
+    expect(await whereFor(UserRole.FOUNDER)).toEqual({
+      status: EmployeeOnboardingStatus.PENDING,
+      approverTarget: EmployeeApproverTarget.FOUNDER,
+    });
+    for (const role of [UserRole.IT_ADMIN, UserRole.HR_EXECUTIVE, UserRole.HR_MANAGER, UserRole.SUPER_ADMIN]) {
+      expect(await whereFor(role)).toEqual({ status: EmployeeOnboardingStatus.PENDING });
+    }
+  });
+});

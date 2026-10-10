@@ -1193,8 +1193,8 @@ function MonthlyPayrollTab() {
   ])
 
   const monthlyReportRows = useMemo(
-    () => buildMonthlyPayrollReportRows(entries),
-    [entries],
+    () => buildMonthlyPayrollReportRows(filteredEntries),
+    [filteredEntries],
   )
 
   return (
@@ -1322,7 +1322,7 @@ function MonthlyPayrollTab() {
           <PrintPayrollReportButton disabled={entries.length === 0} />
           <Button
             variant="outline"
-            disabled={entries.length === 0}
+            disabled={filteredEntries.length === 0}
             onClick={() =>
               exportMonthlyPayrollCsv(
                 monthlyReportRows,
