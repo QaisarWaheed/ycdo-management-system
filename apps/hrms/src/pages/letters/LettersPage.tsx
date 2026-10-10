@@ -1538,7 +1538,7 @@ export function LettersPage() {
                           >
                             {letter.letterNo ?? letterReference(letter)}
                           </Badge>
-                          {isLetterPdfUnavailable(letter) && (
+                          {isLetterPdfUnavailable(letter) && letter.status !== 'DRAFT' && (
                             <p className="text-xs text-amber-700">
                               PDF missing on disk — download will try to rebuild
                             </p>

@@ -5,19 +5,14 @@ import {
   PrismaClient,
   UserRole,
 } from '@prisma/client';
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   DEFAULT_SENDER_TITLE,
   buildLetterRef,
   defaultSubjectFor,
   parseViolationLines,
-  renderLetterHtml,
-  sanitizeRefForFilename,
   templateCodeForLetterType,
 } from './letter-templates.helper';
 import { formatIssueDatePkt, pktYear } from './selection-letter.helper';
-import { generatePdf } from './pdf.helper';
 
 type Db = Prisma.TransactionClient | PrismaClient;
 
@@ -41,18 +36,6 @@ async function loadEmployee(db: Db, employeeId: string) {
       user: { select: { role: true } },
     },
   });
-}
-
-async function persistLocalPdf(
-  pdfBuffer: Buffer,
-  letterNo: string,
-  employeeId: string,
-): Promise<string> {
-  const fileName = `${sanitizeRefForFilename(letterNo)}.pdf`;
-  const dir = path.join(process.cwd(), 'uploads', 'letters', employeeId);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, fileName), pdfBuffer);
-  return `/uploads/letters/${employeeId}/${fileName}`;
 }
 
 /**
@@ -119,17 +102,11 @@ export async function issueAutoTemplatedLetter(
     ),
   };
 
-  let fileUrl: string | null = null;
-  if (template) {
-    try {
-      const html = renderLetterHtml(template.bodyHtml, variables);
-      const pdf = await generatePdf(html);
-      fileUrl = await persistLocalPdf(pdf, letterNo, input.employeeId);
-    } catch (err) {
-      // Letter row is still created; HR can reissue PDF if Puppeteer fails.
-      console.error('Auto letter PDF generation failed:', err);
-    }
-  }
+  // No PDF here: this runs inside attendance / scheduler transactions (5 s
+  // limit) and Chromium alone took 6–9 s, expiring them (P2028) so the whole
+  // attendance save failed. The PDF is built from these stored variables the
+  // first time the draft is downloaded or sent (LettersService.getPdf).
+  const fileUrl: string | null = null;
 
   await db.letter.create({
     data: {

@@ -62,9 +62,12 @@ export function computePackageAllowanceLines(
 ): { lines: PackageAllowanceLine[]; total: number } {
   const sorted = [...rows].sort(
     (a, b) =>
-      (a.sortOrder ?? 100) - (b.sortOrder ?? 100) || a.name.localeCompare(b.name),
+      (a.sortOrder ?? 100) - (b.sortOrder ?? 100) ||
+      a.name.localeCompare(b.name),
   );
-  const full = sorted.filter((r) => r.proration === AllowanceProration.FULL_MONTH);
+  const full = sorted.filter(
+    (r) => r.proration === AllowanceProration.FULL_MONTH,
+  );
   const byAttendance = sorted.filter(
     (r) => r.proration === AllowanceProration.ATTENDANCE,
   );
@@ -89,7 +92,9 @@ export function computePackageAllowanceLines(
         : 0,
   }));
 
-  const lines = [...fullLines, ...attendanceLines].filter((l) => l.amount !== 0);
+  const lines = [...fullLines, ...attendanceLines].filter(
+    (l) => l.amount !== 0,
+  );
   return { lines, total: lines.reduce((s, l) => s + l.amount, 0) };
 }
 
@@ -101,11 +106,18 @@ export function computePackageAllowanceLines(
 export async function seedLegacyPackageAllowances(
   tx: Prisma.TransactionClient,
   employeeId: string,
-  amounts: Partial<Record<'allowances' | 'reward' | 'progressReward' | 'fuelAllowance', number | null>>,
+  amounts: Partial<
+    Record<
+      'allowances' | 'reward' | 'progressReward' | 'fuelAllowance',
+      number | null
+    >
+  >,
   joiningDate: Date,
 ) {
-  const joinKey = joiningDate.getUTCFullYear() * 12 + joiningDate.getUTCMonth() + 1;
-  const cutKey = PACKAGE_ALLOWANCES_FROM.year * 12 + PACKAGE_ALLOWANCES_FROM.month;
+  const joinKey =
+    joiningDate.getUTCFullYear() * 12 + joiningDate.getUTCMonth() + 1;
+  const cutKey =
+    PACKAGE_ALLOWANCES_FROM.year * 12 + PACKAGE_ALLOWANCES_FROM.month;
   const key = Math.max(joinKey, cutKey);
   const year = Math.floor((key - 1) / 12);
   const startMonth = monthStartUtc(year, key - year * 12);
@@ -113,9 +125,18 @@ export async function seedLegacyPackageAllowances(
     where: { legacyField: { not: null } },
   });
   const rows = types
-    .map((t) => ({ t, amount: Number(amounts[t.legacyField as keyof typeof amounts] ?? 0) }))
+    .map((t) => ({
+      t,
+      amount: Number(amounts[t.legacyField as keyof typeof amounts] ?? 0),
+    }))
     .filter(({ amount }) => amount > 0)
-    .map(({ t, amount }) => ({ employeeId, typeId: t.id, amount, startMonth, note: 'From joining package' }));
+    .map(({ t, amount }) => ({
+      employeeId,
+      typeId: t.id,
+      amount,
+      startMonth,
+      note: 'From joining package',
+    }));
   if (rows.length) await tx.employeeAllowance.createMany({ data: rows });
 }
 
@@ -136,20 +157,42 @@ export async function syncLegacyAllowanceRows(
     orderBy: { effectiveFrom: 'desc' },
   });
   if (!open) return;
-  const startMonth = monthStartUtc(PACKAGE_ALLOWANCES_FROM.year, PACKAGE_ALLOWANCES_FROM.month);
-  const types = await tx.payAllowanceType.findMany({ where: { legacyField: { not: null } } });
+  const startMonth = monthStartUtc(
+    PACKAGE_ALLOWANCES_FROM.year,
+    PACKAGE_ALLOWANCES_FROM.month,
+  );
+  const types = await tx.payAllowanceType.findMany({
+    where: { legacyField: { not: null } },
+  });
   for (const t of types) {
-    const amount = Number(open[t.legacyField as 'allowances' | 'reward' | 'progressReward' | 'fuelAllowance'] ?? 0);
+    const amount = Number(
+      open[
+        t.legacyField as
+          | 'allowances'
+          | 'reward'
+          | 'progressReward'
+          | 'fuelAllowance'
+      ] ?? 0,
+    );
     const row = await tx.employeeAllowance.findFirst({
       where: { employeeId, typeId: t.id, startMonth },
     });
     if (amount > 0 && row) {
       if (Number(row.amount) !== amount) {
-        await tx.employeeAllowance.update({ where: { id: row.id }, data: { amount } });
+        await tx.employeeAllowance.update({
+          where: { id: row.id },
+          data: { amount },
+        });
       }
     } else if (amount > 0) {
       await tx.employeeAllowance.create({
-        data: { employeeId, typeId: t.id, amount, startMonth, note: 'Copied from package on switch-over' },
+        data: {
+          employeeId,
+          typeId: t.id,
+          amount,
+          startMonth,
+          note: 'Copied from package on switch-over',
+        },
       });
     } else if (row) {
       await tx.employeeAllowance.delete({ where: { id: row.id } });

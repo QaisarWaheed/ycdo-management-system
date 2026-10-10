@@ -29,7 +29,14 @@ export class PayApprovalsService {
   async approve(id: string, user: PayActor, reviewNote?: string) {
     const request = await this.requests.getPending(id);
     this.requests.assertCanReview(user, request.approverTarget);
-    if (!(await this.requests.claim(id, PayChangeStatus.APPROVED, user, reviewNote))) {
+    if (
+      !(await this.requests.claim(
+        id,
+        PayChangeStatus.APPROVED,
+        user,
+        reviewNote,
+      ))
+    ) {
       throw new BadRequestException('This request has already been decided');
     }
     let result: unknown;
@@ -55,11 +62,17 @@ export class PayApprovalsService {
     const payload = { ...(request.payload as Record<string, any>) };
     switch (request.kind) {
       case PayChangeKind.SALARY_INCREMENT:
-        payload.effectiveFrom = await this.openMonthIso(request.employeeId, payload.effectiveFrom);
+        payload.effectiveFrom = await this.openMonthIso(
+          request.employeeId,
+          payload.effectiveFrom,
+        );
         return this.payroll.salaryIncrement(payload as any, user.id);
       case PayChangeKind.PACKAGE_EDIT:
         if (payload.effectiveFrom) {
-          payload.effectiveFrom = await this.openMonthIso(request.employeeId, payload.effectiveFrom);
+          payload.effectiveFrom = await this.openMonthIso(
+            request.employeeId,
+            payload.effectiveFrom,
+          );
         }
         return this.payroll.updateActiveStipend(payload as any, user.id);
       case PayChangeKind.ALLOWANCE: {
@@ -119,8 +132,13 @@ export class PayApprovalsService {
 
   private async openMonthIso(employeeId: string, iso: string) {
     const d = new Date(iso);
-    const open = await this.firstOpenMonth(employeeId, d.getUTCFullYear(), d.getUTCMonth() + 1);
-    if (open.year === d.getUTCFullYear() && open.month === d.getUTCMonth() + 1) return iso;
+    const open = await this.firstOpenMonth(
+      employeeId,
+      d.getUTCFullYear(),
+      d.getUTCMonth() + 1,
+    );
+    if (open.year === d.getUTCFullYear() && open.month === d.getUTCMonth() + 1)
+      return iso;
     return new Date(Date.UTC(open.year, open.month - 1, 1)).toISOString();
   }
 }

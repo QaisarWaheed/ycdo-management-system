@@ -18,7 +18,11 @@ import {
   approverTargetForUserRole,
 } from '../employee-onboarding/employee-onboarding.util';
 
-export type PayActor = { id: string; role: UserRole | string; roles?: string[] };
+export type PayActor = {
+  id: string;
+  role: UserRole | string;
+  roles?: string[];
+};
 
 /** Roles whose pay changes apply at once (they are the approvers). */
 export const PAY_EXECUTIVE_ROLES: UserRole[] = [
@@ -33,8 +37,19 @@ export function isPayExecutive(user: PayActor): boolean {
   return roles.some((r) => PAY_EXECUTIVE_ROLES.includes(r as UserRole));
 }
 
-const PACKAGE_EARNINGS = ['basicStipend', 'allowances', 'reward', 'progressReward', 'fuelAllowance'] as const;
-const PACKAGE_DEDUCTIONS = ['loanDeduction', 'advanceDeduction', 'fineDeduction', 'healthDeduction'] as const;
+const PACKAGE_EARNINGS = [
+  'basicStipend',
+  'allowances',
+  'reward',
+  'progressReward',
+  'fuelAllowance',
+] as const;
+const PACKAGE_DEDUCTIONS = [
+  'loanDeduction',
+  'advanceDeduction',
+  'fineDeduction',
+  'healthDeduction',
+] as const;
 const FIELD_LABELS: Record<string, string> = {
   basicStipend: 'Basic',
   allowances: 'Travelling Exp',
@@ -131,7 +146,10 @@ export class PayChangeRequestsService {
       from && !Number.isNaN(from.getTime())
         ? ` from ${monthLabel(from.getUTCFullYear(), from.getUTCMonth() + 1)}`
         : '';
-    return { isIncrease, summary: `${changes.join(', ') || 'No change'}${when}` };
+    return {
+      isIncrease,
+      summary: `${changes.join(', ') || 'No change'}${when}`,
+    };
   }
 
   /** After any package save: keep the copied November rows equal to the open package. */
@@ -148,10 +166,15 @@ export class PayChangeRequestsService {
   }) {
     const entry = await this.prisma.payrollEntry.findUnique({
       where: { id: dto.payrollEntryId },
-      select: { month: true, year: true, stipendRecord: { select: { employeeId: true } } },
+      select: {
+        month: true,
+        year: true,
+        stipendRecord: { select: { employeeId: true } },
+      },
     });
     if (!entry) throw new NotFoundException('Payroll entry not found');
-    const what = dto.amount != null ? pkr(dto.amount) : `${dto.hours} extra hours`;
+    const what =
+      dto.amount != null ? pkr(dto.amount) : `${dto.hours} extra hours`;
     const note = dto.description?.trim() ? ` (${dto.description.trim()})` : '';
     return {
       employeeId: entry.stipendRecord.employeeId,
@@ -167,7 +190,9 @@ export class PayChangeRequestsService {
     year: number;
   }) {
     const type = dto.typeId
-      ? await this.prisma.incentiveType.findUnique({ where: { id: dto.typeId } })
+      ? await this.prisma.incentiveType.findUnique({
+          where: { id: dto.typeId },
+        })
       : null;
     const what = type?.name ?? dto.reason?.trim() ?? 'Incentive';
     return `Incentive (${what}) ${pkr(dto.amount)} for ${monthLabel(dto.year, dto.month)}`;
@@ -183,8 +208,20 @@ export class PayChangeRequestsService {
         currentBranch: { select: { name: true } },
       },
     },
-    submittedBy: { select: { id: true, email: true, employee: { select: { fullName: true } } } },
-    reviewedBy: { select: { id: true, email: true, employee: { select: { fullName: true } } } },
+    submittedBy: {
+      select: {
+        id: true,
+        email: true,
+        employee: { select: { fullName: true } },
+      },
+    },
+    reviewedBy: {
+      select: {
+        id: true,
+        email: true,
+        employee: { select: { fullName: true } },
+      },
+    },
   } satisfies Prisma.PayChangeRequestInclude;
 
   /** Executives see their own queue; IT / HR / Accounts / Super Admin see all. */
@@ -206,7 +243,9 @@ export class PayChangeRequestsService {
   }
 
   async getPending(id: string) {
-    const request = await this.prisma.payChangeRequest.findUnique({ where: { id } });
+    const request = await this.prisma.payChangeRequest.findUnique({
+      where: { id },
+    });
     if (!request) throw new NotFoundException('Pay change request not found');
     if (request.status !== PayChangeStatus.PENDING) {
       throw new BadRequestException('This request has already been decided');
@@ -217,7 +256,8 @@ export class PayChangeRequestsService {
   assertCanReview(user: PayActor, approverTarget: EmployeeApproverTarget) {
     const roles = user.roles?.length ? user.roles : [user.role];
     if (roles.includes(UserRole.SUPER_ADMIN)) return;
-    if (roles.some((r) => approverTargetForUserRole(r) === approverTarget)) return;
+    if (roles.some((r) => approverTargetForUserRole(r) === approverTarget))
+      return;
     throw new ForbiddenException(
       `Only the ${APPROVER_TARGET_LABELS[approverTarget]} can decide this request`,
     );
@@ -284,7 +324,8 @@ export class PayChangeRequestsService {
       where: { id, status: PayChangeStatus.PENDING },
       data: { approverTarget },
     });
-    if (count === 0) throw new BadRequestException('This request has already been decided');
+    if (count === 0)
+      throw new BadRequestException('This request has already been decided');
     await this.audit(user, 'PAY_CHANGE_FORWARDED', request, {
       from: request.approverTarget,
       to: approverTarget,
@@ -296,7 +337,12 @@ export class PayChangeRequestsService {
   async audit(
     user: PayActor,
     action: string,
-    request: { id: string; kind: PayChangeKind; employeeId: string; summary: string },
+    request: {
+      id: string;
+      kind: PayChangeKind;
+      employeeId: string;
+      summary: string;
+    },
     extra: Record<string, unknown> = {},
   ) {
     await this.prisma.auditLog.create({

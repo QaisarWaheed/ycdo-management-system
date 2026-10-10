@@ -15,7 +15,11 @@ import {
   IsUUID,
   MinLength,
 } from 'class-validator';
-import { EmployeeApproverTarget, PayChangeStatus, UserRole } from '@prisma/client';
+import {
+  EmployeeApproverTarget,
+  PayChangeStatus,
+  UserRole,
+} from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';

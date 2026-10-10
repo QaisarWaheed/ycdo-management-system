@@ -57,12 +57,20 @@ export class AllowancesService {
         data: { name: dto.name.trim(), proration: dto.proration },
       }),
     );
-    await this.audit(user, 'ALLOWANCE_TYPE_CREATED', 'PayAllowanceType', type.id, { ...dto });
+    await this.audit(
+      user,
+      'ALLOWANCE_TYPE_CREATED',
+      'PayAllowanceType',
+      type.id,
+      { ...dto },
+    );
     return type;
   }
 
   async updateType(id: string, dto: UpdateAllowanceTypeDto, user: Actor) {
-    const before = await this.prisma.payAllowanceType.findUnique({ where: { id } });
+    const before = await this.prisma.payAllowanceType.findUnique({
+      where: { id },
+    });
     if (!before) throw new NotFoundException('Allowance type not found');
     const type = await this.uniqueName(() =>
       this.prisma.payAllowanceType.update({
@@ -71,7 +79,11 @@ export class AllowancesService {
       }),
     );
     await this.audit(user, 'ALLOWANCE_TYPE_UPDATED', 'PayAllowanceType', id, {
-      before: { name: before.name, proration: before.proration, isActive: before.isActive },
+      before: {
+        name: before.name,
+        proration: before.proration,
+        isActive: before.isActive,
+      },
       after: { ...dto },
     });
     return type;
@@ -88,18 +100,26 @@ export class AllowancesService {
     const type = await this.uniqueName(() =>
       this.prisma.incentiveType.create({ data: { name: dto.name.trim() } }),
     );
-    await this.audit(user, 'INCENTIVE_TYPE_CREATED', 'IncentiveType', type.id, { ...dto });
+    await this.audit(user, 'INCENTIVE_TYPE_CREATED', 'IncentiveType', type.id, {
+      ...dto,
+    });
     return type;
   }
 
-  async updateIncentiveType(id: string, dto: UpdateIncentiveTypeDto, user: Actor) {
+  async updateIncentiveType(
+    id: string,
+    dto: UpdateIncentiveTypeDto,
+    user: Actor,
+  ) {
     const type = await this.uniqueName(() =>
       this.prisma.incentiveType.update({
         where: { id },
         data: { ...dto, name: dto.name?.trim() },
       }),
     );
-    await this.audit(user, 'INCENTIVE_TYPE_UPDATED', 'IncentiveType', id, { ...dto });
+    await this.audit(user, 'INCENTIVE_TYPE_UPDATED', 'IncentiveType', id, {
+      ...dto,
+    });
     return type;
   }
 
@@ -115,14 +135,20 @@ export class AllowancesService {
   /** Before/after amounts for an assignment, so the caller can decide on approval. */
   async describeAssign(dto: AssignAllowanceDto) {
     const start = parseMonth(dto.startMonth);
-    const type = await this.prisma.payAllowanceType.findUnique({ where: { id: dto.typeId } });
+    const type = await this.prisma.payAllowanceType.findUnique({
+      where: { id: dto.typeId },
+    });
     if (!type) throw new NotFoundException('Allowance type not found');
     const rows = await this.prisma.employeeAllowance.findMany({
       where: { employeeId: dto.employeeId, typeId: dto.typeId },
     });
-    const current = rows.find((r) => isActiveInMonth(r, start.year, start.month));
+    const current = rows.find((r) =>
+      isActiveInMonth(r, start.year, start.month),
+    );
     const before = current ? Number(current.amount) : 0;
-    const until = dto.endMonth ? ` to ${label(parseMonth(dto.endMonth).date)}` : '';
+    const until = dto.endMonth
+      ? ` to ${label(parseMonth(dto.endMonth).date)}`
+      : '';
     return {
       isIncrease: dto.amount > before,
       summary: `${type.name} ${pkr(before)} → ${pkr(dto.amount)} from ${label(start.date)}${until}`,
@@ -138,11 +164,16 @@ export class AllowancesService {
       );
     }
     if (end && end.key < start.key) {
-      throw new BadRequestException('The last month cannot be before the first month');
+      throw new BadRequestException(
+        'The last month cannot be before the first month',
+      );
     }
     const [type, employee] = await Promise.all([
       this.prisma.payAllowanceType.findUnique({ where: { id: dto.typeId } }),
-      this.prisma.employee.findUnique({ where: { id: dto.employeeId }, select: { id: true } }),
+      this.prisma.employee.findUnique({
+        where: { id: dto.employeeId },
+        select: { id: true },
+      }),
     ]);
     if (!employee) throw new NotFoundException('Employee not found');
     if (!type || !type.isActive) {
@@ -152,7 +183,9 @@ export class AllowancesService {
     const rows = await this.prisma.employeeAllowance.findMany({
       where: { employeeId: dto.employeeId, typeId: dto.typeId },
     });
-    const current = rows.find((r) => isActiveInMonth(r, start.year, start.month));
+    const current = rows.find((r) =>
+      isActiveInMonth(r, start.year, start.month),
+    );
     const endKey = end?.key ?? Number.POSITIVE_INFINITY;
     const clash = rows.find(
       (r) =>
@@ -192,14 +225,20 @@ export class AllowancesService {
       });
     });
 
-    await this.audit(user, 'EMPLOYEE_ALLOWANCE_SET', 'EmployeeAllowance', saved.id, {
-      employeeId: dto.employeeId,
-      type: type.name,
-      before: current ? Number(current.amount) : 0,
-      after: dto.amount,
-      startMonth: dto.startMonth,
-      endMonth: dto.endMonth ?? null,
-    });
+    await this.audit(
+      user,
+      'EMPLOYEE_ALLOWANCE_SET',
+      'EmployeeAllowance',
+      saved.id,
+      {
+        employeeId: dto.employeeId,
+        type: type.name,
+        before: current ? Number(current.amount) : 0,
+        after: dto.amount,
+        startMonth: dto.startMonth,
+        endMonth: dto.endMonth ?? null,
+      },
+    );
     await this.recomputePendingFrom(dto.employeeId, start.key);
     return saved;
   }
@@ -225,13 +264,22 @@ export class AllowancesService {
         data: { endMonth: end.date },
       });
     }
-    await this.audit(user, 'EMPLOYEE_ALLOWANCE_ENDED', 'EmployeeAllowance', id, {
-      employeeId: row.employeeId,
-      type: row.type.name,
-      amount: Number(row.amount),
-      endMonth,
-    });
-    await this.recomputePendingFrom(row.employeeId, Math.max(startKey, end.key + 1));
+    await this.audit(
+      user,
+      'EMPLOYEE_ALLOWANCE_ENDED',
+      'EmployeeAllowance',
+      id,
+      {
+        employeeId: row.employeeId,
+        type: row.type.name,
+        amount: Number(row.amount),
+        endMonth,
+      },
+    );
+    await this.recomputePendingFrom(
+      row.employeeId,
+      Math.max(startKey, end.key + 1),
+    );
     return { id, endMonth };
   }
 
@@ -259,7 +307,10 @@ export class AllowancesService {
     const byEmployee = new Map<string, number>();
     for (const r of rows) {
       if (!isActiveInMonth(r, year, month)) continue;
-      byEmployee.set(r.employeeId, (byEmployee.get(r.employeeId) ?? 0) + Number(r.amount));
+      byEmployee.set(
+        r.employeeId,
+        (byEmployee.get(r.employeeId) ?? 0) + Number(r.amount),
+      );
     }
     const mismatches = records
       .map((rec) => {
@@ -288,7 +339,11 @@ export class AllowancesService {
     );
     for (const m of months) {
       const [year, month] = m.split('-').map(Number);
-      await this.payrollService.recomputeEmployeeMonth({ employeeId, month, year });
+      await this.payrollService.recomputeEmployeeMonth({
+        employeeId,
+        month,
+        year,
+      });
     }
   }
 
@@ -296,10 +351,16 @@ export class AllowancesService {
     try {
       return await fn();
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
         throw new ConflictException('A type with this name already exists');
       }
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2025'
+      ) {
         throw new NotFoundException('Type not found');
       }
       throw err;
@@ -314,7 +375,13 @@ export class AllowancesService {
     changes: Record<string, unknown>,
   ) {
     await this.prisma.auditLog.create({
-      data: { userId: user.id, action, entity, entityId, changes: changes as Prisma.InputJsonValue },
+      data: {
+        userId: user.id,
+        action,
+        entity,
+        entityId,
+        changes: changes as Prisma.InputJsonValue,
+      },
     });
   }
 }

@@ -34,7 +34,12 @@ describe('package allowances', () => {
 
   it('gives the same total as the old four-field formula for a mid-month joiner', () => {
     // Old: prorate(allowances + reward + progressReward + fuel) in one go.
-    const amounts = { allowances: 5000, reward: 1333.33, progressReward: 777, fuel: 3000 };
+    const amounts = {
+      allowances: 5000,
+      reward: 1333.33,
+      progressReward: 777,
+      fuel: 3000,
+    };
     const prorate = (monthlyAmount: number) =>
       prorateMonthlyPackageAmount({
         monthlyAmount,
@@ -47,14 +52,37 @@ describe('package allowances', () => {
         employmentEndExclusive: null,
       });
     const oldTotal = prorate(
-      amounts.allowances + amounts.reward + amounts.progressReward + amounts.fuel,
+      amounts.allowances +
+        amounts.reward +
+        amounts.progressReward +
+        amounts.fuel,
     );
     const { lines, total } = computePackageAllowanceLines(
       [
-        { name: 'Travelling Exp', proration: FULL, amount: amounts.allowances, sortOrder: 10 },
-        { name: 'Reward', proration: FULL, amount: amounts.reward, sortOrder: 20 },
-        { name: 'Reward On Progress', proration: FULL, amount: amounts.progressReward, sortOrder: 30 },
-        { name: 'Petrol', proration: FULL, amount: amounts.fuel, sortOrder: 40 },
+        {
+          name: 'Travelling Exp',
+          proration: FULL,
+          amount: amounts.allowances,
+          sortOrder: 10,
+        },
+        {
+          name: 'Reward',
+          proration: FULL,
+          amount: amounts.reward,
+          sortOrder: 20,
+        },
+        {
+          name: 'Reward On Progress',
+          proration: FULL,
+          amount: amounts.progressReward,
+          sortOrder: 30,
+        },
+        {
+          name: 'Petrol',
+          proration: FULL,
+          amount: amounts.fuel,
+          sortOrder: 40,
+        },
       ],
       { prorate, paidDays: 10, calendarDays: 30 },
     );
@@ -103,9 +131,21 @@ describe('package allowances', () => {
     const sections = buildPayslipSections({
       earnings,
       deductions: {
-        advance: 0, loan: 0, mobileLoad: 0, absence: 0, fine: 0, lateHour: 0,
-        health: 0, providentFund: 0, tax: 0, auditDifference: 0,
-        staffPendingMed: 0, kitchenPending: 0, electricityBill: 0, mobileBill: 0, other: 0,
+        advance: 0,
+        loan: 0,
+        mobileLoad: 0,
+        absence: 0,
+        fine: 0,
+        lateHour: 0,
+        health: 0,
+        providentFund: 0,
+        tax: 0,
+        auditDifference: 0,
+        staffPendingMed: 0,
+        kitchenPending: 0,
+        electricityBill: 0,
+        mobileBill: 0,
+        other: 0,
       },
       deductionRows: [],
       allowanceRows: [{ type: 'CUSTOM', amount: 500 }],

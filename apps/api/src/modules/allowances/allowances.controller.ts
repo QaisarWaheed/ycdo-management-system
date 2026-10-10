@@ -64,7 +64,10 @@ export class AllowancesController {
 
   @Post('allowance-types')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
-  createType(@Body() dto: CreateAllowanceTypeDto, @CurrentUser() user: PayActor) {
+  createType(
+    @Body() dto: CreateAllowanceTypeDto,
+    @CurrentUser() user: PayActor,
+  ) {
     return this.allowances.createType(dto, user);
   }
 
@@ -86,7 +89,10 @@ export class AllowancesController {
 
   @Post('incentive-types')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
-  createIncentiveType(@Body() dto: CreateIncentiveTypeDto, @CurrentUser() user: PayActor) {
+  createIncentiveType(
+    @Body() dto: CreateIncentiveTypeDto,
+    @CurrentUser() user: PayActor,
+  ) {
     return this.allowances.createIncentiveType(dto, user);
   }
 

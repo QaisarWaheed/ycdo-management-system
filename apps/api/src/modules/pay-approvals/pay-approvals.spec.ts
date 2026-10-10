@@ -17,10 +17,18 @@ describe('pay approvals', () => {
   it('treats President / Founder / Chairman / Super Admin as executives only', () => {
     expect(isPayExecutive({ id: 'u', role: UserRole.FOUNDER })).toBe(true);
     expect(isPayExecutive({ id: 'u', role: UserRole.SUPER_ADMIN })).toBe(true);
-    expect(isPayExecutive({ id: 'u', role: UserRole.HR_EXECUTIVE })).toBe(false);
-    expect(isPayExecutive({ id: 'u', role: UserRole.PAYROLL_OFFICER })).toBe(false);
+    expect(isPayExecutive({ id: 'u', role: UserRole.HR_EXECUTIVE })).toBe(
+      false,
+    );
+    expect(isPayExecutive({ id: 'u', role: UserRole.PAYROLL_OFFICER })).toBe(
+      false,
+    );
     expect(
-      isPayExecutive({ id: 'u', role: UserRole.HR_MANAGER, roles: ['HR_MANAGER', 'CHAIRMAN'] }),
+      isPayExecutive({
+        id: 'u',
+        role: UserRole.HR_MANAGER,
+        roles: ['HR_MANAGER', 'CHAIRMAN'],
+      }),
     ).toBe(true);
   });
 
@@ -40,11 +48,17 @@ describe('pay approvals', () => {
         basicStipend: 30000,
         effectiveFrom: '2026-11-01T00:00:00.000Z',
       });
-      expect(r).toEqual({ isIncrease: true, summary: 'Basic 25,000 → 30,000 from Nov 2026' });
+      expect(r).toEqual({
+        isIncrease: true,
+        summary: 'Basic 25,000 → 30,000 from Nov 2026',
+      });
     });
 
     it('a lower deduction raises pay too', async () => {
-      const r = await service.describePackageChange('e', { basicStipend: 25000, loanDeduction: 0 });
+      const r = await service.describePackageChange('e', {
+        basicStipend: 25000,
+        loanDeduction: 0,
+      });
       expect(r.isIncrease).toBe(true);
     });
 
@@ -59,12 +73,23 @@ describe('pay approvals', () => {
   });
 
   describe('approve', () => {
-    function build(opts: { applyFails?: boolean; claimed?: boolean; closedMonths?: string[] } = {}) {
+    function build(
+      opts: {
+        applyFails?: boolean;
+        claimed?: boolean;
+        closedMonths?: string[];
+      } = {},
+    ) {
       const request = {
         id: 'r1',
         kind: PayChangeKind.SALARY_INCREMENT,
         employeeId: 'e1',
-        payload: { employeeId: 'e1', basicStipend: 30000, effectiveFrom: '2026-10-01T00:00:00.000Z', reason: 'raise' },
+        payload: {
+          employeeId: 'e1',
+          basicStipend: 30000,
+          effectiveFrom: '2026-10-01T00:00:00.000Z',
+          reason: 'raise',
+        },
         summary: 'Basic 25,000 → 30,000',
         approverTarget: EmployeeApproverTarget.FOUNDER,
         status: PayChangeStatus.PENDING,
@@ -73,13 +98,19 @@ describe('pay approvals', () => {
       const prisma = {
         payChangeRequest: {
           findUnique: jest.fn().mockResolvedValue(request),
-          updateMany: jest.fn().mockResolvedValue({ count: opts.claimed === false ? 0 : 1 }),
+          updateMany: jest
+            .fn()
+            .mockResolvedValue({ count: opts.claimed === false ? 0 : 1 }),
           update: jest.fn().mockResolvedValue({}),
         },
         payrollEntry: {
-          findFirst: jest.fn().mockImplementation(async ({ where }) =>
-            (opts.closedMonths ?? []).includes(`${where.year}-${where.month}`) ? { id: 'x' } : null,
-          ),
+          findFirst: jest
+            .fn()
+            .mockImplementation(async ({ where }) =>
+              (opts.closedMonths ?? []).includes(`${where.year}-${where.month}`)
+                ? { id: 'x' }
+                : null,
+            ),
         },
         stipendRecord: { findFirst: jest.fn().mockResolvedValue(null) },
         auditLog: { create: jest.fn().mockResolvedValue({}) },
@@ -87,7 +118,9 @@ describe('pay approvals', () => {
       const requests = new PayChangeRequestsService(prisma as never);
       const payroll = {
         salaryIncrement: opts.applyFails
-          ? jest.fn().mockRejectedValue(new Error('Multiple open stipend packages'))
+          ? jest
+              .fn()
+              .mockRejectedValue(new Error('Multiple open stipend packages'))
           : jest.fn().mockResolvedValue({ id: 'new-pkg' }),
       };
       const service = new PayApprovalsService(
@@ -113,10 +146,17 @@ describe('pay approvals', () => {
       const res = await service.approve('r1', founder, 'ok');
       expect(res.status).toBe(PayChangeStatus.APPROVED);
       expect(payroll.salaryIncrement).toHaveBeenCalledWith(
-        expect.objectContaining({ basicStipend: 30000, effectiveFrom: '2026-10-01T00:00:00.000Z' }),
+        expect.objectContaining({
+          basicStipend: 30000,
+          effectiveFrom: '2026-10-01T00:00:00.000Z',
+        }),
         'f1',
       );
-      expect(prisma.auditLog.create.mock.calls[prisma.auditLog.create.mock.calls.length - 1][0].data.action).toBe('PAY_CHANGE_APPROVED');
+      expect(
+        prisma.auditLog.create.mock.calls[
+          prisma.auditLog.create.mock.calls.length - 1
+        ][0].data.action,
+      ).toBe('PAY_CHANGE_APPROVED');
     });
 
     it('moves a late approval to the next open month', async () => {
@@ -129,15 +169,21 @@ describe('pay approvals', () => {
 
     it('puts the request back to pending when applying fails', async () => {
       const { service, prisma } = build({ applyFails: true });
-      await expect(service.approve('r1', founder)).rejects.toThrow('Multiple open');
+      await expect(service.approve('r1', founder)).rejects.toThrow(
+        'Multiple open',
+      );
       expect(prisma.payChangeRequest.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: PayChangeStatus.PENDING }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ status: PayChangeStatus.PENDING }),
+        }),
       );
     });
 
     it('refuses a request someone else already decided', async () => {
       const { service, payroll } = build({ claimed: false });
-      await expect(service.approve('r1', founder)).rejects.toThrow('already been decided');
+      await expect(service.approve('r1', founder)).rejects.toThrow(
+        'already been decided',
+      );
       expect(payroll.salaryIncrement).not.toHaveBeenCalled();
     });
   });

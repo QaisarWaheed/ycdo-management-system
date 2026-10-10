@@ -9,7 +9,13 @@ import { PayChangeRequestsModule } from './pay-change-requests.module';
 
 /** Executive approve / reject / IT forward; applies through the owning services. */
 @Module({
-  imports: [AuthModule, PayChangeRequestsModule, PayrollModule, IncentivesModule, AllowancesModule],
+  imports: [
+    AuthModule,
+    PayChangeRequestsModule,
+    PayrollModule,
+    IncentivesModule,
+    AllowancesModule,
+  ],
   controllers: [PayApprovalsController],
   providers: [PayApprovalsService],
 })
