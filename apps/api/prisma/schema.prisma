@@ -596,8 +596,19 @@ model PayrollDeduction {
   reason         DeductionType
   amount         Decimal       @db.Decimal(10, 2)
   description    String?
+  /// Why a manual FINE was charged (discipline fines only; null otherwise).
+  fineReason     FineReason?
 
   payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id])
+}
+
+/// Discipline fine causes shown separately on payslips and reports.
+enum FineReason {
+  MOBILE_ON_DUTY
+  NO_UNIFORM
+  LEFT_DUTY_POST
+  RULE_VIOLATION
+  OTHER
 }
 
 enum DeductionType {

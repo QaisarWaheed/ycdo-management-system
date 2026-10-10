@@ -1,4 +1,9 @@
-import { AllowanceType, DeductionType, PayrollStatus } from '@prisma/client';
+import {
+  AllowanceType,
+  DeductionType,
+  FineReason,
+  PayrollStatus,
+} from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -80,6 +85,11 @@ export class AddDeductionDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  /** Only for FINE: the discipline cause (mobile on duty, uniform, ...). */
+  @IsOptional()
+  @IsEnum(FineReason)
+  fineReason?: FineReason;
 }
 
 export class DeductionItemDto {
@@ -95,6 +105,11 @@ export class DeductionItemDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  /** Only for FINE: the discipline cause (mobile on duty, uniform, ...). */
+  @IsOptional()
+  @IsEnum(FineReason)
+  fineReason?: FineReason;
 }
 
 export class UpdateDeductionDto {

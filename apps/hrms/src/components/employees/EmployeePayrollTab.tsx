@@ -46,6 +46,7 @@ import {
 import { toast } from '@/hooks/use-toast'
 import {
   DEDUCTION_TYPES,
+  MANUAL_DEDUCTION_FIELDS,
   type DeductionType,
   type PayrollDeduction,
   deductionReasonLabel,
@@ -77,7 +78,7 @@ function ProfileDeductionDialog({
   const [draftAmount, setDraftAmount] = useState(0)
   const [draftDescription, setDraftDescription] = useState('')
   const [removing, setRemoving] = useState<PayrollDeduction | null>(null)
-  const [amounts, setAmounts] = useState<Partial<Record<DeductionType, number>>>({})
+  const [amounts, setAmounts] = useState<Partial<Record<string, number>>>({})
   const [addDescription, setAddDescription] = useState('')
 
   const { data: fullEntry, refetch } = useQuery({
@@ -106,9 +107,9 @@ function ProfileDeductionDialog({
     onError: showErr('Failed to remove deduction'),
   })
 
-  const addItems = DEDUCTION_TYPES.flatMap(({ value }) => {
-    const amount = amounts[value] ?? 0
-    return amount > 0 ? [{ reason: value, amount, description: addDescription.trim() || undefined }] : []
+  const addItems = MANUAL_DEDUCTION_FIELDS.flatMap(({ key, reason, fineReason }) => {
+    const amount = amounts[key] ?? 0
+    return amount > 0 ? [{ reason, fineReason, amount, description: addDescription.trim() || undefined }] : []
   })
 
   const addMutation = useMutation({
@@ -165,7 +166,7 @@ function ProfileDeductionDialog({
                 </TableRow>
               ) : (
                 <TableRow key={d.id}>
-                  <TableCell>{deductionReasonLabel(d.reason)}</TableCell>
+                  <TableCell>{deductionReasonLabel(d.reason, d.fineReason)}</TableCell>
                   <TableCell className="text-red-600">{formatPKR(d.amount)}</TableCell>
                   <TableCell>{d.description ?? '—'}</TableCell>
                   <TableCell className="text-right">
@@ -185,10 +186,10 @@ function ProfileDeductionDialog({
         <div className="space-y-3 border-t border-border pt-4">
           <p className="text-sm font-medium">Add Deduction</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {DEDUCTION_TYPES.map(({ value, label }) => (
-              <div key={value} className="space-y-1">
-                <Label htmlFor={`pd-${value}`}>{label}</Label>
-                <PKRInput id={`pd-${value}`} value={amounts[value] ?? 0} onChange={(amt) => setAmounts((p) => ({ ...p, [value]: amt }))} />
+            {MANUAL_DEDUCTION_FIELDS.map(({ key, label }) => (
+              <div key={key} className="space-y-1">
+                <Label htmlFor={`pd-${key}`}>{label}</Label>
+                <PKRInput id={`pd-${key}`} value={amounts[key] ?? 0} onChange={(amt) => setAmounts((p) => ({ ...p, [key]: amt }))} />
               </div>
             ))}
           </div>

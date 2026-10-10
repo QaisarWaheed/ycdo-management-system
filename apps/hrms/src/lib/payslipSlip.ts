@@ -1,4 +1,12 @@
+export interface PayslipSection {
+  key: 'earnings' | 'attendance' | 'discipline' | 'other'
+  title: string
+  lines: Array<{ label: string; amount: number }>
+}
+
 export interface PayslipSlipData {
+  /** Grouped, non-empty lines from the API (new layout). Absent on client-built slips. */
+  sections?: PayslipSection[]
   orgName: string
   title: string
   hospital: string

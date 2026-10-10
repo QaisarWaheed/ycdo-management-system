@@ -27,6 +27,7 @@ import { PayslipPrintSheet } from '@/components/payroll/PayslipPrintSheet'
 import type { PayslipSlipData } from '@/lib/payslipSlip'
 import {
   buildMonthlyPayrollReportRows,
+  exportMonthlyPayrollCsv,
   PayrollReportPrintSection,
   PrintPayrollReportButton,
 } from '@/components/payroll/PayrollReportPrint'
@@ -89,6 +90,7 @@ import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import {
   ALLOWANCE_TYPES,
   DEDUCTION_TYPES,
+  MANUAL_DEDUCTION_FIELDS,
   type AllowanceType,
   type DeductionType,
   type PayrollDeduction,
@@ -259,7 +261,7 @@ function DeductionsTable({
                 </TableRow>
               ) : (
                 <TableRow key={d.id}>
-                  <TableCell>{deductionReasonLabel(d.reason)}</TableCell>
+                  <TableCell>{deductionReasonLabel(d.reason, d.fineReason)}</TableCell>
                   <TableCell className="text-red-600">{formatPKR(d.amount)}</TableCell>
                   <TableCell>{d.description ?? '—'}</TableCell>
                   {editable && (
@@ -325,13 +327,13 @@ function AddDeductionForm({
   payrollEntryId: string
   onSuccess: () => void
 }) {
-  const [amounts, setAmounts] = useState<Partial<Record<DeductionType, number>>>({})
+  const [amounts, setAmounts] = useState<Partial<Record<string, number>>>({})
   const [description, setDescription] = useState('')
 
-  const items = DEDUCTION_TYPES.flatMap(({ value }) => {
-    const amount = amounts[value] ?? 0
+  const items = MANUAL_DEDUCTION_FIELDS.flatMap(({ key, reason, fineReason }) => {
+    const amount = amounts[key] ?? 0
     return amount > 0
-      ? [{ reason: value, amount, description: description.trim() || undefined }]
+      ? [{ reason, fineReason, amount, description: description.trim() || undefined }]
       : []
   })
   const total = items.reduce((sum, item) => sum + item.amount, 0)
@@ -371,14 +373,14 @@ function AddDeductionForm({
         </p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {DEDUCTION_TYPES.map(({ value, label }) => (
-          <div key={value} className="space-y-1">
-            <Label htmlFor={`deduction-${value}`}>{label}</Label>
+        {MANUAL_DEDUCTION_FIELDS.map(({ key, label }) => (
+          <div key={key} className="space-y-1">
+            <Label htmlFor={`deduction-${key}`}>{label}</Label>
             <PKRInput
-              id={`deduction-${value}`}
-              value={amounts[value] ?? 0}
+              id={`deduction-${key}`}
+              value={amounts[key] ?? 0}
               onChange={(amount) =>
-                setAmounts((prev) => ({ ...prev, [value]: amount }))
+                setAmounts((prev) => ({ ...prev, [key]: amount }))
               }
             />
           </div>
@@ -1318,6 +1320,18 @@ function MonthlyPayrollTab() {
             Add entry for employee
           </Button>
           <PrintPayrollReportButton disabled={entries.length === 0} />
+          <Button
+            variant="outline"
+            disabled={entries.length === 0}
+            onClick={() =>
+              exportMonthlyPayrollCsv(
+                monthlyReportRows,
+                `payroll-${monthYear.year}-${String(monthYear.month).padStart(2, '0')}`,
+              )
+            }
+          >
+            Export Excel
+          </Button>
           <Button
             variant="outline"
             disabled={filteredEntries.length === 0 || payslipsMutation.isPending}

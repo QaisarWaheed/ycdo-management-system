@@ -44,6 +44,7 @@ import {
   AttendanceLogType,
   AttendanceStatus,
   DeductionType,
+  FineReason,
   EmployeeStatus,
   LeaveApprovalAction,
   LeaveApprovalStage,
@@ -124,6 +125,7 @@ import {
   formatSlipMonthTitle,
   formatSlipPeriod,
   sanitizeSheetName,
+  buildPayslipSections,
   computeDeductionsTotal,
   computeEarningsTotal,
   type PayslipSlipData,
@@ -1811,6 +1813,11 @@ export class PayrollService {
         reason: dto.reason,
         amount: dto.amount,
         description: dto.description,
+        // Fine reason only means something on a manual FINE.
+        fineReason:
+          dto.reason === DeductionType.FINE
+            ? (dto.fineReason ?? FineReason.OTHER)
+            : null,
       },
     });
 
@@ -2577,6 +2584,17 @@ export class PayrollService {
       earnings,
       deductions: deductionsBlock,
       deductionItems,
+      sections: buildPayslipSections({
+        earnings,
+        deductions: deductionsBlock,
+        deductionRows: deductions,
+        allowanceRows: allowances,
+        pkg: {
+          allowances: pkg.allowances || 0,
+          fineDeduction: pkg.fineDeduction || 0,
+        },
+        totalDays,
+      }),
       earningsTotal,
       deductionsTotal,
       netPay: Number(entry.netStipend) || 0,

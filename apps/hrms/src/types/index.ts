@@ -714,6 +714,8 @@ export interface PayrollDeduction {
   reason: string
   amount: number | string
   description?: string | null
+  /** Discipline cause on a manual FINE (e.g. NO_UNIFORM). */
+  fineReason?: string | null
 }
 
 export interface HourlyPayrollBreakdown {
@@ -902,7 +904,42 @@ export function isManualDeduction(d: { reason: string; description?: string | nu
   return !(d.reason === 'OTHER' && /^Unmarked day \(/.test(d.description ?? ''))
 }
 
-export function deductionReasonLabel(reason: string) {
+/** Discipline fine causes (manual FINE deductions). */
+export const FINE_REASONS: { value: string; label: string }[] = [
+  { value: 'MOBILE_ON_DUTY', label: 'Fine: Mobile on duty' },
+  { value: 'NO_UNIFORM', label: 'Fine: No uniform' },
+  { value: 'LEFT_DUTY_POST', label: 'Fine: Leaving duty post' },
+  { value: 'RULE_VIOLATION', label: 'Fine: Rule violation' },
+  { value: 'OTHER', label: 'Fine: Other' },
+]
+
+/**
+ * Fields on the "Add Deduction" forms: every manual cause, with the single
+ * Fine split into one field per discipline reason.
+ */
+export const MANUAL_DEDUCTION_FIELDS: {
+  key: string
+  reason: DeductionType
+  fineReason?: string
+  label: string
+}[] = [
+  ...DEDUCTION_TYPES.filter((t) => t.value !== 'FINE').map((t) => ({
+    key: t.value,
+    reason: t.value,
+    label: t.label,
+  })),
+  ...FINE_REASONS.map((f) => ({
+    key: `FINE:${f.value}`,
+    reason: 'FINE' as DeductionType,
+    fineReason: f.value,
+    label: f.label,
+  })),
+]
+
+export function deductionReasonLabel(reason: string, fineReason?: string | null) {
+  if (reason === 'FINE' && fineReason) {
+    return FINE_REASONS.find((f) => f.value === fineReason)?.label ?? 'Fine'
+  }
   return (
     DEDUCTION_TYPES.find((t) => t.value === reason)?.label ?? reason.replace(/_/g, ' ')
   )

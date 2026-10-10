@@ -93,7 +93,7 @@ export const payrollApi = {
     api.post<unknown, PayrollEntry>('/payroll/deductions', data),
   addDeductions: (data: {
     payrollEntryId: string
-    items: { reason: string; amount: number; description?: string }[]
+    items: { reason: string; amount: number; description?: string; fineReason?: string }[]
   }) => api.post<unknown, PayrollEntry>('/payroll/deductions/batch', data),
   updateDeduction: (
     id: string,

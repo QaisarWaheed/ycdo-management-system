@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { employeeStatusLabel } from '@/lib/employeeStatus'
@@ -8,6 +9,10 @@ export type PayrollReportRow = {
   employee?: string
   employeeCode?: string
   employeeStatus?: string
+  department?: string
+  designation?: string
+  /** Raw amounts for subtotals and the Excel export. */
+  amounts?: { basic: number; deductions: number; allowances: number; net: number }
   period: string
   present?: string
   absent?: string
@@ -57,6 +62,14 @@ export function buildMonthlyPayrollReportRows(
       employee: emp?.fullName ?? '—',
       employeeCode: emp?.employeeCode ?? '',
       employeeStatus: emp?.status ? employeeStatusLabel(emp.status) : '—',
+      department: emp?.currentDepartment?.name || 'No department',
+      designation: emp?.currentDesignation || 'No designation',
+      amounts: {
+        basic: Number(entry.basicStipend) || 0,
+        deductions: Math.max(0, Number(entry.totalDeductions) || 0),
+        allowances: Number(entry.totalAllowances) || 0,
+        net: Number(entry.netStipend) || 0,
+      },
       period: `${entry.month}/${entry.year}`,
       present: String(entry.attendance?.present ?? 0),
       absent: String(entry.attendance?.absent ?? 0),
@@ -142,6 +155,7 @@ export function PayrollReportPrintSection({
   footer,
 }: PayrollReportPrintProps) {
   const isMonthly = variant === 'monthly'
+  const grouped = groupPayrollReportRows(isMonthly ? rows : [])
 
   return (
     <div
@@ -198,12 +212,53 @@ export function PayrollReportPrintSection({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={isMonthly ? 13 : 7} className="text-center">
+              <td colSpan={isMonthly ? 15 : 7} className="text-center">
                 No payroll records
               </td>
             </tr>
+          ) : isMonthly ? (
+            <>
+              {grouped.groups.map((g) => (
+                <Fragment key={`${g.department}|${g.designation}`}>
+                  <tr>
+                    <td colSpan={15} style={{ fontWeight: 700, background: '#f1f5f5' }}>
+                      {g.department} — {g.designation}
+                    </td>
+                  </tr>
+                  {g.rows.map(renderRow)}
+                  {totalRow(`Subtotal: ${g.designation} (${g.rows.length})`, g.totals)}
+                </Fragment>
+              ))}
+              {totalRow(`Grand total (${rows.length})`, grouped.grandTotal)}
+            </>
           ) : (
-            rows.map((row, index) => (
+            rows.map(renderRow)
+          )}
+        </tbody>
+      </table>
+
+      {footer ? <p className="payroll-report-print-footer">{footer}</p> : null}
+      {isMonthly ? (
+        <style>{`@media print { @page { size: A4 landscape; margin: 10mm; } }`}</style>
+      ) : null}
+    </div>
+  )
+
+  function totalRow(label: string, t: ReportTotals) {
+    return (
+      <tr style={{ fontWeight: 600 }}>
+        <td colSpan={10}>{label}</td>
+        <td className="num">{formatPKR(t.basic)}</td>
+        <td className="num">{formatPKR(t.deductions)}</td>
+        <td className="num">{formatPKR(t.allowances)}</td>
+        <td className="num">{formatPKR(t.net)}</td>
+        <td />
+      </tr>
+    )
+  }
+
+  function renderRow(row: PayrollReportRow, index: number) {
+    return (
               <tr key={`${row.period}-${index}`}>
                 {isMonthly ? (
                   <td>
@@ -244,15 +299,80 @@ export function PayrollReportPrintSection({
                 <td>{row.status}</td>
                 {!isMonthly ? <td>{row.notes ?? '—'}</td> : null}
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+    )
+  }
+}
 
-      {footer ? <p className="payroll-report-print-footer">{footer}</p> : null}
-      {isMonthly ? (
-        <style>{`@media print { @page { size: A4 landscape; margin: 10mm; } }`}</style>
-      ) : null}
-    </div>
+type ReportTotals = { basic: number; deductions: number; allowances: number; net: number }
+
+const sumAmounts = (rows: PayrollReportRow[]): ReportTotals =>
+  rows.reduce(
+    (t, r) => ({
+      basic: t.basic + (r.amounts?.basic ?? 0),
+      deductions: t.deductions + (r.amounts?.deductions ?? 0),
+      allowances: t.allowances + (r.amounts?.allowances ?? 0),
+      net: t.net + (r.amounts?.net ?? 0),
+    }),
+    { basic: 0, deductions: 0, allowances: 0, net: 0 },
   )
+
+/** Monthly rows grouped by department, then designation, each with subtotals. */
+export function groupPayrollReportRows(rows: PayrollReportRow[]) {
+  const map = new Map<string, { department: string; designation: string; rows: PayrollReportRow[] }>()
+  for (const row of rows) {
+    const department = row.department ?? 'No department'
+    const designation = row.designation ?? 'No designation'
+    const key = `${department}|${designation}`
+    if (!map.has(key)) map.set(key, { department, designation, rows: [] })
+    map.get(key)!.rows.push(row)
+  }
+  const groups = [...map.values()]
+    .sort(
+      (a, b) =>
+        a.department.localeCompare(b.department) ||
+        a.designation.localeCompare(b.designation),
+    )
+    .map((g) => ({
+      ...g,
+      rows: [...g.rows].sort((a, b) => (a.employee ?? '').localeCompare(b.employee ?? '')),
+      totals: sumAmounts(g.rows),
+    }))
+  return { groups, grandTotal: sumAmounts(rows) }
+}
+
+/** Grouped monthly payroll as CSV (opens in Excel), with subtotal and grand-total rows. */
+export function exportMonthlyPayrollCsv(rows: PayrollReportRow[], filename: string) {
+  const { groups, grandTotal } = groupPayrollReportRows(rows)
+  const blank = (n: number) => Array<string>(n).fill('')
+  const lines: unknown[][] = [[
+    'Department', 'Designation', 'Employee', 'Code', 'Employee status', 'Present', 'Absent',
+    'On leave', 'Late', 'Early out', 'Missed checkout', 'OT hrs', 'Extra days',
+    'Basic', 'Deductions', 'Allowances', 'Net', 'Payroll status',
+  ]]
+  const money = (t: ReportTotals) => [t.basic, t.deductions, t.allowances, t.net]
+  for (const g of groups) {
+    for (const r of g.rows) {
+      lines.push([
+        g.department, g.designation, r.employee, r.employeeCode, r.employeeStatus,
+        r.present, r.absent, r.onLeave, r.late, r.earlyCheckout, r.missingCheckout,
+        r.overtime, r.extraWorkingDays,
+        ...money(r.amounts ?? { basic: 0, deductions: 0, allowances: 0, net: 0 }),
+        r.status,
+      ])
+    }
+    lines.push([g.department, g.designation, `Subtotal (${g.rows.length})`, ...blank(10), ...money(g.totals), ''])
+  }
+  lines.push(['All', '', `Grand total (${rows.length})`, ...blank(10), ...money(grandTotal), ''])
+  const cell = (v: unknown) => {
+    const str = v == null ? '' : String(v)
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str
+  }
+  // BOM so Excel reads Urdu names as UTF-8.
+  const csv = '﻿' + lines.map((l) => l.map(cell).join(',')).join('\r\n')
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${filename}.csv`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }

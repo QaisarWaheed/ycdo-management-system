@@ -78,12 +78,30 @@ export function PayslipDocument({
     slip.deductionsTotal ??
     deductionsData.reduce((s, r) => s + r.amount, 0)
 
-  // Rows = max(earnings.length, deductions.length); earnings now has 8 items
-  const ROW_COUNT = Math.max(earningsData.length, deductionsData.length)
+  // New layout (API sections): only lines that apply, deductions grouped as
+  // Attendance / Discipline Fines / Other with a heading row per group.
+  type Row = { label: string; amount: number | null; heading?: boolean }
+  const sections = slip.sections
+  const sectionEarnings: Row[] | null = sections
+    ? (sections.find((s) => s.key === 'earnings')?.lines ?? []).map((l) => ({ ...l }))
+    : null
+  const sectionDeductions: Row[] | null = sections
+    ? sections
+        .filter((s) => s.key !== 'earnings' && s.lines.length > 0)
+        .flatMap((s) => [
+          { label: s.title, amount: null, heading: true },
+          ...s.lines.map((l) => ({ ...l })),
+        ])
+    : null
+  const leftRows: Row[] = sectionEarnings ?? earningsData
+  const rightRows: Row[] = sectionDeductions ?? deductionsData
+  const ROW_COUNT = Math.max(leftRows.length, rightRows.length, 1)
+  const money = (amount: number | null) =>
+    amount == null ? '' : sections ? amount.toLocaleString('en-PK') : fmt(amount)
 
   const fs = compact
-    ? { base: '6.5pt', sm: '6.5pt', hdr: '7pt', title: '7.5pt', org: '8pt', sig: '5.5pt' }
-    : { base: '8.5pt', sm: '8.5pt', hdr: '9pt', title: '10pt', org: '12pt', sig: '8pt' }
+    ? { base: '8pt', sm: '7.5pt', hdr: '8.5pt', title: '9pt', org: '10pt', sig: '7pt' }
+    : { base: '10pt', sm: '9.5pt', hdr: '10.5pt', title: '11.5pt', org: '13pt', sig: '9pt' }
 
   const cell = (extra = '') =>
     cn(
@@ -147,7 +165,10 @@ export function PayslipDocument({
             <tr>
               <td className={cell('font-semibold')}>Total Day</td>
               <td className={cell('font-semibold')}>
-                Status  <span>{slip.employeeStatus ? employeeStatusLabel(slip.employeeStatus) : '—'}</span>
+                Status{' '}
+                <span style={{ fontWeight: 'bold', textTransform: 'uppercase' }}>
+                  {slip.employeeStatus ? employeeStatusLabel(slip.employeeStatus) : '—'}
+                </span>
               </td>
               <td className={cell('font-semibold')}>Time</td>
               <td className={cell()}>{slip.dutyTime || '—'}</td>
@@ -177,19 +198,31 @@ export function PayslipDocument({
           </thead>
           <tbody>
             {Array.from({ length: ROW_COUNT }).map((_, i) => {
-              const earn = earningsData[i]
-              const ded = deductionsData[i]
+              const earn = leftRows[i]
+              const ded = rightRows[i]
               const paidLine = paidLines[i] ?? ''
               return (
                 <tr key={i}>
                   <td className={cell()}>{earn?.label ?? ''}</td>
                   <td className={cell('text-right tabular-nums')}>
-                    {earn ? fmt(earn.amount) : ''}
+                    {earn ? money(earn.amount) : ''}
                   </td>
-                  <td className={cell()}>{ded?.label ?? ''}</td>
-                  <td className={cell('text-right tabular-nums')}>
-                    {ded ? fmt(ded.amount) : ''}
-                  </td>
+                  {ded?.heading ? (
+                    <td
+                      className={cell('font-bold')}
+                      colSpan={2}
+                      style={{ background: '#FFF7B0' }}
+                    >
+                      {ded.label}
+                    </td>
+                  ) : (
+                    <>
+                      <td className={cell()}>{ded?.label ?? ''}</td>
+                      <td className={cell('text-right tabular-nums')}>
+                        {ded ? money(ded.amount) : ''}
+                      </td>
+                    </>
+                  )}
                   <td className={cell()}>{paidLine}</td>
                 </tr>
               )
