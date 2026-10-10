@@ -74,11 +74,13 @@ export class EmployeeOnboardingService {
   async findAll(query: OnboardingQueryDto, user: ActingUser) {
     const target = approverTargetForUserRole(user.role);
     const status = query.status ?? EmployeeOnboardingStatus.PENDING;
+    const seesAll =
+      user.role === UserRole.SUPER_ADMIN || user.role === UserRole.IT_ADMIN;
 
     return this.prisma.employeeOnboardingApproval.findMany({
       where: {
         status,
-        ...(user.role === UserRole.SUPER_ADMIN ? {} : { approverTarget: target! }),
+        ...(seesAll ? {} : { approverTarget: target! }),
       },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -335,6 +337,55 @@ export class EmployeeOnboardingService {
     });
 
     return this.findOne(id, user);
+  }
+
+  /** IT moves a pending approval to another executive's queue. */
+  async forward(
+    id: string,
+    user: ActingUser,
+    approverTarget: EmployeeApproverTarget,
+    reason: string,
+  ) {
+    const approval = await this.prisma.employeeOnboardingApproval.findUnique({
+      where: { id },
+    });
+    if (!approval) {
+      throw new NotFoundException('Onboarding approval request not found');
+    }
+    if (approval.status !== EmployeeOnboardingStatus.PENDING) {
+      throw new BadRequestException('This request has already been reviewed');
+    }
+    if (approval.approverTarget === approverTarget) {
+      throw new BadRequestException(
+        `This request is already with the ${APPROVER_TARGET_LABELS[approverTarget]}`,
+      );
+    }
+
+    // Conditional update so a concurrent approve/reject can't be overwritten.
+    const { count } = await this.prisma.employeeOnboardingApproval.updateMany({
+      where: { id, status: EmployeeOnboardingStatus.PENDING },
+      data: { approverTarget },
+    });
+    if (count === 0) {
+      throw new BadRequestException('This request has already been reviewed');
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'EMPLOYEE_ONBOARDING_FORWARDED',
+        entity: 'EmployeeOnboardingApproval',
+        entityId: id,
+        changes: {
+          employeeId: approval.employeeId,
+          from: approval.approverTarget,
+          to: approverTarget,
+          reason: reason.trim(),
+        },
+      },
+    });
+
+    return { id, approverTarget };
   }
 
   private async getPendingForReview(id: string, user: ActingUser) {

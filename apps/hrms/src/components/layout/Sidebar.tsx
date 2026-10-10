@@ -55,6 +55,7 @@ const itTeamNavItems = [
   { to: '/admin/master-data', label: 'Master Data', icon: Database },
   { to: '/admin/roles', label: 'Roles & Access', icon: ShieldCheck },
   { to: '/admin/login-access', label: 'Login Access', icon: Shield },
+  { to: '/admin/pending-approvals', label: 'Pending Approvals', icon: UserPlus },
   { to: '/admin/letter-templates', label: 'Letter Templates', icon: FileText },
 ]
 
@@ -242,6 +243,7 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
   '/admin/master-data': { roles: ['IT_ADMIN'] },
   '/admin/roles': { roles: ['IT_ADMIN'] },
   '/admin/login-access': { roles: ['IT_ADMIN'] },
+  '/admin/pending-approvals': { roles: ['IT_ADMIN', 'SUPER_ADMIN'] },
   '/admin/letter-templates': {
     roles: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_EXECUTIVE', 'ADMIN_MANAGER', 'ADMIN_OFFICER', 'IT_ADMIN'],
   },

@@ -25,6 +25,17 @@ export class RejectOnboardingDto {
   reviewNote: string;
 }
 
+/** IT re-routes a pending approval to another executive. */
+export class ForwardOnboardingDto {
+  @IsEnum(EmployeeApproverTarget)
+  approverTarget: EmployeeApproverTarget;
+
+  @IsString()
+  @IsNotEmpty({ message: 'A reason is required to forward this approval' })
+  @MinLength(5, { message: 'Please give a reason of at least 5 characters' })
+  reason: string;
+}
+
 export class OnboardingQueryDto {
   @IsOptional()
   @IsEnum(EmployeeOnboardingStatus)

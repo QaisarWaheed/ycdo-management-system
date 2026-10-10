@@ -84,6 +84,15 @@ export const employeeOnboardingApi = {
     api.get<unknown, EmployeeOnboardingApproval[]>(
       '/employee-onboarding/pending',
     ),
+  list: (status: EmployeeOnboardingStatus) =>
+    api.get<unknown, EmployeeOnboardingApproval[]>('/employee-onboarding', {
+      params: { status },
+    }),
+  forward: (id: string, approverTarget: EmployeeApproverTarget, reason: string) =>
+    api.post<unknown, { id: string; approverTarget: EmployeeApproverTarget }>(
+      `/employee-onboarding/${id}/forward`,
+      { approverTarget, reason },
+    ),
   getOne: (id: string) =>
     api.get<unknown, EmployeeOnboardingApproval>(
       `/employee-onboarding/${id}`,

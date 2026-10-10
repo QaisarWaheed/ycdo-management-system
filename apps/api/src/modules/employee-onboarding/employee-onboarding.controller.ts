@@ -16,6 +16,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
+  ForwardOnboardingDto,
   OnboardingQueryDto,
   RejectOnboardingDto,
   ReviewOnboardingDto,
@@ -67,6 +68,7 @@ export class EmployeeOnboardingController {
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
     UserRole.SUPER_ADMIN,
+    UserRole.IT_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
   )
@@ -149,6 +151,17 @@ export class EmployeeOnboardingController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.service.approve(id, user, dto.reviewNote);
+  }
+
+  /** IT re-routes a pending approval to President / Founder / Chairman. */
+  @Post(':id/forward')
+  @Roles(UserRole.IT_ADMIN, UserRole.SUPER_ADMIN)
+  forward(
+    @Param('id') id: string,
+    @Body() dto: ForwardOnboardingDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.service.forward(id, user, dto.approverTarget, dto.reason);
   }
 
   @Post(':id/reject')

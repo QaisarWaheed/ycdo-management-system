@@ -25,6 +25,7 @@ import { BranchesPage } from '@/pages/branches/BranchesPage'
 import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
 import { ProfilePage } from '@/pages/settings/ProfilePage'
 import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
+import { PendingApprovalsPage } from '@/pages/admin/PendingApprovalsPage'
 import { MasterDataPage } from '@/pages/admin/MasterDataPage'
 import { LetterTemplatesPage } from '@/pages/admin/LetterTemplatesPage'
 import { AppointmentLetterSettingsPage } from '@/pages/admin/AppointmentLetterSettingsPage'
@@ -230,6 +231,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <LoginAccessPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/pending-approvals"
+        element={
+          <ProtectedRoute>
+            <PendingApprovalsPage />
           </ProtectedRoute>
         }
       />
