@@ -1,3 +1,4 @@
+import { assertAttendanceOpen } from '../attendance-lock/attendance-month-lock.util';
 import { formatBranchLabel } from '../../common/branch-display';
 import {
   BadRequestException,
@@ -1930,6 +1931,10 @@ export class LeaveService {
       };
     },
   ) {
+    await assertAttendanceOpen(tx, {
+      date: this.getDateRange(leave.startDate, leave.endDate),
+      branchId: leave.employee.currentBranchId,
+    });
     for (const day of this.getDateRange(leave.startDate, leave.endDate)) {
       const existing = await tx.attendanceLog.findUnique({
         where: {

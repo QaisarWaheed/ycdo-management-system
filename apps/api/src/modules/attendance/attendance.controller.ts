@@ -398,6 +398,8 @@ export class AttendanceController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     UserRole.SUPER_ADMIN,
+    // Accounts read verified attendance (no edit permissions).
+    UserRole.PAYROLL_OFFICER,
     UserRole.HR_MANAGER,
     UserRole.ADMIN_MANAGER,
     UserRole.MEDICINE_MANAGER,

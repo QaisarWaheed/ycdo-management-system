@@ -95,12 +95,20 @@ export class IncentivesService {
         },
       });
 
-      await tx.payrollEntry.update({
+      const after = await tx.payrollEntry.update({
         where: { id: payrollEntry.id },
         data: {
           totalAllowances: { increment: dto.amount },
           netStipend: { increment: dto.amount },
         },
+      });
+      await logIncentiveChange(tx, {
+        payrollEntryId: payrollEntry.id,
+        userId: addedById,
+        action: 'INCENTIVE_ADDED',
+        summary: `Incentive added: ${reason} PKR ${Math.round(dto.amount).toLocaleString('en-PK')}`,
+        netAfter: Number(after.netStipend),
+        amount: dto.amount,
       });
 
       await tx.notification.create({
@@ -239,12 +247,20 @@ export class IncentivesService {
 
       await tx.allowance.delete({ where: { id: allowance.id } });
 
-      await tx.payrollEntry.update({
+      const after = await tx.payrollEntry.update({
         where: { id: payrollEntry.id },
         data: {
           totalAllowances: { decrement: amount },
           netStipend: { decrement: amount },
         },
+      });
+      await logIncentiveChange(tx, {
+        payrollEntryId: payrollEntry.id,
+        userId: actingUserId,
+        action: 'INCENTIVE_REMOVED',
+        summary: `Incentive removed: ${incentive.reason} PKR ${Math.round(amount).toLocaleString('en-PK')}`,
+        netAfter: Number(after.netStipend),
+        amount: -amount,
       });
 
       await tx.incentive.delete({ where: { id } });
@@ -311,4 +327,23 @@ export class IncentivesService {
       },
     });
   }
+}
+
+/** Payroll entry history line for an incentive (net before = after − amount). */
+async function logIncentiveChange(
+  tx: Prisma.TransactionClient,
+  e: { payrollEntryId: string; userId: string; action: string; summary: string; netAfter: number; amount: number },
+) {
+  // Unit-test doubles of Prisma often omit this model; real clients always have it.
+  if (!(tx as { payrollChangeLog?: unknown }).payrollChangeLog) return;
+  await tx.payrollChangeLog.create({
+    data: {
+      payrollEntryId: e.payrollEntryId,
+      userId: e.userId,
+      action: e.action,
+      summary: e.summary,
+      netBefore: e.netAfter - e.amount,
+      netAfter: e.netAfter,
+    },
+  });
 }

@@ -29,15 +29,16 @@ enum ProjectType {
 }
 
 model Branch {
-  id           String   @id @default(uuid())
-  name         String
-  abbreviation String?
-  address      String?
-  phone        String?
-  isActive     Boolean  @default(true)
-  sortOrder    Int      @default(999)
-  createdAt    DateTime @default(now())
-  projectId    String?
+  attendanceMonthLocks AttendanceMonthLock[]
+  id                   String                @id @default(uuid())
+  name                 String
+  abbreviation         String?
+  address              String?
+  phone                String?
+  isActive             Boolean               @default(true)
+  sortOrder            Int                   @default(999)
+  createdAt            DateTime              @default(now())
+  projectId            String?
 
   project                Project?            @relation(fields: [projectId], references: [id])
   departments            Department[]
@@ -549,21 +550,22 @@ model StipendRecord {
 }
 
 model PayrollEntry {
-  id              String        @id @default(uuid())
+  changeLogs      PayrollChangeLog[]
+  id              String             @id @default(uuid())
   stipendRecordId String
   month           Int
   year            Int
-  basicStipend    Decimal       @db.Decimal(10, 2)
-  totalDeductions Decimal       @default(0) @db.Decimal(10, 2)
-  totalAllowances Decimal       @default(0) @db.Decimal(10, 2)
-  netStipend      Decimal       @db.Decimal(10, 2)
-  status          PayrollStatus @default(PENDING)
+  basicStipend    Decimal            @db.Decimal(10, 2)
+  totalDeductions Decimal            @default(0) @db.Decimal(10, 2)
+  totalAllowances Decimal            @default(0) @db.Decimal(10, 2)
+  netStipend      Decimal            @db.Decimal(10, 2)
+  status          PayrollStatus      @default(PENDING)
   /**
    * True when HR force-generated for a non-ACTIVE/ON_REST employee (e.g. approved suspended).
    */
-  forcedNonActive Boolean       @default(false)
+  forcedNonActive Boolean            @default(false)
   processedAt     DateTime?
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime           @default(now())
 
   stipendRecord  StipendRecord      @relation(fields: [stipendRecordId], references: [id])
   deductions     PayrollDeduction[]
@@ -1233,14 +1235,15 @@ model AdditionalWorkingDay {
 // ─── AUTH & USERS ─────────────────────────────────────────
 
 model User {
-  id              String    @id @default(uuid())
-  employeeId      String?   @unique
-  email           String    @unique
+  payrollChanges  PayrollChangeLog[]
+  id              String             @id @default(uuid())
+  employeeId      String?            @unique
+  email           String             @unique
   password        String
   role            UserRole
   branchId        String?
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
   lastLogin       DateTime?
   /// Set only on successful Employee Portal login (not HRMS).
   lastPortalLogin DateTime?
@@ -1414,6 +1417,8 @@ enum Permission {
   REPORTS_VIEW
   BROADCASTS_SEND
   ORG_SETUP
+  ATTENDANCE_VERIFY
+  PAYROLL_FINALIZE
 }
 
 enum UserRole {
@@ -1699,4 +1704,49 @@ enum CareerApplicationStatus {
   SHORTLISTED
   REJECTED
   HIRED
+}
+
+enum AttendanceMonthStatus {
+  VERIFIED
+  UNLOCKED
+}
+
+/// HR verifies a branch's attendance for a month; verified months are locked
+/// for attendance changes until IT unlocks them (with a reason).
+model AttendanceMonthLock {
+  id           String                @id @default(uuid())
+  branchId     String
+  year         Int
+  month        Int
+  status       AttendanceMonthStatus
+  verifiedById String?
+  verifiedAt   DateTime?
+  unlockedById String?
+  unlockedAt   DateTime?
+  unlockReason String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, year, month])
+}
+
+/// Who changed a payroll entry, when, and what it did to net pay.
+model PayrollChangeLog {
+  id             String   @id @default(uuid())
+  payrollEntryId String
+  /// Null for automatic recalculation (attendance, schedulers).
+  userId         String?
+  action         String
+  summary        String
+  netBefore      Decimal? @db.Decimal(10, 2)
+  netAfter       Decimal? @db.Decimal(10, 2)
+  details        Json?
+  createdAt      DateTime @default(now())
+
+  payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([payrollEntryId, createdAt])
 }

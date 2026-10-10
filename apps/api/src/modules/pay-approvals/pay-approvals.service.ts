@@ -102,7 +102,7 @@ export class PayApprovalsService {
         );
       }
       case PayChangeKind.PAYROLL_ADDITION:
-        return this.payroll.addAllowance(payload as any);
+        return this.payroll.addAllowance(payload as any, user.id);
     }
   }
 

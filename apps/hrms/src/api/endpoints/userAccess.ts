@@ -19,6 +19,8 @@ export type AppPermission =
   | 'REPORTS_VIEW'
   | 'BROADCASTS_SEND'
   | 'ORG_SETUP'
+  | 'ATTENDANCE_VERIFY'
+  | 'PAYROLL_FINALIZE'
 
 export interface ManagerScopeInput {
   projectId: string

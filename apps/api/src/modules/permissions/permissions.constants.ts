@@ -20,12 +20,20 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   REPORTS_VIEW: 'View reports',
   BROADCASTS_SEND: 'Send broadcasts',
   ORG_SETUP: 'Organization setup (projects, branches, etc.)',
+  ATTENDANCE_VERIFY: 'Verify (lock) a branch month of attendance for payroll',
+  PAYROLL_FINALIZE: 'Finalize payroll (mark Processed / Paid)',
 };
 
 /** Role defaults when IT has not set an explicit override. */
 export const ROLE_PERMISSION_DEFAULTS: Partial<
   Record<Permission, UserRole[]>
 > = {
+  ATTENDANCE_VERIFY: [
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+  ],
+  PAYROLL_FINALIZE: [UserRole.PAYROLL_OFFICER],
   ATTENDANCE_MARK: [
     UserRole.HR_MANAGER,
     UserRole.ADMIN_MANAGER,

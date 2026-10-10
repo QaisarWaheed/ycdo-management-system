@@ -1,3 +1,6 @@
+import { Type } from 'class-transformer';
+import { IsEnum, IsInt, IsUUID, Max, Min } from 'class-validator';
+import { PayrollStatus } from '@prisma/client';
 import {
   Body,
   Controller,
@@ -84,6 +87,25 @@ const OVERTIME_APPLY_ROLES = [
   UserRole.HR_EXECUTIVE,
 ];
 
+class FinalizeBranchMonthDto {
+  @IsUUID()
+  branchId: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  year: number;
+
+  @IsEnum(PayrollStatus)
+  status: PayrollStatus;
+}
+
 @Controller('payroll')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PayrollController {
@@ -166,15 +188,15 @@ export class PayrollController {
   @Post('deductions')
   @Roles(...PAYROLL_WRITE_ROLES)
   @RoutePermission(Permission.PAYROLL_MANAGE)
-  addDeduction(@Body() dto: AddDeductionDto) {
-    return this.payrollService.addDeduction(dto);
+  addDeduction(@Body() dto: AddDeductionDto, @CurrentUser() user: { id: string }) {
+    return this.payrollService.addDeduction(dto, user.id);
   }
 
   @Post('deductions/batch')
   @Roles(...PAYROLL_WRITE_ROLES)
   @RoutePermission(Permission.PAYROLL_MANAGE)
-  addDeductions(@Body() dto: AddDeductionsDto) {
-    return this.payrollService.addDeductions(dto);
+  addDeductions(@Body() dto: AddDeductionsDto, @CurrentUser() user: { id: string }) {
+    return this.payrollService.addDeductions(dto, user.id);
   }
 
   @Patch('deductions/:id')
@@ -217,7 +239,7 @@ export class PayrollController {
         user,
       );
     }
-    return this.payrollService.addAllowance(dto);
+    return this.payrollService.addAllowance(dto, user.id);
   }
 
   @Get('overtime-preview/:employeeId')
@@ -243,8 +265,27 @@ export class PayrollController {
     return this.payrollService.applyOvertime(dto, user);
   }
 
+  /** Accounts mark a whole branch month Processed (verified attendance only) or Paid. */
+  @Post('finalize')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PAYROLL_OFFICER)
+  @RoutePermission(Permission.PAYROLL_FINALIZE)
+  finalizeBranchMonth(
+    @Body() dto: FinalizeBranchMonthDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.payrollService.finalizeBranchMonth(dto, user.id);
+  }
+
+  @Get('entries/:id/changes')
+  @Roles(...PAYROLL_READ_ROLES, UserRole.PAYROLL_OFFICER)
+  @RoutePermission(Permission.PAYROLL_VIEW)
+  getChangeLog(@Param('id') id: string) {
+    return this.payrollService.getChangeLog(id);
+  }
+
   @Patch('entries/:id/status')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_OPERATIONS_MANAGER, UserRole.IT_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PAYROLL_OFFICER)
+  @RoutePermission(Permission.PAYROLL_FINALIZE)
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollStatusDto,

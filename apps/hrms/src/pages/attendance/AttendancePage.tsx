@@ -1,3 +1,4 @@
+import { AttendanceMonthLockTab } from '@/components/attendance/AttendanceMonthLockTab'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -1125,7 +1126,12 @@ export function AttendancePage() {
           <TabsTrigger value="reliever">Reliever</TabsTrigger>
           <TabsTrigger value="mutual-swap">Mutual Swap</TabsTrigger>
           <TabsTrigger value="manual">Mark Manual</TabsTrigger>
+          <TabsTrigger value="verify">Verify Month</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="verify" className="mt-4">
+          <AttendanceMonthLockTab />
+        </TabsContent>
 
         <TabsContent value="daily" className="mt-4">
           <DailyLogTab initialStatus={statusParam} initialDate={initialDate} />

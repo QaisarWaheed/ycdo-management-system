@@ -84,6 +84,11 @@ import { isPendingApproval } from '@/api/endpoints/payApprovals'
 import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
 import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
 import { PayTypesTab } from '@/components/payroll/PayTypesTab'
+import {
+  PayrollChangeHistory,
+  PayrollFinalizeDialog,
+  useCanFinalizePayroll,
+} from '@/components/payroll/PayrollFinalize'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { getApiErrorMessage } from '@/lib/apiErrorMessage'
@@ -758,6 +763,9 @@ function PayrollDetailDialog({
             <TabsTrigger value="payslip" className="flex-1 sm:flex-none">
               Payslip
             </TabsTrigger>
+            <TabsTrigger value="history" className="flex-1 sm:flex-none">
+              History
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="deductions" className="no-print space-y-4">
@@ -832,6 +840,10 @@ function PayrollDetailDialog({
             </div>
             <PayslipDocument slip={slip} />
           </TabsContent>
+
+          <TabsContent value="history" className="no-print space-y-2">
+            <PayrollChangeHistory entryId={entry.id} />
+          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
@@ -892,6 +904,8 @@ function MonthlyPayrollTab() {
   const [nameSearch, setNameSearch] = useState('')
   const [viewEntry, setViewEntry] = useState<PayrollEntry | null>(null)
   const [allowancesFor, setAllowancesFor] = useState<{ id: string; name: string } | null>(null)
+  const canFinalize = useCanFinalizePayroll()
+  const [finalizeOpen, setFinalizeOpen] = useState(false)
   const [addDeductionEntry, setAddDeductionEntry] = useState<PayrollEntry | null>(
     null,
   )
@@ -1338,6 +1352,11 @@ function MonthlyPayrollTab() {
             Add entry for employee
           </Button>
           <PrintPayrollReportButton disabled={entries.length === 0} />
+          {canFinalize ? (
+            <Button variant="outline" onClick={() => setFinalizeOpen(true)}>
+              Finalise branch
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             disabled={filteredEntries.length === 0}
@@ -1577,16 +1596,18 @@ function MonthlyPayrollTab() {
                           </DropdownMenuItem>
                           {entry.status === 'PENDING' && (
                             <>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  setConfirmStatus({
-                                    id: entry.id,
-                                    status: 'PROCESSED',
-                                  })
-                                }
-                              >
-                                Mark as Processed
-                              </DropdownMenuItem>
+                              {canFinalize ? (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setConfirmStatus({
+                                      id: entry.id,
+                                      status: 'PROCESSED',
+                                    })
+                                  }
+                                >
+                                  Mark as Processed
+                                </DropdownMenuItem>
+                              ) : null}
                               <DropdownMenuItem
                                 onClick={() => setAddDeductionEntry(entry)}
                               >
@@ -1606,7 +1627,7 @@ function MonthlyPayrollTab() {
                               Allowances
                             </DropdownMenuItem>
                           ) : null}
-                          {entry.status === 'PROCESSED' && (
+                          {entry.status === 'PROCESSED' && canFinalize && (
                             <DropdownMenuItem
                               onClick={() =>
                                 setConfirmStatus({
@@ -1681,6 +1702,15 @@ function MonthlyPayrollTab() {
           </DialogContent>
         </Dialog>
       )}
+
+      {finalizeOpen ? (
+        <PayrollFinalizeDialog
+          month={monthYear.month}
+          year={monthYear.year}
+          defaultBranchId={branchId || undefined}
+          onClose={() => setFinalizeOpen(false)}
+        />
+      ) : null}
 
       {allowancesFor ? (
         <Dialog open onOpenChange={(open) => !open && setAllowancesFor(null)}>

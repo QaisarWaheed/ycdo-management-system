@@ -1,3 +1,4 @@
+import { assertAttendanceOpen, isAttendanceLocked } from '../attendance-lock/attendance-month-lock.util';
 import { classifyDutyCheckout } from './checkout-classification.util';
 import {
   punchSourcesForBiometricCheckIn,
@@ -542,6 +543,12 @@ export class AttendanceService {
     twentyFourHour: boolean,
     db: PrismaService | Prisma.TransactionClient = this.prisma,
   ) {
+    if (await isAttendanceLocked(db, branchId, dateOnly)) {
+      // Late device sync into a month HR already verified: drop, don't change it.
+      throw new ConflictException(
+        'Attendance month is verified and locked; punch ignored',
+      );
+    }
     let punchType = initialPunchType;
 
     // AUTO: no usable status — open REGULAR session → checkout, else check-in.
@@ -1234,6 +1241,10 @@ export class AttendanceService {
     const dateOnly = toPakistanDateOnly(
       new Date(`${dto.date}T00:00:00+05:00`),
     );
+    await assertAttendanceOpen(this.prisma, {
+      date: dateOnly,
+      branchId: employee.currentBranchId,
+    });
 
     // Fetched unconditionally (not just for mark-only roles) — this is also
     // the source for that date's own duty snapshot below, so re-marking an
@@ -1467,6 +1478,7 @@ export class AttendanceService {
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
+    await assertAttendanceOpen(this.prisma, { date: log.date, branchId: log.branchId });
 
     return this.prisma.attendanceLog.update({
       where: { id },
@@ -1606,6 +1618,7 @@ export class AttendanceService {
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
+    await assertAttendanceOpen(this.prisma, { date: log.date, branchId: log.branchId });
 
     assertEmployeeEligibleForAttendanceRecord(
       log.employee.status,
@@ -2236,8 +2249,15 @@ export class AttendanceService {
     const onLeaveIds = new Set(onLeaveRows.map((r) => r.employeeId));
     const existingIds = new Set(existingLogs.map((r) => r.employeeId));
 
+    const lockedBranches = new Set<string>();
+    for (const branchId of new Set(eligible.map((e) => e.currentBranchId))) {
+      if (await isAttendanceLocked(this.prisma, branchId, dateOnly)) lockedBranches.add(branchId);
+    }
     const toCreate = eligible.filter(
-      (e) => !onLeaveIds.has(e.id) && !existingIds.has(e.id),
+      (e) =>
+        !onLeaveIds.has(e.id) &&
+        !existingIds.has(e.id) &&
+        !lockedBranches.has(e.currentBranchId),
     );
     if (toCreate.length === 0) {
       return;
@@ -3098,6 +3118,10 @@ export class AttendanceService {
     if (!session) {
       throw new NotFoundException(`Reliever session ${sessionId} not found`);
     }
+    await assertAttendanceOpen(this.prisma, {
+      date: session.date,
+      branchId: session.branchId,
+    });
 
     const effectiveCheckIn = dto.checkIn
       ? parseAttendanceDateTime(dto.checkIn)
@@ -3350,9 +3374,14 @@ export class AttendanceService {
     }
     const loggedEmployeeIds = new Set(existingLogs.map((log) => log.employeeId));
 
+    const lockedBranches = new Set<string>();
+    for (const branchId of new Set(activeEmployees.map((e) => e.currentBranchId))) {
+      if (await isAttendanceLocked(this.prisma, branchId, dateOnly)) lockedBranches.add(branchId);
+    }
     const absentEmployees = activeEmployees.filter(
       (emp) =>
         !loggedEmployeeIds.has(emp.id) &&
+        !lockedBranches.has(emp.currentBranchId) &&
         !isWeeklyOffDate(emp.weeklyOffWeekdays, dateOnly),
     );
 
@@ -4128,6 +4157,10 @@ export class AttendanceService {
         'Employee has no branch assignment for attendance import',
       );
     }
+    await assertAttendanceOpen(this.prisma, {
+      date: dateOnly,
+      branchId: existing?.branchId ?? employee.currentBranchId,
+    });
 
     const checkIn = dto.checkIn
       ? parseAttendanceDateTime(dto.checkIn)

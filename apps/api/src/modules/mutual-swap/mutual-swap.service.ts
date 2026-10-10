@@ -1,3 +1,4 @@
+import { assertAttendanceOpen } from '../attendance-lock/attendance-month-lock.util';
 import {
   BadRequestException,
   Injectable,
@@ -80,6 +81,14 @@ export class MutualSwapService {
     }
 
     const dateOnly = this.parseDateOnly(dto.date);
+    await assertAttendanceOpen(this.prisma, {
+      date: dateOnly,
+      branchId: coveringEmployee.currentBranchId,
+    });
+    await assertAttendanceOpen(this.prisma, {
+      date: dateOnly,
+      branchId: coveredEmployee.currentBranchId,
+    });
 
     const existingSwap = await this.prisma.mutualSwap.findFirst({
       where: {
@@ -355,6 +364,8 @@ export class MutualSwapService {
     if (swap.status === 'CANCELLED') {
       throw new BadRequestException('Already cancelled');
     }
+    await assertAttendanceOpen(this.prisma, { date: swap.date, employeeId: swap.coveringEmployeeId });
+    await assertAttendanceOpen(this.prisma, { date: swap.date, employeeId: swap.coveredEmployeeId });
 
     await this.prisma.$transaction([
       this.prisma.mutualSwap.update({

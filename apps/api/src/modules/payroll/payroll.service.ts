@@ -132,6 +132,11 @@ import {
 } from './payslip-slip.util';
 import ExcelJS from 'exceljs';
 import {
+  isAttendanceMonthVerified,
+  monthName,
+} from '../attendance-lock/attendance-month-lock.util';
+import { FINE_REASON_LABELS } from './payslip-slip.util';
+import {
   computePackageAllowanceLines,
   isActiveInMonth,
   monthStartUtc,
@@ -1610,7 +1615,7 @@ export class PayrollService {
           });
       }
     }
-    return this.prisma.payrollEntry.update({
+    const saved = await this.prisma.payrollEntry.update({
       where: { id: entry.id },
       data: {
         ...totals,
@@ -1619,10 +1624,21 @@ export class PayrollService {
       },
       include: { deductions: true, allowances: true },
     });
+    if (Math.abs(Number(entry.netStipend) - Number(saved.netStipend)) >= 0.01) {
+      await this.logChange(
+        entry.id,
+        null,
+        'RECALCULATED',
+        `Recalculated (attendance / package): net ${this.pkr(Number(entry.netStipend))} → ${this.pkr(Number(saved.netStipend))}`,
+        entry.netStipend,
+        saved.netStipend,
+      );
+    }
+    return saved;
   }
 
   /** Saves every filled deduction cause in one transaction, so none are half-applied. */
-  async addDeductions(dto: AddDeductionsDto) {
+  async addDeductions(dto: AddDeductionsDto, actingUserId?: string) {
     for (const item of dto.items) {
       if (isLegacyAttendanceDeduction(item))
         throw new BadRequestException(
@@ -1637,17 +1653,17 @@ export class PayrollService {
       return withPayrollEmployeeTransaction(
         this.prisma,
         await this.entryEmployeeId(dto.payrollEntryId),
-        (tx) => this.inTransaction(tx).addDeductions(dto),
+        (tx) => this.inTransaction(tx).addDeductions(dto, actingUserId),
       );
 
     let updated:
       | Awaited<ReturnType<PayrollService['addDeduction']>>
       | undefined;
     for (const item of dto.items) {
-      updated = await this.addDeduction({
-        payrollEntryId: dto.payrollEntryId,
-        ...item,
-      });
+      updated = await this.addDeduction(
+        { payrollEntryId: dto.payrollEntryId, ...item },
+        actingUserId,
+      );
     }
     return updated;
   }
@@ -1731,7 +1747,7 @@ export class PayrollService {
         },
       },
     });
-    return this.prisma.payrollEntry.update({
+    const updated = await this.prisma.payrollEntry.update({
       where: { id: entry.id },
       data: {
         totalDeductions: Number(entry.totalDeductions) + delta,
@@ -1739,6 +1755,15 @@ export class PayrollService {
       },
       include: { deductions: true },
     });
+    await this.logChange(
+      entry.id,
+      actingUserId,
+      'DEDUCTION_CHANGED',
+      `Deduction changed: ${this.deductionLabel(deduction)} ${this.pkr(Number(deduction.amount))} → ${this.deductionLabel(next)} ${this.pkr(next.amount)}`,
+      entry.netStipend,
+      updated.netStipend,
+    );
+    return updated;
   }
 
   async removeDeduction(id: string, actingUserId: string) {
@@ -1768,7 +1793,7 @@ export class PayrollService {
         },
       },
     });
-    return this.prisma.payrollEntry.update({
+    const updated = await this.prisma.payrollEntry.update({
       where: { id: entry.id },
       data: {
         totalDeductions: Number(entry.totalDeductions) - amount,
@@ -1776,9 +1801,18 @@ export class PayrollService {
       },
       include: { deductions: true },
     });
+    await this.logChange(
+      entry.id,
+      actingUserId,
+      'DEDUCTION_REMOVED',
+      `Deduction removed: ${this.deductionLabel(deduction)} ${this.pkr(amount)}`,
+      entry.netStipend,
+      updated.netStipend,
+    );
+    return updated;
   }
 
-  async addDeduction(dto: AddDeductionDto) {
+  async addDeduction(dto: AddDeductionDto, actingUserId?: string) {
     if (isLegacyAttendanceDeduction(dto))
       throw new BadRequestException(
         'Attendance deductions are owned by the Attendance Card',
@@ -1791,7 +1825,7 @@ export class PayrollService {
       return withPayrollEmployeeTransaction(
         this.prisma,
         await this.entryEmployeeId(dto.payrollEntryId),
-        (tx) => this.inTransaction(tx).addDeduction(dto),
+        (tx) => this.inTransaction(tx).addDeduction(dto, actingUserId),
       );
 
     const entry = await this.prisma.payrollEntry.findUnique({
@@ -1827,7 +1861,7 @@ export class PayrollService {
       },
     });
 
-    return this.prisma.payrollEntry.update({
+    const updated = await this.prisma.payrollEntry.update({
       where: { id: dto.payrollEntryId },
       data: {
         totalDeductions: Number(entry.totalDeductions) + dto.amount,
@@ -1835,6 +1869,16 @@ export class PayrollService {
       },
       include: { deductions: true },
     });
+    await this.logChange(
+      entry.id,
+      actingUserId ?? null,
+      'DEDUCTION_ADDED',
+      `Deduction added: ${this.deductionLabel(dto)} ${this.pkr(dto.amount)}`,
+      entry.netStipend,
+      updated.netStipend,
+      { reason: dto.reason, fineReason: dto.fineReason ?? null, description: dto.description ?? null },
+    );
+    return updated;
   }
 
   async updateStatus(
@@ -1861,6 +1905,11 @@ export class PayrollService {
     }
 
     this.validateStatusTransition(entry.status, dto.status);
+
+    // Accounts finalise only months whose attendance HR has verified.
+    if (dto.status === PayrollStatus.PROCESSED) {
+      await this.assertAttendanceVerified(entry.stipendRecord.employeeId, entry.year, entry.month);
+    }
 
     // Freeze the hourly calculation just before processing.
     if (
@@ -1897,11 +1946,126 @@ export class PayrollService {
 
       return result;
     });
+    await this.logChange(
+      entryId,
+      actingUserId,
+      'STATUS_CHANGED',
+      `Status ${entry.status} → ${dto.status}`,
+      updated.netStipend,
+      updated.netStipend,
+    );
 
     return updated;
   }
 
-  async addAllowance(dto: AddAllowanceDto) {
+  /** Processed requires the employee's branch month to be verified by HR. */
+  private async assertAttendanceVerified(employeeId: string, year: number, month: number) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { fullName: true, currentBranchId: true, currentBranch: { select: { name: true } } },
+    });
+    const ok =
+      !!employee?.currentBranchId &&
+      (await isAttendanceMonthVerified(this.prisma, employee.currentBranchId, year, month));
+    if (!ok) {
+      throw new BadRequestException(
+        `Attendance for ${employee?.currentBranch?.name ?? 'this branch'} (${monthName(year, month)}) is not verified by HR yet; payroll can be finalised after HR verifies it`,
+      );
+    }
+  }
+
+  /**
+   * Accounts: mark every eligible entry of a branch month Processed (or
+   * Paid). Each entry goes through updateStatus, so the same checks and logs apply.
+   */
+  async finalizeBranchMonth(
+    dto: { branchId: string; month: number; year: number; status: PayrollStatus },
+    actingUserId: string,
+  ) {
+    if (dto.status !== PayrollStatus.PROCESSED && dto.status !== PayrollStatus.PAID) {
+      throw new BadRequestException('Choose Processed or Paid');
+    }
+    if (
+      dto.status === PayrollStatus.PROCESSED &&
+      !(await isAttendanceMonthVerified(this.prisma, dto.branchId, dto.year, dto.month))
+    ) {
+      throw new BadRequestException(
+        `Attendance for this branch (${monthName(dto.year, dto.month)}) is not verified by HR yet`,
+      );
+    }
+    const from =
+      dto.status === PayrollStatus.PROCESSED ? PayrollStatus.PENDING : PayrollStatus.PROCESSED;
+    const entries = await this.prisma.payrollEntry.findMany({
+      where: {
+        month: dto.month,
+        year: dto.year,
+        status: from,
+        stipendRecord: { employee: { currentBranchId: dto.branchId } },
+      },
+      select: { id: true, stipendRecord: { select: { employee: { select: { fullName: true } } } } },
+    });
+    const failed: Array<{ employee: string; error: string }> = [];
+    let done = 0;
+    for (const e of entries) {
+      try {
+        await this.updateStatus(e.id, { status: dto.status }, actingUserId);
+        done++;
+      } catch (err) {
+        failed.push({
+          employee: e.stipendRecord.employee.fullName,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { total: entries.length, done, failed };
+  }
+
+  async getChangeLog(entryId: string) {
+    return this.prisma.payrollChangeLog.findMany({
+      where: { payrollEntryId: entryId },
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { email: true, employee: { select: { fullName: true } } } } },
+    });
+  }
+
+  /** One line in the entry's change history; userId null = automatic. */
+  async logChange(
+    payrollEntryId: string,
+    userId: string | null,
+    action: string,
+    summary: string,
+    netBefore?: unknown,
+    netAfter?: unknown,
+    details?: Record<string, unknown>,
+  ) {
+    // Unit-test doubles of Prisma often omit this model; real clients always have it.
+    if (!(this.prisma as { payrollChangeLog?: unknown }).payrollChangeLog) return;
+    await this.prisma.payrollChangeLog.create({
+      data: {
+        payrollEntryId,
+        userId,
+        action,
+        summary,
+        netBefore: netBefore == null ? null : Number(netBefore),
+        netAfter: netAfter == null ? null : Number(netAfter),
+        details: (details ?? undefined) as Prisma.InputJsonValue | undefined,
+      },
+    });
+  }
+
+  private pkr(n: number) {
+    return `PKR ${Math.round(n).toLocaleString('en-PK')}`;
+  }
+
+  private deductionLabel(d: { reason: string; fineReason?: string | null }) {
+    if (d.reason === DeductionType.FINE) {
+      return FINE_REASON_LABELS[d.fineReason ?? 'OTHER'] ?? 'Fine';
+    }
+    const words = d.reason.replace(/_/g, ' ').toLowerCase();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
+
+  async addAllowance(dto: AddAllowanceDto, actingUserId?: string) {
     if (['ADDITIONAL_WORKING_DAYS', 'OVERTIME', 'RELIEVER'].includes(dto.type))
       throw new BadRequestException(
         'Attendance extras must be recorded on the Attendance Card',
@@ -1976,7 +2140,7 @@ export class PayrollService {
       },
     });
 
-    return this.prisma.payrollEntry.update({
+    const updated = await this.prisma.payrollEntry.update({
       where: { id: dto.payrollEntryId },
       data: {
         totalAllowances: Number(entry.totalAllowances) + pay.amount,
@@ -1984,6 +2148,15 @@ export class PayrollService {
       },
       include: { deductions: true, allowances: true },
     });
+    await this.logChange(
+      entry.id,
+      actingUserId ?? null,
+      'ALLOWANCE_ADDED',
+      `Addition: ${dto.description?.trim() || dto.type.replace(/_/g, ' ').toLowerCase()} ${this.pkr(pay.amount)}`,
+      entry.netStipend,
+      updated.netStipend,
+    );
+    return updated;
   }
 
   /**

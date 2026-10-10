@@ -162,7 +162,7 @@ function navItemsForRole(role?: string) {
   if (role === 'PAYROLL_OFFICER') {
     return [
       ...allNavItems.filter((item) =>
-        ['/dashboard', '/employees', '/payroll', '/incentives', '/letters', '/reports'].includes(
+        ['/dashboard', '/employees', '/attendance', '/payroll', '/incentives', '/letters', '/reports'].includes(
           item.to,
         ),
       ),
@@ -212,6 +212,7 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
   },
   '/attendance': {
     roles: [
+      'PAYROLL_OFFICER',
       'HR_MANAGER',
       'HR_ADMIN_MANAGER',
       'HR_OPERATIONS_MANAGER',
