@@ -131,6 +131,12 @@ import {
   type PayslipSlipData,
 } from './payslip-slip.util';
 import ExcelJS from 'exceljs';
+import {
+  computePackageAllowanceLines,
+  isActiveInMonth,
+  monthStartUtc,
+  usesAllowanceTable,
+} from '../allowances/package-allowances.util';
 
 const PK_OFFSET_MS = 5 * 60 * 60 * 1000;
 /** Pakistan calendar date (midnight UTC of the PK day) for a given instant
@@ -2327,6 +2333,7 @@ export class PayrollService {
       presenceDays,
       leaveSplit,
       absenceCounts: card,
+      packageAllowanceLines: breakdown.packageAllowanceLines,
     });
 
     const [withAttendance] = await this.attachPayrollAttendanceReport(
@@ -2346,6 +2353,8 @@ export class PayrollService {
   }
 
   private buildPayslipSlipData(input: {
+    /** Months on the allowance table: per-type, already-prorated amounts. */
+    packageAllowanceLines?: Array<{ label: string; amount: number }>;
     entry: {
       month: number;
       year: number;
@@ -2486,18 +2495,38 @@ export class PayrollService {
       timeZone: 'UTC',
     });
 
-    const earnings = {
-      stipend: Number(entry.basicStipend) || 0,
-      contractualStipend: Number(stipendRecord.basicStipend) || 0,
-      previousMonth: 0,
-      rewardOnProgress: pkg.progressReward || 0,
-      rewards: pkg.reward || 0,
-      otherAllowance:
-        (pkg.allowances || 0) + overtimeAmount + otherExtraAllowances,
-      fuel: pkg.fuelAllowance || 0,
-      mobileLoad: 0,
-      extraDuty: extraDutyAmount,
-    };
+    const packageLines = input.packageAllowanceLines;
+    const packageLinesTotal = (packageLines ?? []).reduce(
+      (s, l) => s + l.amount,
+      0,
+    );
+    // Allowance-table months: the old four fields are replaced by the
+    // employee's allowance lines (shown individually in the sections).
+    const earnings = packageLines
+      ? {
+          stipend: Number(entry.basicStipend) || 0,
+          contractualStipend: Number(stipendRecord.basicStipend) || 0,
+          previousMonth: 0,
+          rewardOnProgress: 0,
+          rewards: 0,
+          otherAllowance:
+            packageLinesTotal + overtimeAmount + otherExtraAllowances,
+          fuel: 0,
+          mobileLoad: 0,
+          extraDuty: extraDutyAmount,
+        }
+      : {
+          stipend: Number(entry.basicStipend) || 0,
+          contractualStipend: Number(stipendRecord.basicStipend) || 0,
+          previousMonth: 0,
+          rewardOnProgress: pkg.progressReward || 0,
+          rewards: pkg.reward || 0,
+          otherAllowance:
+            (pkg.allowances || 0) + overtimeAmount + otherExtraAllowances,
+          fuel: pkg.fuelAllowance || 0,
+          mobileLoad: 0,
+          extraDuty: extraDutyAmount,
+        };
 
     const deductionsBlock = {
       advance: (pkg.advanceDeduction || 0) + advanceFromEntries,
@@ -2590,9 +2619,10 @@ export class PayrollService {
         deductionRows: deductions,
         allowanceRows: allowances,
         pkg: {
-          allowances: pkg.allowances || 0,
+          allowances: packageLines ? 0 : pkg.allowances || 0,
           fineDeduction: pkg.fineDeduction || 0,
         },
+        packageLines,
         totalDays,
       }),
       earningsTotal,
@@ -2917,28 +2947,58 @@ export class PayrollService {
       context.applyContractualPackage ??
       context.stipendRecord.effectiveTo == null;
     const { monthStart, monthEnd } = this.pakistanMonthWindow(year, month);
-    const fixedAllowances = ownsMonth
-      ? prorateMonthlyPackageAmount({
-          monthlyAmount:
-            (pkg.allowances || 0) +
-            (pkg.reward || 0) +
-            (pkg.progressReward || 0) +
-            (pkg.fuelAllowance || 0),
-          year,
-          month,
-          segmentStart: monthStart,
-          segmentEndExclusive: null,
-          monthEnd,
-          employmentStart: context.backfillFromAttendance
-            ? null
-            : context.employee.joiningDate,
-          employmentEndExclusive:
-            context.employee.status &&
-            isExitEmployeeStatus(context.employee.status)
-              ? context.employee.statusEffectiveFrom
-              : null,
-        })
-      : 0;
+    const prorate = (monthlyAmount: number) =>
+      prorateMonthlyPackageAmount({
+        monthlyAmount,
+        year,
+        month,
+        segmentStart: monthStart,
+        segmentEndExclusive: null,
+        monthEnd,
+        employmentStart: context.backfillFromAttendance
+          ? null
+          : context.employee.joiningDate,
+        employmentEndExclusive:
+          context.employee.status &&
+          isExitEmployeeStatus(context.employee.status)
+            ? context.employee.statusEffectiveFrom
+            : null,
+      });
+    // From PACKAGE_ALLOWANCES_FROM the package allowances are the employee's
+    // EmployeeAllowance rows (per-type proration); before that, the four old
+    // StipendRecord columns, unchanged.
+    let fixedAllowances = 0;
+    let packageAllowanceLines: Array<{ label: string; amount: number }> | undefined;
+    if (ownsMonth && usesAllowanceTable(year, month)) {
+      const rows = await this.prisma.employeeAllowance.findMany({
+        where: {
+          employeeId,
+          startMonth: { lte: monthStartUtc(year, month) },
+          OR: [{ endMonth: null }, { endMonth: { gte: monthStartUtc(year, month) } }],
+        },
+        include: { type: true },
+      });
+      const computed = computePackageAllowanceLines(
+        rows
+          .filter((r) => isActiveInMonth(r, year, month))
+          .map((r) => ({
+            name: r.type.name,
+            proration: r.type.proration,
+            amount: Number(r.amount) || 0,
+            sortOrder: r.type.sortOrder,
+          })),
+        { prorate, paidDays: salary.paidDays, calendarDays: card.calendarDays },
+      );
+      fixedAllowances = computed.total;
+      packageAllowanceLines = computed.lines;
+    } else if (ownsMonth) {
+      fixedAllowances = prorate(
+        (pkg.allowances || 0) +
+          (pkg.reward || 0) +
+          (pkg.progressReward || 0) +
+          (pkg.fuelAllowance || 0),
+      );
+    }
     const fixedPackageDeductions = ownsMonth
       ? (pkg.loanDeduction || 0) +
         (pkg.advanceDeduction || 0) +
@@ -2956,7 +3016,7 @@ export class PayrollService {
           ),
       )
       .reduce((sum, a) => sum + Number(a.amount), 0);
-    return buildHourlyPayrollBreakdown({
+    const breakdown = buildHourlyPayrollBreakdown({
       contractualBasicStipend: ownsMonth ? pkg.basicStipend : 0,
       payrollBasicStipend: ownsMonth ? salary.earnedBasic : 0,
       dailyDutyHours: hours,
@@ -2982,6 +3042,7 @@ export class PayrollService {
         storedAllowances +
         (ownsMonth ? salary.additionalWorkingDayPay + salary.overtimePay : 0),
     });
+    return packageAllowanceLines ? { ...breakdown, packageAllowanceLines } : breakdown;
   }
 
   async findAll(

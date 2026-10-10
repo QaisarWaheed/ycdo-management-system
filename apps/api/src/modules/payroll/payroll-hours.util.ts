@@ -7,6 +7,8 @@ import {
 const PK_OFFSET_MS = 5 * 60 * 60 * 1000;
 
 export interface HourlyPayrollBreakdown {
+  /** Per-type package allowance amounts (months on the allowance table only). */
+  packageAllowanceLines?: Array<{ label: string; amount: number }>;
   contractualBasicStipend: number;
   dailyDutyHours: number;
   daysInMonth: number;

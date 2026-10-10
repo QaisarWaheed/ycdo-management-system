@@ -191,6 +191,8 @@ export function buildPayslipSections(input: {
   deductionRows: SlipDeductionRow[];
   allowanceRows: SlipAllowanceRow[];
   pkg: { allowances: number; fineDeduction: number };
+  /** Allowance-table months: one line per allowance type, replacing the old fixed lines. */
+  packageLines?: Array<{ label: string; amount: number }>;
   totalDays: number;
 }): PayslipSection[] {
   const { earnings, deductions, deductionRows, allowanceRows, pkg } = input;
@@ -202,8 +204,13 @@ export function buildPayslipSections(input: {
   // Pay & Allowances — split "otherAllowance" back into its parts.
   const overtime = sum(allowanceRows.filter((a) => a.type === 'OVERTIME'));
   const incentives = sum(allowanceRows.filter((a) => a.type === 'CUSTOM'));
+  const packageLines = (input.packageLines ?? []).map((l) => ({
+    label: l.label,
+    amount: money(l.amount),
+  }));
+  const packageTotal = packageLines.reduce((s, l) => s + l.amount, 0);
   const otherAdditions = money(
-    earnings.otherAllowance - pkg.allowances - overtime - incentives,
+    earnings.otherAllowance - pkg.allowances - packageTotal - overtime - incentives,
   );
   const dailyRate =
     earnings.contractualStipend && input.totalDays
@@ -223,6 +230,7 @@ export function buildPayslipSections(input: {
       { label: 'Reward On Progress', amount: money(earnings.rewardOnProgress) },
       { label: 'Petrol', amount: money(earnings.fuel) },
       { label: 'Travelling Exp', amount: money(pkg.allowances) },
+      ...packageLines,
       { label: 'Previous Month', amount: money(earnings.previousMonth) },
       { label: 'Mobile Load', amount: money(earnings.mobileLoad) },
       { label: 'Other Additions', amount: otherAdditions },

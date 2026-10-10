@@ -130,10 +130,10 @@ model Department {
   sortOrder Int      @default(999)
   createdAt DateTime @default(now())
 
-  employees          Employee[]
-  employmentHistory  EmploymentHistory[]
-  projectDepartments ProjectDepartment[]
-  managerScopes      UserManagerScope[]
+  employees                   Employee[]
+  employmentHistory           EmploymentHistory[]
+  projectDepartments          ProjectDepartment[]
+  managerScopes               UserManagerScope[]
   appointmentTemplateMappings AppointmentTemplateMapping[]
 }
 
@@ -205,6 +205,8 @@ model Employee {
   relieverRequestsReceived   RelieverRequest[]           @relation("RelieverEmployee")
   stipendReceipts            StipendReceipt[]
   incentives                 Incentive[]
+  allowanceAssignments       EmployeeAllowance[]
+  payChangeRequests          PayChangeRequest[]
   additionalWorkingDays      AdditionalWorkingDay[]
   portalAttendances          PortalAttendance[]
   advanceLoanRequests        AdvanceLoanRequest[]
@@ -214,43 +216,43 @@ model Employee {
   coveredSwaps               MutualSwap[]                @relation("CoveredSwaps")
 
   // Additional personal info
-  fatherStatus           String?
-  guardianContact        String?
-  fatherContactNumber    String?
-  emergencyContactName   String?
-  emergencyContactNumber String?
-  emergencyRelation      String?
-  spouseName             String?
-  spouseContactNumber    String?
-  photoUrl               String?
-  privatePhotoUrl        String?
-  hideProfilePhoto       Boolean        @default(false)
-  caste                  String?
-  domicile               String?
-  currentAddress         String?
-  permanentAddress       String?
-  district               String?
-  tehsil                 String?
-  policeStation          String?
-  bloodGroup             String?
-  staffType              StaffType      @default(NEW)
+  fatherStatus              String?
+  guardianContact           String?
+  fatherContactNumber       String?
+  emergencyContactName      String?
+  emergencyContactNumber    String?
+  emergencyRelation         String?
+  spouseName                String?
+  spouseContactNumber       String?
+  photoUrl                  String?
+  privatePhotoUrl           String?
+  hideProfilePhoto          Boolean        @default(false)
+  caste                     String?
+  domicile                  String?
+  currentAddress            String?
+  permanentAddress          String?
+  district                  String?
+  tehsil                    String?
+  policeStation             String?
+  bloodGroup                String?
+  staffType                 StaffType      @default(NEW)
   /// Reliever-only staff: no regular duty; skipped by auto-absent marking.
-  relieverOnly           Boolean        @default(false)
-  dutyStartTime          String?
-  dutyEndTime            String?
+  relieverOnly              Boolean        @default(false)
+  dutyStartTime             String?
+  dutyEndTime               String?
   /// Daily duty length in hours; half-hour steps (e.g. 6.5).
-  dutyTotalHours         Float?
+  dutyTotalHours            Float?
   /// Paid weekly rest: JS weekday 0=Sun … 6=Sat (Pakistan calendar). Empty = seven-day week.
-  weeklyOffWeekdays      Int[]          @default([])
+  weeklyOffWeekdays         Int[]          @default([])
   /// Monthly paid leave allowance. Null/omitted uses the runtime default of 2 days (not unlimited).
-  monthlyAllowedLeaves   Int?
+  monthlyAllowedLeaves      Int?
   /// Pakistan calendar date: LATE/UA on this day or later count toward the next Near/Due cycle after a closed suspension inquiry reinstatement. Null = full current month.
   suspensionWatchBaselineOn DateTime?
-  province               String?
-  city                   String?
-  permanentProvince      String?
-  permanentCity          String?
-  maritalStatus          MaritalStatus?
+  province                  String?
+  city                      String?
+  permanentProvince         String?
+  permanentCity             String?
+  maritalStatus             MaritalStatus?
 }
 
 enum MaritalStatus {
@@ -328,9 +330,9 @@ model RelieverSession {
   totalMinutes Int       @default(0)
   createdAt    DateTime  @default(now())
 
-  employee              Employee               @relation(fields: [employeeId], references: [id])
-  branch                Branch                 @relation(fields: [branchId], references: [id])
-  additionalWorkingDay  AdditionalWorkingDay?
+  employee             Employee              @relation(fields: [employeeId], references: [id])
+  branch               Branch                @relation(fields: [branchId], references: [id])
+  additionalWorkingDay AdditionalWorkingDay?
 }
 
 // ─── DESIGNATIONS ───────────────────────────────────────────
@@ -344,7 +346,7 @@ model Designation {
   sortOrder Int      @default(999)
   createdAt DateTime @default(now())
 
-  managerScopes UserManagerScope[]
+  managerScopes               UserManagerScope[]
   appointmentTemplateMappings AppointmentTemplateMapping[]
 }
 
@@ -675,54 +677,54 @@ enum DisciplinaryStatus {
 }
 
 model Inquiry {
-  id                            String                       @id @default(uuid())
-  disciplinaryActionId          String                       @unique
-  startedAt                     DateTime                     @default(now())
-  deadlineAt                    DateTime
-  outcome                       InquiryOutcome?
-  notes                         String?
-  closedAt                      DateTime?
-  inquiryOfficerUserId          String?
-  inquiryOfficerName            String?
-  inquiryOfficerDesignation     String?
-  inquiryOfficerPhone           String?
-  finding                       InquiryFinding?
-  findingRecordedById           String?
-  findingRecordedAt             DateTime?
-  finalAction                   InquiryFinalAction?
-  finalDecisionStatus           InquiryFinalDecisionStatus?
-  selectedFinalApproverUserId   String?
-  finalDecisionSubmittedById    String?
-  finalDecisionSubmittedAt      DateTime?
-  finalDecidedById              String?
-  finalDecidedAt                DateTime?
-  finalDecisionNote             String?
-  destinationBranchId           String?
-  fineAmount                    Decimal?                     @db.Decimal(10, 2)
-  appliedFineDeductionId        String?
-  deadlineReminderSentAt        DateTime?
-  overdueNotificationSentAt     DateTime?
-  durationDays                  Int?
-  closeRecommendation           String?
-  officiallyOpenedAt            DateTime?
-  openApprovalStatus            InquiryOpenApprovalStatus?
-  selectedOpenApproverUserId    String?
-  openSubmittedById             String?
-  openSubmittedAt               DateTime?
-  openDecidedById               String?
-  openDecidedAt                 DateTime?
-  openDecisionNote              String?
+  id                          String                      @id @default(uuid())
+  disciplinaryActionId        String                      @unique
+  startedAt                   DateTime                    @default(now())
+  deadlineAt                  DateTime
+  outcome                     InquiryOutcome?
+  notes                       String?
+  closedAt                    DateTime?
+  inquiryOfficerUserId        String?
+  inquiryOfficerName          String?
+  inquiryOfficerDesignation   String?
+  inquiryOfficerPhone         String?
+  finding                     InquiryFinding?
+  findingRecordedById         String?
+  findingRecordedAt           DateTime?
+  finalAction                 InquiryFinalAction?
+  finalDecisionStatus         InquiryFinalDecisionStatus?
+  selectedFinalApproverUserId String?
+  finalDecisionSubmittedById  String?
+  finalDecisionSubmittedAt    DateTime?
+  finalDecidedById            String?
+  finalDecidedAt              DateTime?
+  finalDecisionNote           String?
+  destinationBranchId         String?
+  fineAmount                  Decimal?                    @db.Decimal(10, 2)
+  appliedFineDeductionId      String?
+  deadlineReminderSentAt      DateTime?
+  overdueNotificationSentAt   DateTime?
+  durationDays                Int?
+  closeRecommendation         String?
+  officiallyOpenedAt          DateTime?
+  openApprovalStatus          InquiryOpenApprovalStatus?
+  selectedOpenApproverUserId  String?
+  openSubmittedById           String?
+  openSubmittedAt             DateTime?
+  openDecidedById             String?
+  openDecidedAt               DateTime?
+  openDecisionNote            String?
 
-  disciplinaryAction      DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
-  inquiryOfficer          User?              @relation("InquiryOfficer", fields: [inquiryOfficerUserId], references: [id])
-  findingRecordedBy       User?              @relation("InquiryFindingRecordedBy", fields: [findingRecordedById], references: [id])
-  selectedFinalApprover   User?              @relation("InquiryFinalApprover", fields: [selectedFinalApproverUserId], references: [id])
-  finalDecisionSubmittedBy User?             @relation("InquiryFinalSubmittedBy", fields: [finalDecisionSubmittedById], references: [id])
-  finalDecidedBy          User?              @relation("InquiryFinalDecidedBy", fields: [finalDecidedById], references: [id])
-  destinationBranch       Branch?            @relation("InquiryDestinationBranch", fields: [destinationBranchId], references: [id])
-  selectedOpenApprover    User?              @relation("InquiryOpenApprover", fields: [selectedOpenApproverUserId], references: [id])
-  openSubmittedBy         User?              @relation("InquiryOpenSubmittedBy", fields: [openSubmittedById], references: [id])
-  openDecidedBy           User?              @relation("InquiryOpenDecidedBy", fields: [openDecidedById], references: [id])
+  disciplinaryAction       DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
+  inquiryOfficer           User?              @relation("InquiryOfficer", fields: [inquiryOfficerUserId], references: [id])
+  findingRecordedBy        User?              @relation("InquiryFindingRecordedBy", fields: [findingRecordedById], references: [id])
+  selectedFinalApprover    User?              @relation("InquiryFinalApprover", fields: [selectedFinalApproverUserId], references: [id])
+  finalDecisionSubmittedBy User?              @relation("InquiryFinalSubmittedBy", fields: [finalDecisionSubmittedById], references: [id])
+  finalDecidedBy           User?              @relation("InquiryFinalDecidedBy", fields: [finalDecidedById], references: [id])
+  destinationBranch        Branch?            @relation("InquiryDestinationBranch", fields: [destinationBranchId], references: [id])
+  selectedOpenApprover     User?              @relation("InquiryOpenApprover", fields: [selectedOpenApproverUserId], references: [id])
+  openSubmittedBy          User?              @relation("InquiryOpenSubmittedBy", fields: [openSubmittedById], references: [id])
+  openDecidedBy            User?              @relation("InquiryOpenDecidedBy", fields: [openDecidedById], references: [id])
 
   @@index([inquiryOfficerUserId])
   @@index([selectedFinalApproverUserId, finalDecisionStatus])
@@ -876,14 +878,14 @@ enum AppointmentLetterLanguage {
 
 /// Routes Appointment letters: Department + Designation (+ fallbacks) → template + language.
 model AppointmentTemplateMapping {
-  id             String                      @id @default(uuid())
-  departmentId   String?
-  designationId  String?
-  language       AppointmentLetterLanguage
-  templateCode   String
-  active         Boolean                     @default(true)
-  createdAt      DateTime                    @default(now())
-  updatedAt      DateTime                    @updatedAt
+  id            String                    @id @default(uuid())
+  departmentId  String?
+  designationId String?
+  language      AppointmentLetterLanguage
+  templateCode  String
+  active        Boolean                   @default(true)
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
 
   department  Department?  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   designation Designation? @relation(fields: [designationId], references: [id], onDelete: Cascade)
@@ -1096,6 +1098,8 @@ model StipendReceipt {
 model Incentive {
   id         String   @id @default(uuid())
   employeeId String
+  /// Incentive category (On Progress, Private Room, ...); null on old rows.
+  typeId     String?
   amount     Decimal  @db.Decimal(10, 2)
   reason     String   @db.Text
   addedBy    String
@@ -1103,8 +1107,106 @@ model Incentive {
   year       Int
   createdAt  DateTime @default(now())
 
-  employee    Employee @relation(fields: [employeeId], references: [id])
-  addedByUser User     @relation(fields: [addedBy], references: [id])
+  employee    Employee       @relation(fields: [employeeId], references: [id])
+  addedByUser User           @relation(fields: [addedBy], references: [id])
+  type        IncentiveType? @relation(fields: [typeId], references: [id])
+}
+
+/// Incentive categories chosen from a list instead of free text.
+model IncentiveType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  incentives Incentive[]
+}
+
+/// How a package allowance is paid in a month.
+enum AllowanceProration {
+  /// Full amount; reduced only for a mid-month join / exit (like the old package fields).
+  FULL_MONTH
+  /// amount × paid days ÷ days in month, the same rate as Basic.
+  ATTENDANCE
+}
+
+/// Allowance categories managed by Accounts / executives (Pharmacy, Audit, ...).
+model PayAllowanceType {
+  id          String             @id @default(uuid())
+  name        String             @unique
+  proration   AllowanceProration @default(FULL_MONTH)
+  /// Old StipendRecord column this type replaced (allowances / reward / progressReward / fuelAllowance).
+  legacyField String?            @unique
+  isActive    Boolean            @default(true)
+  sortOrder   Int                @default(100)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  assignments EmployeeAllowance[]
+}
+
+/// One allowance on one employee's package for a range of months (inclusive).
+/// Payroll reads these from PACKAGE_ALLOWANCES_FROM onward.
+model EmployeeAllowance {
+  id          String    @id @default(uuid())
+  employeeId  String
+  typeId      String
+  amount      Decimal   @db.Decimal(10, 2)
+  /// First day of the first month it applies.
+  startMonth  DateTime  @db.Date
+  /// First day of the last month it applies; null = until ended.
+  endMonth    DateTime? @db.Date
+  note        String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  employee Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type     PayAllowanceType @relation(fields: [typeId], references: [id])
+
+  @@index([employeeId, startMonth])
+}
+
+enum PayChangeKind {
+  SALARY_INCREMENT
+  PACKAGE_EDIT
+  ALLOWANCE
+  INCENTIVE
+  PAYROLL_ADDITION
+}
+
+enum PayChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// A pay increase waiting for an executive, like the onboarding approval.
+model PayChangeRequest {
+  id             String                 @id @default(uuid())
+  kind           PayChangeKind
+  employeeId     String
+  /// The original request body; replayed through the normal service on approval.
+  payload        Json
+  /// Human-readable change, e.g. "Basic 25,000 → 30,000 from Nov 2026".
+  summary        String
+  reason         String?
+  approverTarget EmployeeApproverTarget
+  status         PayChangeStatus        @default(PENDING)
+  submittedById  String
+  reviewedById   String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  submittedBy User     @relation("SubmittedPayChanges", fields: [submittedById], references: [id])
+  reviewedBy  User?    @relation("ReviewedPayChanges", fields: [reviewedById], references: [id])
+
+  @@index([status, approverTarget])
+  @@index([employeeId, status])
 }
 
 /// Extra full duty-days credited by HR (e.g. covering double duty).
@@ -1148,6 +1250,8 @@ model User {
   auditLogs                    AuditLog[]
   broadcasts                   NotificationBroadcast[]
   incentivesAdded              Incentive[]
+  submittedPayChanges          PayChangeRequest[]           @relation("SubmittedPayChanges")
+  reviewedPayChanges           PayChangeRequest[]           @relation("ReviewedPayChanges")
   additionalWorkingDaysAdded   AdditionalWorkingDay[]
   leaveApprovals               LeaveApproval[]              @relation("LeaveApprovals")
   passwordRecord               UserPassword?

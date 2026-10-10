@@ -1,3 +1,5 @@
+import type { PendingApprovalResponse } from './payApprovals'
+import type { EmployeeApproverTarget } from './employeeOnboarding'
 import api from '../axios'
 import type { PayslipSlipData } from '@/lib/payslipSlip'
 import type {
@@ -102,7 +104,7 @@ export const payrollApi = {
   removeDeduction: (id: string) =>
     api.delete<unknown, PayrollEntry>(`/payroll/deductions/${id}`),
   addAllowance: (data: Record<string, unknown>) =>
-    api.post<unknown, PayrollEntry>('/payroll/allowances', data),
+    api.post<unknown, PayrollEntry | PendingApprovalResponse>('/payroll/allowances', data),
   updateStatus: (id: string, data: Record<string, unknown>) =>
     api.patch<unknown, PayrollEntry>(`/payroll/entries/${id}/status`, data),
   getHistory: (employeeId: string) =>
@@ -122,16 +124,17 @@ export const payrollApi = {
     )
     return mapPayrollSummary(data)
   },
-  increment: (data: StipendIncrementPayload) =>
-    api.post('/payroll/increment', data),
+  increment: (data: StipendIncrementPayload & { approverTarget?: EmployeeApproverTarget }) =>
+    api.post<unknown, unknown>('/payroll/increment', data),
 
   updateActiveStipend: (
     data: Omit<StipendIncrementPayload, 'effectiveFrom' | 'reason'> & {
       reason?: string
       /** Correct open package start date without creating a new package. */
       effectiveFrom?: string
+      approverTarget?: EmployeeApproverTarget
     },
-  ) => api.patch('/payroll/stipend', data),
+  ) => api.patch<unknown, unknown>('/payroll/stipend', data),
 
   getOvertimePreview: (employeeId: string, month: number, year: number) =>
     api.get<unknown, OvertimePreview>(

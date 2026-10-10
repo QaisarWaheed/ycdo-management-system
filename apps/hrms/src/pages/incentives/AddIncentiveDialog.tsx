@@ -1,9 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { incentivesApi } from '@/api/endpoints/incentives'
+import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
+import { allowancesApi, isPendingApproval } from '@/api/endpoints/payApprovals'
+import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { PKRInput } from '@/components/common/PKRInput'
 import { Button } from '@/components/ui/button'
@@ -37,10 +40,8 @@ const schema = z.object({
   month: z.number().min(1).max(12),
   year: z.number().min(2020),
   amount: z.number().positive('Amount must be greater than 0'),
-  reason: z
-    .string()
-    .min(10, 'Reason must be at least 10 characters')
-    .max(1000, 'Reason must be 1000 characters or less'),
+  typeId: z.string().min(1, 'Choose an incentive type'),
+  reason: z.string().max(1000, 'Reason must be 1000 characters or less'),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -76,9 +77,17 @@ export function AddIncentiveDialog({
       month: initialMonth,
       year: initialYear,
       amount: 0,
+      typeId: '',
       reason: '',
     },
   })
+  const { data: incentiveTypes = [] } = useQuery({
+    queryKey: ['incentive-types'],
+    queryFn: allowancesApi.listIncentiveTypes,
+    enabled: open,
+  })
+  const needsApproval = useNeedsPayApproval()
+  const [approver, setApprover] = useState<EmployeeApproverTarget>()
 
   useEffect(() => {
     if (defaultEmployeeId) {
@@ -91,15 +100,25 @@ export function AddIncentiveDialog({
   const reason = form.watch('reason')
 
   const mutation = useMutation({
-    mutationFn: (values: FormValues) => incentivesApi.create(values),
-    onSuccess: () => {
-      toast({ title: 'Incentive added successfully' })
+    mutationFn: (values: FormValues) =>
+      incentivesApi.create({
+        ...values,
+        reason: values.reason.trim() || undefined,
+        approverTarget: approver,
+      }),
+    onSuccess: (res) => {
+      toast({
+        title: isPendingApproval(res)
+          ? `Sent to ${res.approverLabel} for approval`
+          : 'Incentive added successfully',
+      })
       queryClient.invalidateQueries({ queryKey: ['incentives'] })
       form.reset({
         employeeId: defaultEmployeeId ?? '',
         month: initialMonth,
         year: initialYear,
         amount: 0,
+        typeId: '',
         reason: '',
       })
       onOpenChange(false)
@@ -217,10 +236,37 @@ export function AddIncentiveDialog({
 
             <FormField
               control={form.control}
+              name="typeId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Incentive type *</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {incentiveTypes
+                        .filter((t) => t.isActive)
+                        .map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="reason"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Reason for Incentive *</FormLabel>
+                  <FormLabel>Note (optional)</FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Describe the reason for this incentive..."
@@ -236,10 +282,14 @@ export function AddIncentiveDialog({
               )}
             />
 
-            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Incentives are final once added and automatically reflected in the
-              employee&apos;s payroll for the selected month.
-            </p>
+            {needsApproval ? (
+              <ApproverSelect value={approver} onChange={setApprover} id="incentive-approver" />
+            ) : (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Incentives are final once added and automatically reflected in the
+                employee&apos;s payroll for the selected month.
+              </p>
+            )}
 
             <DialogFooter>
               <Button
@@ -249,8 +299,8 @@ export function AddIncentiveDialog({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? 'Adding...' : 'Add Incentive'}
+              <Button type="submit" disabled={mutation.isPending || (needsApproval && !approver)}>
+                {mutation.isPending ? 'Adding...' : needsApproval ? 'Send for approval' : 'Add Incentive'}
               </Button>
             </DialogFooter>
           </form>

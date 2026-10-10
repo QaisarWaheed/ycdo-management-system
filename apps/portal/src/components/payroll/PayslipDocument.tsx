@@ -112,6 +112,14 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
                 </th>
               </tr>
             </thead>
+            {slip.sections ? (
+              <tbody>
+                {(slip.sections.find((s) => s.key === 'earnings')?.lines ?? []).map((l) => (
+                  <MoneyRow key={l.label} label={l.label} amount={l.amount} />
+                ))}
+                <MoneyRow label="Stipend & Other Allowances" amount={earningsTotal} bold />
+              </tbody>
+            ) : (
             <tbody>
               <MoneyRow label="Actual Basic Stipend" amount={slip.earnings.contractualStipend ?? slip.earnings.stipend} />
               <MoneyRow label="Stipend" amount={slip.earnings.stipend} />
@@ -140,6 +148,7 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
                 bold
               />
             </tbody>
+            )}
           </table>
 
           <table className="w-full border-collapse">
@@ -153,6 +162,24 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
                 </th>
               </tr>
             </thead>
+            {slip.sections ? (
+              <tbody>
+                {slip.sections
+                  .filter((s) => s.key !== 'earnings' && s.lines.length > 0)
+                  .map((s) => [
+                    <tr key={s.key} className="bg-yellow-100">
+                      <td colSpan={2} className="border border-black/30 px-2 py-1 text-xs font-semibold">
+                        {s.title}
+                      </td>
+                    </tr>,
+                    ...s.lines.map((l) => (
+                      <MoneyRow key={`${s.key}-${l.label}`} label={l.label} amount={l.amount} />
+                    )),
+                  ])}
+                <MoneyRow label="Deduction" amount={deductionsTotal} bold />
+                <MoneyRow label="Net Pay" amount={netPay} bold />
+              </tbody>
+            ) : (
             <tbody>
               <MoneyRow label="Advance" amount={slip.deductions.advance} />
               <MoneyRow label="Loan" amount={slip.deductions.loan} />
@@ -188,6 +215,7 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
               <MoneyRow label="Deduction" amount={deductionsTotal} bold />
               <MoneyRow label="Net Pay" amount={netPay} bold />
             </tbody>
+            )}
           </table>
         </div>
 

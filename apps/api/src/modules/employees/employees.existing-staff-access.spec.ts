@@ -14,7 +14,7 @@ jest.mock('./employee-code.helper',()=>({generateEmployeeCode:jest.fn(async()=>'
 function setup() {
   let employee:any;
   const create=jest.fn(async({data})=>(employee={id:'e',...data}));
-  const db:any={employee:{create,findUnique:jest.fn(async()=>employee)},user:{findUnique:jest.fn(async()=>null)},employmentHistory:{create:jest.fn()},stipendRecord:{create:jest.fn()},auditLog:{create:jest.fn()}};
+  const db:any={employee:{create,findUnique:jest.fn(async()=>employee)},user:{findUnique:jest.fn(async()=>null)},employmentHistory:{create:jest.fn()},stipendRecord:{create:jest.fn()},payAllowanceType:{findMany:jest.fn(async()=>[])},employeeAllowance:{createMany:jest.fn()},auditLog:{create:jest.fn()}};
   db.$transaction=async fn=>fn(db);
   const service:any=Object.assign(Object.create(EmployeesService.prototype),{prisma:db,lettersService:{generateSystemLetter:jest.fn()},validateCreateDto:jest.fn(),ensureBranchExists:jest.fn(),ensureDepartmentExists:jest.fn(),createUserForEmployee:jest.fn(),autoAssignBiometricId:jest.fn()});
   return {service,create};

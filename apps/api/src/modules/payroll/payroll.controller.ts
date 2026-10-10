@@ -37,6 +37,12 @@ import {
   UpdatePayrollStatusDto,
 } from './payroll.dto';
 import { PayrollService } from './payroll.service';
+import { PayChangeKind } from '@prisma/client';
+import {
+  isPayExecutive,
+  PayChangeRequestsService,
+  type PayActor,
+} from '../pay-approvals/pay-change-requests.service';
 
 const PAYROLL_READ_ROLES = [
   UserRole.SUPER_ADMIN,
@@ -58,6 +64,18 @@ const PAYROLL_WRITE_ROLES = [
   UserRole.IT_ADMIN,
 ];
 
+/**
+ * Pay-increasing changes: HR / IT / Accounts send them for executive approval;
+ * executives (and Super Admin) apply them directly.
+ */
+const PAY_CHANGE_ROLES = [
+  ...PAYROLL_WRITE_ROLES,
+  UserRole.PAYROLL_OFFICER,
+  UserRole.PRESIDENT,
+  UserRole.FOUNDER,
+  UserRole.CHAIRMAN,
+];
+
 const OVERTIME_APPLY_ROLES = [
   UserRole.SUPER_ADMIN,
   UserRole.HR_MANAGER,
@@ -69,7 +87,10 @@ const OVERTIME_APPLY_ROLES = [
 @Controller('payroll')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PayrollController {
-  constructor(private payrollService: PayrollService) {}
+  constructor(
+    private payrollService: PayrollService,
+    private payChangeRequests: PayChangeRequestsService,
+  ) {}
   @Post('entries')
   @Roles(...PAYROLL_WRITE_ROLES)
   @RoutePermission(Permission.PAYROLL_MANAGE)
@@ -178,9 +199,24 @@ export class PayrollController {
   }
 
   @Post('allowances')
-  @Roles(...PAYROLL_WRITE_ROLES)
+  @Roles(...PAY_CHANGE_ROLES)
   @RoutePermission(Permission.PAYROLL_MANAGE)
-  addAllowance(@Body() dto: AddAllowanceDto) {
+  async addAllowance(@Body() dto: AddAllowanceDto, @CurrentUser() user: PayActor) {
+    if (!isPayExecutive(user)) {
+      const { employeeId, summary } =
+        await this.payChangeRequests.describePayrollAddition(dto);
+      return this.payChangeRequests.submit(
+        {
+          kind: PayChangeKind.PAYROLL_ADDITION,
+          employeeId,
+          payload: { ...dto },
+          summary,
+          reason: dto.description,
+          approverTarget: dto.approverTarget,
+        },
+        user,
+      );
+    }
     return this.payrollService.addAllowance(dto);
   }
 
@@ -317,22 +353,55 @@ export class PayrollController {
   }
 
   @Post('increment')
-  @Roles(...PAYROLL_WRITE_ROLES)
+  @Roles(...PAY_CHANGE_ROLES)
   @RoutePermission(Permission.PAYROLL_MANAGE)
-  salaryIncrement(
+  async salaryIncrement(
     @Body() dto: SalaryIncrementDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: PayActor,
   ) {
-    return this.payrollService.salaryIncrement(dto, user.id);
+    const pending = await this.packageApproval(PayChangeKind.SALARY_INCREMENT, dto, user);
+    if (pending) return pending;
+    const result = await this.payrollService.salaryIncrement(dto, user.id);
+    await this.payChangeRequests.afterPackageChange(dto.employeeId);
+    return result;
   }
 
   @Patch('stipend')
-  @Roles(...PAYROLL_WRITE_ROLES)
+  @Roles(...PAY_CHANGE_ROLES)
   @RoutePermission(Permission.PAYROLL_MANAGE)
-  updateActiveStipend(
+  async updateActiveStipend(
     @Body() dto: UpdateActiveStipendDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: PayActor,
   ) {
-    return this.payrollService.updateActiveStipend(dto, user.id);
+    const pending = await this.packageApproval(PayChangeKind.PACKAGE_EDIT, dto, user);
+    if (pending) return pending;
+    const result = await this.payrollService.updateActiveStipend(dto, user.id);
+    await this.payChangeRequests.afterPackageChange(dto.employeeId);
+    return result;
+  }
+
+  /** A package change that raises pay, from a non-executive, becomes a request. */
+  private async packageApproval(
+    kind: PayChangeKind,
+    dto: SalaryIncrementDto | UpdateActiveStipendDto,
+    user: PayActor,
+  ) {
+    if (isPayExecutive(user)) return null;
+    const { isIncrease, summary } = await this.payChangeRequests.describePackageChange(
+      dto.employeeId,
+      { ...dto },
+    );
+    if (!isIncrease) return null;
+    return this.payChangeRequests.submit(
+      {
+        kind,
+        employeeId: dto.employeeId,
+        payload: { ...dto },
+        summary,
+        reason: dto.reason,
+        approverTarget: dto.approverTarget,
+      },
+      user,
+    );
   }
 }

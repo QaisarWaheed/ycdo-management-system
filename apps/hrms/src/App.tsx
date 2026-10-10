@@ -26,6 +26,7 @@ import { BroadcastsPage } from '@/pages/broadcasts/BroadcastsPage'
 import { ProfilePage } from '@/pages/settings/ProfilePage'
 import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
 import { PendingApprovalsPage } from '@/pages/admin/PendingApprovalsPage'
+import { PayApprovalsPage } from '@/pages/payroll/PayApprovalsPage'
 import { MasterDataPage } from '@/pages/admin/MasterDataPage'
 import { LetterTemplatesPage } from '@/pages/admin/LetterTemplatesPage'
 import { AppointmentLetterSettingsPage } from '@/pages/admin/AppointmentLetterSettingsPage'
@@ -239,6 +240,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <PendingApprovalsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pay-approvals"
+        element={
+          <ProtectedRoute>
+            <PayApprovalsPage />
           </ProtectedRoute>
         }
       />

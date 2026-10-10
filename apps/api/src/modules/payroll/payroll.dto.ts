@@ -1,6 +1,7 @@
 import {
   AllowanceType,
   DeductionType,
+  EmployeeApproverTarget,
   FineReason,
   PayrollStatus,
 } from '@prisma/client';
@@ -165,6 +166,10 @@ export class AddAllowanceDto {
   @IsNumber()
   @IsPositive()
   amount?: number;
+  /** Executive who approves it when the sender is not an executive. */
+  @IsOptional()
+  @IsEnum(EmployeeApproverTarget)
+  approverTarget?: EmployeeApproverTarget;
 }
 
 export class ApplyOvertimeDto {
@@ -364,6 +369,10 @@ export class SalaryIncrementDto {
   @IsString()
   @IsNotEmpty()
   reason: string;
+  /** Executive who approves it when the sender is not an executive. */
+  @IsOptional()
+  @IsEnum(EmployeeApproverTarget)
+  approverTarget?: EmployeeApproverTarget;
 }
 
 /** Correct the open stipend in place. Does not start a new package. */
@@ -439,6 +448,10 @@ export class UpdateActiveStipendDto {
   @IsOptional()
   @IsString()
   reason?: string;
+  /** Executive who approves it when the sender is not an executive. */
+  @IsOptional()
+  @IsEnum(EmployeeApproverTarget)
+  approverTarget?: EmployeeApproverTarget;
 }
 
 export class PayrollQueryDto {

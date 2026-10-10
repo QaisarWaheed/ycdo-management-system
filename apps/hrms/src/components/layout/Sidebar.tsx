@@ -5,6 +5,7 @@ import {
   BarChart3,
   Bell,
   BookOpen,
+  BadgeCheck,
   Briefcase,
   Building2,
   Calendar,
@@ -59,6 +60,12 @@ const itTeamNavItems = [
   { to: '/admin/letter-templates', label: 'Letter Templates', icon: FileText },
 ]
 
+const payApprovalsNavItem = {
+  to: '/pay-approvals',
+  label: 'Pay Approvals',
+  icon: BadgeCheck,
+}
+
 const activityTrailNavItem = {
   to: '/activity-trail',
   label: 'Activity Trail',
@@ -102,6 +109,7 @@ function navItemsForRole(role?: string) {
     const items = allNavItems.filter((item) => item.to !== '/broadcasts')
     const withActivity = [
       ...items,
+      payApprovalsNavItem,
       ...(role === 'SUPER_ADMIN' ? [activityTrailNavItem, shiftsNavItem] : []),
     ]
     if (role === 'SUPER_ADMIN') {
@@ -141,17 +149,25 @@ function navItemsForRole(role?: string) {
   }
 
   if (role === 'CHAIRMAN' || role === 'FOUNDER' || role === 'PRESIDENT') {
-    return allNavItems.filter((item) =>
-      ['/dashboard', '/reports', '/leave'].includes(item.to),
-    )
+    return [
+      ...allNavItems.filter((item) =>
+        ['/dashboard', '/employees', '/payroll', '/incentives', '/reports', '/leave'].includes(
+          item.to,
+        ),
+      ),
+      payApprovalsNavItem,
+    ]
   }
 
   if (role === 'PAYROLL_OFFICER') {
-    return allNavItems.filter((item) =>
-      ['/dashboard', '/employees', '/payroll', '/incentives', '/letters', '/reports'].includes(
-        item.to,
+    return [
+      ...allNavItems.filter((item) =>
+        ['/dashboard', '/employees', '/payroll', '/incentives', '/letters', '/reports'].includes(
+          item.to,
+        ),
       ),
-    )
+      payApprovalsNavItem,
+    ]
   }
 
   if (role === 'PROGRESS_OFFICER') {
@@ -167,6 +183,7 @@ function navItemsForRole(role?: string) {
       { to: '/attendance', label: 'Attendance', icon: Clock },
       { to: '/branch-contacts', label: 'Branch Contacts', icon: Phone },
       { to: '/payroll', label: 'Payroll', icon: Wallet },
+      payApprovalsNavItem,
       { to: '/shifts', label: 'Shifts', icon: Timer },
       { to: '/branches', label: 'Branches & Projects', icon: Building2 },
       ...itTeamNavItems,
@@ -244,6 +261,20 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
   '/admin/roles': { roles: ['IT_ADMIN'] },
   '/admin/login-access': { roles: ['IT_ADMIN'] },
   '/admin/pending-approvals': { roles: ['IT_ADMIN', 'SUPER_ADMIN'] },
+  '/pay-approvals': {
+    roles: [
+      'PRESIDENT',
+      'FOUNDER',
+      'CHAIRMAN',
+      'SUPER_ADMIN',
+      'IT_ADMIN',
+      'PAYROLL_OFFICER',
+      'HR_MANAGER',
+      'HR_ADMIN_MANAGER',
+      'HR_OPERATIONS_MANAGER',
+      'HR_EXECUTIVE',
+    ],
+  },
   '/admin/letter-templates': {
     roles: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_EXECUTIVE', 'ADMIN_MANAGER', 'ADMIN_OFFICER', 'IT_ADMIN'],
   },

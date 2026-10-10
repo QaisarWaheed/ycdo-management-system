@@ -79,6 +79,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
+import { isPendingApproval } from '@/api/endpoints/payApprovals'
+import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
+import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
+import { PayTypesTab } from '@/components/payroll/PayTypesTab'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { getApiErrorMessage } from '@/lib/apiErrorMessage'
@@ -419,6 +424,8 @@ function AddAllowanceForm({
   const [description, setDescription] = useState('')
   const [hours, setHours] = useState<number | undefined>()
   const [amount, setAmount] = useState(0)
+  const needsApproval = useNeedsPayApproval()
+  const [approver, setApprover] = useState<EmployeeApproverTarget>()
 
   const hasHours = hours != null && hours > 0
   const calculatedAmount =
@@ -434,9 +441,14 @@ function AddAllowanceForm({
         type,
         description: description || undefined,
         ...(hasHours ? { hours } : { amount }),
+        approverTarget: approver,
       }),
-    onSuccess: () => {
-      toast({ title: 'Allowance added' })
+    onSuccess: (res) => {
+      toast({
+        title: isPendingApproval(res)
+          ? `Sent to ${res.approverLabel} for approval`
+          : 'Allowance added',
+      })
       setDescription('')
       setHours(undefined)
       setAmount(0)
@@ -507,8 +519,13 @@ function AddAllowanceForm({
           <PKRInput value={amount} onChange={setAmount} />
         </div>
       )}
-      <Button type="submit" disabled={mutation.isPending || !canSubmit} size="sm">
-        {mutation.isPending ? 'Adding...' : 'Add Allowance'}
+      {needsApproval ? <ApproverSelect value={approver} onChange={setApprover} /> : null}
+      <Button
+        type="submit"
+        disabled={mutation.isPending || !canSubmit || (needsApproval && !approver)}
+        size="sm"
+      >
+        {mutation.isPending ? 'Adding...' : needsApproval ? 'Send for approval' : 'Add Allowance'}
       </Button>
     </form>
   )
@@ -874,6 +891,7 @@ function MonthlyPayrollTab() {
   const [selectedPrintIds, setSelectedPrintIds] = useState<Set<string>>(new Set())
   const [nameSearch, setNameSearch] = useState('')
   const [viewEntry, setViewEntry] = useState<PayrollEntry | null>(null)
+  const [allowancesFor, setAllowancesFor] = useState<{ id: string; name: string } | null>(null)
   const [addDeductionEntry, setAddDeductionEntry] = useState<PayrollEntry | null>(
     null,
   )
@@ -1576,6 +1594,18 @@ function MonthlyPayrollTab() {
                               </DropdownMenuItem>
                             </>
                           )}
+                          {entry.stipendRecord?.employee?.id ? (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setAllowancesFor({
+                                  id: entry.stipendRecord!.employee!.id,
+                                  name: entry.stipendRecord!.employee!.fullName,
+                                })
+                              }
+                            >
+                              Allowances
+                            </DropdownMenuItem>
+                          ) : null}
                           {entry.status === 'PROCESSED' && (
                             <DropdownMenuItem
                               onClick={() =>
@@ -1651,6 +1681,17 @@ function MonthlyPayrollTab() {
           </DialogContent>
         </Dialog>
       )}
+
+      {allowancesFor ? (
+        <Dialog open onOpenChange={(open) => !open && setAllowancesFor(null)}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Allowances — {allowancesFor.name}</DialogTitle>
+            </DialogHeader>
+            <EmployeeAllowancesPanel employeeId={allowancesFor.id} />
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       <ConfirmDialog
         open={confirmGenerate}
@@ -1930,14 +1971,21 @@ function StipendIncrementTab() {
     return { diff, pct }
   }, [currentLumpsum, newLumpsum])
 
+  const needsApproval = useNeedsPayApproval()
+  const [approver, setApprover] = useState<EmployeeApproverTarget>()
   const mutation = useMutation({
     mutationFn: (values: IncrementFormValues) =>
       payrollApi.increment({
         ...values,
         effectiveFrom: firstOfMonthIso(values.effectiveFrom),
+        approverTarget: approver,
       }),
-    onSuccess: () => {
-      toast({ title: 'Stipend package updated successfully' })
+    onSuccess: (res) => {
+      toast({
+        title: isPendingApproval(res)
+          ? `Sent to ${res.approverLabel} for approval`
+          : 'Stipend package updated successfully',
+      })
       form.reset({
         employeeId: '',
         ...DEFAULT_STIPEND_VALUES,
@@ -2073,6 +2121,10 @@ function StipendIncrementTab() {
             </FormItem>
           )}
         />
+
+        {needsApproval ? (
+          <ApproverSelect value={approver} onChange={setApprover} id="increment-approver" />
+        ) : null}
 
         <Button
           type="submit"
@@ -2926,6 +2978,7 @@ export function PayrollPage() {
           <TabsTrigger value="summary">Summary</TabsTrigger>
           <TabsTrigger value="receipts">Stipend Receipts</TabsTrigger>
           <TabsTrigger value="non-active">Non-active Payslips</TabsTrigger>
+          <TabsTrigger value="types">Allowance &amp; Incentive Types</TabsTrigger>
         </TabsList>
 
         <TabsContent value="monthly" className="mt-4">
@@ -2946,6 +2999,10 @@ export function PayrollPage() {
 
         <TabsContent value="non-active" className="mt-4">
           <NonActivePayslipsTab />
+        </TabsContent>
+
+        <TabsContent value="types" className="mt-4">
+          <PayTypesTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -32,6 +32,8 @@ import { SeparationModule } from './modules/separation/separation.module';
 import { ShiftsModule } from './modules/shifts/shifts.module';
 import { StipendReceiptsModule } from './modules/stipend-receipts/stipend-receipts.module';
 import { IncentivesModule } from './modules/incentives/incentives.module';
+import { AllowancesModule } from './modules/allowances/allowances.module';
+import { PayApprovalsModule } from './modules/pay-approvals/pay-approvals.module';
 import { UserAccessModule } from './modules/user-access/user-access.module';
 import { UserPasswordsModule } from './modules/user-passwords/user-passwords.module';
 import { FaceSyncModule } from './modules/face-sync/face-sync.module';
@@ -84,6 +86,8 @@ import { CareersModule } from './modules/careers/careers.module';
     AdditionalWorkingDaysModule,
     StipendReceiptsModule,
     IncentivesModule,
+    AllowancesModule,
+    PayApprovalsModule,
     UserPasswordsModule,
     UserAccessModule,
     FaceSyncModule,

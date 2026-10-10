@@ -7,6 +7,9 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { DateInput } from '@/components/common/DateInput'
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
+import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
+import { isPendingApproval } from '@/api/endpoints/payApprovals'
+import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -143,10 +146,13 @@ export function EditPayrollDialog({
     setIsIncrement(false)
   }, [open, originalJoiningDate, latestStipend, form])
 
+  const needsApproval = useNeedsPayApproval()
+  const [approver, setApprover] = useState<EmployeeApproverTarget>()
   const mutation = useMutation({
     mutationFn: async (
       values: EditPayrollFormValues & { isIncrement?: boolean },
-    ) => {
+    ): Promise<string | null> => {
+      let sentTo: string | null = null
       const joiningChanged = values.joiningDate !== originalJoiningDate
       const amountsChanged =
         latestStipend != null && stipendAmountsChanged(values, latestStipend)
@@ -185,13 +191,16 @@ export function EditPayrollDialog({
             throw new Error('Reason is required for a salary increment')
           }
 
-          await payrollApi.increment({
+          const res = await payrollApi.increment({
             ...packageValues,
             effectiveFrom: snapped,
             reason: values.reason.trim(),
+            approverTarget: approver,
           })
+          if (isPendingApproval(res)) sentTo = res.approverLabel
         } else {
-          await payrollApi.updateActiveStipend({
+          const res = await payrollApi.updateActiveStipend({
+            approverTarget: approver,
             ...packageValues,
             ...(effectiveFromChanged
               ? { effectiveFrom: values.effectiveFrom!.trim() }
@@ -202,6 +211,7 @@ export function EditPayrollDialog({
                 ? 'Correct package effective date (management order: from month day 1)'
                 : 'Correct current stipend package'),
           })
+          if (isPendingApproval(res)) sentTo = res.approverLabel
         }
       }
 
@@ -210,9 +220,14 @@ export function EditPayrollDialog({
           joiningDate: values.joiningDate,
         })
       }
+      return sentTo
     },
-    onSuccess: () => {
-      toast({ title: 'Payroll information updated' })
+    onSuccess: (sentTo) => {
+      toast({
+        title: sentTo
+          ? `Pay increase sent to ${sentTo} for approval`
+          : 'Payroll information updated',
+      })
       onSuccess()
       onOpenChange(false)
     },
@@ -438,6 +453,10 @@ export function EditPayrollDialog({
                 No stipend record found. Only joining date can be updated.
               </p>
             )}
+
+            {needsApproval && latestStipend ? (
+              <ApproverSelect value={approver} onChange={setApprover} id="edit-payroll-approver" />
+            ) : null}
 
             <DialogFooter>
               <Button

@@ -1,4 +1,5 @@
 import { withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
+import { seedLegacyPackageAllowances } from '../allowances/package-allowances.util';
 import {
   BadRequestException,
   ConflictException,
@@ -331,6 +332,12 @@ export class EmployeesService {
           effectiveFrom: joiningDate,
         },
       });
+      await seedLegacyPackageAllowances(
+        tx,
+        created.id,
+        { allowances, reward, progressReward, fuelAllowance },
+        joiningDate,
+      );
 
       await this.createUserForEmployee(tx, {
         employeeId: created.id,

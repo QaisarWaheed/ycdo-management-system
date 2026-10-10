@@ -139,6 +139,9 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
     UserRole.HR_ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
     UserRole.PAYROLL_OFFICER,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
   ],
   RECRUITMENT_MANAGE: [UserRole.HR_MANAGER],
   REPORTS_VIEW: [

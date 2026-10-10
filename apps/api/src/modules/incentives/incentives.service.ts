@@ -33,9 +33,7 @@ export class IncentivesService {
     addedById: string,
     actingRole: UserRole = UserRole.HR_MANAGER,
   ) {
-    if (!dto.reason?.trim()) {
-      throw new BadRequestException('Reason is required for incentives');
-    }
+    const reason = await this.resolveReason(dto);
 
     await this.accessScopeService.assertEmployeeAccess(
       addedById,
@@ -68,7 +66,8 @@ export class IncentivesService {
         data: {
           employeeId: dto.employeeId,
           amount: dto.amount,
-          reason: dto.reason.trim(),
+          reason: reason,
+          typeId: dto.typeId ?? null,
           addedBy: addedById,
           month: dto.month,
           year: dto.year,
@@ -91,7 +90,7 @@ export class IncentivesService {
         data: {
           payrollEntryId: payrollEntry.id,
           type: AllowanceType.CUSTOM,
-          description: incentiveAllowanceDescription(dto.reason.trim()),
+          description: incentiveAllowanceDescription(reason),
           amount: dto.amount,
         },
       });
@@ -108,7 +107,7 @@ export class IncentivesService {
         data: {
           employeeId: dto.employeeId,
           type: 'INCENTIVE_ADDED',
-          message: `You have received an incentive of PKR ${dto.amount} for ${dto.month}/${dto.year}. Reason: ${dto.reason.trim()}`,
+          message: `You have received an incentive of PKR ${dto.amount} for ${dto.month}/${dto.year}. Reason: ${reason}`,
         },
       });
 
@@ -121,7 +120,7 @@ export class IncentivesService {
           changes: {
             employeeId: dto.employeeId,
             amount: dto.amount,
-            reason: dto.reason.trim(),
+            reason: reason,
             month: dto.month,
             year: dto.year,
           },
@@ -130,6 +129,18 @@ export class IncentivesService {
 
       return incentive;
     });
+  }
+
+  /** "Type: note", the type alone, or the note alone (old free-text incentives). */
+  private async resolveReason(dto: CreateIncentiveDto): Promise<string> {
+    const note = dto.reason?.trim() ?? '';
+    if (!dto.typeId) {
+      if (!note) throw new BadRequestException('Choose an incentive type or write a reason');
+      return note;
+    }
+    const type = await this.prisma.incentiveType.findUnique({ where: { id: dto.typeId } });
+    if (!type) throw new BadRequestException('Incentive type not found');
+    return note ? `${type.name}: ${note}` : type.name;
   }
 
   async findAll(

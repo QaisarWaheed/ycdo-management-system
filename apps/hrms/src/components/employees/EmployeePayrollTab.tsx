@@ -1,3 +1,4 @@
+import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
 import { selectCurrentStipend } from '@/lib/stipendUtils'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -426,6 +427,12 @@ export function EmployeePayrollTab({
           onSuccess={() => onUpdated?.()}
         />
       )}
+
+      <Card>
+        <CardContent className="pt-6">
+          <EmployeeAllowancesPanel employeeId={employeeId} />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

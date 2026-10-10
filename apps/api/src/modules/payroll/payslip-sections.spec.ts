@@ -38,8 +38,16 @@ const deductions: PayslipSlipData['deductions'] = {
 const deductionRows = [
   { reason: 'FINE', amount: 300, fineReason: 'NO_UNIFORM' },
   { reason: 'FINE', amount: 200, fineReason: 'MOBILE_ON_DUTY' },
-  { reason: 'DISCIPLINARY_FINE', amount: 400, description: 'Inquiry fine — case 12' },
-  { reason: 'DISCIPLINARY_FINE', amount: 1000, description: 'Attendance Card: every 3 Early Checkout' },
+  {
+    reason: 'DISCIPLINARY_FINE',
+    amount: 400,
+    description: 'Inquiry fine — case 12',
+  },
+  {
+    reason: 'DISCIPLINARY_FINE',
+    amount: 1000,
+    description: 'Attendance Card: every 3 Early Checkout',
+  },
 ];
 const allowanceRows = [
   { type: 'OVERTIME', amount: 500 },
@@ -58,7 +66,10 @@ describe('buildPayslipSections', () => {
   });
   const byKey = Object.fromEntries(sections.map((s) => [s.key, s]));
   const total = (key: string) =>
-    byKey[key].lines.reduce((s: number, l: { amount: number }) => s + l.amount, 0);
+    byKey[key].lines.reduce(
+      (s: number, l: { amount: number }) => s + l.amount,
+      0,
+    );
 
   it('earnings lines add up to the slip earnings total, with incentives and overtime separate', () => {
     expect(total('earnings')).toBe(computeEarningsTotal(earnings));

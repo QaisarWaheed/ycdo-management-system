@@ -17,6 +17,13 @@ const EARNING_FIELDS = [
   ['fuelAllowance', 'Petrol (Fuel Allowance)', false],
 ] as const
 
+/** From this month the four allowance fields live in Allowances (employee → Payroll tab). */
+const ALLOWANCES_FROM_MONTH = '2026-11'
+export function packageAllowancesLive(now = new Date()) {
+  const m = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return m >= ALLOWANCES_FROM_MONTH
+}
+
 const DEDUCTION_FIELDS = [
   ['loanDeduction', 'Loan Deduction'],
   ['advanceDeduction', 'Advance Deduction'],
@@ -69,12 +76,22 @@ export function StipendPackageFields<T extends FieldValues>({
     healthDeduction: Number(healthDeduction) || 0,
   })
 
+  const allowancesLive = packageAllowancesLive()
+  const earningFields = allowancesLive
+    ? EARNING_FIELDS.filter(([name]) => name === 'basicStipend')
+    : EARNING_FIELDS
+
   return (
     <div className="space-y-6">
       <div className="space-y-3">
         <h3 className="text-sm font-semibold">Earnings</h3>
+        <p className="text-xs text-text-secondary">
+          {allowancesLive
+            ? 'Allowances, Reward, Reward on Progress and Petrol are set under Allowances (employee profile → Payroll tab).'
+            : 'From November 2026 payroll, Allowances, Reward, Reward on Progress and Petrol move to Allowances (employee profile → Payroll tab); amounts entered here are carried over.'}
+        </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {EARNING_FIELDS.map(([name, label, required]) => (
+          {earningFields.map(([name, label, required]) => (
             <FormField
               key={name}
               control={control}

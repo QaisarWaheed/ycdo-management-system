@@ -7,10 +7,12 @@ import {
   IsPositive,
   IsString,
   IsUUID,
+  IsEnum,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
+import { EmployeeApproverTarget } from '@prisma/client';
 
 export class CreateIncentiveDto {
   @IsUUID()
@@ -23,10 +25,16 @@ export class CreateIncentiveDto {
   @IsNotEmpty()
   amount: number;
 
+  /** Incentive type from the list (On Progress, Private Room, ...). */
+  @IsOptional()
+  @IsUUID()
+  typeId?: string;
+
+  /** Free-text note; required only when no type is chosen. */
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(1000)
-  reason: string;
+  reason?: string;
 
   @Type(() => Number)
   @IsInt()
@@ -40,6 +48,11 @@ export class CreateIncentiveDto {
   @Min(2020)
   @IsNotEmpty()
   year: number;
+
+  /** Executive who approves it when the sender is not an executive. */
+  @IsOptional()
+  @IsEnum(EmployeeApproverTarget)
+  approverTarget?: EmployeeApproverTarget;
 }
 
 export class IncentiveQueryDto {
