@@ -1,4 +1,9 @@
 import { formatDuty12h } from '../../common/duty.util';
+import {
+  formatDayList,
+  unpaidDayParts,
+  type PayslipDayDetails,
+} from './payslip-day-details.util';
 
 export const PAYSLIP_ORG_NAME = 'Youth Community Development Organization';
 
@@ -64,6 +69,8 @@ export interface PayslipSlipData {
     description: string | null;
     amount: number;
   }>;
+  /** Where every day of the month went + the dates behind each line. */
+  dayDetails?: PayslipDayDetails;
   /** Grouped, non-empty payslip lines (new layout); totals match earningsTotal / deductionsTotal. */
   sections?: PayslipSection[];
   earningsTotal: number;
@@ -265,9 +272,17 @@ export function buildPayslipSections(input: {
     missingCheckout?: number;
     uninformedAbsent?: number;
   };
+  /** Dates for the notes and the split of days not paid. */
+  dayDetails?: PayslipDayDetails;
 }): PayslipSection[] {
   const { earnings, deductions, deductionRows, allowanceRows, pkg } = input;
   const counts = input.counts ?? {};
+  const dd = input.dayDetails?.dates;
+  /** "6 lates: 2, 5, 9 Sep" — count from the Card, dates when known. */
+  const withDates = (head: string | undefined, dates?: string[]) => {
+    const list = dates?.length ? formatDayList(dates) : '';
+    return head && list ? `${head}: ${list}` : head || list || undefined;
+  };
   const sum = (rows: Array<{ amount: unknown }>) =>
     money(rows.reduce((s, r) => s + (Number(r.amount) || 0), 0));
 
@@ -308,13 +323,18 @@ export function buildPayslipSections(input: {
       {
         label: 'Extra Days',
         amount: earnings.extraDuty,
-        note: extraDays > 0 ? plural(extraDays, 'day') : undefined,
+        note: withDates(
+          extraDays > 0 ? plural(extraDays, 'day') : undefined,
+          dd?.extraDays.map((x) => (x.note ? `${x.date} (${x.note})` : x.date)),
+        ),
       },
       {
         label: 'Overtime',
         amount: sum(overtimeRows),
-        note:
+        note: withDates(
           overtimeHours > 0 ? plural(Math.round(overtimeHours * 10) / 10, 'hour') : undefined,
+          dd?.overtime.map((o) => `${o.date} ${o.hours}h`),
+        ),
       },
       ...customRows.map((a) => {
         const desc = (a.description ?? '').trim();
@@ -338,22 +358,18 @@ export function buildPayslipSections(input: {
   ];
 
   // ── Deductions: rows one by one, bucket remainder = monthly package part
-  const attendance: PayslipLine[] = [
-    {
-      label: 'Absence',
-      amount: deductions.unpaidBasic ?? 0,
-      note: input.unpaidDays
-        ? input.monthInProgress
-          ? `${plural(input.unpaidDays, 'day')} not paid yet (month still running)`
-          : `${plural(input.unpaidDays, 'day')} not paid`
-        : undefined,
-    },
-  ];
+  const attendance: PayslipLine[] = unpaidBasicLines(
+    deductions.unpaidBasic ?? 0,
+    input.unpaidDays ?? 0,
+    input.monthInProgress,
+    input.dayDetails,
+  );
   const discipline: PayslipLine[] = [];
   const other: PayslipLine[] = [];
   const used: Partial<Record<DeductionBucket, number>> = {};
-  const every3 = (n: number | undefined, one: string) =>
-    n ? `${plural(n, one)} (every 3 = 1 day)` : undefined;
+  const every3 = (n: number | undefined, one: string, dates?: string[]) =>
+    n ? `${withDates(plural(n, one), dates)} (every 3 = 1 day)` : undefined;
+  const absences = dd ? [...dd.absent, ...dd.uninformedAbsent] : [];
 
   for (const d of deductionRows) {
     const amount = Number(d.amount) || 0;
@@ -364,23 +380,25 @@ export function buildPayslipSections(input: {
       attendance.push({
         label: 'Absence fine',
         amount,
-        note: counts.uninformedAbsent
-          ? plural(counts.uninformedAbsent, 'uninformed absence', 'uninformed absences')
-          : humanNote(desc),
+        note: absences.length
+          ? withDates(plural(absences.length, 'absence', 'absences'), absences)
+          : counts.uninformedAbsent
+            ? plural(counts.uninformedAbsent, 'uninformed absence', 'uninformed absences')
+            : humanNote(desc),
       });
     } else if (bucket === 'lateHour') {
-      attendance.push({ label: 'Late', amount, note: every3(counts.late, 'late') ?? humanNote(desc) });
+      attendance.push({ label: 'Late', amount, note: every3(counts.late, 'late', dd?.late) ?? humanNote(desc) });
     } else if (d.reason === 'DISCIPLINARY_FINE' && desc.startsWith(EARLY_CHECKOUT_CARD)) {
       attendance.push({
         label: 'Early checkout',
         amount,
-        note: every3(counts.earlyCheckout, 'early checkout'),
+        note: every3(counts.earlyCheckout, 'early checkout', dd?.earlyCheckout),
       });
     } else if (d.reason === 'DISCIPLINARY_FINE' && desc.startsWith(MISSING_CHECKOUT_CARD)) {
       attendance.push({
         label: 'Missed checkout',
         amount,
-        note: every3(counts.missingCheckout, 'missed checkout'),
+        note: every3(counts.missingCheckout, 'missed checkout', dd?.missedCheckout),
       });
     } else if (d.reason === 'FINE') {
       discipline.push({
@@ -424,4 +442,53 @@ export function buildPayslipSections(input: {
     { key: 'discipline', title: 'Discipline Fines', lines: collect(discipline) },
     { key: 'other', title: 'Other Deductions', lines: collect(other) },
   ];
+}
+
+/**
+ * Basic for days not paid, one line per cause (before joining, unpaid leave,
+ * absent dates, …) split by days so the lines add up exactly. Time not
+ * covered by a day cause (short hours) gets its own line; if the causes do
+ * not fit the figure payroll used, one line lists them instead.
+ */
+function unpaidBasicLines(
+  amount: number,
+  unpaidDays: number,
+  monthInProgress: boolean | undefined,
+  details: PayslipDayDetails | undefined,
+): PayslipLine[] {
+  const fallback = (note?: string): PayslipLine[] => [
+    {
+      label: 'Absence',
+      amount,
+      note:
+        note ??
+        (unpaidDays
+          ? monthInProgress
+            ? `${plural(unpaidDays, 'day')} not paid yet (month still running)`
+            : `${plural(unpaidDays, 'day')} not paid`
+          : undefined),
+    },
+  ];
+  if (!details || !unpaidDays || amount <= 0) return fallback();
+  const parts = unpaidDayParts(details);
+  const partDays = parts.reduce((s, p) => s + p.days, 0);
+  const short = Math.round((unpaidDays - partDays) * 10) / 10;
+  if (short < -0.05)
+    return fallback(
+      `${plural(unpaidDays, 'day')} not paid: ` +
+        parts.map((p) => `${p.label.toLowerCase()} ${plural(p.days, 'day')}`).join(', '),
+    );
+  if (short > 0.05) parts.push({ label: 'Short hours', days: short, note: 'late / early hours not worked' });
+  if (!parts.length) return fallback();
+  const rate = amount / unpaidDays;
+  let left = money(amount);
+  return parts.map((p, i) => {
+    const value = i === parts.length - 1 ? left : money(p.days * rate);
+    left = money(left - value);
+    return {
+      label: p.label,
+      amount: value,
+      note: [plural(p.days, 'day'), p.note].filter(Boolean).join(': '),
+    };
+  });
 }

@@ -1,6 +1,6 @@
 import type React from 'react'
 import { employeeStatusLabel } from '@/lib/employeeStatus'
-import type { PayslipSlipData } from '@/lib/payslipSlip'
+import { payslipDayCells, type PayslipSlipData } from '@/lib/payslipSlip'
 import { cn } from '@/lib/utils'
 
 function fmt(amount: number): string {
@@ -345,11 +345,31 @@ function SectionedPayslip({ slip, compact }: { slip: PayslipSlipData; compact: b
               <div>
                 <b>Duty:</b> {slip.dutyTime || '—'}
               </div>
-              <div>
-                <b>Days:</b> {slip.totalDays} · <b>Present</b> {slip.presence ?? 0} ·{' '}
-                <b>Leave</b> {slip.leaveDays ?? 0}
-              </div>
+              {slip.dayDetails ? null : (
+                <div>
+                  <b>Days:</b> {slip.totalDays} · <b>Present</b> {slip.presence ?? 0} ·{' '}
+                  <b>Leave</b> {slip.leaveDays ?? 0}
+                </div>
+              )}
             </div>
+            {slip.dayDetails ? (
+              <div className="mt-[3px] flex flex-wrap border-2 border-black" style={{ fontSize: f.note }}>
+                {payslipDayCells(slip.dayDetails.breakdown).map((c) => (
+                  <div
+                    key={c.label}
+                    className="flex-1 border-r border-black/40 px-1 text-center last:border-r-0"
+                    style={c.strong ? { background: '#FFFF00' } : undefined}
+                  >
+                    <div className="whitespace-nowrap leading-tight" style={{ fontSize: f.small }}>
+                      {c.label}
+                    </div>
+                    <div className="font-bold tabular-nums leading-tight" style={{ fontSize: f.base }}>
+                      {c.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div
             className="shrink-0 overflow-hidden border-2 border-black bg-black/5"

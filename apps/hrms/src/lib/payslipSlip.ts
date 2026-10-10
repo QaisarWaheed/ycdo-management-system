@@ -5,7 +5,54 @@ export interface PayslipSection {
   lines: Array<{ label: string; amount: number; note?: string }>
 }
 
+/** Where every calendar day went (API slips); counts in days. */
+export interface PayslipDayBreakdown {
+  totalDays: number
+  beforeJoining: number
+  joinedOn?: string
+  afterExit: number
+  exitOn?: string
+  present: number
+  late: number
+  halfDay: number
+  shortLeave: number
+  swapCovered: number
+  holiday: number
+  paidLeave: number
+  unpaidLeave: number
+  absent: number
+  uninformedAbsent: number
+  notMarked: number
+  upcoming: number
+  paidDays: number
+}
+
+/** Day boxes for the slip header: non-zero only, Present includes late days. */
+export function payslipDayCells(b: PayslipDayBreakdown) {
+  const cells: Array<{ label: string; value: number; strong?: boolean }> = [
+    { label: 'Month', value: b.totalDays },
+    { label: b.joinedOn ? `Before joining (${b.joinedOn})` : 'Before joining', value: b.beforeJoining },
+    { label: b.exitOn ? `After leaving (${b.exitOn})` : 'After leaving', value: b.afterExit },
+    { label: 'Present', value: b.present + b.late + b.shortLeave + b.swapCovered },
+    { label: 'of which late', value: b.late },
+    { label: 'Half day', value: b.halfDay },
+    { label: 'Holiday / off', value: b.holiday },
+    { label: 'Paid leave', value: b.paidLeave },
+    { label: 'Unpaid leave', value: b.unpaidLeave },
+    { label: 'Absent', value: b.absent },
+    { label: 'Uninformed absent', value: b.uninformedAbsent },
+    { label: 'Not marked', value: b.notMarked },
+    { label: 'Not yet', value: b.upcoming },
+  ]
+  return [
+    ...cells.filter((c, i) => i === 0 || c.value > 0),
+    { label: 'Paid days', value: b.paidDays, strong: true },
+  ]
+}
+
 export interface PayslipSlipData {
+  /** Where every day of the month went (API slips). */
+  dayDetails?: { breakdown: PayslipDayBreakdown }
   /** Grouped, non-empty lines from the API (new layout). Absent on client-built slips. */
   sections?: PayslipSection[]
   orgName: string

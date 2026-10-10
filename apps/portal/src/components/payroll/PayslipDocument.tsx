@@ -1,5 +1,5 @@
 import { amountInWords } from '@/lib/amountInWords'
-import type { PayslipSlipData } from '@/lib/payslipSlip'
+import { payslipDayCells, type PayslipSlipData } from '@/lib/payslipSlip'
 import { formatPKR } from '@/lib/helpers'
 
 function fmtAmount(amount: number) {
@@ -117,6 +117,20 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
           <MetaCell label="Time" value={slip.dutyTime || '—'} />
           <MetaCell label="Presence" value={slip.presence ?? 0} />
         </div>
+
+        {slip.dayDetails ? (
+          <div className="mb-4 flex flex-wrap border-2 border-black text-center">
+            {payslipDayCells(slip.dayDetails.breakdown).map((c) => (
+              <div
+                key={c.label}
+                className={`min-w-[4.5rem] flex-1 border-b border-r border-black/30 px-1 py-0.5 ${c.strong ? 'bg-yellow-300' : ''}`}
+              >
+                <div className="text-[10px] leading-tight">{c.label}</div>
+                <div className="text-sm font-bold tabular-nums">{c.value}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 print:grid-cols-2">
           <table className="w-full border-collapse">

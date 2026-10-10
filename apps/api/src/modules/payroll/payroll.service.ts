@@ -1,4 +1,9 @@
 import {
+  buildPayslipDayDetails,
+  loadSlipDayFacts,
+  type PayslipDayDetails,
+} from './payslip-day-details.util';
+import {
   resolvePackageComponents,
   validatePackageTimeline,
 } from './stipend-package-integrity.util';
@@ -2581,6 +2586,20 @@ export class PayrollService {
           ? Math.max(0, Math.round((contractualBasic - earnedBasic) * 100) / 100)
           : byDays
         : 0;
+    const dayFacts = await loadSlipDayFacts(
+      this.prisma,
+      entry.stipendRecord.employeeId,
+      entry.month,
+      entry.year,
+    );
+    const dayDetails = dayFacts
+      ? buildPayslipDayDetails({
+          facts: dayFacts,
+          employee,
+          paidLeaveDateKeys: card.paidLeaveDateKeys ?? [],
+          paidDays: Math.round((card.calendarDays - unpaidDays) * 10) / 10,
+        })
+      : undefined;
     const slip = this.buildPayslipSlipData({
       entry: current,
       stipendRecord: displayPackage,
@@ -2591,6 +2610,7 @@ export class PayrollService {
       packageAllowanceLines: breakdown.packageAllowanceLines,
       unpaidBasic,
       unpaidDays: unpaidBasic > 0 ? unpaidDays : 0,
+      dayDetails,
     });
 
     const [withAttendance] = await this.attachPayrollAttendanceReport(
@@ -2615,6 +2635,7 @@ export class PayrollService {
     /** Basic for days not paid; shown as an Absence deduction so Basic is the full contract. */
     unpaidBasic?: number;
     unpaidDays?: number;
+    dayDetails?: PayslipDayDetails;
     entry: {
       month: number;
       year: number;
@@ -2937,7 +2958,9 @@ export class PayrollService {
           missingCheckout: input.absenceCounts?.missingCheckout,
           uninformedAbsent: input.absenceCounts?.uninformedAbsent,
         },
+        dayDetails: input.dayDetails,
       }),
+      dayDetails: input.dayDetails,
       earningsTotal,
       deductionsTotal,
       netPay: Number(entry.netStipend) || 0,
