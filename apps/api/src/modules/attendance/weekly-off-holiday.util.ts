@@ -33,3 +33,32 @@ export async function ensureWeeklyOffHolidays(
   });
   return inserted.count;
 }
+
+/** Same as ensureWeeklyOffHolidays for one date, for many employees in a single insert. */
+export async function ensureWeeklyOffHolidaysForDate(
+  prisma: Pick<Prisma.TransactionClient, 'attendanceLog'>,
+  employees: WeeklyOffEmployee[],
+  date: Date,
+  now = new Date(),
+): Promise<number> {
+  const today = toPakistanDateOnly(now);
+  const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  if (date < monthStart || date > today) return 0;
+  const data = employees
+    .filter(
+      (e) =>
+        e.weeklyOffWeekdays?.length &&
+        isWeeklyOffDate(e.weeklyOffWeekdays, date) &&
+        isSchedulerAttendanceEligible(e, date),
+    )
+    .map((e) => ({
+      employeeId: e.id, branchId: e.currentBranchId, date,
+      type: AttendanceLogType.REGULAR, status: AttendanceStatus.HOLIDAY,
+      source: AttendanceSource.MANUAL, note: 'Assigned Weekly Off',
+      dutyStartTimeSnapshot: e.dutyStartTime ?? null,
+      dutyEndTimeSnapshot: e.dutyEndTime ?? null,
+    }));
+  if (!data.length) return 0;
+  const inserted = await prisma.attendanceLog.createMany({ skipDuplicates: true, data });
+  return inserted.count;
+}

@@ -86,3 +86,21 @@ export async function isAttendanceLocked(
   const { year, month } = attendanceMonthOf(date);
   return isAttendanceMonthVerified(db, branchId, year, month);
 }
+
+/** Branches (of the given ones) whose month containing `date` is verified — one query. */
+export async function lockedBranchIds(
+  db: Db,
+  branchIds: Array<string | null | undefined>,
+  date: Date,
+): Promise<Set<string>> {
+  const ids = [...new Set(branchIds.filter((b): b is string => !!b))];
+  if (!ids.length || !(db as { attendanceMonthLock?: unknown }).attendanceMonthLock) {
+    return new Set();
+  }
+  const { year, month } = attendanceMonthOf(date);
+  const rows = await db.attendanceMonthLock.findMany({
+    where: { year, month, status: AttendanceMonthStatus.VERIFIED, branchId: { in: ids } },
+    select: { branchId: true },
+  });
+  return new Set(rows.map((r) => r.branchId));
+}

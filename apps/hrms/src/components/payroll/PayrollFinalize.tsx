@@ -29,10 +29,10 @@ const errText = (err: ApiError) => {
   return Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error')
 }
 
-/** Accounts (Finalize payroll permission) mark entries Processed / Paid. */
+/** Accounts (Payroll Officer) and Super Admin mark entries Processed / Paid (API is strict). */
 export function useCanFinalizePayroll() {
-  const { hasPermission, hasRole } = useAuth()
-  return hasPermission('PAYROLL_FINALIZE') || hasRole(['SUPER_ADMIN'])
+  const { hasRole } = useAuth()
+  return hasRole(['PAYROLL_OFFICER', 'SUPER_ADMIN'])
 }
 
 /** Finalise a whole branch month: Processed (verified attendance only) or Paid. */

@@ -2458,10 +2458,10 @@ export class LettersService implements OnModuleInit {
     return { undone: true, skippedReason: null };
   }
 
-  async findAll(
+  private async listWhere(
     query: LetterQueryDto,
     actingUser?: LetterActor & { portalOnly?: boolean },
-  ) {
+  ): Promise<Prisma.LetterWhereInput> {
     const where: Prisma.LetterWhereInput = {};
 
     if (query.employeeId) {
@@ -2502,24 +2502,54 @@ export class LettersService implements OnModuleInit {
       }
     }
 
-    const letters = await this.prisma.letter.findMany({
-      where,
-      include: {
-        employee: {
-          select: {
-            fullName: true,
-            employeeCode: true,
-            status: true,
-          },
-        },
-        acknowledgement: true,
-        replies: {
-          select: { id: true, repliedAt: true },
-        },
-        suspensionRequest: SUSPENSION_REQUEST_ON_LETTER,
+    return where;
+  }
+
+  private readonly listInclude = {
+    employee: {
+      select: {
+        fullName: true,
+        employeeCode: true,
+        status: true,
       },
-      orderBy: { generatedAt: 'desc' },
-    });
+    },
+    acknowledgement: true,
+    replies: {
+      select: { id: true, repliedAt: true },
+    },
+    suspensionRequest: SUSPENSION_REQUEST_ON_LETTER,
+  } satisfies Prisma.LetterInclude;
+
+  /** HRMS list: one page at a time (there are ~15k letters). */
+  async findPage(query: LetterQueryDto, actingUser?: LetterActor) {
+    const where = await this.listWhere(query, actingUser);
+    const page = query.page ?? 0;
+    const pageSize = query.pageSize ?? 20;
+    const [items, total] = await Promise.all([
+      this.prisma.letter.findMany({
+        where,
+        include: this.listInclude,
+        orderBy: { generatedAt: 'desc' },
+        skip: page * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.letter.count({ where }),
+    ]);
+    return { items: items.map(slimLetterForList), total, page, pageSize };
+  }
+
+  async findAll(
+    query: LetterQueryDto,
+    actingUser?: LetterActor & { portalOnly?: boolean },
+  ) {
+    const where = await this.listWhere(query, actingUser);
+    const letters = (
+      await this.prisma.letter.findMany({
+        where,
+        include: this.listInclude,
+        orderBy: { generatedAt: 'desc' },
+      })
+    ).map(slimLetterForList);
 
     if (!actingUser?.portalOnly) {
       return letters;
@@ -2923,4 +2953,21 @@ export class LettersService implements OnModuleInit {
     const year = date.getFullYear();
     return `${day}/${month}/${year}`;
   }
+}
+
+/**
+ * Lists never need the letterhead image or other embedded data URLs stored in
+ * `variables` (the PDF is rebuilt from the database); dropping them cut the
+ * letters list from ~38 MB to a fraction.
+ */
+function slimLetterForList<T extends { variables: Prisma.JsonValue | null }>(letter: T): T {
+  const vars = letter.variables;
+  if (!vars || typeof vars !== 'object' || Array.isArray(vars)) return letter;
+  const slim: Record<string, Prisma.JsonValue> = {};
+  for (const [k, v] of Object.entries(vars)) {
+    if (k === 'letterheadLogoUrl') continue;
+    if (typeof v === 'string' && v.length > 4000 && v.startsWith('data:')) continue;
+    slim[k] = v as Prisma.JsonValue;
+  }
+  return { ...letter, variables: slim };
 }

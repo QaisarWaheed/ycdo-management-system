@@ -1362,12 +1362,14 @@ function MonthlyPayrollTab() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="destructive"
-            onClick={() => setConfirmReset(true)}
-          >
-            Clear unpaid payroll
-          </Button>
+          {canFinanceEdit ? (
+            <Button
+              variant="destructive"
+              onClick={() => setConfirmReset(true)}
+            >
+              Clear unpaid payroll
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={() => setCreateSingleOpen(true)}>
             Add entry for employee
           </Button>

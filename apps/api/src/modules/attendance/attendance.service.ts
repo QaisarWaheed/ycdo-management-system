@@ -1,4 +1,8 @@
-import { assertAttendanceOpen, isAttendanceLocked } from '../attendance-lock/attendance-month-lock.util';
+import {
+  assertAttendanceOpen,
+  isAttendanceLocked,
+  lockedBranchIds,
+} from '../attendance-lock/attendance-month-lock.util';
 import { classifyDutyCheckout } from './checkout-classification.util';
 import {
   punchSourcesForBiometricCheckIn,
@@ -7,7 +11,10 @@ import {
   punchSourcesForManualCheckIn,
   summarizeLegacySource,
 } from './punch-source.util';
-import { ensureWeeklyOffHolidays } from './weekly-off-holiday.util';
+import {
+  ensureWeeklyOffHolidays,
+  ensureWeeklyOffHolidaysForDate,
+} from './weekly-off-holiday.util';
 import {
   BadRequestException,
   ConflictException,
@@ -2180,12 +2187,13 @@ export class AttendanceService {
     });
 
     const eligible: typeof employees = [];
+    const weeklyOff: typeof employees = [];
     for (const employee of employees) {
       if (!isSchedulerAttendanceEligible(employee, dateOnly)) {
         continue;
       }
       if (isWeeklyOffDate(employee.weeklyOffWeekdays, dateOnly)) {
-        await ensureWeeklyOffHolidays(this.prisma, employee, dateOnly);
+        weeklyOff.push(employee);
         continue;
       }
 
@@ -2220,6 +2228,20 @@ export class AttendanceService {
       eligible.push(employee);
     }
 
+    // One insert for everyone off today (was one query per employee).
+    if (weeklyOff.length) {
+      const lockedOff = await lockedBranchIds(
+        this.prisma,
+        weeklyOff.map((e) => e.currentBranchId),
+        dateOnly,
+      );
+      await ensureWeeklyOffHolidaysForDate(
+        this.prisma,
+        weeklyOff.filter((e) => !lockedOff.has(e.currentBranchId)),
+        dateOnly,
+      );
+    }
+
     if (eligible.length === 0) {
       return;
     }
@@ -2249,10 +2271,11 @@ export class AttendanceService {
     const onLeaveIds = new Set(onLeaveRows.map((r) => r.employeeId));
     const existingIds = new Set(existingLogs.map((r) => r.employeeId));
 
-    const lockedBranches = new Set<string>();
-    for (const branchId of new Set(eligible.map((e) => e.currentBranchId))) {
-      if (await isAttendanceLocked(this.prisma, branchId, dateOnly)) lockedBranches.add(branchId);
-    }
+    const lockedBranches = await lockedBranchIds(
+      this.prisma,
+      eligible.map((e) => e.currentBranchId),
+      dateOnly,
+    );
     const toCreate = eligible.filter(
       (e) =>
         !onLeaveIds.has(e.id) &&
@@ -3369,15 +3392,18 @@ export class AttendanceService {
       select: { employeeId: true },
     });
 
-    for (const employee of activeEmployees) {
-      await ensureWeeklyOffHolidays(this.prisma, employee, dateOnly);
-    }
+    const lockedBranches = await lockedBranchIds(
+      this.prisma,
+      activeEmployees.map((e) => e.currentBranchId),
+      dateOnly,
+    );
+    await ensureWeeklyOffHolidaysForDate(
+      this.prisma,
+      activeEmployees.filter((e) => !lockedBranches.has(e.currentBranchId)),
+      dateOnly,
+    );
     const loggedEmployeeIds = new Set(existingLogs.map((log) => log.employeeId));
 
-    const lockedBranches = new Set<string>();
-    for (const branchId of new Set(activeEmployees.map((e) => e.currentBranchId))) {
-      if (await isAttendanceLocked(this.prisma, branchId, dateOnly)) lockedBranches.add(branchId);
-    }
     const absentEmployees = activeEmployees.filter(
       (emp) =>
         !loggedEmployeeIds.has(emp.id) &&

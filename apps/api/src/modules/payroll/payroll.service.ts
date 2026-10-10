@@ -2620,6 +2620,7 @@ export class PayrollService {
       year: number;
       basicStipend: unknown;
       netStipend: unknown;
+      totalAllowances?: unknown;
       deductions?: Array<{
         reason: DeductionType;
         amount: unknown;
@@ -2762,6 +2763,41 @@ export class PayrollService {
 
     const packageLines = input.packageAllowanceLines;
     const unpaidBasic = input.unpaidBasic ?? 0;
+    // Old four package fields: show what payroll actually paid (prorated for a
+    // mid-month join / exit), not the full monthly amounts, so the slip adds up.
+    const legacyFields = {
+      allowances: pkg.allowances || 0,
+      reward: pkg.reward || 0,
+      progressReward: pkg.progressReward || 0,
+      fuelAllowance: pkg.fuelAllowance || 0,
+    };
+    const legacySum =
+      legacyFields.allowances +
+      legacyFields.reward +
+      legacyFields.progressReward +
+      legacyFields.fuelAllowance;
+    const paidPackage =
+      entry.totalAllowances == null
+        ? legacySum
+        : Math.round(
+            (Number(entry.totalAllowances) -
+              allowances.reduce((sum, a) => sum + Number(a.amount), 0)) *
+              100,
+          ) / 100;
+    if (!packageLines && legacySum > 0 && paidPackage >= 0 && Math.abs(paidPackage - legacySum) > 0.005) {
+      const keys = Object.keys(legacyFields) as Array<keyof typeof legacyFields>;
+      for (const k of keys) {
+        legacyFields[k] = Math.round(((legacyFields[k] * paidPackage) / legacySum) * 100) / 100;
+      }
+      const largest = keys.reduce((a, b) => (legacyFields[b] > legacyFields[a] ? b : a));
+      legacyFields[largest] =
+        Math.round(
+          (legacyFields[largest] +
+            paidPackage -
+            keys.reduce((sum, k) => sum + legacyFields[k], 0)) *
+            100,
+        ) / 100;
+    }
     const packageLinesTotal = (packageLines ?? []).reduce(
       (s, l) => s + l.amount,
       0,
@@ -2785,11 +2821,10 @@ export class PayrollService {
           stipend: (Number(entry.basicStipend) || 0) + unpaidBasic,
           contractualStipend: Number(stipendRecord.basicStipend) || 0,
           previousMonth: 0,
-          rewardOnProgress: pkg.progressReward || 0,
-          rewards: pkg.reward || 0,
-          otherAllowance:
-            (pkg.allowances || 0) + overtimeAmount + otherExtraAllowances,
-          fuel: pkg.fuelAllowance || 0,
+          rewardOnProgress: legacyFields.progressReward,
+          rewards: legacyFields.reward,
+          otherAllowance: legacyFields.allowances + overtimeAmount + otherExtraAllowances,
+          fuel: legacyFields.fuelAllowance,
           mobileLoad: 0,
           extraDuty: extraDutyAmount,
         };
@@ -2886,12 +2921,16 @@ export class PayrollService {
         deductionRows: deductions,
         allowanceRows: allowances,
         pkg: {
-          allowances: packageLines ? 0 : pkg.allowances || 0,
+          allowances: packageLines ? 0 : legacyFields.allowances,
           fineDeduction: pkg.fineDeduction || 0,
         },
         packageLines,
         totalDays,
         unpaidDays: input.unpaidDays,
+        monthInProgress: (() => {
+          const pk = new Date(Date.now() + 5 * 60 * 60 * 1000);
+          return entry.year * 12 + entry.month >= pk.getUTCFullYear() * 12 + pk.getUTCMonth() + 1;
+        })(),
         counts: {
           late: input.absenceCounts?.late,
           earlyCheckout: input.absenceCounts?.earlyCheckout,

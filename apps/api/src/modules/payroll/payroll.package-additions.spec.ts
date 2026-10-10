@@ -64,7 +64,27 @@ describe('global stored package additions to generated Card salary and payslip',
     expect(slip.earningsTotal).toBe(40070.16);
     expect(slip.netPay).toBe(40070.16);
   });
+  it('shows the prorated package a mid-month exit was paid, so the slip adds up to net', () => {
+    // Package allowance 5,000 paid as 3,666.67 (exit mid-month) + overtime 625.
+    const service: any = new PayrollService({} as any, {} as any);
+    const slip = service.buildPayslipSlipData({
+      entry: {
+        month: 9,
+        year: 2026,
+        basicStipend: 15833.33,
+        totalAllowances: 4291.67,
+        netStipend: 18458.33,
+        allowances: [{ type: 'OVERTIME', amount: 625 }],
+        deductions: [{ reason: 'UNINFORMED_ABSENCE', amount: 1666.67 }],
+      },
+      stipendRecord: { basicStipend: 25000, allowances: 5000 },
+      employee: { fullName: 'Example', employeeCode: 'EX', dutyTotalHours: 8 },
+      presenceDays: 19,
+      leaveSplit: { leaveDays: 0, paidLeaveDays: 0, unpaidLeaveDays: 0 },
+      unpaidBasic: 9166.67,
+      unpaidDays: 11,
+    });
+    expect(slip.earnings.otherAllowance).toBeCloseTo(4291.67, 2);
+    expect(slip.earningsTotal - slip.deductionsTotal).toBeCloseTo(slip.netPay, 2);
+  });
 });
-
-
-

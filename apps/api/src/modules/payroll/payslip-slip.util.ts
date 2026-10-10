@@ -257,6 +257,8 @@ export function buildPayslipSections(input: {
   totalDays: number;
   /** Days of Basic not paid (absent, unpaid leave, before joining). */
   unpaidDays?: number;
+  /** The month is still running: unpaid days include days not reached yet. */
+  monthInProgress?: boolean;
   counts?: {
     late?: number;
     earlyCheckout?: number;
@@ -340,7 +342,11 @@ export function buildPayslipSections(input: {
     {
       label: 'Absence',
       amount: deductions.unpaidBasic ?? 0,
-      note: input.unpaidDays ? `${plural(input.unpaidDays, 'day')} not paid` : undefined,
+      note: input.unpaidDays
+        ? input.monthInProgress
+          ? `${plural(input.unpaidDays, 'day')} not paid yet (month still running)`
+          : `${plural(input.unpaidDays, 'day')} not paid`
+        : undefined,
     },
   ];
   const discipline: PayslipLine[] = [];

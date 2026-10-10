@@ -1,3 +1,4 @@
+import { PAGE_SIZE } from '@/constants/pagination'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1134,13 +1135,19 @@ export function LettersPage() {
     [employeeId, letterType, startDate, endDate, tab],
   )
 
-  const { data: letters = [], isLoading } = useQuery({
-    queryKey: ['letters', filters],
-    queryFn: () => lettersApi.getAll(filters),
+  // Server-side pages: the full list is ~15k letters.
+  const [page, setPage] = useState(0)
+  useEffect(() => {
+    setPage(0)
+  }, [filters])
+  const { data: letterPage, isLoading } = useQuery({
+    queryKey: ['letters', filters, page],
+    queryFn: () => lettersApi.getPage({ ...filters, page, pageSize: PAGE_SIZE }),
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchInterval: 30000,
     enabled: tab !== 'pending',
+    placeholderData: (prev) => prev,
   })
 
   const { data: pendingLetters = [], isLoading: pendingLoading } = useQuery({
@@ -1151,13 +1158,11 @@ export function LettersPage() {
     refetchInterval: 30000,
   })
 
-  const letterList = letters as Letter[]
   const pendingList = pendingLetters as Letter[]
 
-  const { page, setPage, totalPages, paginated, total } = usePagination(
-    letterList,
-    [filters],
-  )
+  const paginated = letterPage?.items ?? []
+  const total = letterPage?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const {
     page: pendingPage,

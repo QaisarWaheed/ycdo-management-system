@@ -389,6 +389,7 @@ export class LettersController {
         { ...user, portalOnly: true },
       );
     }
+    if (query.page != null) return this.lettersService.findPage(query, user);
     return this.lettersService.findAll(query, user);
   }
 

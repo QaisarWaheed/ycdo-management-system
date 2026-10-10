@@ -191,9 +191,10 @@ export class PayrollController {
     return this.payrollService.recomputeMonthAll(dto, user);
   }
 
+  /** Deletes unpaid payroll incl. Finance's deductions / incentives: Finance only. */
   @Post('reset-unpaid')
-  @Roles(...PAYROLL_WRITE_ROLES)
-  @RoutePermission(Permission.PAYROLL_MANAGE)
+  @Roles(...PAY_CHANGE_ROLES)
+  @StrictRoles()
   resetUnpaidPayroll(
     @Body() dto: ResetUnpaidPayrollDto,
     @CurrentUser() user: { id: string; role: UserRole },
@@ -294,7 +295,7 @@ export class PayrollController {
   /** Accounts mark a whole branch month Processed (verified attendance only) or Paid. */
   @Post('finalize')
   @Roles(UserRole.SUPER_ADMIN, UserRole.PAYROLL_OFFICER)
-  @RoutePermission(Permission.PAYROLL_FINALIZE)
+  @StrictRoles()
   finalizeBranchMonth(
     @Body() dto: FinalizeBranchMonthDto,
     @CurrentUser() user: { id: string },
@@ -318,7 +319,7 @@ export class PayrollController {
 
   @Patch('entries/:id/status')
   @Roles(UserRole.SUPER_ADMIN, UserRole.PAYROLL_OFFICER)
-  @RoutePermission(Permission.PAYROLL_FINALIZE)
+  @StrictRoles()
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollStatusDto,

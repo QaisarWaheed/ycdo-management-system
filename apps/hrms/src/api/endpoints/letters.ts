@@ -10,6 +10,12 @@ interface GenerateLetterResponse {
 export const lettersApi = {
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, Letter[]>('/letters', { params }),
+  /** One page of the letters list (server-side pagination). */
+  getPage: (params: Record<string, unknown> & { page: number; pageSize: number }) =>
+    api.get<unknown, { items: Letter[]; total: number; page: number; pageSize: number }>(
+      '/letters',
+      { params },
+    ),
   getPending: () => api.get<unknown, Letter[]>('/letters/pending'),
   getOne: (id: string) => api.get<unknown, Letter>(`/letters/${id}`),
   getTemplates: () =>

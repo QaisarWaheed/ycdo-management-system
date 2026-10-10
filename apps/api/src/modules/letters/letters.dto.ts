@@ -1,6 +1,9 @@
 import { LetterStatus, LetterType } from '@prisma/client';
 import {
   IsEnum,
+  IsInt,
+  Max,
+  Min,
   IsNotEmpty,
   IsObject,
   IsOptional,
@@ -8,7 +11,7 @@ import {
   IsUUID,
   MinLength,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class GenerateLetterDto {
   @IsUUID()
@@ -140,4 +143,18 @@ export class LetterQueryDto {
 
   @IsOptional()
   endDate?: string;
+
+  /** Zero-based page; when set the list is paginated ({ items, total }). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  pageSize?: number;
 }
