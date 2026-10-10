@@ -285,8 +285,8 @@ export function buildPayslipDayDetails(input: {
         dates.uninformedAbsent.push(label);
         break;
       default:
-        // UNMARKED or no final status yet.
-        if (k > today) b.upcoming++;
+        // UNMARKED or no final status yet; today counts as not reached (marked during the day).
+        if (k >= today) b.upcoming++;
         else {
           b.notMarked++;
           dates.notMarked.push(label);

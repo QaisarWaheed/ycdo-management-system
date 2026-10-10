@@ -55,6 +55,26 @@ describe('payslip day details', () => {
     expect(details.dates.earlyCheckout).toEqual(['23 Sep']);
   });
 
+  it('in a running month today is "not yet", past gaps are "not marked"', () => {
+    const running = buildPayslipDayDetails({
+      facts: {
+        month: 10,
+        year: 2026,
+        logs: [
+          { date: new Date(Date.UTC(2026, 9, 9)), status: AttendanceStatus.PRESENT, overtimeMinutes: 0, earlyOutMinutes: 0 },
+        ],
+        extraDays: [],
+        missedCheckouts: [],
+      },
+      employee: { joiningDate: new Date(Date.UTC(2026, 9, 9)), status: 'ACTIVE' },
+      paidLeaveDateKeys: [],
+      paidDays: 1,
+      now: new Date('2026-10-11T06:00:00Z'),
+    });
+    expect(running.breakdown).toMatchObject({ beforeJoining: 8, present: 1, notMarked: 1, upcoming: 21 });
+    expect(running.dates.notMarked).toEqual(['10 Oct']);
+  });
+
   it('splits days not paid by cause and puts dates on the lines', () => {
     const sections = buildPayslipSections({
       earnings: {
