@@ -136,6 +136,7 @@ import {
   monthName,
 } from '../attendance-lock/attendance-month-lock.util';
 import { FINE_REASON_LABELS } from './payslip-slip.util';
+import { itemizePayrollEntries } from './payroll-itemize.util';
 import {
   computePackageAllowanceLines,
   isActiveInMonth,
@@ -1533,6 +1534,10 @@ export class PayrollService {
           totalDeductions: 0,
           netStipend: 0,
         };
+    const packageAllowanceLines =
+      worked && breakdown.packageAllowanceLines?.length
+        ? (breakdown.packageAllowanceLines as Prisma.InputJsonValue)
+        : Prisma.DbNull;
     if (!entry)
       entry = await this.prisma.payrollEntry.create({
         data: {
@@ -1540,6 +1545,7 @@ export class PayrollService {
           month: dto.month,
           year: dto.year,
           ...totals,
+          packageAllowanceLines,
           status: PayrollStatus.PENDING,
           forcedNonActive: forceNonActiveOverride === true,
         },
@@ -1619,6 +1625,7 @@ export class PayrollService {
       where: { id: entry.id },
       data: {
         ...totals,
+        packageAllowanceLines,
         forcedNonActive:
           forceNonActiveOverride === true || entry.forcedNonActive === true,
       },
@@ -2018,6 +2025,56 @@ export class PayrollService {
       }
     }
     return { total: entries.length, done, failed };
+  }
+
+  /** Allowance / incentive / deduction lines per employee for a month (reports + comparison). */
+  async itemizedReport(q: {
+    month: number;
+    year: number;
+    branchId?: string;
+    departmentId?: string;
+    designation?: string;
+  }) {
+    const employee: Prisma.EmployeeWhereInput = {
+      ...(q.branchId ? { currentBranchId: q.branchId } : {}),
+      ...(q.departmentId ? { currentDepartmentId: q.departmentId } : {}),
+      ...(q.designation ? { currentDesignation: q.designation } : {}),
+    };
+    const entries = await this.prisma.payrollEntry.findMany({
+      where: { month: q.month, year: q.year, stipendRecord: { employee } },
+      include: {
+        deductions: true,
+        allowances: true,
+        stipendRecord: {
+          select: {
+            employee: {
+              select: {
+                id: true,
+                fullName: true,
+                employeeCode: true,
+                status: true,
+                currentDesignation: true,
+                currentBranch: { select: { name: true } },
+                currentDepartment: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    const employeeIds = [...new Set(entries.map((e) => e.stipendRecord.employee.id))];
+    const incentives = await this.prisma.incentive.findMany({
+      where: { month: q.month, year: q.year, employeeId: { in: employeeIds } },
+      select: { employeeId: true, amount: true, type: { select: { name: true } } },
+    });
+    return {
+      month: q.month,
+      year: q.year,
+      rows: itemizePayrollEntries(
+        entries.map((e) => ({ ...e, employee: e.stipendRecord.employee })),
+        incentives,
+      ),
+    };
   }
 
   async getChangeLog(entryId: string) {

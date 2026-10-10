@@ -550,22 +550,24 @@ model StipendRecord {
 }
 
 model PayrollEntry {
-  changeLogs      PayrollChangeLog[]
-  id              String             @id @default(uuid())
-  stipendRecordId String
-  month           Int
-  year            Int
-  basicStipend    Decimal            @db.Decimal(10, 2)
-  totalDeductions Decimal            @default(0) @db.Decimal(10, 2)
-  totalAllowances Decimal            @default(0) @db.Decimal(10, 2)
-  netStipend      Decimal            @db.Decimal(10, 2)
-  status          PayrollStatus      @default(PENDING)
+  changeLogs            PayrollChangeLog[]
+  id                    String             @id @default(uuid())
+  stipendRecordId       String
+  month                 Int
+  year                  Int
+  basicStipend          Decimal            @db.Decimal(10, 2)
+  totalDeductions       Decimal            @default(0) @db.Decimal(10, 2)
+  totalAllowances       Decimal            @default(0) @db.Decimal(10, 2)
+  netStipend            Decimal            @db.Decimal(10, 2)
+  /// Per-type package allowance amounts (allowance-table months), for itemised reports.
+  packageAllowanceLines Json?
+  status                PayrollStatus      @default(PENDING)
   /**
    * True when HR force-generated for a non-ACTIVE/ON_REST employee (e.g. approved suspended).
    */
-  forcedNonActive Boolean            @default(false)
-  processedAt     DateTime?
-  createdAt       DateTime           @default(now())
+  forcedNonActive       Boolean            @default(false)
+  processedAt           DateTime?
+  createdAt             DateTime           @default(now())
 
   stipendRecord  StipendRecord      @relation(fields: [stipendRecordId], references: [id])
   deductions     PayrollDeduction[]

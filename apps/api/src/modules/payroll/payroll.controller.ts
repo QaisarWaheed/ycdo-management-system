@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsUUID, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { PayrollStatus } from '@prisma/client';
 import {
   Body,
@@ -86,6 +86,31 @@ const OVERTIME_APPLY_ROLES = [
   UserRole.HR_OPERATIONS_MANAGER,
   UserRole.HR_EXECUTIVE,
 ];
+
+class ItemizedReportQueryDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  year: number;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
+  @IsOptional()
+  @IsString()
+  designation?: string;
+}
 
 class FinalizeBranchMonthDto {
   @IsUUID()
@@ -274,6 +299,13 @@ export class PayrollController {
     @CurrentUser() user: { id: string },
   ) {
     return this.payrollService.finalizeBranchMonth(dto, user.id);
+  }
+
+  @Get('reports/itemized')
+  @Roles(...PAYROLL_READ_ROLES, UserRole.PAYROLL_OFFICER)
+  @RoutePermission(Permission.PAYROLL_VIEW)
+  itemizedReport(@Query() q: ItemizedReportQueryDto) {
+    return this.payrollService.itemizedReport(q);
   }
 
   @Get('entries/:id/changes')

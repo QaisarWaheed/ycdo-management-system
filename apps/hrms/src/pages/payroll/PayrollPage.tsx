@@ -84,6 +84,7 @@ import { isPendingApproval } from '@/api/endpoints/payApprovals'
 import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
 import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
 import { PayTypesTab } from '@/components/payroll/PayTypesTab'
+import { PayrollReportsTab } from '@/components/payroll/PayrollReportsTab'
 import {
   PayrollChangeHistory,
   PayrollFinalizeDialog,
@@ -3008,6 +3009,7 @@ export function PayrollPage() {
           <TabsTrigger value="summary">Summary</TabsTrigger>
           <TabsTrigger value="receipts">Stipend Receipts</TabsTrigger>
           <TabsTrigger value="non-active">Non-active Payslips</TabsTrigger>
+          <TabsTrigger value="reports">Reports</TabsTrigger>
           <TabsTrigger value="types">Allowance &amp; Incentive Types</TabsTrigger>
         </TabsList>
 
@@ -3029,6 +3031,10 @@ export function PayrollPage() {
 
         <TabsContent value="non-active" className="mt-4">
           <NonActivePayslipsTab />
+        </TabsContent>
+
+        <TabsContent value="reports" className="mt-4">
+          <PayrollReportsTab />
         </TabsContent>
 
         <TabsContent value="types" className="mt-4">
