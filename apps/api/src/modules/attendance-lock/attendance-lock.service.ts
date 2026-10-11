@@ -20,11 +20,17 @@ export class AttendanceLockService {
       this.prisma.attendanceMonthLock.findMany({ where: { year, month } }),
     ]);
     const userIds = [
-      ...new Set(locks.flatMap((l) => [l.verifiedById, l.unlockedById]).filter(Boolean)),
+      ...new Set(
+        locks.flatMap((l) => [l.verifiedById, l.unlockedById]).filter(Boolean),
+      ),
     ] as string[];
     const users = await this.prisma.user.findMany({
       where: { id: { in: userIds } },
-      select: { id: true, email: true, employee: { select: { fullName: true } } },
+      select: {
+        id: true,
+        email: true,
+        employee: { select: { fullName: true } },
+      },
     });
     const nameOf = (id?: string | null) => {
       const u = users.find((x) => x.id === id);
@@ -74,12 +80,21 @@ export class AttendanceLockService {
           verifiedAt: now,
         },
       });
-      await this.audit(user, 'ATTENDANCE_MONTH_VERIFIED', branchId, { year, month });
+      await this.audit(user, 'ATTENDANCE_MONTH_VERIFIED', branchId, {
+        year,
+        month,
+      });
     }
     return this.list(year, month);
   }
 
-  async unlock(branchId: string, year: number, month: number, reason: string, user: Actor) {
+  async unlock(
+    branchId: string,
+    year: number,
+    month: number,
+    reason: string,
+    user: Actor,
+  ) {
     const lock = await this.prisma.attendanceMonthLock.findUnique({
       where: { branchId_year_month: { branchId, year, month } },
     });

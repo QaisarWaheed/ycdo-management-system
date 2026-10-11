@@ -27,7 +27,11 @@ describe('itemizePayrollEntries', () => {
           ],
           allowances: [
             { type: 'OVERTIME', amount: 800 },
-            { type: 'CUSTOM', amount: 1500, description: 'Incentive: On Progress' },
+            {
+              type: 'CUSTOM',
+              amount: 1500,
+              description: 'Incentive: On Progress',
+            },
             { type: 'CUSTOM', amount: 500, description: 'Eid bonus' },
           ],
           deductions: [
@@ -43,15 +47,23 @@ describe('itemizePayrollEntries', () => {
       ],
       [{ employeeId: 'e1', amount: 1500, type: { name: 'On Progress' } }],
     );
-    expect(row.allowances).toEqual({ Overtime: 800, Pharmacy: 2000, 'Travelling Exp': 5000 });
-    expect(row.incentives).toEqual({ 'Manual addition': 500, 'On Progress': 1500 });
+    expect(row.allowances).toEqual({
+      Overtime: 800,
+      Pharmacy: 2000,
+      'Travelling Exp': 5000,
+    });
+    expect(row.incentives).toEqual({
+      'Manual addition': 500,
+      'On Progress': 1500,
+    });
     expect(row.deductions).toEqual({
       Late: 667,
       'Fine: No uniform': 300,
       'Early checkout': 1000,
       'Fixed package deductions': 2000,
     });
-    const sum = (o: Record<string, number>) => Object.values(o).reduce((s, n) => s + n, 0);
+    const sum = (o: Record<string, number>) =>
+      Object.values(o).reduce((s, n) => s + n, 0);
     expect(sum(row.allowances) + sum(row.incentives)).toBe(9800);
     expect(sum(row.deductions)).toBe(3967);
   });

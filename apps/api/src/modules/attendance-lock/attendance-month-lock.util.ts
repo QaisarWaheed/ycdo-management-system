@@ -5,8 +5,18 @@ type Db = Prisma.TransactionClient | PrismaClient;
 
 const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
 const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 /** Pakistan calendar month of a date-only value or an instant. */
@@ -15,10 +25,15 @@ export function attendanceMonthOf(date: Date): { year: number; month: number } {
   return { year: pk.getUTCFullYear(), month: pk.getUTCMonth() + 1 };
 }
 
-export const monthName = (year: number, month: number) => `${MONTHS[month - 1]} ${year}`;
+export const monthName = (year: number, month: number) =>
+  `${MONTHS[month - 1]} ${year}`;
 
 /** True once the whole month is over in Pakistan time (only then can it be verified). */
-export function isMonthOver(year: number, month: number, now = new Date()): boolean {
+export function isMonthOver(
+  year: number,
+  month: number,
+  now = new Date(),
+): boolean {
   const pk = attendanceMonthOf(now);
   return pk.year * 12 + pk.month > year * 12 + month;
 }
@@ -30,7 +45,8 @@ export async function isAttendanceMonthVerified(
   month: number,
 ): Promise<boolean> {
   // Unit-test doubles of Prisma often omit this model; real clients always have it.
-  if (!(db as { attendanceMonthLock?: unknown }).attendanceMonthLock) return false;
+  if (!(db as { attendanceMonthLock?: unknown }).attendanceMonthLock)
+    return false;
   const lock = await db.attendanceMonthLock.findUnique({
     where: { branchId_year_month: { branchId, year, month } },
     select: { status: true },
@@ -94,12 +110,20 @@ export async function lockedBranchIds(
   date: Date,
 ): Promise<Set<string>> {
   const ids = [...new Set(branchIds.filter((b): b is string => !!b))];
-  if (!ids.length || !(db as { attendanceMonthLock?: unknown }).attendanceMonthLock) {
+  if (
+    !ids.length ||
+    !(db as { attendanceMonthLock?: unknown }).attendanceMonthLock
+  ) {
     return new Set();
   }
   const { year, month } = attendanceMonthOf(date);
   const rows = await db.attendanceMonthLock.findMany({
-    where: { year, month, status: AttendanceMonthStatus.VERIFIED, branchId: { in: ids } },
+    where: {
+      year,
+      month,
+      status: AttendanceMonthStatus.VERIFIED,
+      branchId: { in: ids },
+    },
     select: { branchId: true },
   });
   return new Set(rows.map((r) => r.branchId));

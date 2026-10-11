@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Module, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Module,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
@@ -88,7 +96,13 @@ export class AttendanceLockController {
   @Post('unlock')
   @Roles(UserRole.IT_ADMIN, UserRole.SUPER_ADMIN)
   unlock(@Body() dto: UnlockMonthDto, @CurrentUser() user: { id: string }) {
-    return this.locks.unlock(dto.branchId, dto.year, dto.month, dto.reason, user);
+    return this.locks.unlock(
+      dto.branchId,
+      dto.year,
+      dto.month,
+      dto.reason,
+      user,
+    );
   }
 }
 

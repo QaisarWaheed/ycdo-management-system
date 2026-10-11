@@ -18,7 +18,11 @@ export type ItemizeEntry = {
     description?: string | null;
     fineReason?: string | null;
   }>;
-  allowances: Array<{ type: string; amount: Money; description?: string | null }>;
+  allowances: Array<{
+    type: string;
+    amount: Money;
+    description?: string | null;
+  }>;
   employee: {
     id: string;
     fullName: string;
@@ -67,11 +71,14 @@ export function deductionReportLabel(d: {
   description?: string | null;
   fineReason?: string | null;
 }) {
-  if (d.reason === 'FINE') return FINE_REASON_LABELS[d.fineReason ?? 'OTHER'] ?? 'Fine';
+  if (d.reason === 'FINE')
+    return FINE_REASON_LABELS[d.fineReason ?? 'OTHER'] ?? 'Fine';
   if (d.reason === 'DISCIPLINARY_FINE') {
     const desc = d.description ?? '';
-    if (desc.startsWith(CARD_EARLY_CHECKOUT_DESCRIPTION)) return 'Early checkout';
-    if (desc.startsWith(CARD_MISSING_CHECKOUT_DESCRIPTION)) return 'Missed checkout';
+    if (desc.startsWith(CARD_EARLY_CHECKOUT_DESCRIPTION))
+      return 'Early checkout';
+    if (desc.startsWith(CARD_MISSING_CHECKOUT_DESCRIPTION))
+      return 'Missed checkout';
     return 'Disciplinary fine';
   }
   if (d.reason === 'UNINFORMED_ABSENCE') return 'Absence';
@@ -88,7 +95,11 @@ export function deductionReportLabel(d: {
  */
 export function itemizePayrollEntries(
   entries: ItemizeEntry[],
-  incentives: Array<{ employeeId: string; amount: Money; type?: { name: string } | null }>,
+  incentives: Array<{
+    employeeId: string;
+    amount: Money;
+    type?: { name: string } | null;
+  }>,
 ): ItemizedRow[] {
   const rows = new Map<string, ItemizedRow>();
   for (const e of entries) {
@@ -123,7 +134,11 @@ export function itemizePayrollEntries(
         }
         continue;
       }
-      add(row.allowances, ALLOWANCE_LABELS[a.type] ?? titleCase(a.type), amount);
+      add(
+        row.allowances,
+        ALLOWANCE_LABELS[a.type] ?? titleCase(a.type),
+        amount,
+      );
     }
     const packagePart = num(e.totalAllowances) - storedAllowances;
     const lines = Array.isArray(e.packageAllowanceLines)
@@ -146,7 +161,11 @@ export function itemizePayrollEntries(
       storedDeductions += num(d.amount);
       add(row.deductions, deductionReportLabel(d), num(d.amount));
     }
-    add(row.deductions, 'Fixed package deductions', num(e.totalDeductions) - storedDeductions);
+    add(
+      row.deductions,
+      'Fixed package deductions',
+      num(e.totalDeductions) - storedDeductions,
+    );
   }
   for (const i of incentives) {
     const row = rows.get(i.employeeId);

@@ -16,17 +16,27 @@ function db(status: AttendanceMonthStatus | null) {
     attendanceMonthLock: {
       findUnique: jest.fn().mockResolvedValue(status ? { status } : null),
     },
-    employee: { findUnique: jest.fn().mockResolvedValue({ currentBranchId: 'b1' }) },
-    branch: { findUnique: jest.fn().mockResolvedValue({ name: 'Head Office' }) },
+    employee: {
+      findUnique: jest.fn().mockResolvedValue({ currentBranchId: 'b1' }),
+    },
+    branch: {
+      findUnique: jest.fn().mockResolvedValue({ name: 'Head Office' }),
+    },
   };
 }
 
 describe('attendance month lock', () => {
   it('uses the Pakistan calendar month', () => {
     // 31 Oct 21:00 UTC is already 1 Nov 02:00 in Pakistan.
-    expect(attendanceMonthOf(new Date('2026-10-31T21:00:00Z'))).toEqual({ year: 2026, month: 11 });
+    expect(attendanceMonthOf(new Date('2026-10-31T21:00:00Z'))).toEqual({
+      year: 2026,
+      month: 11,
+    });
     // Date-only values stay on their day.
-    expect(attendanceMonthOf(new Date('2026-10-31T00:00:00Z'))).toEqual({ year: 2026, month: 10 });
+    expect(attendanceMonthOf(new Date('2026-10-31T00:00:00Z'))).toEqual({
+      year: 2026,
+      month: 10,
+    });
   });
 
   it('a month can be verified only after it is over', () => {
@@ -52,7 +62,11 @@ describe('attendance month lock', () => {
       }),
     ).resolves.toBeUndefined();
     expect(
-      await isAttendanceLocked(db(null) as never, 'b1', new Date('2026-10-05T00:00:00Z')),
+      await isAttendanceLocked(
+        db(null) as never,
+        'b1',
+        new Date('2026-10-05T00:00:00Z'),
+      ),
     ).toBe(false);
   });
 
@@ -60,7 +74,9 @@ describe('attendance month lock', () => {
     const service = new AttendanceLockService({} as never);
     const now = new Date();
     await expect(
-      service.verify(['b1'], now.getFullYear(), now.getMonth() + 1, { id: 'hr' }),
+      service.verify(['b1'], now.getFullYear(), now.getMonth() + 1, {
+        id: 'hr',
+      }),
     ).rejects.toThrow('is not over yet');
   });
 
@@ -69,10 +85,17 @@ describe('attendance month lock', () => {
       attendanceMonthLock: { findUnique: jest.fn().mockResolvedValue(null) },
       payrollEntry: { findMany: jest.fn() },
     };
-    const service = Object.assign(Object.create(PayrollService.prototype), { prisma });
+    const service = Object.assign(Object.create(PayrollService.prototype), {
+      prisma,
+    });
     await expect(
       service.finalizeBranchMonth(
-        { branchId: 'b1', month: 9, year: 2026, status: PayrollStatus.PROCESSED },
+        {
+          branchId: 'b1',
+          month: 9,
+          year: 2026,
+          status: PayrollStatus.PROCESSED,
+        },
         'acc1',
       ),
     ).rejects.toThrow('not verified by HR yet');
