@@ -5,6 +5,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -382,9 +383,20 @@ export class PayrollController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.IT_ADMIN,
+    UserRole.PAYROLL_OFFICER,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
     UserRole.EMPLOYEE,
   )
-  getEmployeePayrollHistory(@Param('employeeId') employeeId: string) {
+  getEmployeePayrollHistory(
+    @Param('employeeId') employeeId: string,
+    @CurrentUser() user: { role: UserRole; employeeId?: string | null },
+  ) {
+    // Portal: an employee may read only their own history.
+    if (user.role === UserRole.EMPLOYEE && user.employeeId !== employeeId) {
+      throw new ForbiddenException('You can only view your own payroll history');
+    }
     return this.payrollService.getEmployeePayrollHistory(employeeId);
   }
 
