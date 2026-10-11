@@ -45,6 +45,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AllowanceProration,
   AllowanceType,
   AttendanceLogType,
   AttendanceStatus,
@@ -3342,12 +3343,61 @@ export class PayrollService {
       fixedAllowances = computed.total;
       packageAllowanceLines = computed.lines;
     } else if (ownsMonth) {
-      fixedAllowances = prorate(
-        (pkg.allowances || 0) +
-          (pkg.reward || 0) +
-          (pkg.progressReward || 0) +
-          (pkg.fuelAllowance || 0),
-      );
+      // The four old package fields pay as before. Allowance types with no
+      // package field (Incharge, Admin, ...) can be set from any month; when
+      // the month has some, every allowance becomes its own slip line.
+      const extra = this.prisma.employeeAllowance?.findMany
+        ? (
+            await this.prisma.employeeAllowance.findMany({
+              where: {
+                employeeId,
+                type: { legacyField: null },
+                startMonth: { lte: monthStartUtc(year, month) },
+                OR: [
+                  { endMonth: null },
+                  { endMonth: { gte: monthStartUtc(year, month) } },
+                ],
+              },
+              include: { type: true },
+            })
+          ).filter((r) => isActiveInMonth(r, year, month))
+        : [];
+      if (extra.length === 0) {
+        fixedAllowances = prorate(
+          (pkg.allowances || 0) +
+            (pkg.reward || 0) +
+            (pkg.progressReward || 0) +
+            (pkg.fuelAllowance || 0),
+        );
+      } else {
+        const legacy: Array<[string, number]> = [
+          ['Travelling Exp', pkg.allowances || 0],
+          ['Reward', pkg.reward || 0],
+          ['Reward On Progress', pkg.progressReward || 0],
+          ['Petrol', pkg.fuelAllowance || 0],
+        ];
+        const computed = computePackageAllowanceLines(
+          [
+            ...legacy
+              .filter(([, amount]) => amount > 0)
+              .map(([name, amount], i) => ({
+                name,
+                proration: AllowanceProration.FULL_MONTH,
+                amount,
+                sortOrder: i,
+              })),
+            ...extra.map((r) => ({
+              name: r.type.name,
+              proration: r.type.proration,
+              amount: Number(r.amount) || 0,
+              sortOrder: r.type.sortOrder,
+            })),
+          ],
+          { prorate, paidDays: salary.paidDays, calendarDays: card.calendarDays },
+        );
+        fixedAllowances = computed.total;
+        packageAllowanceLines = computed.lines;
+      }
     }
     const fixedPackageDeductions = ownsMonth
       ? (pkg.loanDeduction || 0) +
@@ -3700,13 +3750,17 @@ export class PayrollService {
       ],
     };
 
-    const entries = await this.prisma.payrollEntry.findMany({
+    const rawEntries = await this.prisma.payrollEntry.findMany({
       where,
       include: {
+        deductions: true,
+        allowances: true,
         stipendRecord: {
           select: {
             basicStipend: true,
             employeeId: true,
+            effectiveFrom: true,
+            effectiveTo: true,
             employee: {
               select: {
                 id: true,
@@ -3722,6 +3776,9 @@ export class PayrollService {
         stipendRecord: { employee: { fullName: 'asc' } },
       },
     });
+    // One row per employee, merged exactly like the Monthly Payroll list
+    // (several package segments in a month count once).
+    const entries = aggregateMonthlyPayrollByEmployee(rawEntries);
 
     const byStatus = {
       PENDING: 0,
@@ -3735,6 +3792,7 @@ export class PayrollService {
     let totalBasicSalary = 0;
     let totalDeductions = 0;
     let totalAllowances = 0;
+    let totalIncentives = 0;
     let totalNetSalary = 0;
     let periodStipendTotal = 0;
     const payrollEmployeeIds = new Set<string>();
@@ -3745,11 +3803,25 @@ export class PayrollService {
       const earnedBasic = Math.max(0, Number(entry.basicStipend));
       const contractualBasic = Number(entry.stipendRecord.basicStipend);
       const deductions = Math.max(0, Number(entry.totalDeductions));
-      const allowances = Math.max(0, Number(entry.totalAllowances));
+      // Incentives (approved, CUSTOM "Incentive: …" rows) apart from allowances.
+      const incentives = roundMoney(
+        (entry.allowances ?? [])
+          .filter(
+            (a) =>
+              a.type === AllowanceType.CUSTOM &&
+              (a.description ?? '').startsWith('Incentive: '),
+          )
+          .reduce((sum, a) => sum + Number(a.amount), 0),
+      );
+      const allowances = Math.max(
+        0,
+        roundMoney(Number(entry.totalAllowances) - incentives),
+      );
       const net = Number(entry.netStipend);
       totalBasicSalary += earnedBasic;
       totalDeductions += deductions;
       totalAllowances += allowances;
+      totalIncentives += incentives;
       totalNetSalary += net;
 
       const dailyRate =
@@ -3770,8 +3842,9 @@ export class PayrollService {
         contractualBasic,
         totalDeductions: deductions,
         totalAllowances: allowances,
+        totalIncentives: incentives,
         netStipend: net,
-        status: entry.status,
+        status: entry.status as PayrollStatus | null,
         periodDays,
         periodStipend,
       };
@@ -3805,6 +3878,7 @@ export class PayrollService {
         contractualBasic: 0,
         totalDeductions: 0,
         totalAllowances: 0,
+        totalIncentives: 0,
         netStipend: 0,
         status: null,
         periodDays,
@@ -3830,7 +3904,8 @@ export class PayrollService {
       totalEmployees: distinctEmployeeCount,
       totalBasicSalary,
       totalDeductions,
-      totalAllowances,
+      totalAllowances: roundMoney(totalAllowances),
+      totalIncentives: roundMoney(totalIncentives),
       totalNetSalary,
       byStatus,
       byEmployeeStatus,

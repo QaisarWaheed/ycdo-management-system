@@ -6,8 +6,18 @@ jest.mock('./package-allowances.util', () => ({
 import { AllowancesService } from './allowances.service';
 import { syncLegacyAllowanceRows } from './package-allowances.util';
 
-const petrol = { id: 'petrol', name: 'Petrol', isActive: true, legacyField: 'fuelAllowance' };
-const travel = { id: 'travel', name: 'Travelling Exp', isActive: true, legacyField: null };
+const petrol = {
+  id: 'petrol',
+  name: 'Petrol',
+  isActive: true,
+  legacyField: 'fuelAllowance',
+};
+const travel = {
+  id: 'travel',
+  name: 'Travelling Exp',
+  isActive: true,
+  legacyField: null,
+};
 
 function build({
   packageFrom = new Date(Date.UTC(2026, 0, 1)),
@@ -23,7 +33,9 @@ function build({
   };
   const prisma = {
     payAllowanceType: {
-      findUnique: jest.fn(async ({ where }) => (where.id === 'petrol' ? petrol : travel)),
+      findUnique: jest.fn(async ({ where }) =>
+        where.id === 'petrol' ? petrol : travel,
+      ),
     },
     employee: { findUnique: jest.fn().mockResolvedValue({ id: 'e1' }) },
     employeeAllowance: { findMany: jest.fn().mockResolvedValue([]) },
@@ -66,7 +78,9 @@ describe('allowance change for a month before the switch-over', () => {
   });
 
   it('edits the open package in place when it already starts that month', async () => {
-    const { service, payroll } = build({ packageFrom: new Date(Date.UTC(2026, 8, 1)) });
+    const { service, payroll } = build({
+      packageFrom: new Date(Date.UTC(2026, 8, 1)),
+    });
     await service.assign(sept() as never, { id: 'u1' });
     expect(payroll.salaryIncrement).not.toHaveBeenCalled();
     expect(payroll.updateActiveStipend).toHaveBeenCalledWith(
@@ -83,14 +97,77 @@ describe('allowance change for a month before the switch-over', () => {
     expect(payroll.salaryIncrement).not.toHaveBeenCalled();
   });
 
-  it('refuses types that are not package fields, and a "To month"', async () => {
+  it('refuses a "To month" for package fields', async () => {
     const { service } = build();
-    await expect(
-      service.assign(sept({ typeId: 'travel' }) as never, { id: 'u1' }),
-    ).rejects.toThrow(/only the package allowances/);
     await expect(
       service.assign(sept({ endMonth: '2026-09' }) as never, { id: 'u1' }),
     ).rejects.toThrow(/"To month" is not available/);
+  });
+
+  it('types that are not package fields (Incharge, Admin…) use the allowance table from that month', async () => {
+    const { service, prisma, payroll } = build();
+    const create = jest.fn().mockResolvedValue({ id: 'ea-1' });
+    Object.assign(prisma, {
+      $transaction: jest.fn(async (fn: (tx: unknown) => unknown) =>
+        fn({ employeeAllowance: { create, update: jest.fn() } }),
+      ),
+    });
+    Object.assign(prisma.payrollEntry, {
+      findMany: jest.fn().mockResolvedValue([{ month: 10, year: 2026 }]),
+    });
+    await service.assign(
+      sept({ typeId: 'travel', startMonth: '2026-10', amount: 5000 }) as never,
+      { id: 'u1' },
+    );
+    expect(payroll.salaryIncrement).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        typeId: 'travel',
+        amount: 5000,
+        startMonth: new Date(Date.UTC(2026, 9, 1)),
+      }),
+    });
+    expect(payroll.recomputeEmployeeMonth).toHaveBeenCalledWith({
+      employeeId: 'e1',
+      month: 10,
+      year: 2026,
+    });
+  });
+
+  it('moves an allowance start earlier ("from Oct" for one set from Nov)', async () => {
+    const { service, prisma } = build();
+    const update = jest.fn().mockResolvedValue({ id: 'ea-nov' });
+    Object.assign(prisma.employeeAllowance, {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          {
+            id: 'ea-nov',
+            amount: 5000,
+            startMonth: new Date(Date.UTC(2026, 10, 1)),
+            endMonth: null,
+          },
+        ]),
+      update,
+    });
+    Object.assign(prisma.payrollEntry, {
+      findMany: jest.fn().mockResolvedValue([]),
+    });
+    await service.assign(
+      sept({ typeId: 'travel', startMonth: '2026-10', amount: 5000 }) as never,
+      { id: 'u1' },
+    );
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'ea-nov' },
+      data: { startMonth: new Date(Date.UTC(2026, 9, 1)) },
+    });
+  });
+
+  it('refuses a month already processed for types on the allowance table', async () => {
+    const { service } = build({ closedEntry: { id: 'pe' } });
+    await expect(
+      service.assign(sept({ typeId: 'travel' }) as never, { id: 'u1' }),
+    ).rejects.toThrow(/already processed or paid/);
   });
 
   it('compares an approval request against the package amount', async () => {
@@ -100,4 +177,3 @@ describe('allowance change for a month before the switch-over', () => {
     expect(res.summary).toContain('Petrol');
   });
 });
-

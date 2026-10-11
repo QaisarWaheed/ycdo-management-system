@@ -74,7 +74,14 @@ const errText = (err: ApiError) => {
   return Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error')
 }
 
-export function EmployeeAllowancesPanel({ employeeId }: { employeeId: string }) {
+export function EmployeeAllowancesPanel({
+  employeeId,
+  packageFrom,
+}: {
+  employeeId: string
+  /** Start of the current stipend package (pays the four package allowances before the switch-over). */
+  packageFrom?: string | null
+}) {
   const { hasRole } = useAuth()
   const canManage = hasRole(MANAGE_ROLES)
   const [editing, setEditing] = useState<EmployeeAllowance | 'new' | null>(null)
@@ -103,8 +110,9 @@ export function EmployeeAllowancesPanel({ employeeId }: { employeeId: string }) 
         <div>
           <h3 className="font-semibold">Allowances</h3>
           <p className="text-xs text-muted-foreground">
-            Paid from {monthText(`${ALLOWANCES_FROM_MONTH}-01`)} payroll. Earlier months use the
-            old package fields.
+            Incharge, Admin, Night Monitoring and other types are paid from the month you choose.
+            Before {monthText(`${ALLOWANCES_FROM_MONTH}-01`)} Travelling Exp, Reward, Reward on
+            Progress and Petrol come from the stipend package.
           </p>
         </div>
         {canManage ? (
@@ -161,7 +169,22 @@ export function EmployeeAllowancesPanel({ employeeId }: { employeeId: string }) 
                   <TableCell className="text-right tabular-nums">
                     {formatPKR(Number(r.amount))}
                   </TableCell>
-                  <TableCell>{monthText(r.startMonth)}</TableCell>
+                  <TableCell>
+                    {r.type.legacyField &&
+                    monthValue(r.startMonth) === ALLOWANCES_FROM_MONTH &&
+                    packageFrom &&
+                    monthValue(packageFrom) < ALLOWANCES_FROM_MONTH ? (
+                      <>
+                        {monthText(packageFrom)}
+                        <div className="text-xs text-muted-foreground">
+                          stipend package until{' '}
+                          {monthText(`${ALLOWANCES_FROM_MONTH}-01`)}
+                        </div>
+                      </>
+                    ) : (
+                      monthText(r.startMonth)
+                    )}
+                  </TableCell>
                   <TableCell>{r.endMonth ? monthText(r.endMonth) : 'Ongoing'}</TableCell>
                   <TableCell>
                     <Badge variant="outline">
@@ -252,17 +275,18 @@ function AssignAllowanceDialog({
   })
 
   const minMonth = [earliestFromMonth(), ALLOWANCES_FROM_MONTH].sort()[0]
-  // Before the switch-over the month pays the old package fields: the change
-  // goes into the stipend package from that month and carries on.
-  const beforeSwitch = startMonth < ALLOWANCES_FROM_MONTH
   const selectedType = types.find((t) => t.id === typeId)
+  // Before the switch-over the four package allowances live on the stipend
+  // package: the change goes into the package from that month and carries on.
+  // Other types (Incharge, Admin, ...) use this list from any month.
+  const beforeSwitch = startMonth < ALLOWANCES_FROM_MONTH && !!selectedType?.legacyField
   const isIncrease = !current || amount > Number(current.amount)
   const valid =
     !!typeId &&
     amount > 0 &&
     note.trim().length >= 3 &&
     startMonth >= minMonth &&
-    (!beforeSwitch || (!!selectedType?.legacyField && !endMonth)) &&
+    (!beforeSwitch || !endMonth) &&
     (!endMonth || endMonth >= startMonth)
 
   return (
@@ -281,7 +305,6 @@ function AssignAllowanceDialog({
               <SelectContent>
                 {types
                   .filter((t) => t.isActive || t.id === typeId)
-                  .filter((t) => !beforeSwitch || !!t.legacyField || t.id === typeId)
                   .map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}
@@ -303,10 +326,7 @@ function AssignAllowanceDialog({
                 type="month"
                 min={minMonth}
                 value={startMonth}
-                onChange={(e) => {
-                  setStartMonth(e.target.value)
-                  if (e.target.value < ALLOWANCES_FROM_MONTH) setEndMonth('')
-                }}
+                onChange={(e) => setStartMonth(e.target.value)}
               />
             </div>
             <div className="space-y-1">
@@ -325,9 +345,6 @@ function AssignAllowanceDialog({
             <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
               {format(new Date(`${startMonth}-15`), 'MMMM yyyy')} uses the stipend package, so this
               changes the package from that month onward and recalculates its unpaid payroll.
-              {selectedType && !selectedType.legacyField
-                ? ` ${selectedType.name} can only start from ${monthText(`${ALLOWANCES_FROM_MONTH}-01`)}; for a one-off use Add Allowance on that month's payroll.`
-                : ''}
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">

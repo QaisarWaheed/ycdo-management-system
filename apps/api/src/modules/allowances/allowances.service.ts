@@ -167,7 +167,29 @@ export class AllowancesService {
     const start = parseMonth(dto.startMonth);
     const end = dto.endMonth ? parseMonth(dto.endMonth) : null;
     if (!usesAllowanceTable(start.year, start.month)) {
-      return this.assignToPackage(dto, start, user);
+      // Before the cut-over only the four package fields live on the package;
+      // other types (Incharge, Admin, ...) use the allowance table any month.
+      const kind = await this.prisma.payAllowanceType.findUnique({
+        where: { id: dto.typeId },
+        select: { legacyField: true },
+      });
+      if (!kind || kind.legacyField) {
+        return this.assignToPackage(dto, start, user);
+      }
+      const closed = await this.prisma.payrollEntry.findFirst({
+        where: {
+          month: start.month,
+          year: start.year,
+          status: { not: PayrollStatus.PENDING },
+          stipendRecord: { employeeId: dto.employeeId },
+        },
+        select: { id: true },
+      });
+      if (closed) {
+        throw new BadRequestException(
+          `${label(start.date)} payroll is already processed or paid for this employee; start from the next month`,
+        );
+      }
     }
     if (end && end.key < start.key) {
       throw new BadRequestException(
@@ -193,6 +215,49 @@ export class AllowancesService {
       isActiveInMonth(r, start.year, start.month),
     );
     const endKey = end?.key ?? Number.POSITIVE_INFINITY;
+    // Moving an allowance's start earlier (e.g. "from Oct" for one set from
+    // Nov): extend that row back, or add the earlier months at the new amount.
+    const later = rows
+      .filter((r) => monthKey(r.startMonth) > start.key)
+      .sort((a, b) => monthKey(a.startMonth) - monthKey(b.startMonth))[0];
+    if (!current && later && !end) {
+      const laterKey = monthKey(later.startMonth);
+      const blocked = rows.find(
+        (r) =>
+          r !== later &&
+          monthKey(r.startMonth) < laterKey &&
+          (r.endMonth == null || monthKey(r.endMonth) >= start.key),
+      );
+      if (!blocked) {
+        const same = Number(later.amount) === dto.amount;
+        const saved = same
+          ? await this.prisma.employeeAllowance.update({
+              where: { id: later.id },
+              data: { startMonth: start.date },
+            })
+          : await this.prisma.employeeAllowance.create({
+              data: {
+                employeeId: dto.employeeId,
+                typeId: dto.typeId,
+                amount: dto.amount,
+                startMonth: start.date,
+                endMonth: fromKey(laterKey - 1),
+                note: dto.note?.trim() || null,
+                createdById: user.id,
+              },
+            });
+        await this.audit(user, 'EMPLOYEE_ALLOWANCE_SET', 'EmployeeAllowance', saved.id, {
+          employeeId: dto.employeeId,
+          type: type.name,
+          before: 0,
+          after: dto.amount,
+          startMonth: dto.startMonth,
+          movedStartFrom: label(later.startMonth),
+        });
+        await this.recomputePendingFrom(dto.employeeId, start.key);
+        return saved;
+      }
+    }
     const clash = rows.find(
       (r) =>
         r !== current &&

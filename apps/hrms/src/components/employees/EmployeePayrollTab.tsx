@@ -11,6 +11,8 @@ import { payrollApi } from '@/api/endpoints/payroll'
 import { EditPayrollDialog } from '@/components/employees/EditPayrollDialog'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import {
+  allowancesWithoutIncentives,
+  incentiveTotal,
   buildHistoryPayrollReportRows,
   PayrollReportPrintSection,
   PrintPayrollReportButton,
@@ -441,7 +443,10 @@ export function EmployeePayrollTab({
 
       <Card>
         <CardContent className="pt-6">
-          <EmployeeAllowancesPanel employeeId={employeeId} />
+          <EmployeeAllowancesPanel
+            employeeId={employeeId}
+            packageFrom={latestStipend?.effectiveFrom ?? null}
+          />
         </CardContent>
       </Card>
 
@@ -548,6 +553,7 @@ export function EmployeePayrollTab({
                   <TableHead>Year</TableHead>
                   <TableHead>Basic</TableHead>
                   <TableHead>Allowances</TableHead>
+                  <TableHead>Incentives</TableHead>
                   <TableHead>Deductions</TableHead>
                   <TableHead>Net</TableHead>
                   <TableHead>Status</TableHead>
@@ -557,7 +563,7 @@ export function EmployeePayrollTab({
               <TableBody>
                 {historySlice.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-text-secondary">
+                    <TableCell colSpan={9} className="text-text-secondary">
                       No payroll history
                     </TableCell>
                   </TableRow>
@@ -590,7 +596,8 @@ export function EmployeePayrollTab({
                         </TableCell>
                         <TableCell>{entry.year}</TableCell>
                         <TableCell>{money(entry.basicStipend)}</TableCell>
-                        <TableCell>{money(entry.totalAllowances)}</TableCell>
+                        <TableCell>{money(allowancesWithoutIncentives(entry))}</TableCell>
+                        <TableCell>{money(incentiveTotal(entry))}</TableCell>
                         <TableCell>{money(entry.totalDeductions)}</TableCell>
                         <TableCell className="font-medium">
                           {money(entry.netStipend)}

@@ -799,7 +799,10 @@ export interface PayrollSummaryEmployee {
   basicStipend: number
   contractualBasic: number
   totalDeductions: number
+  /** Allowances without incentives. */
   totalAllowances: number
+  /** Approved incentives, shown apart from allowances. */
+  totalIncentives?: number
   netStipend: number
   status: PayrollStatus | null
   periodDays: number
@@ -812,7 +815,10 @@ export interface PayrollSummary {
   totalEmployees: number
   totalBasicStipend: number
   totalDeductions: number
+  /** Allowances without incentives. */
   totalAllowances: number
+  /** Approved incentives, shown apart from allowances. */
+  totalIncentives?: number
   totalNetStipend: number
   byStatus: {
     PENDING: number

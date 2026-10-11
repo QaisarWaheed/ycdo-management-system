@@ -604,10 +604,13 @@ function PayrollDetailDialog({
     (sum, d) => sum + Number(d.amount),
     0,
   )
-  const totalAllowances = allowances.reduce(
-    (sum, a) => sum + Number(a.amount),
-    0,
-  )
+  const isIncentiveRow = (a: { type: string; description?: string | null }) =>
+    a.type === 'CUSTOM' && (a.description ?? '').startsWith('Incentive: ')
+  const totalIncentives = allowances
+    .filter(isIncentiveRow)
+    .reduce((sum, a) => sum + Number(a.amount), 0)
+  const totalAllowances =
+    allowances.reduce((sum, a) => sum + Number(a.amount), 0) - totalIncentives
 
   const relieverHours = data.totalRelieverHours ?? relieverData?.totalHours ?? 0
   const relieverMins = relieverData?.totalMinutes ?? Math.round(relieverHours * 60)
@@ -840,6 +843,7 @@ function PayrollDetailDialog({
             </Table>
             <p className="text-right font-semibold">
               Total Allowances: {formatPKR(totalAllowances)}
+              <span className="ml-4">Total Incentives: {formatPKR(totalIncentives)}</span>
             </p>
             <p className="rounded-lg border border-border bg-surface p-3 text-sm">
               Reliever hours this month:{' '}
@@ -2359,6 +2363,10 @@ function SummaryTab() {
       value: formatPKR(summary?.totalAllowances ?? 0),
     },
     {
+      label: 'Total Incentives',
+      value: formatPKR(summary?.totalIncentives ?? 0),
+    },
+    {
       label: 'Total Deductions',
       value: formatPKR(Math.max(0, summary?.totalDeductions ?? 0)),
     },
@@ -2599,6 +2607,7 @@ function SummaryTab() {
                         <TableHead className="text-right">Basic</TableHead>
                         <TableHead className="text-right">Deductions</TableHead>
                         <TableHead className="text-right">Allowances</TableHead>
+                        <TableHead className="text-right">Incentives</TableHead>
                         <TableHead className="text-right">Net</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Days</TableHead>
@@ -2656,6 +2665,9 @@ function SummaryTab() {
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {formatPKR(emp.totalAllowances)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatPKR(emp.totalIncentives ?? 0)}
                             </TableCell>
                             <TableCell className="text-right tabular-nums font-medium">
                               {formatPKR(emp.netStipend)}
