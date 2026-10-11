@@ -320,9 +320,10 @@ const PAYROLL_REPORT_SIGNATORIES = [
   'Founder / Head of Organization',
 ]
 
-export type PayrollReportSummary = Pick<ReportTotals, 'allowances' | 'deductions' | 'net'>
+export type PayrollReportSummary = ReportTotals
 
 const summaryItems = (t: PayrollReportSummary) => [
+  { label: 'Total Earned Stipend', value: t.basic },
   { label: 'Total Allowances', value: t.allowances },
   { label: 'Total Deductions', value: t.deductions },
   { label: 'Total Net Stipend', value: t.net },

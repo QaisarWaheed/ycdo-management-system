@@ -72,15 +72,16 @@ function downloadCsv(filename: string, header: string[], rows: unknown[][]) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-/** Totals of allowances (incl. incentives), deductions and net for the listed employees. */
+/** Totals of earned stipend, allowances (incl. incentives), deductions and net for the listed employees. */
 function summaryOf(rows: ItemizedRow[]): PayrollReportSummary {
   return rows.reduce(
     (t, r) => ({
+      basic: r2(t.basic + r.basic),
       allowances: r2(t.allowances + sum(r.allowances) + sum(r.incentives)),
       deductions: r2(t.deductions + sum(r.deductions)),
       net: r2(t.net + r.net),
     }),
-    { allowances: 0, deductions: 0, net: 0 },
+    { basic: 0, allowances: 0, deductions: 0, net: 0 },
   )
 }
 
