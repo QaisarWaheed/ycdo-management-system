@@ -15,6 +15,10 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatPKR } from '@/lib/stipendUtils'
+import {
+  payrollReportSignOffHtml,
+  type PayrollReportSummary,
+} from '@/components/payroll/PayrollReportPrint'
 
 type Bucket = 'allowances' | 'incentives' | 'deductions'
 export interface ItemizedRow {
@@ -68,8 +72,28 @@ function downloadCsv(filename: string, header: string[], rows: unknown[][]) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-/** Print a plain table in its own window (A4 landscape). Last row is the total row. */
-function printTable(title: string, header: string[], rows: unknown[][]) {
+/** Totals of allowances (incl. incentives), deductions and net for the listed employees. */
+function summaryOf(rows: ItemizedRow[]): PayrollReportSummary {
+  return rows.reduce(
+    (t, r) => ({
+      allowances: r2(t.allowances + sum(r.allowances) + sum(r.incentives)),
+      deductions: r2(t.deductions + sum(r.deductions)),
+      net: r2(t.net + r.net),
+    }),
+    { allowances: 0, deductions: 0, net: 0 },
+  )
+}
+
+/**
+ * Print a plain table in its own window (A4 landscape). Last row is the total row;
+ * the report totals and signature boxes follow the table.
+ */
+function printTable(
+  title: string,
+  header: string[],
+  rows: unknown[][],
+  totals: PayrollReportSummary,
+) {
   const esc = (v: unknown) =>
     String(v ?? '').replace(
       /[&<>]/g,
@@ -97,7 +121,9 @@ th,td{border:1px solid #999;padding:3px 5px}th{background:#eee}td.n{text-align:r
 tr.t td{font-weight:bold;background:#f5f5f5}</style></head><body>
 <h2>YCDO — ${esc(title)}</h2><table><thead><tr>${header
     .map((h) => `<th>${esc(h)}</th>`)
-    .join('')}</tr></thead><tbody>${body}</tbody></table></body></html>`)
+    .join('')}</tr></thead><tbody>${body}</tbody></table>${payrollReportSignOffHtml(
+    totals,
+  )}</body></html>`)
   w.document.close()
   w.focus()
   w.print()
@@ -306,7 +332,7 @@ function ItemizedReport({
           <Button
             variant="outline"
             disabled={!withAmounts.length}
-            onClick={() => printTable(title, header, table)}
+            onClick={() => printTable(title, header, table, summaryOf(withAmounts))}
           >
             Print
           </Button>
@@ -490,6 +516,8 @@ function ComparisonReport({
                   ...rows.map((r) => [r.who.name, r.who.department, r.pt.net, r.ct.net, r.diff, r.lines]),
                   [`Total (${rows.length})`, '', netPrev, netNow, r2(netNow - netPrev), ''],
                 ],
+                // Totals of the current month for the employees listed.
+                summaryOf(rows.flatMap((r) => (r.c ? [r.c] : []))),
               )
             }
           >

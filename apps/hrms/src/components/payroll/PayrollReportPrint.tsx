@@ -115,6 +115,12 @@ export function buildHistoryPayrollReportRows(
         .join('; ')
 
       return {
+        amounts: {
+          basic: Number(entry.basicStipend) || 0,
+          deductions: Math.max(0, Number(entry.totalDeductions) || 0),
+          allowances: Number(entry.totalAllowances) || 0,
+          net: Number(entry.netStipend) || 0,
+        },
         period: `${monthNames[entry.month - 1] ?? entry.month} ${entry.year}`,
         basic: formatPKR(entry.basicStipend),
         allowances: formatPKR(entry.totalAllowances),
@@ -238,6 +244,7 @@ export function PayrollReportPrintSection({
       </table>
 
       {footer ? <p className="payroll-report-print-footer">{footer}</p> : null}
+      <PayrollReportSignOff totals={sumAmounts(rows)} />
       {isMonthly ? (
         <style>{`@media print { @page { size: A4 landscape; margin: 10mm; } }`}</style>
       ) : null}
@@ -304,6 +311,72 @@ export function PayrollReportPrintSection({
 }
 
 type ReportTotals = { basic: number; deductions: number; allowances: number; net: number }
+
+/** Signature boxes printed at the end of every payroll report, whatever the filters. */
+const PAYROLL_REPORT_SIGNATORIES = [
+  'Prepared by',
+  'Chairman Finance',
+  'General Secretary',
+  'Founder / Head of Organization',
+]
+
+export type PayrollReportSummary = Pick<ReportTotals, 'allowances' | 'deductions' | 'net'>
+
+const summaryItems = (t: PayrollReportSummary) => [
+  { label: 'Total Allowances', value: t.allowances },
+  { label: 'Total Deductions', value: t.deductions },
+  { label: 'Total Net Stipend', value: t.net },
+]
+
+/** Report totals, then the signature row — closes every printed payroll report. */
+export function PayrollReportSignOff({ totals }: { totals: PayrollReportSummary }) {
+  return (
+    <div style={{ marginTop: 16, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+      <table className="payroll-report-table" style={{ width: 'auto', marginLeft: 'auto' }}>
+        <tbody>
+          {summaryItems(totals).map((i) => (
+            <tr key={i.label}>
+              <th style={{ textAlign: 'left' }}>{i.label}</th>
+              <td className="num" style={{ fontWeight: 700, minWidth: 120 }}>
+                {formatPKR(i.value)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${PAYROLL_REPORT_SIGNATORIES.length}, 1fr)`,
+          gap: 24,
+          marginTop: 56,
+        }}
+      >
+        {PAYROLL_REPORT_SIGNATORIES.map((s) => (
+          <div
+            key={s}
+            style={{ borderTop: '1px solid #000', paddingTop: 4, textAlign: 'center', fontWeight: 600 }}
+          >
+            {s}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Same sign-off as HTML, for reports printed in their own window. */
+export function payrollReportSignOffHtml(totals: PayrollReportSummary) {
+  const rows = summaryItems(totals)
+    .map((i) => `<tr><th style="text-align:left">${i.label}</th><td class="n" style="font-weight:bold;min-width:120px">${formatPKR(i.value)}</td></tr>`)
+    .join('')
+  const signs = PAYROLL_REPORT_SIGNATORIES.map(
+    (s) => `<div style="border-top:1px solid #000;padding-top:4px;text-align:center;font-weight:bold">${s}</div>`,
+  ).join('')
+  return `<div style="margin-top:16px;page-break-inside:avoid;break-inside:avoid">
+<table style="width:auto;margin-left:auto"><tbody>${rows}</tbody></table>
+<div style="display:grid;grid-template-columns:repeat(${PAYROLL_REPORT_SIGNATORIES.length},1fr);gap:24px;margin-top:56px">${signs}</div></div>`
+}
 
 const sumAmounts = (rows: PayrollReportRow[]): ReportTotals =>
   rows.reduce(
