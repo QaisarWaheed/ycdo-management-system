@@ -136,7 +136,9 @@ export class DoctorPerformanceService {
           ...pending
             .filter((p) => {
               const v = (p.payload ?? {}) as { month?: number; year?: number };
-              return p.employeeId === e.id && v.month === month && v.year === year;
+              return (
+                p.employeeId === e.id && v.month === month && v.year === year
+              );
             })
             .map((p) => ({
               name: p.summary,

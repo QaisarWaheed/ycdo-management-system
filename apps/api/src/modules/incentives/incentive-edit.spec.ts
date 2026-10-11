@@ -29,7 +29,10 @@ function buildService(status: PayrollStatus = PayrollStatus.PENDING) {
     status,
     netStipend: 30000,
     allowances: [
-      { id: 'al-1', description: incentiveAllowanceDescription(incentive.reason) },
+      {
+        id: 'al-1',
+        description: incentiveAllowanceDescription(incentive.reason),
+      },
     ],
   };
   const tx = {
@@ -51,13 +54,18 @@ function buildService(status: PayrollStatus = PayrollStatus.PENDING) {
   const prisma = {
     incentive: { findUnique: jest.fn().mockResolvedValue(incentive) },
     incentiveType: {
-      findUnique: jest.fn().mockResolvedValue({ id: 't1', name: 'On Progress' }),
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ id: 't1', name: 'On Progress' }),
     },
     $transaction: jest.fn(async (work: (c: typeof tx) => unknown) => work(tx)),
   };
-  const service = new IncentivesService(prisma as never, {
-    assertEmployeeAccess: jest.fn(),
-  } as never);
+  const service = new IncentivesService(
+    prisma as never,
+    {
+      assertEmployeeAccess: jest.fn(),
+    } as never,
+  );
   return { service, tx };
 }
 
@@ -66,7 +74,13 @@ describe('editing an incentive', () => {
     const { service, tx } = buildService();
     await service.update(
       'inc-1',
-      { amount: 1000, typeId: 't1', reason: 'ward shifting', month: 10, year: 2026 },
+      {
+        amount: 1000,
+        typeId: 't1',
+        reason: 'ward shifting',
+        month: 10,
+        year: 2026,
+      },
       'fin-1',
     );
     expect(tx.allowance.delete).toHaveBeenCalledWith({ where: { id: 'al-1' } });
@@ -74,7 +88,9 @@ describe('editing an incentive', () => {
       data: expect.objectContaining({
         payrollEntryId: 'pe-1',
         amount: 1000,
-        description: incentiveAllowanceDescription('On Progress: ward shifting'),
+        description: incentiveAllowanceDescription(
+          'On Progress: ward shifting',
+        ),
       }),
     });
     expect(tx.incentive.update).toHaveBeenCalledWith({
@@ -131,10 +147,14 @@ describe('pending incentive requests', () => {
       },
       incentive: { findUnique: jest.fn().mockResolvedValue(incentive) },
       incentiveType: {
-        findUnique: jest.fn().mockResolvedValue({ id: 't1', name: 'On Progress' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 't1', name: 'On Progress' }),
       },
       user: {
-        findUnique: jest.fn().mockResolvedValue({ role: UserRole.PAYROLL_OFFICER }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ role: UserRole.PAYROLL_OFFICER }),
       },
       auditLog: { create: jest.fn() },
     };
@@ -143,10 +163,19 @@ describe('pending incentive requests', () => {
 
   it('Finance edits a pending request; it stays pending with the new values and approver', async () => {
     const { prisma, requests } = buildRequests({
-      employeeId: 'e1', amount: 5000, typeId: 't1', reason: 'typo', month: 10, year: 2026,
+      employeeId: 'e1',
+      amount: 5000,
+      typeId: 't1',
+      reason: 'typo',
+      month: 10,
+      year: 2026,
     });
     await requests.editIncentiveRequest('r1', finance, {
-      amount: 500, typeId: 't1', reason: 'ward shifting', month: 10, year: 2026,
+      amount: 500,
+      typeId: 't1',
+      reason: 'ward shifting',
+      month: 10,
+      year: 2026,
       approverTarget: EmployeeApproverTarget.PRESIDENT,
     });
     const call = prisma.payChangeRequest.updateMany.mock.calls[0][0];
@@ -161,10 +190,15 @@ describe('pending incentive requests', () => {
   });
 
   it('Finance cancels a pending request with a reason', async () => {
-    const { prisma, requests } = buildRequests({ employeeId: 'e1', amount: 5000 });
+    const { prisma, requests } = buildRequests({
+      employeeId: 'e1',
+      amount: 5000,
+    });
     const res = await requests.cancel('r1', finance, 'entered twice');
     expect(res.status).toBe(PayChangeStatus.CANCELLED);
-    expect(prisma.payChangeRequest.updateMany.mock.calls[0][0].data).toMatchObject({
+    expect(
+      prisma.payChangeRequest.updateMany.mock.calls[0][0].data,
+    ).toMatchObject({
       status: PayChangeStatus.CANCELLED,
       reviewNote: 'entered twice',
     });
@@ -172,17 +206,35 @@ describe('pending incentive requests', () => {
 
   it('approving a raise of an existing incentive updates that incentive', async () => {
     const { prisma, requests } = buildRequests({
-      incentiveId: 'inc-1', amount: 2000, typeId: 't1', reason: 'ward shifting',
-      month: 10, year: 2026, _editedAt: '2026-10-11T00:00:00Z',
+      incentiveId: 'inc-1',
+      amount: 2000,
+      typeId: 't1',
+      reason: 'ward shifting',
+      month: 10,
+      year: 2026,
+      _editedAt: '2026-10-11T00:00:00Z',
     });
-    const incentives = { update: jest.fn().mockResolvedValue({}), create: jest.fn() };
+    const incentives = {
+      update: jest.fn().mockResolvedValue({}),
+      create: jest.fn(),
+    };
     const service = new PayApprovalsService(
-      prisma as never, requests, {} as never, {} as never, incentives as never,
+      prisma as never,
+      requests,
+      {} as never,
+      {} as never,
+      incentives as never,
     );
     await service.approve('r1', { id: 'f1', role: UserRole.FOUNDER });
     expect(incentives.update).toHaveBeenCalledWith(
       'inc-1',
-      { amount: 2000, typeId: 't1', reason: 'ward shifting', month: 10, year: 2026 },
+      {
+        amount: 2000,
+        typeId: 't1',
+        reason: 'ward shifting',
+        month: 10,
+        year: 2026,
+      },
       'fin-1',
     );
     expect(incentives.create).not.toHaveBeenCalled();

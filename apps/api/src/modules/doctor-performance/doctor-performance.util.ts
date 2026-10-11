@@ -5,7 +5,12 @@
  */
 const DOCTOR_CATEGORIES: Record<string, true | string[]> = {
   CONSULTANT: true,
-  OPD: ['DOCTOR', 'MEDICAL OFFICER', 'WOMAN MEDICAL OFFICER', 'ANESTHETIC PHYSICIAN'],
+  OPD: [
+    'DOCTOR',
+    'MEDICAL OFFICER',
+    'WOMAN MEDICAL OFFICER',
+    'ANESTHETIC PHYSICIAN',
+  ],
   'SURGICAL DEPARTMENT': ['SURGEON', 'ANESTHETIC'],
   'RADIOLOGY DEPARTMENT': ['SONOLOGIST', 'CONSULTANT RADIOLOGIST'],
   REDIALOGISTICS: ['CONSULTANT REDIALOGIST'],
@@ -38,5 +43,7 @@ export const FIGURE_KEYS: Array<keyof PerformanceFigures> = [
 
 /** Previous calendar month. */
 export function previousMonth(year: number, month: number) {
-  return month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
+  return month === 1
+    ? { year: year - 1, month: 12 }
+    : { year, month: month - 1 };
 }

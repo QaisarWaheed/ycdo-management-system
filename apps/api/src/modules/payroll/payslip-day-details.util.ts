@@ -77,7 +77,8 @@ export async function loadSlipDayFacts(
   year: number,
 ): Promise<SlipDayFacts | null> {
   // Unit-test doubles of Prisma often omit these models; real clients always have them.
-  if (!db.attendanceLog?.findMany || !db.additionalWorkingDay?.findMany) return null;
+  if (!db.attendanceLog?.findMany || !db.additionalWorkingDay?.findMany)
+    return null;
   const { start, end } = pakistanMonthDateRange(year, month);
   const [logs, extraDays, missed] = await Promise.all([
     db.attendanceLog.findMany({
@@ -136,11 +137,22 @@ export async function loadSlipDayFacts(
 }
 
 const MONTH_ABBR = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 const key = (d: Date) => d.toISOString().slice(0, 10);
-const dayLabel = (d: Date) => `${d.getUTCDate()} ${MONTH_ABBR[d.getUTCMonth()]}`;
+const dayLabel = (d: Date) =>
+  `${d.getUTCDate()} ${MONTH_ABBR[d.getUTCMonth()]}`;
 
 /**
  * ["2 Sep","5 Sep"] → "2, 5 Sep"; items with extra text stay whole
@@ -150,7 +162,8 @@ export function formatDayList(dates: string[], max = 10): string {
   if (!dates.length) return '';
   const more = dates.length > max ? ` +${dates.length - max} more` : '';
   const shown = dates.slice(0, max);
-  if (shown.some((s) => s.split(' ').length > 2)) return shown.join(', ') + more;
+  if (shown.some((s) => s.split(' ').length > 2))
+    return shown.join(', ') + more;
   const month = shown[0].split(' ')[1] ?? '';
   return `${shown.map((s) => s.split(' ')[0]).join(', ')} ${month}${more}`;
 }
@@ -203,7 +216,8 @@ export function buildPayslipDayDetails(input: {
     notMarked: [],
     overtime: [],
     extraDays: facts.extraDays.map((d) => {
-      const note = d.note?.trim() || (d.branch ? `reliever at ${d.branch}` : '');
+      const note =
+        d.note?.trim() || (d.branch ? `reliever at ${d.branch}` : '');
       return { date: dayLabel(d.date), ...(note ? { note } : {}) };
     }),
   };
@@ -313,7 +327,11 @@ export function unpaidDayParts(
       days: b.afterExit,
       note: b.exitOn ? `left ${b.exitOn}` : undefined,
     },
-    { label: 'Unpaid leave', days: b.unpaidLeave, note: list(d.dates.unpaidLeave) },
+    {
+      label: 'Unpaid leave',
+      days: b.unpaidLeave,
+      note: list(d.dates.unpaidLeave),
+    },
     { label: 'Absent', days: b.absent, note: list(d.dates.absent) },
     {
       label: 'Uninformed absent',
