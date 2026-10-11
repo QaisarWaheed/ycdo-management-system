@@ -3885,7 +3885,7 @@ export class PayrollService {
     const packageValues = resolvePackageComponents(activeStipendRecord, dto);
     const lumpsumTotal = calculateLumpsumTotal(packageValues);
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       await tx.stipendRecord.update({
         where: { id: activeStipendRecord.id },
         data: { effectiveTo: effectiveFrom },
@@ -3934,6 +3934,27 @@ export class PayrollService {
 
       return newRecord;
     });
+
+    // A back-dated increment (e.g. last month, still unpaid) must show on
+    // that month's payroll: recompute PENDING months from the new package.
+    const pendingMonths = await this.prisma.payrollEntry.findMany({
+      where: {
+        status: PayrollStatus.PENDING,
+        stipendRecord: { employeeId: dto.employeeId },
+      },
+      select: { month: true, year: true },
+      distinct: ['month', 'year'],
+    });
+    for (const row of pendingMonths) {
+      if (Date.UTC(row.year, row.month - 1, 1) < effectiveFrom.getTime()) continue;
+      await this.recomputeEmployeeMonth({
+        employeeId: dto.employeeId,
+        month: row.month,
+        year: row.year,
+      });
+    }
+
+    return created;
   }
 
   /**

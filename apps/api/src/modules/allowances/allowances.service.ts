@@ -20,10 +20,12 @@ import {
   monthKey,
   monthStartUtc,
   PACKAGE_ALLOWANCES_FROM,
+  syncLegacyAllowanceRows,
   usesAllowanceTable,
 } from './package-allowances.util';
 
 type Actor = { id: string };
+type LegacyField = 'allowances' | 'reward' | 'progressReward' | 'fuelAllowance';
 
 const parseMonth = (value: string) => {
   const [y, m] = value.split('-').map(Number);
@@ -139,13 +141,19 @@ export class AllowancesService {
       where: { id: dto.typeId },
     });
     if (!type) throw new NotFoundException('Allowance type not found');
-    const rows = await this.prisma.employeeAllowance.findMany({
-      where: { employeeId: dto.employeeId, typeId: dto.typeId },
-    });
-    const current = rows.find((r) =>
-      isActiveInMonth(r, start.year, start.month),
-    );
-    const before = current ? Number(current.amount) : 0;
+    let before = 0;
+    if (!usesAllowanceTable(start.year, start.month) && type.legacyField) {
+      const open = await this.openPackage(dto.employeeId);
+      before = Number(open?.[type.legacyField as LegacyField] ?? 0);
+    } else {
+      const rows = await this.prisma.employeeAllowance.findMany({
+        where: { employeeId: dto.employeeId, typeId: dto.typeId },
+      });
+      const current = rows.find((r) =>
+        isActiveInMonth(r, start.year, start.month),
+      );
+      before = current ? Number(current.amount) : 0;
+    }
     const until = dto.endMonth
       ? ` to ${label(parseMonth(dto.endMonth).date)}`
       : '';
@@ -159,9 +167,7 @@ export class AllowancesService {
     const start = parseMonth(dto.startMonth);
     const end = dto.endMonth ? parseMonth(dto.endMonth) : null;
     if (!usesAllowanceTable(start.year, start.month)) {
-      throw new BadRequestException(
-        `Allowances start from ${monthLabel(PACKAGE_ALLOWANCES_FROM.year, PACKAGE_ALLOWANCES_FROM.month)}; earlier months use the old package`,
-      );
+      return this.assignToPackage(dto, start, user);
     }
     if (end && end.key < start.key) {
       throw new BadRequestException(
@@ -324,6 +330,106 @@ export class AllowancesService {
       })
       .filter((m) => Math.abs(m.legacy - m.table) > 0.004);
     return { checked: records.length, mismatches };
+  }
+
+  /**
+   * Months before the cut-over pay the old package fields, so a change for
+   * such a month (e.g. last month's payroll, still unpaid) is a stipend
+   * package change from that month. It carries on into later months and the
+   * copied cut-over row follows the package.
+   */
+  private async assignToPackage(
+    dto: AssignAllowanceDto,
+    start: ReturnType<typeof parseMonth>,
+    user: Actor,
+  ) {
+    const cutLabel = monthLabel(
+      PACKAGE_ALLOWANCES_FROM.year,
+      PACKAGE_ALLOWANCES_FROM.month,
+    );
+    const type = await this.prisma.payAllowanceType.findUnique({
+      where: { id: dto.typeId },
+    });
+    if (!type) throw new NotFoundException('Allowance type not found');
+    if (!type.legacyField) {
+      throw new BadRequestException(
+        `Before ${cutLabel} only the package allowances can be changed here. For a one-off, use Add Allowance on that month's payroll.`,
+      );
+    }
+    if (dto.endMonth) {
+      throw new BadRequestException(
+        `"To month" is not available before ${cutLabel}: the change carries on from ${label(start.date)}.`,
+      );
+    }
+    const closed = await this.prisma.payrollEntry.findFirst({
+      where: {
+        month: start.month,
+        year: start.year,
+        status: { not: PayrollStatus.PENDING },
+        stipendRecord: { employeeId: dto.employeeId },
+      },
+      select: { id: true },
+    });
+    if (closed) {
+      throw new BadRequestException(
+        `${label(start.date)} payroll is already processed or paid for this employee`,
+      );
+    }
+    const open = await this.openPackage(dto.employeeId);
+    if (!open) throw new NotFoundException('No active stipend package');
+    const openKey = monthKey(open.effectiveFrom);
+    if (openKey > start.key) {
+      throw new BadRequestException(
+        `The current package starts ${label(open.effectiveFrom)}, after ${label(start.date)}; change that month from the employee's payroll form`,
+      );
+    }
+
+    const field = type.legacyField as LegacyField;
+    const before = Number(open[field] ?? 0);
+    const reason =
+      dto.note?.trim() ||
+      `${type.name} ${pkr(before)} → ${pkr(dto.amount)} from ${label(start.date)}`;
+    const values = {
+      employeeId: dto.employeeId,
+      basicStipend: Number(open.basicStipend),
+      [field]: dto.amount,
+      reason,
+    };
+    // Both recompute the employee's PENDING months from the change.
+    const saved =
+      openKey === start.key
+        ? await this.payrollService.updateActiveStipend(
+            { ...values, effectiveFrom: open.effectiveFrom.toISOString() },
+            user.id,
+          )
+        : await this.payrollService.salaryIncrement(
+            { ...values, effectiveFrom: start.date.toISOString() },
+            user.id,
+          );
+    await syncLegacyAllowanceRows(this.prisma, dto.employeeId);
+
+    await this.audit(
+      user,
+      'EMPLOYEE_ALLOWANCE_SET',
+      'StipendRecord',
+      saved.id,
+      {
+        employeeId: dto.employeeId,
+        type: type.name,
+        before,
+        after: dto.amount,
+        startMonth: dto.startMonth,
+        viaPackage: true,
+      },
+    );
+    return saved;
+  }
+
+  private openPackage(employeeId: string) {
+    return this.prisma.stipendRecord.findFirst({
+      where: { employeeId, effectiveTo: null },
+      orderBy: { effectiveFrom: 'desc' },
+    });
   }
 
   // ── helpers ────────────────────────────────────────────────────────────

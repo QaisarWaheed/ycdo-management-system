@@ -60,6 +60,14 @@ const thisMonth = () => {
   return v < ALLOWANCES_FROM_MONTH ? ALLOWANCES_FROM_MONTH : v
 }
 
+/** Last month stays editable while its payroll is unpaid (salaries are paid a month late). */
+const earliestFromMonth = () => {
+  const d = new Date()
+  d.setDate(1)
+  d.setMonth(d.getMonth() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 type ApiError = { response?: { data?: { message?: string | string[] } } }
 const errText = (err: ApiError) => {
   const msg = err.response?.data?.message
@@ -233,18 +241,28 @@ function AssignAllowanceDialog({
       })
       queryClient.invalidateQueries({ queryKey: ['employee-allowances', employeeId] })
       queryClient.invalidateQueries({ queryKey: ['pay-approvals'] })
+      // A pre-switch-over month changes the stipend package and its payroll.
+      queryClient.invalidateQueries({ queryKey: ['employee', employeeId] })
+      queryClient.invalidateQueries({ queryKey: ['payroll'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-history', employeeId] })
       onClose()
     },
     onError: (err: ApiError) =>
       toast({ title: 'Failed to save allowance', description: errText(err), variant: 'destructive' }),
   })
 
+  const minMonth = [earliestFromMonth(), ALLOWANCES_FROM_MONTH].sort()[0]
+  // Before the switch-over the month pays the old package fields: the change
+  // goes into the stipend package from that month and carries on.
+  const beforeSwitch = startMonth < ALLOWANCES_FROM_MONTH
+  const selectedType = types.find((t) => t.id === typeId)
   const isIncrease = !current || amount > Number(current.amount)
   const valid =
     !!typeId &&
     amount > 0 &&
     note.trim().length >= 3 &&
-    startMonth >= ALLOWANCES_FROM_MONTH &&
+    startMonth >= minMonth &&
+    (!beforeSwitch || (!!selectedType?.legacyField && !endMonth)) &&
     (!endMonth || endMonth >= startMonth)
 
   return (
@@ -263,6 +281,7 @@ function AssignAllowanceDialog({
               <SelectContent>
                 {types
                   .filter((t) => t.isActive || t.id === typeId)
+                  .filter((t) => !beforeSwitch || !!t.legacyField || t.id === typeId)
                   .map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}
@@ -282,9 +301,12 @@ function AssignAllowanceDialog({
               <Input
                 id="allowance-from"
                 type="month"
-                min={ALLOWANCES_FROM_MONTH}
+                min={minMonth}
                 value={startMonth}
-                onChange={(e) => setStartMonth(e.target.value)}
+                onChange={(e) => {
+                  setStartMonth(e.target.value)
+                  if (e.target.value < ALLOWANCES_FROM_MONTH) setEndMonth('')
+                }}
               />
             </div>
             <div className="space-y-1">
@@ -294,14 +316,25 @@ function AssignAllowanceDialog({
                 type="month"
                 min={startMonth}
                 value={endMonth}
+                disabled={beforeSwitch}
                 onChange={(e) => setEndMonth(e.target.value)}
               />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Leave &quot;To month&quot; empty for a regular allowance. For a one-off (e.g. Salary
-            Difference) set the same month in both.
-          </p>
+          {beforeSwitch ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+              {format(new Date(`${startMonth}-15`), 'MMMM yyyy')} uses the stipend package, so this
+              changes the package from that month onward and recalculates its unpaid payroll.
+              {selectedType && !selectedType.legacyField
+                ? ` ${selectedType.name} can only start from ${monthText(`${ALLOWANCES_FROM_MONTH}-01`)}; for a one-off use Add Allowance on that month's payroll.`
+                : ''}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Leave &quot;To month&quot; empty for a regular allowance. For a one-off (e.g. Salary
+              Difference) set the same month in both.
+            </p>
+          )}
           <div className="space-y-1">
             <Label htmlFor="allowance-note">What is it for? *</Label>
             <Textarea id="allowance-note" value={note} onChange={(e) => setNote(e.target.value)} />
