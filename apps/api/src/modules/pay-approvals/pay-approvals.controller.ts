@@ -10,6 +10,9 @@ import {
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -101,6 +104,18 @@ class EditIncentiveRequestDto {
   approverTarget: EmployeeApproverTarget;
 }
 
+class ApproveManyDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  ids: string[];
+
+  @IsOptional()
+  @IsString()
+  reviewNote?: string;
+}
+
 class CancelPayChangeDto {
   @IsString()
   @IsNotEmpty({ message: 'A reason is required to cancel this request' })
@@ -138,6 +153,13 @@ export class PayApprovalsController {
   )
   list(@Query() query: PayApprovalQueryDto, @CurrentUser() user: PayActor) {
     return this.requests.list(query, user);
+  }
+
+  /** Approve several at once (one by one stays available below). */
+  @Post('approve-many')
+  @Roles(...DECIDE_ROLES)
+  approveMany(@Body() dto: ApproveManyDto, @CurrentUser() user: PayActor) {
+    return this.approvals.approveMany(dto.ids, user, dto.reviewNote);
   }
 
   @Post(':id/approve')

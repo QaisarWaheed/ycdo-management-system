@@ -159,7 +159,7 @@ describe('package allowances', () => {
     const pay = sections.find((s) => s.key === 'earnings')!;
     expect(pay.lines).toEqual([
       { label: 'Basic Stipend', amount: 30000 },
-      { label: 'Incentive', amount: 500, note: 'On Progress' },
+      { label: 'Incentive: On Progress', amount: 500 },
       { label: 'Pharmacy', amount: 2000 },
       { label: 'Night Monitoring', amount: 1200 },
     ]);

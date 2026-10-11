@@ -59,8 +59,24 @@ export interface PayChangeRequest {
     fullName: string
     employeeCode: string
     currentDesignation?: string | null
+    status?: string | null
+    statusEffectiveFrom?: string | null
     currentBranch?: { name: string } | null
   }
+  /** Pending only: that month's pay before this change. */
+  pay?: {
+    month: number
+    year: number
+    status: string
+    contractBasic: number
+    earnedBasic: number
+    allowances: number
+    incentives: number
+    deductions: number
+    net: number
+  } | null
+  /** Pending only: why approving would fail (e.g. employee On Rest). */
+  blockedReason?: string | null
   submittedBy?: { email: string; employee?: { fullName: string } | null }
   reviewedBy?: { email: string; employee?: { fullName: string } | null } | null
 }
@@ -137,4 +153,9 @@ export const payApprovalsApi = {
     },
   ) => api.patch<unknown, PayChangeRequest>(`/pay-approvals/${id}`, data),
   cancel: (id: string, reason: string) => api.post(`/pay-approvals/${id}/cancel`, { reason }),
+  approveMany: (ids: string[], reviewNote?: string) =>
+    api.post<unknown, { approved: string[]; failed: Array<{ id: string; error: string }> }>(
+      '/pay-approvals/approve-many',
+      { ids, reviewNote },
+    ),
 }

@@ -9,8 +9,10 @@ jest.mock('../letters/pdf.helper', () => ({ generatePdf: jest.fn() }));
 
 import { PayApprovalsService } from './pay-approvals.service';
 import {
+  approvalBlockedReason,
   isPayExecutive,
   PayChangeRequestsService,
+  requestPayMonth,
 } from './pay-change-requests.service';
 
 describe('pay approvals', () => {
@@ -185,6 +187,39 @@ describe('pay approvals', () => {
         'already been decided',
       );
       expect(payroll.salaryIncrement).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('approval context', () => {
+    it('finds the payroll month a request touches', () => {
+      expect(requestPayMonth({ month: 9, year: 2026, amount: 1 })).toEqual({ year: 2026, month: 9 });
+      expect(requestPayMonth({ effectiveFrom: '2026-11-01T00:00:00.000Z' })).toEqual({ year: 2026, month: 11 });
+      expect(requestPayMonth({ startMonth: '2026-12' })).toEqual({ year: 2026, month: 12 });
+      expect(requestPayMonth({})).toBeNull();
+    });
+
+    it('flags incentives for staff who are not active, with the date', () => {
+      const onRest = {
+        kind: PayChangeKind.INCENTIVE,
+        employee: { status: 'ON_REST', statusEffectiveFrom: new Date('2026-10-07T00:00:00Z') },
+      };
+      expect(approvalBlockedReason(onRest)).toMatch(/^ON REST since 2026-10-07: incentives are only for active staff/);
+      expect(
+        approvalBlockedReason({ ...onRest, employee: { status: 'ACTIVE', statusEffectiveFrom: null } }),
+      ).toBeNull();
+      expect(approvalBlockedReason({ ...onRest, kind: PayChangeKind.SALARY_INCREMENT })).toBeNull();
+    });
+
+    it('bulk approve keeps going when one request fails and reports it', async () => {
+      const service = Object.assign(Object.create(PayApprovalsService.prototype), {
+        approve: jest.fn(async (id: string) => {
+          if (id === 'bad') throw new Error('Incentives can only be added for active or appointed employees');
+          return { id };
+        }),
+      });
+      const res = await service.approveMany(['a', 'bad', 'b', 'a'], { id: 'f1', role: UserRole.FOUNDER });
+      expect(res.approved).toEqual(['a', 'b']);
+      expect(res.failed).toEqual([{ id: 'bad', error: 'Incentives can only be added for active or appointed employees' }]);
     });
   });
 });

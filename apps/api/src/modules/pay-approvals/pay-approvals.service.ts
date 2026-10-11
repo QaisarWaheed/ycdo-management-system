@@ -58,6 +58,21 @@ export class PayApprovalsService {
     return { id, status: PayChangeStatus.APPROVED, result };
   }
 
+  /** Approve several requests one after another; each succeeds or fails on its own. */
+  async approveMany(ids: string[], user: PayActor, reviewNote?: string) {
+    const approved: string[] = [];
+    const failed: Array<{ id: string; error: string }> = [];
+    for (const id of [...new Set(ids)]) {
+      try {
+        await this.approve(id, user, reviewNote);
+        approved.push(id);
+      } catch (err) {
+        failed.push({ id, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return { approved, failed };
+  }
+
   private async apply(request: PayChangeRequest, user: PayActor) {
     const { _editedAt: _drop, ...payload } = request.payload as Record<string, any>;
     switch (request.kind) {

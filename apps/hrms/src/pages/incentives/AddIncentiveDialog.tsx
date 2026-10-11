@@ -166,7 +166,7 @@ export function AddIncentiveDialog({
       const { employeeId, ...rest } = values
       const body = { ...rest, reason: values.reason.trim() || undefined }
       if (editRequest) {
-        return payApprovalsApi.activeEdit(editRequest.id, { ...body, approverTarget: approver! })
+        return payApprovalsApi.editIncentive(editRequest.id, { ...body, approverTarget: approver! })
       }
       if (activeEdit) {
         return incentivesApi.update(activeEdit.id, {

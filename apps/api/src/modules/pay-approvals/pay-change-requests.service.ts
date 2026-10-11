@@ -300,6 +300,8 @@ export class PayChangeRequestsService {
         fullName: true,
         employeeCode: true,
         currentDesignation: true,
+        status: true,
+        statusEffectiveFrom: true,
         currentBranch: { select: { name: true } },
       },
     },
@@ -319,21 +321,125 @@ export class PayChangeRequestsService {
     },
   } satisfies Prisma.PayChangeRequestInclude;
 
-  /** Executives see their own queue; IT / HR / Accounts / Super Admin see all. */
-  list(
+  /**
+   * Executives see their own queue; IT / HR / Accounts / Super Admin see all.
+   * Pending rows carry the month's pay (basic, allowances, incentives,
+   * deductions, net) and why an approval would fail, so the executive
+   * decides with the numbers in front of them.
+   */
+  async list(
     query: { status?: PayChangeStatus; employeeId?: string },
     user: PayActor,
   ) {
     const target = approverTargetForUserRole(user.role);
-    return this.prisma.payChangeRequest.findMany({
+    const status = query.status ?? PayChangeStatus.PENDING;
+    const rows = await this.prisma.payChangeRequest.findMany({
       where: {
-        status: query.status ?? PayChangeStatus.PENDING,
+        status,
         ...(query.employeeId ? { employeeId: query.employeeId } : {}),
         ...(target ? { approverTarget: target } : {}),
       },
       orderBy: { createdAt: 'desc' },
       include: this.include,
       take: 500,
+    });
+    if (status !== PayChangeStatus.PENDING || rows.length === 0) return rows;
+    return this.withPayContext(rows);
+  }
+
+  private async withPayContext<
+    T extends {
+      kind: PayChangeKind;
+      employeeId: string;
+      payload: Prisma.JsonValue;
+      employee: { status: string; statusEffectiveFrom: Date | null } | null;
+    },
+  >(rows: T[]) {
+    const months = rows.map((r) => requestPayMonth(r.payload));
+    const keys = [
+      ...new Map(
+        rows.flatMap((r, i) => {
+          const m = months[i];
+          return m
+            ? [[`${r.employeeId}|${m.year}|${m.month}`, { employeeId: r.employeeId, ...m }] as const]
+            : [];
+        }),
+      ).values(),
+    ];
+    const [entries, incentives] = keys.length
+      ? await Promise.all([
+          this.prisma.payrollEntry.findMany({
+            where: {
+              OR: keys.map((k) => ({
+                month: k.month,
+                year: k.year,
+                stipendRecord: { employeeId: k.employeeId },
+              })),
+            },
+            select: {
+              month: true,
+              year: true,
+              status: true,
+              basicStipend: true,
+              totalAllowances: true,
+              totalDeductions: true,
+              netStipend: true,
+              stipendRecord: {
+                select: { employeeId: true, basicStipend: true, effectiveTo: true },
+              },
+            },
+          }),
+          this.prisma.incentive.groupBy({
+            by: ['employeeId', 'month', 'year'],
+            where: {
+              OR: keys.map((k) => ({
+                employeeId: k.employeeId,
+                month: k.month,
+                year: k.year,
+              })),
+            },
+            _sum: { amount: true },
+          }),
+        ])
+      : [[], []];
+    const num = (v: unknown) => Math.round((Number(v) || 0) * 100) / 100;
+    return rows.map((r, i) => {
+      const m = months[i];
+      const segs = m
+        ? entries.filter(
+            (e) =>
+              e.stipendRecord.employeeId === r.employeeId &&
+              e.month === m.month &&
+              e.year === m.year,
+          )
+        : [];
+      const sum = (f: (e: (typeof segs)[number]) => unknown) =>
+        num(segs.reduce((s, e) => s + (Number(f(e)) || 0), 0));
+      const contract =
+        segs.find((e) => e.stipendRecord.effectiveTo == null) ?? segs[0];
+      const closed = segs.find((e) => e.status !== 'PENDING');
+      const pay =
+        m && segs.length
+          ? {
+              month: m.month,
+              year: m.year,
+              status: closed ? closed.status : 'PENDING',
+              contractBasic: num(contract?.stipendRecord.basicStipend),
+              earnedBasic: sum((e) => e.basicStipend),
+              allowances: sum((e) => e.totalAllowances),
+              incentives: num(
+                incentives.find(
+                  (g) =>
+                    g.employeeId === r.employeeId &&
+                    g.month === m.month &&
+                    g.year === m.year,
+                )?._sum.amount,
+              ),
+              deductions: sum((e) => e.totalDeductions),
+              net: sum((e) => e.netStipend),
+            }
+          : null;
+      return { ...r, pay, blockedReason: approvalBlockedReason(r) };
     });
   }
 
@@ -455,4 +561,34 @@ export class PayChangeRequestsService {
       },
     });
   }
+}
+
+/** Payroll month a request touches (incentives / additions carry month+year; packages a start date). */
+export function requestPayMonth(
+  payload: Prisma.JsonValue,
+): { year: number; month: number } | null {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  if (Number(p.month) >= 1 && Number(p.year) >= 2000)
+    return { year: Number(p.year), month: Number(p.month) };
+  const iso = (p.effectiveFrom ?? p.startMonth) as string | undefined;
+  if (!iso) return null;
+  const [y, mo] = String(iso).slice(0, 7).split('-').map(Number);
+  return y && mo ? { year: y, month: mo } : null;
+}
+
+/**
+ * Why approving would fail: incentives are only for active / appointed
+ * staff (On Rest, Resigned, ... count as left).
+ */
+export function approvalBlockedReason(r: {
+  kind: PayChangeKind;
+  employee: { status: string; statusEffectiveFrom: Date | null } | null;
+}): string | null {
+  if (r.kind !== PayChangeKind.INCENTIVE || !r.employee) return null;
+  const { status, statusEffectiveFrom } = r.employee;
+  if (status === 'ACTIVE' || status === 'APPOINTED') return null;
+  const since = statusEffectiveFrom
+    ? ` since ${statusEffectiveFrom.toISOString().slice(0, 10)}`
+    : '';
+  return `${status.replace(/_/g, ' ')}${since}: incentives are only for active staff. HR must reinstate the employee first, otherwise reject this request.`;
 }
