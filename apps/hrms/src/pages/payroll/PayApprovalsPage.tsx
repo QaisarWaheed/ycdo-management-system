@@ -125,6 +125,57 @@ export function PayApprovalsPage() {
   const selectable = data.filter((r) => !r.blockedReason)
   const picked = data.filter((r) => selected.has(r.id))
   const allPicked = selectable.length > 0 && selectable.every((r) => selected.has(r.id))
+  const rowActions = (r: PayChangeRequest) => (
+    <>
+      {status === 'PENDING' && canDecide ? (
+        <>
+          <Button
+            size="sm"
+            disabled={!!r.blockedReason}
+            title={r.blockedReason ?? undefined}
+            onClick={() => setAction({ kind: 'approve', request: r })}
+          >
+            Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAction({ kind: 'reject', request: r })}
+          >
+            Reject
+          </Button>
+        </>
+      ) : null}
+      {status === 'PENDING' && canAmend && r.kind === 'INCENTIVE' ? (
+        <Button size="sm" variant="outline" onClick={() => setEditRequest(r)}>
+          Edit
+        </Button>
+      ) : null}
+      {status === 'PENDING' && canAmend ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setAction({ kind: 'cancel', request: r })}
+        >
+          Cancel request
+        </Button>
+      ) : null}
+      {status === 'PENDING' && canForward ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setAction({ kind: 'forward', request: r })}
+        >
+          Forward
+        </Button>
+      ) : null}
+    </>
+  )
+  const when = (r: PayChangeRequest) =>
+    format(
+      new Date(status === 'PENDING' ? r.createdAt : (r.reviewedAt ?? r.createdAt)),
+      'dd MMM yyyy, h:mm a',
+    )
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -177,11 +228,74 @@ export function PayApprovalsPage() {
             Approve selected
           </Button>
           <span className="text-xs text-muted-foreground">
-            Or approve / reject one by one with the buttons on each row.
+            Or approve / reject one by one with the buttons on each request.
           </span>
         </div>
       ) : null}
-      <Card>
+      {/* Phones: one card per request, everything wraps; no sideways scrolling. */}
+      <div className="space-y-3 md:hidden">
+        {isLoading ? (
+          <p className="text-center text-sm">Loading…</p>
+        ) : data.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground">Nothing here</p>
+        ) : (
+          data.map((r) => (
+            <Card key={r.id} className={r.blockedReason ? 'border-red-200 bg-red-50/60' : undefined}>
+              <CardContent className="space-y-2 p-3 text-sm">
+                <div className="flex items-start gap-2">
+                  {bulk ? (
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-5 w-5 shrink-0"
+                      aria-label={`Select ${r.employee?.fullName ?? 'request'}`}
+                      disabled={!!r.blockedReason}
+                      checked={selected.has(r.id)}
+                      onChange={() => toggle(r.id)}
+                    />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold">{r.employee?.fullName ?? '—'}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {[r.employee?.employeeCode, r.employee?.currentDesignation, r.employee?.currentBranch?.name]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  </div>
+                  {requestAmount(r) ? (
+                    <div className="shrink-0 text-base font-bold tabular-nums">{pkr(requestAmount(r))}</div>
+                  ) : null}
+                </div>
+                {r.blockedReason ? (
+                  <p className="text-xs font-medium text-red-700">{r.blockedReason}</p>
+                ) : null}
+                <div>
+                  <Badge variant="outline">{PAY_CHANGE_KIND_LABELS[r.kind]}</Badge>
+                  {r.payload?._editedAt ? (
+                    <Badge variant="secondary" className="ml-1">
+                      Edited
+                    </Badge>
+                  ) : null}
+                  <div className="mt-1 font-medium">{r.summary}</div>
+                  {r.reason ? <div className="text-xs text-muted-foreground">Reason: {r.reason}</div> : null}
+                  {r.reviewNote ? (
+                    <div className="text-xs text-muted-foreground">Note: {r.reviewNote}</div>
+                  ) : null}
+                </div>
+                <PayFacts request={r} full />
+                <div className="text-xs text-muted-foreground">
+                  {personName(r.submittedBy)} →{' '}
+                  <b className="text-foreground">
+                    {status === 'PENDING' ? approverLabel(r.approverTarget) : personName(r.reviewedBy)}
+                  </b>{' '}
+                  · {when(r)}
+                </div>
+                <div className="flex flex-wrap gap-2">{rowActions(r)}</div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+      <Card className="hidden md:block">
         <CardContent className="overflow-x-auto p-0">
           <Table>
             <TableHeader>
@@ -256,55 +370,9 @@ export function PayApprovalsPage() {
                         ? approverLabel(r.approverTarget)
                         : personName(r.reviewedBy)}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {format(
-                        new Date(status === 'PENDING' ? r.createdAt : (r.reviewedAt ?? r.createdAt)),
-                        'dd MMM yyyy, h:mm a',
-                      )}
-                    </TableCell>
+                    <TableCell className="whitespace-nowrap">{when(r)}</TableCell>
                     <TableCell className="space-x-1 whitespace-nowrap text-right">
-                      {status === 'PENDING' && canDecide ? (
-                        <>
-                          <Button
-                            size="sm"
-                            disabled={!!r.blockedReason}
-                            title={r.blockedReason ?? undefined}
-                            onClick={() => setAction({ kind: 'approve', request: r })}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setAction({ kind: 'reject', request: r })}
-                          >
-                            Reject
-                          </Button>
-                        </>
-                      ) : null}
-                      {status === 'PENDING' && canAmend && r.kind === 'INCENTIVE' ? (
-                        <Button size="sm" variant="outline" onClick={() => setEditRequest(r)}>
-                          Edit
-                        </Button>
-                      ) : null}
-                      {status === 'PENDING' && canAmend ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setAction({ kind: 'cancel', request: r })}
-                        >
-                          Cancel request
-                        </Button>
-                      ) : null}
-                      {status === 'PENDING' && canForward ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setAction({ kind: 'forward', request: r })}
-                        >
-                          Forward
-                        </Button>
-                      ) : null}
+                      {rowActions(r)}
                     </TableCell>
                   </TableRow>
                 ))
