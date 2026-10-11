@@ -93,7 +93,7 @@ function PayFacts({ request, full = false }: { request: PayChangeRequest; full?:
           ),
         )}
       </div>
-      {full && add > 0 && p.status === 'PENDING' ? (
+      {full && add > 0 && p.status === 'PENDING' && !request.blockedReason ? (
         <div className="mt-1 flex justify-between border-t pt-1 text-sm font-semibold text-green-700">
           <span>Net after approval</span>
           <span className="tabular-nums">{pkr(p.net + add)}</span>
