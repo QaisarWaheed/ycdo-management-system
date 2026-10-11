@@ -198,6 +198,101 @@ export class PayChangeRequestsService {
     return `Incentive (${what}) ${pkr(dto.amount)} for ${monthLabel(dto.year, dto.month)}`;
   }
 
+  /** "Incentive change: On Progress 1,500 (Sep 2026) -> (On Progress) 2,000 for Sep 2026". */
+  async describeIncentiveChange(
+    current: { reason: string; amount: unknown; month: number; year: number },
+    dto: { typeId?: string; reason?: string; amount: number; month: number; year: number },
+  ) {
+    const next = (await this.describeIncentive(dto)).replace(/^Incentive /, '');
+    return `Incentive change: ${current.reason} ${pkr(Number(current.amount))} (${monthLabel(current.year, current.month)}) → ${next}`;
+  }
+
+  /**
+   * Finance corrects a pending incentive request before the executive decides:
+   * new values, possibly another executive. It stays pending.
+   */
+  async editIncentiveRequest(
+    id: string,
+    user: PayActor,
+    dto: {
+      amount: number;
+      typeId?: string;
+      reason?: string;
+      month: number;
+      year: number;
+      approverTarget: EmployeeApproverTarget;
+    },
+  ) {
+    const request = await this.getPending(id);
+    if (request.kind !== PayChangeKind.INCENTIVE) {
+      throw new BadRequestException(
+        'Only incentive requests can be edited; cancel this one and send a new request',
+      );
+    }
+    const old = request.payload as Record<string, unknown>;
+    const { approverTarget, ...values } = dto;
+    const payload = {
+      ...values,
+      ...(old.incentiveId
+        ? { incentiveId: old.incentiveId }
+        : { employeeId: request.employeeId }),
+    };
+    let summary: string;
+    if (old.incentiveId) {
+      const current = await this.prisma.incentive.findUnique({
+        where: { id: String(old.incentiveId) },
+      });
+      if (!current) {
+        throw new NotFoundException(
+          'The incentive being changed no longer exists; cancel this request',
+        );
+      }
+      if (dto.amount <= Number(current.amount)) {
+        throw new BadRequestException(
+          'This no longer raises the incentive; cancel the request and edit the incentive directly',
+        );
+      }
+      summary = await this.describeIncentiveChange(current, dto);
+    } else {
+      summary = await this.describeIncentive(dto);
+    }
+    const { count } = await this.prisma.payChangeRequest.updateMany({
+      where: { id, status: PayChangeStatus.PENDING },
+      data: {
+        payload: {
+          ...payload,
+          _editedAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+        summary,
+        reason: dto.reason?.trim() || null,
+        approverTarget,
+      },
+    });
+    if (count === 0)
+      throw new BadRequestException('This request has already been decided');
+    await this.audit(user, 'PAY_CHANGE_EDITED', request, {
+      before: request.summary,
+      after: summary,
+      approverTarget,
+    });
+    return this.prisma.payChangeRequest.findUnique({
+      where: { id },
+      include: this.include,
+    });
+  }
+
+  /** The sender (Finance) withdraws a pending request; the reason is kept. */
+  async cancel(id: string, user: PayActor, reason: string) {
+    const request = await this.getPending(id);
+    if (!(await this.claim(id, PayChangeStatus.CANCELLED, user, reason))) {
+      throw new BadRequestException('This request has already been decided');
+    }
+    await this.audit(user, 'PAY_CHANGE_CANCELLED', request, {
+      reason: reason.trim(),
+    });
+    return { id, status: PayChangeStatus.CANCELLED };
+  }
+
   private readonly include = {
     employee: {
       select: {

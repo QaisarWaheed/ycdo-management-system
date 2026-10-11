@@ -19,6 +19,7 @@ import {
   incentiveAllowanceDescription,
   IncentiveQueryDto,
   isIncentiveAllowance,
+  UpdateIncentiveDto,
 } from './incentives.dto';
 
 @Injectable()
@@ -140,7 +141,7 @@ export class IncentivesService {
   }
 
   /** "Type: note", the type alone, or the note alone (old free-text incentives). */
-  private async resolveReason(dto: CreateIncentiveDto): Promise<string> {
+  private async resolveReason(dto: { typeId?: string; reason?: string }): Promise<string> {
     const note = dto.reason?.trim() ?? '';
     if (!dto.typeId) {
       if (!note) throw new BadRequestException('Choose an incentive type or write a reason');
@@ -188,6 +189,7 @@ export class IncentivesService {
     return this.prisma.incentive.findMany({
       where,
       include: {
+        type: { select: { id: true, name: true } },
         employee: {
           select: {
             fullName: true,
@@ -199,6 +201,12 @@ export class IncentivesService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async findOne(id: string) {
+    const incentive = await this.prisma.incentive.findUnique({ where: { id } });
+    if (!incentive) throw new NotFoundException(`Incentive with id ${id} not found`);
+    return incentive;
   }
 
   findByEmployee(employeeId: string) {
@@ -222,26 +230,7 @@ export class IncentivesService {
       if (!incentive) {
         throw new NotFoundException(`Incentive with id ${id} not found`);
       }
-      const payrollEntry = await tx.payrollEntry.findFirst({
-        where: {
-          month: incentive.month,
-          year: incentive.year,
-          stipendRecord: { employeeId: incentive.employeeId },
-        },
-        include: { allowances: true },
-      });
-
-      if (!payrollEntry) {
-        throw new NotFoundException('Associated payroll entry not found');
-      }
-
-      const allowance = payrollEntry.allowances.find((item) =>
-        isIncentiveAllowance(item.description, incentive.reason),
-      );
-
-      if (!allowance) {
-        throw new NotFoundException('Associated allowance record not found');
-      }
+      const { payrollEntry, allowance } = await this.pendingIncentiveRow(tx, incentive);
 
       const amount = Number(incentive.amount);
 
@@ -281,6 +270,149 @@ export class IncentivesService {
     });
 
     return { message: 'Incentive deleted' };
+  }
+
+  /**
+   * Fix a wrong incentive while its month is still Pending: amount, type,
+   * note or month. The payroll rows move with it and the change is logged.
+   */
+  async update(id: string, dto: UpdateIncentiveDto, actingUserId: string) {
+    const existing = await this.prisma.incentive.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Incentive with id ${id} not found`);
+    const reason = await this.resolveReason(dto);
+
+    return withPayrollEmployeeTransaction(this.prisma, existing.employeeId, async (tx) => {
+      const incentive = await tx.incentive.findUnique({ where: { id } });
+      if (!incentive) throw new NotFoundException(`Incentive with id ${id} not found`);
+      const { payrollEntry: oldEntry, allowance } = await this.pendingIncentiveRow(tx, incentive);
+      const oldAmount = Number(incentive.amount);
+      const moved = dto.month !== incentive.month || dto.year !== incentive.year;
+
+      await tx.allowance.delete({ where: { id: allowance.id } });
+      const oldAfter = await tx.payrollEntry.update({
+        where: { id: oldEntry.id },
+        data: {
+          totalAllowances: { decrement: oldAmount },
+          netStipend: { decrement: oldAmount },
+        },
+      });
+
+      const newEntry = moved
+        ? await this.getOrCreatePayrollEntry(tx, incentive.employeeId, dto.month, dto.year)
+        : oldEntry;
+      if (newEntry.status !== PayrollStatus.PENDING) {
+        throw new BadRequestException(
+          `Payroll for ${dto.month}/${dto.year} is already ${newEntry.status}; incentives can only be moved into a PENDING month`,
+        );
+      }
+      await tx.allowance.create({
+        data: {
+          payrollEntryId: newEntry.id,
+          type: AllowanceType.CUSTOM,
+          description: incentiveAllowanceDescription(reason),
+          amount: dto.amount,
+        },
+      });
+      const after = await tx.payrollEntry.update({
+        where: { id: newEntry.id },
+        data: {
+          totalAllowances: { increment: dto.amount },
+          netStipend: { increment: dto.amount },
+        },
+      });
+      const updated = await tx.incentive.update({
+        where: { id },
+        data: {
+          amount: dto.amount,
+          reason,
+          typeId: dto.typeId ?? null,
+          month: dto.month,
+          year: dto.year,
+        },
+      });
+
+      const was = `${incentive.reason} PKR ${pkr(oldAmount)}`;
+      const now = `${reason} PKR ${pkr(dto.amount)}`;
+      if (moved) {
+        await logIncentiveChange(tx, {
+          payrollEntryId: oldEntry.id,
+          userId: actingUserId,
+          action: 'INCENTIVE_REMOVED',
+          summary: `Incentive moved to ${dto.month}/${dto.year}: ${was}`,
+          netAfter: Number(oldAfter.netStipend),
+          amount: -oldAmount,
+        });
+        await logIncentiveChange(tx, {
+          payrollEntryId: newEntry.id,
+          userId: actingUserId,
+          action: 'INCENTIVE_ADDED',
+          summary: `Incentive moved from ${incentive.month}/${incentive.year}: ${now}`,
+          netAfter: Number(after.netStipend),
+          amount: dto.amount,
+        });
+      } else {
+        await logIncentiveChange(tx, {
+          payrollEntryId: newEntry.id,
+          userId: actingUserId,
+          action: 'INCENTIVE_CHANGED',
+          summary: `Incentive changed: ${was} → ${now}`,
+          netAfter: Number(after.netStipend),
+          amount: dto.amount - oldAmount,
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: actingUserId,
+          action: 'INCENTIVE_UPDATED',
+          entity: 'Incentive',
+          entityId: id,
+          changes: {
+            employeeId: incentive.employeeId,
+            before: {
+              amount: oldAmount,
+              reason: incentive.reason,
+              month: incentive.month,
+              year: incentive.year,
+            },
+            after: { amount: dto.amount, reason, month: dto.month, year: dto.year },
+          },
+        },
+      });
+      return updated;
+    });
+  }
+
+  /** The incentive's payroll entry and allowance row; only while that month is Pending. */
+  private async pendingIncentiveRow(
+    tx: Prisma.TransactionClient,
+    incentive: { employeeId: string; month: number; year: number; reason: string },
+  ) {
+    const payrollEntry = await tx.payrollEntry.findFirst({
+      where: {
+        month: incentive.month,
+        year: incentive.year,
+        stipendRecord: { employeeId: incentive.employeeId },
+        allowances: {
+          some: { description: incentiveAllowanceDescription(incentive.reason) },
+        },
+      },
+      include: { allowances: true },
+    });
+    if (!payrollEntry) {
+      throw new NotFoundException('Associated payroll entry not found');
+    }
+    if (payrollEntry.status !== PayrollStatus.PENDING) {
+      throw new BadRequestException(
+        `Payroll for ${incentive.month}/${incentive.year} is already ${payrollEntry.status}; this incentive can no longer be changed`,
+      );
+    }
+    const allowance = payrollEntry.allowances.find((item) =>
+      isIncentiveAllowance(item.description, incentive.reason),
+    );
+    if (!allowance) {
+      throw new NotFoundException('Associated allowance record not found');
+    }
+    return { payrollEntry, allowance };
   }
 
   private async getOrCreatePayrollEntry(
@@ -328,6 +460,8 @@ export class IncentivesService {
     });
   }
 }
+
+const pkr = (n: number) => Math.round(n).toLocaleString('en-PK');
 
 /** Payroll entry history line for an incentive (net before = after − amount). */
 async function logIncentiveChange(

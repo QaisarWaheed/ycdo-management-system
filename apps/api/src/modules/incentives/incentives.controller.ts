@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -13,7 +14,11 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles, RoutePermission, StrictRoles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { CreateIncentiveDto, IncentiveQueryDto } from './incentives.dto';
+import {
+  CreateIncentiveDto,
+  IncentiveQueryDto,
+  UpdateIncentiveDto,
+} from './incentives.dto';
 import { PayChangeKind } from '@prisma/client';
 import {
   isPayExecutive,
@@ -99,6 +104,43 @@ export class IncentivesController {
   )
   findByEmployee(@Param('employeeId') employeeId: string) {
     return this.incentivesService.findByEmployee(employeeId);
+  }
+
+  /**
+   * Fix a wrong incentive while its month is Pending. Lowering it or
+   * changing type / note / month applies at once; raising the amount goes
+   * to an executive like a new incentive (executives apply directly).
+   */
+  @Patch(':id')
+  @StrictRoles()
+  @Roles(
+    UserRole.PAYROLL_OFFICER,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+    UserRole.SUPER_ADMIN,
+  )
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateIncentiveDto,
+    @CurrentUser() user: PayActor & { role: UserRole },
+  ) {
+    const current = await this.incentivesService.findOne(id);
+    if (!isPayExecutive(user) && dto.amount > Number(current.amount)) {
+      const { approverTarget, ...values } = dto;
+      return this.payChangeRequests.submit(
+        {
+          kind: PayChangeKind.INCENTIVE,
+          employeeId: current.employeeId,
+          payload: { incentiveId: id, ...values },
+          summary: await this.payChangeRequests.describeIncentiveChange(current, dto),
+          reason: dto.reason,
+          approverTarget,
+        },
+        user,
+      );
+    }
+    return this.incentivesService.update(id, dto, user.id);
   }
 
   @Delete(':id')

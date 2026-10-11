@@ -858,6 +858,8 @@ export interface Incentive {
   employeeId: string
   amount: number | string
   reason: string
+  typeId?: string | null
+  type?: { id: string; name: string } | null
   addedBy: string
   month: number
   year: number

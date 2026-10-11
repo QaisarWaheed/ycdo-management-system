@@ -3,16 +3,24 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Type } from 'class-transformer';
 import {
   IsEnum,
+  IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
+  Max,
+  MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import {
@@ -22,7 +30,7 @@ import {
 } from '@prisma/client';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, StrictRoles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { PayApprovalsService } from './pay-approvals.service';
 import {
@@ -62,6 +70,46 @@ class ForwardPayChangeDto {
   @MinLength(5, { message: 'Please give a reason of at least 5 characters' })
   reason: string;
 }
+
+class EditIncentiveRequestDto {
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  amount: number;
+
+  @IsOptional()
+  @IsUUID()
+  typeId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  year: number;
+
+  @IsEnum(EmployeeApproverTarget)
+  approverTarget: EmployeeApproverTarget;
+}
+
+class CancelPayChangeDto {
+  @IsString()
+  @IsNotEmpty({ message: 'A reason is required to cancel this request' })
+  @MinLength(5, { message: 'Please give a reason of at least 5 characters' })
+  reason: string;
+}
+
+/** Finance sends pay requests, so Finance may correct or withdraw them. */
+const SENDER_ROLES = [UserRole.PAYROLL_OFFICER, UserRole.SUPER_ADMIN];
 
 const DECIDE_ROLES = [
   UserRole.PRESIDENT,
@@ -110,6 +158,28 @@ export class PayApprovalsController {
     @CurrentUser() user: PayActor,
   ) {
     return this.requests.reject(id, user, dto.reviewNote);
+  }
+
+  @Patch(':id')
+  @Roles(...SENDER_ROLES)
+  @StrictRoles()
+  edit(
+    @Param('id') id: string,
+    @Body() dto: EditIncentiveRequestDto,
+    @CurrentUser() user: PayActor,
+  ) {
+    return this.requests.editIncentiveRequest(id, user, dto);
+  }
+
+  @Post(':id/cancel')
+  @Roles(...SENDER_ROLES)
+  @StrictRoles()
+  cancel(
+    @Param('id') id: string,
+    @Body() dto: CancelPayChangeDto,
+    @CurrentUser() user: PayActor,
+  ) {
+    return this.requests.cancel(id, user, dto.reason);
   }
 
   /** IT re-routes a pending request to another executive. */

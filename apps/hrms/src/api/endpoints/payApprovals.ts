@@ -49,6 +49,8 @@ export interface PayChangeRequest {
   reason?: string | null
   approverTarget: EmployeeApproverTarget
   status: PayChangeStatus
+  /** Original request values (incentive requests are edited from these). */
+  payload?: Record<string, unknown>
   reviewNote?: string | null
   reviewedAt?: string | null
   createdAt: string
@@ -122,4 +124,17 @@ export const payApprovalsApi = {
     api.post(`/pay-approvals/${id}/reject`, { reviewNote }),
   forward: (id: string, approverTarget: EmployeeApproverTarget, reason: string) =>
     api.post(`/pay-approvals/${id}/forward`, { approverTarget, reason }),
+  /** Finance corrects a pending incentive request (it stays pending). */
+  editIncentive: (
+    id: string,
+    data: {
+      amount: number
+      typeId?: string
+      reason?: string
+      month: number
+      year: number
+      approverTarget: EmployeeApproverTarget
+    },
+  ) => api.patch<unknown, PayChangeRequest>(`/pay-approvals/${id}`, data),
+  cancel: (id: string, reason: string) => api.post(`/pay-approvals/${id}/cancel`, { reason }),
 }

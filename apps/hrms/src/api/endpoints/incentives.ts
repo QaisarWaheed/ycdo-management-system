@@ -20,5 +20,8 @@ export const incentivesApi = {
     api.get<unknown, Incentive[]>('/incentives', { params }),
   getByEmployee: (employeeId: string) =>
     api.get<unknown, Incentive[]>(`/incentives/employee/${employeeId}`),
+  /** Lowering / retyping applies at once; a higher amount from Finance goes for approval. */
+  update: (id: string, data: Omit<CreateIncentivePayload, 'employeeId'>) =>
+    api.patch<unknown, Incentive | PendingApprovalResponse>(`/incentives/${id}`, data),
   delete: (id: string) => api.delete(`/incentives/${id}`),
 }

@@ -59,7 +59,7 @@ export class PayApprovalsService {
   }
 
   private async apply(request: PayChangeRequest, user: PayActor) {
-    const payload = { ...(request.payload as Record<string, any>) };
+    const { _editedAt: _drop, ...payload } = request.payload as Record<string, any>;
     switch (request.kind) {
       case PayChangeKind.SALARY_INCREMENT:
         payload.effectiveFrom = await this.openMonthIso(
@@ -95,6 +95,14 @@ export class PayApprovalsService {
           where: { id: request.submittedById },
           select: { role: true },
         });
+        if (payload.incentiveId) {
+          const { incentiveId, ...values } = payload;
+          return this.incentives.update(
+            incentiveId,
+            values as any,
+            request.submittedById,
+          );
+        }
         return this.incentives.create(
           payload as any,
           request.submittedById,

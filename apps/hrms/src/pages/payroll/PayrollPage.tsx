@@ -80,7 +80,11 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
-import { isPendingApproval } from '@/api/endpoints/payApprovals'
+import {
+  allowancesApi,
+  isPendingApproval,
+  payApprovalsApi,
+} from '@/api/endpoints/payApprovals'
 import {
   ApproverSelect,
   useCanEditPay,
@@ -1056,16 +1060,52 @@ function MonthlyPayrollTab() {
       incentivesApi.getAll({ year: monthYear.year, month: monthYear.month }),
   })
 
-  const incentiveTotals = useMemo(() => {
-    const totals = new Map<string, number>()
+  // Incentives Finance sent that still wait for an executive (not in payroll yet).
+  const { data: pendingRequests = [] } = useQuery({
+    queryKey: ['pay-approvals', 'list', 'PENDING'],
+    queryFn: () => payApprovalsApi.list({ status: 'PENDING' }),
+  })
+  const { data: incentiveTypes = [] } = useQuery({
+    queryKey: ['incentive-types'],
+    queryFn: allowancesApi.listIncentiveTypes,
+  })
+
+  /** Per employee: each incentive by nature, approved (in payroll) or waiting for approval. */
+  const incentiveLines = useMemo(() => {
+    const byEmployee = new Map<
+      string,
+      Array<{ name: string; amount: number; pending: boolean; note?: string }>
+    >()
+    const push = (id: string, line: { name: string; amount: number; pending: boolean; note?: string }) =>
+      byEmployee.set(id, [...(byEmployee.get(id) ?? []), line])
+    const typeName = (id?: string | null) => incentiveTypes.find((t) => t.id === id)?.name
     for (const inc of monthIncentives) {
-      totals.set(
-        inc.employeeId,
-        (totals.get(inc.employeeId) ?? 0) + Number(inc.amount),
-      )
+      push(inc.employeeId, {
+        name: inc.type?.name ?? inc.reason.split(': ')[0],
+        amount: Number(inc.amount),
+        pending: false,
+        note: inc.reason,
+      })
     }
-    return totals
-  }, [monthIncentives])
+    for (const r of pendingRequests) {
+      const p = (r.payload ?? {}) as {
+        amount?: number
+        month?: number
+        year?: number
+        typeId?: string
+        reason?: string
+      }
+      if (r.kind !== 'INCENTIVE' || p.month !== monthYear.month || p.year !== monthYear.year)
+        continue
+      push(r.employeeId, {
+        name: typeName(p.typeId) ?? p.reason ?? 'Incentive',
+        amount: Number(p.amount) || 0,
+        pending: true,
+        note: r.summary,
+      })
+    }
+    return byEmployee
+  }, [monthIncentives, pendingRequests, incentiveTypes, monthYear.month, monthYear.year])
 
   const generateMutation = useMutation({
     mutationFn: () =>
@@ -1576,16 +1616,26 @@ function MonthlyPayrollTab() {
                       {formatPKR(entry.netStipend)}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2 whitespace-nowrap">
-                        <span
-                          className={cn(
-                            emp?.id && incentiveTotals.get(emp.id)
-                              ? 'text-green-700'
-                              : 'text-text-secondary',
-                          )}
-                        >
-                          {formatPKR(emp?.id ? incentiveTotals.get(emp.id) ?? 0 : 0)}
-                        </span>
+                      <div className="flex items-start gap-2 whitespace-nowrap">
+                        <div className="space-y-0.5">
+                          {(emp?.id ? incentiveLines.get(emp.id) ?? [] : []).map((l, i) => (
+                            <div
+                              key={i}
+                              title={l.note}
+                              className={cn(
+                                'text-xs',
+                                l.pending ? 'text-red-600' : 'text-green-700',
+                              )}
+                            >
+                              <span className="font-semibold">{formatPKR(l.amount)}</span>{' '}
+                              {l.name}
+                              {l.pending ? ' · pending approval' : ''}
+                            </div>
+                          ))}
+                          {!emp?.id || !incentiveLines.get(emp.id)?.length ? (
+                            <span className="text-text-secondary">{formatPKR(0)}</span>
+                          ) : null}
+                        </div>
                         {canAddIncentive && entry.status === 'PENDING' && emp?.id && (
                           <Button
                             variant="outline"

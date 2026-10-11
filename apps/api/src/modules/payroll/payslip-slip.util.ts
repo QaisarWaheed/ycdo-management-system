@@ -338,13 +338,16 @@ export function buildPayslipSections(input: {
       },
       ...customRows.map((a) => {
         const desc = (a.description ?? '').trim();
-        return desc.startsWith('Incentive: ')
-          ? {
-              label: 'Incentive',
-              amount: Number(a.amount) || 0,
-              note: desc.slice(11).trim() || undefined,
-            }
-          : { label: 'Addition', amount: Number(a.amount) || 0, note: desc || undefined };
+        if (!desc.startsWith('Incentive: '))
+          return { label: 'Addition', amount: Number(a.amount) || 0, note: desc || undefined };
+        // Stored as "Incentive: <Type>: <note>" or "Incentive: <Type or old free text>".
+        const rest = desc.slice(11).trim();
+        const cut = rest.indexOf(': ');
+        return {
+          label: `Incentive: ${cut > 0 ? rest.slice(0, cut) : rest}`,
+          amount: Number(a.amount) || 0,
+          note: cut > 0 ? rest.slice(cut + 2).trim() || undefined : undefined,
+        };
       }),
       { label: 'Reward', amount: earnings.rewards },
       { label: 'Reward On Progress', amount: earnings.rewardOnProgress },

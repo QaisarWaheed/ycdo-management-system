@@ -43,21 +43,51 @@ const deductionRows = [
     amount: 800,
     description: 'Attendance Card: additional absence penalty',
   },
-  { reason: 'LATE_ARRIVAL', amount: 1000, description: 'Attendance Card: every 3 Late' },
-  { reason: 'FINE', amount: 300, fineReason: 'NO_UNIFORM', description: 'No uniform on 5 Oct' },
-  { reason: 'FINE', amount: 200, fineReason: 'MOBILE_ON_DUTY', description: 'Mobile in ward' },
-  { reason: 'DISCIPLINARY_FINE', amount: 400, description: 'Inquiry fine — case 12' },
+  {
+    reason: 'LATE_ARRIVAL',
+    amount: 1000,
+    description: 'Attendance Card: every 3 Late',
+  },
+  {
+    reason: 'FINE',
+    amount: 300,
+    fineReason: 'NO_UNIFORM',
+    description: 'No uniform on 5 Oct',
+  },
+  {
+    reason: 'FINE',
+    amount: 200,
+    fineReason: 'MOBILE_ON_DUTY',
+    description: 'Mobile in ward',
+  },
+  {
+    reason: 'DISCIPLINARY_FINE',
+    amount: 400,
+    description: 'Inquiry fine — case 12',
+  },
   {
     reason: 'DISCIPLINARY_FINE',
     amount: 1000,
     description: 'Attendance Card: every 3 Early Checkout',
   },
-  { reason: 'MEDICINE_PENDING', amount: 500, description: 'Pending medicine bill' },
+  {
+    reason: 'MEDICINE_PENDING',
+    amount: 500,
+    description: 'Pending medicine bill',
+  },
 ];
 const allowanceRows = [
   { type: 'OVERTIME', amount: 500, hours: 4 },
-  { type: 'CUSTOM', amount: 1500, description: 'Incentive: On Progress: ward shifting' },
-  { type: 'CUSTOM', amount: 700, description: 'Extra duty in place of Dr. Atika' },
+  {
+    type: 'CUSTOM',
+    amount: 1500,
+    description: 'Incentive: On Progress: ward shifting',
+  },
+  {
+    type: 'CUSTOM',
+    amount: 700,
+    description: 'Extra duty in place of Dr. Atika',
+  },
   { type: 'ADDITIONAL_WORKING_DAYS', amount: 2000 },
 ];
 
@@ -74,7 +104,10 @@ describe('buildPayslipSections', () => {
   });
   const byKey = Object.fromEntries(sections.map((s) => [s.key, s]));
   const total = (key: string) =>
-    byKey[key].lines.reduce((s: number, l: { amount: number }) => s + l.amount, 0);
+    byKey[key].lines.reduce(
+      (s: number, l: { amount: number }) => s + l.amount,
+      0,
+    );
 
   it('shows the full contract Basic and explains every addition', () => {
     expect(total('earnings')).toBe(computeEarningsTotal(earnings));
@@ -82,8 +115,12 @@ describe('buildPayslipSections', () => {
       { label: 'Basic Stipend', amount: 31000 },
       { label: 'Extra Days', amount: 2000, note: '2 days' },
       { label: 'Overtime', amount: 500, note: '4 hours' },
-      { label: 'Incentive', amount: 1500, note: 'On Progress: ward shifting' },
-      { label: 'Addition', amount: 700, note: 'Extra duty in place of Dr. Atika' },
+      { label: 'Incentive: On Progress', amount: 1500, note: 'ward shifting' },
+      {
+        label: 'Addition',
+        amount: 700,
+        note: 'Extra duty in place of Dr. Atika',
+      },
       { label: 'Reward On Progress', amount: 1000 },
       { label: 'Petrol', amount: 3000 },
       { label: 'Travelling Exp', amount: 2000 },
@@ -101,7 +138,11 @@ describe('buildPayslipSections', () => {
       { label: 'Absence', amount: 2000, note: '2 days not paid' },
       { label: 'Absence fine', amount: 800, note: '1 uninformed absence' },
       { label: 'Late', amount: 1000, note: '6 lates (every 3 = 1 day)' },
-      { label: 'Early checkout', amount: 1000, note: '3 early checkouts (every 3 = 1 day)' },
+      {
+        label: 'Early checkout',
+        amount: 1000,
+        note: '3 early checkouts (every 3 = 1 day)',
+      },
     ]);
   });
 
@@ -109,7 +150,11 @@ describe('buildPayslipSections', () => {
     expect(byKey.discipline.lines).toEqual([
       { label: 'Fine: No uniform', amount: 300, note: 'No uniform on 5 Oct' },
       { label: 'Fine: Mobile on duty', amount: 200, note: 'Mobile in ward' },
-      { label: 'Disciplinary action fine', amount: 400, note: 'Inquiry fine — case 12' },
+      {
+        label: 'Disciplinary action fine',
+        amount: 400,
+        note: 'Inquiry fine — case 12',
+      },
     ]);
   });
 

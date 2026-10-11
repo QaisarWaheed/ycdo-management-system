@@ -2,7 +2,7 @@ import { useCanEditPay } from '@/components/payroll/ApproverSelect'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { branchesApi } from '@/api/endpoints/branches'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { TablePagination } from '@/components/common/TablePagination'
@@ -33,7 +33,6 @@ import {
 } from '@/components/ui/table'
 import { toast } from '@/hooks/use-toast'
 import { usePagination } from '@/hooks/usePagination'
-import { useAuth } from '@/hooks/useAuth'
 import type { Incentive } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { AddIncentiveDialog } from './AddIncentiveDialog'
@@ -50,7 +49,6 @@ function truncateReason(reason: string, max = 80) {
 }
 
 export function IncentivesPage() {
-  const { user } = useAuth()
   const queryClient = useQueryClient()
   const now = new Date()
 
@@ -64,8 +62,9 @@ export function IncentivesPage() {
   const canEditPay = useCanEditPay()
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
-  const canDelete =
-    user?.role === 'SUPER_ADMIN' || user?.role === 'HR_ADMIN_MANAGER'
+  const [editItem, setEditItem] = useState<Incentive | null>(null)
+  // Same people who may add pay (Finance + executives); the API enforces it.
+  const canDelete = canEditPay
 
   const filters = useMemo(
     () => ({
@@ -260,10 +259,19 @@ export function IncentivesPage() {
                     {format(new Date(item.createdAt), 'dd/MM/yyyy')}
                   </TableCell>
                   {canDelete && (
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">
                       <Button
                         variant="ghost"
                         size="sm"
+                        title="Edit"
+                        onClick={() => setEditItem(item)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="Delete"
                         className="text-destructive hover:text-destructive"
                         onClick={() => setDeleteId(item.id)}
                       >
@@ -286,6 +294,11 @@ export function IncentivesPage() {
       </div>
 
       <AddIncentiveDialog open={addOpen} onOpenChange={setAddOpen} />
+      <AddIncentiveDialog
+        open={!!editItem}
+        onOpenChange={(o) => !o && setEditItem(null)}
+        editIncentive={editItem}
+      />
 
       <ConfirmDialog
         open={!!deleteId}

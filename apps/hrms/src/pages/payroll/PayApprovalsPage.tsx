@@ -41,6 +41,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
+import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
 
 const approverLabel = (t: EmployeeApproverTarget) =>
   APPROVER_OPTIONS.find((o) => o.value === t)?.label ?? t
@@ -53,13 +54,16 @@ const errText = (err: ApiError) => {
   return Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error')
 }
 
-type Action = { kind: 'approve' | 'reject' | 'forward'; request: PayChangeRequest }
+type Action = { kind: 'approve' | 'reject' | 'forward' | 'cancel'; request: PayChangeRequest }
 
 /** Executive queue for pay increases (increments, allowances, incentives, additions). */
 export function PayApprovalsPage() {
   const { hasRole } = useAuth()
   const canDecide = hasRole(['PRESIDENT', 'FOUNDER', 'CHAIRMAN', 'SUPER_ADMIN'])
   const canForward = hasRole(['IT_ADMIN', 'SUPER_ADMIN'])
+  // Finance sends the requests, so Finance may correct or withdraw them.
+  const canAmend = hasRole(['PAYROLL_OFFICER', 'SUPER_ADMIN'])
+  const [editRequest, setEditRequest] = useState<PayChangeRequest | null>(null)
   const [status, setStatus] = useState<PayChangeStatus>('PENDING')
   const [action, setAction] = useState<Action | null>(null)
 
@@ -82,6 +86,7 @@ export function PayApprovalsPage() {
           <TabsTrigger value="PENDING">Pending</TabsTrigger>
           <TabsTrigger value="APPROVED">Approved</TabsTrigger>
           <TabsTrigger value="REJECTED">Rejected</TabsTrigger>
+          <TabsTrigger value="CANCELLED">Cancelled</TabsTrigger>
         </TabsList>
       </Tabs>
       <Card>
@@ -121,6 +126,11 @@ export function PayApprovalsPage() {
                     </TableCell>
                     <TableCell className="max-w-md">
                       <Badge variant="outline">{PAY_CHANGE_KIND_LABELS[r.kind]}</Badge>
+                      {r.payload?._editedAt ? (
+                        <Badge variant="secondary" className="ml-1">
+                          Edited
+                        </Badge>
+                      ) : null}
                       <div className="mt-1 font-medium">{r.summary}</div>
                       {r.reason ? (
                         <div className="text-xs text-muted-foreground">Reason: {r.reason}</div>
@@ -156,6 +166,20 @@ export function PayApprovalsPage() {
                           </Button>
                         </>
                       ) : null}
+                      {status === 'PENDING' && canAmend && r.kind === 'INCENTIVE' ? (
+                        <Button size="sm" variant="outline" onClick={() => setEditRequest(r)}>
+                          Edit
+                        </Button>
+                      ) : null}
+                      {status === 'PENDING' && canAmend ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setAction({ kind: 'cancel', request: r })}
+                        >
+                          Cancel request
+                        </Button>
+                      ) : null}
                       {status === 'PENDING' && canForward ? (
                         <Button
                           size="sm"
@@ -174,6 +198,11 @@ export function PayApprovalsPage() {
         </CardContent>
       </Card>
       {action ? <DecisionDialog action={action} onClose={() => setAction(null)} /> : null}
+      <AddIncentiveDialog
+        open={!!editRequest}
+        onOpenChange={(o) => !o && setEditRequest(null)}
+        editRequest={editRequest}
+      />
     </div>
   )
 }
@@ -191,7 +220,9 @@ function DecisionDialog({ action, onClose }: { action: Action; onClose: () => vo
         ? payApprovalsApi.approve(request.id, note.trim() || undefined)
         : kind === 'reject'
           ? payApprovalsApi.reject(request.id, note.trim())
-          : payApprovalsApi.forward(request.id, target, note.trim()),
+          : kind === 'cancel'
+            ? payApprovalsApi.cancel(request.id, note.trim())
+            : payApprovalsApi.forward(request.id, target, note.trim()),
     onSuccess: () => {
       toast({
         title:
@@ -199,7 +230,9 @@ function DecisionDialog({ action, onClose }: { action: Action; onClose: () => vo
             ? 'Approved and applied to payroll'
             : kind === 'reject'
               ? 'Request rejected'
-              : `Forwarded to ${approverLabel(target)}`,
+              : kind === 'cancel'
+                ? 'Request cancelled'
+                : `Forwarded to ${approverLabel(target)}`,
       })
       queryClient.invalidateQueries({ queryKey: ['pay-approvals'] })
       queryClient.invalidateQueries({ queryKey: ['employee-allowances'] })
@@ -217,7 +250,9 @@ function DecisionDialog({ action, onClose }: { action: Action; onClose: () => vo
       ? 'Approve pay change'
       : kind === 'reject'
         ? 'Reject pay change'
-        : 'Forward request'
+        : kind === 'cancel'
+          ? 'Cancel this request'
+          : 'Forward request'
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -261,14 +296,20 @@ function DecisionDialog({ action, onClose }: { action: Action; onClose: () => vo
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Cancel
+            Close
           </Button>
           <Button
-            variant={kind === 'reject' ? 'destructive' : 'default'}
+            variant={kind === 'reject' || kind === 'cancel' ? 'destructive' : 'default'}
             disabled={(needsNote && note.trim().length < 5) || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
-            {kind === 'approve' ? 'Approve' : kind === 'reject' ? 'Reject' : 'Forward'}
+            {kind === 'approve'
+              ? 'Approve'
+              : kind === 'reject'
+                ? 'Reject'
+                : kind === 'cancel'
+                  ? 'Cancel request'
+                  : 'Forward'}
           </Button>
         </DialogFooter>
       </DialogContent>
