@@ -51,9 +51,12 @@ const PRINT_CSS = `
 export function PayslipPrintSheet({
   slips,
   onDone,
+  summary,
 }: {
   slips: PayslipSlipData[]
   onDone: () => void
+  /** Closing box on the last page: month and branch, with only the total amount. */
+  summary?: { month: string; scope: string }
 }) {
   useEffect(() => {
     document.body.classList.add('printing-payslips')
@@ -77,6 +80,43 @@ export function PayslipPrintSheet({
   for (let i = 0; i < slips.length; i += PER_PAGE) {
     pages.push(slips.slice(i, i + PER_PAGE))
   }
+  const total = slips.reduce((sum, s) => sum + (Number(s.netPay ?? s.totalAmount) || 0), 0)
+  // The total sits in the free half of the last page, or on a page of its own.
+  const lastHasRoom = pages.length > 0 && pages[pages.length - 1].length < PER_PAGE
+  const totalBox = summary ? (
+    <div
+      className="payslip-print-cell"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div
+        style={{
+          border: '2px solid #000',
+          padding: '10mm 14mm',
+          textAlign: 'center',
+          fontFamily: 'Arial, sans-serif',
+          minWidth: '120mm',
+        }}
+      >
+        <div style={{ fontSize: '14pt', fontWeight: 700 }}>{summary.month}</div>
+        <div style={{ fontSize: '12pt', marginTop: 2 }}>{summary.scope}</div>
+        <div style={{ fontSize: '10pt', marginTop: 2 }}>
+          {slips.length} payslip{slips.length === 1 ? '' : 's'}
+        </div>
+        <div style={{ fontSize: '12pt', fontWeight: 700, marginTop: '6mm' }}>Total Amount</div>
+        <div
+          style={{
+            fontSize: '24pt',
+            fontWeight: 700,
+            background: '#FFFF00',
+            padding: '2mm 6mm',
+            marginTop: '2mm',
+          }}
+        >
+          PKR {Math.round(total).toLocaleString('en-PK')}
+        </div>
+      </div>
+    </div>
+  ) : null
 
   return createPortal(
     <div id="payslip-print-root">
@@ -88,8 +128,10 @@ export function PayslipPrintSheet({
               <PayslipDocument slip={slip} compact />
             </div>
           ))}
+          {pageIndex === pages.length - 1 && lastHasRoom ? totalBox : null}
         </div>
       ))}
+      {totalBox && !lastHasRoom ? <div className="payslip-print-page">{totalBox}</div> : null}
     </div>,
     document.body,
   )

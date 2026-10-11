@@ -1450,7 +1450,16 @@ function MonthlyPayrollTab() {
               : 'Print Payslips (2 per page)'}
           </Button>
           {printSlips && printSlips.length > 0 && (
-            <PayslipPrintSheet slips={printSlips} onDone={clearPrintSlips} />
+            <PayslipPrintSheet
+              slips={printSlips}
+              onDone={clearPrintSlips}
+              summary={{
+                month: format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy'),
+                scope: branchId
+                  ? branches.find((b) => b.id === branchId)?.name ?? 'Branch'
+                  : 'All branches',
+              }}
+            />
           )}
           <Button
             className="bg-primary hover:bg-primary-dark"
@@ -3077,7 +3086,14 @@ function NonActivePayslipsTab() {
       </Card>
 
       {printSlips && printSlips.length > 0 && (
-        <PayslipPrintSheet slips={printSlips} onDone={clearPrintSlips} />
+        <PayslipPrintSheet
+          slips={printSlips}
+          onDone={clearPrintSlips}
+          summary={{
+            month: format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy'),
+            scope: 'Non-active payslips',
+          }}
+        />
       )}
     </div>
   )
