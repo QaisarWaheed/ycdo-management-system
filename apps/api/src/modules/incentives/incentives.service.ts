@@ -1,4 +1,5 @@
 import { withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
+import { packageCoversEntryMonth } from '../payroll/payroll-aggregate.util';
 import {
   BadRequestException,
   Injectable,
@@ -415,49 +416,40 @@ export class IncentivesService {
     return { payrollEntry, allowance };
   }
 
+  /**
+   * The month's own payroll entry: the one whose package covers the month
+   * (the open package first). An incentive never creates an entry — a new
+   * one would carry the full package basic and double the month (e.g. after
+   * an increment that starts next month).
+   */
   private async getOrCreatePayrollEntry(
     tx: Prisma.TransactionClient,
     employeeId: string,
     month: number,
     year: number,
   ) {
-    const stipendRecord = await tx.stipendRecord.findFirst({
-      where: { employeeId, effectiveTo: null },
-      orderBy: { effectiveFrom: 'desc' },
+    const entries = await tx.payrollEntry.findMany({
+      where: { month, year, stipendRecord: { employeeId } },
+      include: {
+        stipendRecord: { select: { effectiveFrom: true, effectiveTo: true } },
+      },
     });
-
-    if (!stipendRecord) {
-      throw new NotFoundException(
-        `No active stipend record found for employee ${employeeId}`,
+    const covering = entries
+      .filter((e) => packageCoversEntryMonth(e))
+      .sort(
+        (a, b) =>
+          Number(a.stipendRecord.effectiveTo != null) -
+            Number(b.stipendRecord.effectiveTo != null) ||
+          b.stipendRecord.effectiveFrom.getTime() -
+            a.stipendRecord.effectiveFrom.getTime(),
+      );
+    const entry = covering[0];
+    if (!entry) {
+      throw new BadRequestException(
+        `There is no payroll for ${month}/${year} for this employee yet. Generate that month's payroll first, then add the incentive.`,
       );
     }
-
-    const existing = await tx.payrollEntry.findUnique({
-      where: {
-        stipendRecordId_month_year: {
-          stipendRecordId: stipendRecord.id,
-          month,
-          year,
-        },
-      },
-    });
-
-    if (existing) {
-      return existing;
-    }
-
-    return tx.payrollEntry.create({
-      data: {
-        stipendRecordId: stipendRecord.id,
-        month,
-        year,
-        basicStipend: stipendRecord.basicStipend,
-        netStipend: stipendRecord.basicStipend,
-        totalDeductions: 0,
-        totalAllowances: 0,
-        status: PayrollStatus.PENDING,
-      },
-    });
+    return entry;
   }
 }
 

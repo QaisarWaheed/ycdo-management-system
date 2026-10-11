@@ -12,7 +12,7 @@ export type PayrollReportRow = {
   department?: string
   designation?: string
   /** Raw amounts for subtotals and the Excel export. */
-  amounts?: { basic: number; deductions: number; allowances: number; net: number }
+  amounts?: ReportTotals
   period: string
   present?: string
   absent?: string
@@ -25,6 +25,7 @@ export type PayrollReportRow = {
   basic: string
   deductions: string
   allowances: string
+  incentives: string
   net: string
   status: string
   notes?: string
@@ -37,6 +38,20 @@ type PayrollReportPrintProps = {
   rows: PayrollReportRow[]
   variant?: 'monthly' | 'history'
   footer?: string
+}
+
+/** Incentives on an entry: CUSTOM allowance rows written as "Incentive: …". */
+export function incentiveTotal(entry: Pick<PayrollEntry, 'allowances'>): number {
+  return (entry.allowances ?? [])
+    .filter((a) => a.type === 'CUSTOM' && (a.description ?? '').startsWith('Incentive: '))
+    .reduce((sum, a) => sum + (Number(a.amount) || 0), 0)
+}
+
+/** Allowances without incentives (incentives get their own column). */
+export function allowancesWithoutIncentives(
+  entry: Pick<PayrollEntry, 'allowances' | 'totalAllowances'>,
+): number {
+  return Math.round(((Number(entry.totalAllowances) || 0) - incentiveTotal(entry)) * 100) / 100
 }
 
 export function buildMonthlyPayrollReportRows(
@@ -67,7 +82,8 @@ export function buildMonthlyPayrollReportRows(
       amounts: {
         basic: Number(entry.basicStipend) || 0,
         deductions: Math.max(0, Number(entry.totalDeductions) || 0),
-        allowances: Number(entry.totalAllowances) || 0,
+        allowances: allowancesWithoutIncentives(entry),
+        incentives: incentiveTotal(entry),
         net: Number(entry.netStipend) || 0,
       },
       period: `${entry.month}/${entry.year}`,
@@ -81,7 +97,8 @@ export function buildMonthlyPayrollReportRows(
       extraWorkingDays: String(entry.attendance?.extraWorkingDays ?? 0),
       basic: formatPKR(entry.basicStipend),
       deductions: formatPKR(Math.max(0, Number(entry.totalDeductions))),
-      allowances: formatPKR(entry.totalAllowances),
+      allowances: formatPKR(allowancesWithoutIncentives(entry)),
+      incentives: formatPKR(incentiveTotal(entry)),
       net: formatPKR(entry.netStipend),
       status: entry.status,
       notes: notes || undefined,
@@ -118,12 +135,14 @@ export function buildHistoryPayrollReportRows(
         amounts: {
           basic: Number(entry.basicStipend) || 0,
           deductions: Math.max(0, Number(entry.totalDeductions) || 0),
-          allowances: Number(entry.totalAllowances) || 0,
+          allowances: allowancesWithoutIncentives(entry),
+          incentives: incentiveTotal(entry),
           net: Number(entry.netStipend) || 0,
         },
         period: `${monthNames[entry.month - 1] ?? entry.month} ${entry.year}`,
         basic: formatPKR(entry.basicStipend),
-        allowances: formatPKR(entry.totalAllowances),
+        allowances: formatPKR(allowancesWithoutIncentives(entry)),
+        incentives: formatPKR(incentiveTotal(entry)),
         deductions: formatPKR(entry.totalDeductions),
         net: formatPKR(entry.netStipend),
         status: entry.status,
@@ -203,10 +222,12 @@ export function PayrollReportPrintSection({
               <>
                 <th className="num">Deductions</th>
                 <th className="num">Allowances</th>
+                <th className="num">Incentives</th>
               </>
             ) : (
               <>
                 <th className="num">Allowances</th>
+                <th className="num">Incentives</th>
                 <th className="num">Deductions</th>
               </>
             )}
@@ -218,7 +239,7 @@ export function PayrollReportPrintSection({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={isMonthly ? 15 : 7} className="text-center">
+              <td colSpan={isMonthly ? 16 : 8} className="text-center">
                 No payroll records
               </td>
             </tr>
@@ -227,7 +248,7 @@ export function PayrollReportPrintSection({
               {grouped.groups.map((g) => (
                 <Fragment key={`${g.department}|${g.designation}`}>
                   <tr>
-                    <td colSpan={15} style={{ fontWeight: 700, background: '#f1f5f5' }}>
+                    <td colSpan={16} style={{ fontWeight: 700, background: '#f1f5f5' }}>
                       {g.department} — {g.designation}
                     </td>
                   </tr>
@@ -258,6 +279,7 @@ export function PayrollReportPrintSection({
         <td className="num">{formatPKR(t.basic)}</td>
         <td className="num">{formatPKR(t.deductions)}</td>
         <td className="num">{formatPKR(t.allowances)}</td>
+        <td className="num">{formatPKR(t.incentives)}</td>
         <td className="num">{formatPKR(t.net)}</td>
         <td />
       </tr>
@@ -295,10 +317,12 @@ export function PayrollReportPrintSection({
                   <>
                     <td className="num">{row.deductions}</td>
                     <td className="num">{row.allowances}</td>
+                    <td className="num">{row.incentives}</td>
                   </>
                 ) : (
                   <>
                     <td className="num">{row.allowances}</td>
+                    <td className="num">{row.incentives}</td>
                     <td className="num">{row.deductions}</td>
                   </>
                 )}
@@ -310,7 +334,14 @@ export function PayrollReportPrintSection({
   }
 }
 
-type ReportTotals = { basic: number; deductions: number; allowances: number; net: number }
+type ReportTotals = {
+  basic: number
+  deductions: number
+  allowances: number
+  /** Incentives / rewards, shown apart from (fixed) allowances. */
+  incentives: number
+  net: number
+}
 
 /** Signature boxes printed at the end of every payroll report, whatever the filters. */
 const PAYROLL_REPORT_SIGNATORIES = [
@@ -325,6 +356,7 @@ export type PayrollReportSummary = ReportTotals
 const summaryItems = (t: PayrollReportSummary) => [
   { label: 'Total Earned Stipend', value: t.basic },
   { label: 'Total Allowances', value: t.allowances },
+  { label: 'Total Incentives', value: t.incentives },
   { label: 'Total Deductions', value: t.deductions },
   { label: 'Total Net Stipend', value: t.net },
 ]
@@ -385,9 +417,10 @@ const sumAmounts = (rows: PayrollReportRow[]): ReportTotals =>
       basic: t.basic + (r.amounts?.basic ?? 0),
       deductions: t.deductions + (r.amounts?.deductions ?? 0),
       allowances: t.allowances + (r.amounts?.allowances ?? 0),
+      incentives: t.incentives + (r.amounts?.incentives ?? 0),
       net: t.net + (r.amounts?.net ?? 0),
     }),
-    { basic: 0, deductions: 0, allowances: 0, net: 0 },
+    { basic: 0, deductions: 0, allowances: 0, incentives: 0, net: 0 },
   )
 
 /** Monthly rows grouped by department, then designation, each with subtotals. */
@@ -421,18 +454,18 @@ export function exportMonthlyPayrollCsv(rows: PayrollReportRow[], filename: stri
   const lines: unknown[][] = [[
     'Department', 'Designation', 'Employee', 'Code', 'Employee status', 'Present', 'Absent',
     'On leave', 'Late', 'Early out', 'Missed checkout', 'OT hrs', 'Extra days',
-    'Basic', 'Deductions', 'Allowances', 'Net', 'Payroll status',
+    'Basic', 'Deductions', 'Allowances', 'Incentives', 'Net', 'Payroll status',
   ]]
   const round2 = (n: number) => Math.round(n * 100) / 100
   const money = (t: ReportTotals) =>
-    [t.basic, t.deductions, t.allowances, t.net].map(round2)
+    [t.basic, t.deductions, t.allowances, t.incentives, t.net].map(round2)
   for (const g of groups) {
     for (const r of g.rows) {
       lines.push([
         g.department, g.designation, r.employee, r.employeeCode, r.employeeStatus,
         r.present, r.absent, r.onLeave, r.late, r.earlyCheckout, r.missingCheckout,
         r.overtime, r.extraWorkingDays,
-        ...money(r.amounts ?? { basic: 0, deductions: 0, allowances: 0, net: 0 }),
+        ...money(r.amounts ?? { basic: 0, deductions: 0, allowances: 0, incentives: 0, net: 0 }),
         r.status,
       ])
     }

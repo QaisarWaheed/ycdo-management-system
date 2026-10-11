@@ -28,6 +28,9 @@ describe('IncentivesService payroll locking', () => {
         delete: jest.fn().mockResolvedValue(incentive),
       },
       payrollEntry: {
+        findMany: jest.fn().mockResolvedValue([
+          { ...entry, month: 9, year: 2026, stipendRecord: { effectiveFrom: new Date('2026-01-01'), effectiveTo: null } },
+        ]),
         findUnique: jest.fn().mockResolvedValue(entry),
         findFirst: jest.fn().mockResolvedValue(entry),
         update: jest.fn().mockResolvedValue(entry),
@@ -50,7 +53,7 @@ describe('IncentivesService payroll locking', () => {
     const { service, prisma, tx, unlock, lockStarted } = build();
     const result = service.create(incentive, 'manager-1');
     await lockStarted;
-    expect(tx.stipendRecord.findFirst).not.toHaveBeenCalled();
+    expect(tx.payrollEntry.findMany).not.toHaveBeenCalled();
     expect(tx.incentive.create).not.toHaveBeenCalled();
     expect(tx.payrollEntry.update).not.toHaveBeenCalled();
     unlock();
@@ -66,9 +69,10 @@ describe('IncentivesService payroll locking', () => {
 
   it('rejects an incentive when the month payroll is no longer PENDING', async () => {
     const { service, tx, unlock } = build();
-    tx.payrollEntry.findUnique.mockResolvedValue({
-      id: 'payroll-1', status: PayrollStatus.PROCESSED, allowances: [],
-    });
+    tx.payrollEntry.findMany.mockResolvedValue([{
+      id: 'payroll-1', status: PayrollStatus.PROCESSED, allowances: [], month: 9, year: 2026,
+      stipendRecord: { effectiveFrom: new Date('2026-01-01'), effectiveTo: null },
+    }]);
     unlock();
     await expect(service.create(incentive, 'manager-1')).rejects.toThrow(/PENDING/);
     expect(tx.allowance.create).not.toHaveBeenCalled();
@@ -86,5 +90,26 @@ describe('IncentivesService payroll locking', () => {
     await expect(result).rejects.toThrow('Incentive with id incentive-1 not found');
     expect(tx.allowance.delete).not.toHaveBeenCalled();
     expect(tx.payrollEntry.update).not.toHaveBeenCalled();
+  });
+
+  it('puts the incentive on the entry whose package covers the month, never a later package', async () => {
+    const { service, tx, unlock } = build();
+    tx.payrollEntry.findMany.mockResolvedValue([
+      { id: 'next-pkg', status: PayrollStatus.PENDING, month: 9, year: 2026, allowances: [],
+        stipendRecord: { effectiveFrom: new Date('2026-10-01'), effectiveTo: null } },
+      { id: 'sep-pkg', status: PayrollStatus.PENDING, month: 9, year: 2026, allowances: [],
+        stipendRecord: { effectiveFrom: new Date('2025-04-01'), effectiveTo: new Date('2026-09-30') } },
+    ]);
+    unlock();
+    await service.create(incentive, 'manager-1');
+    expect(tx.allowance.create.mock.calls[0][0].data.payrollEntryId).toBe('sep-pkg');
+  });
+
+  it('refuses when the month has no payroll yet instead of creating an entry', async () => {
+    const { service, tx, unlock } = build();
+    tx.payrollEntry.findMany.mockResolvedValue([]);
+    unlock();
+    await expect(service.create(incentive, 'manager-1')).rejects.toThrow(/Generate that month's payroll first/);
+    expect(tx.allowance.create).not.toHaveBeenCalled();
   });
 });

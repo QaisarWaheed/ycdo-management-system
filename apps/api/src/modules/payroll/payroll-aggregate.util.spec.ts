@@ -91,7 +91,11 @@ describe('aggregateMonthlyPayrollByEmployee', () => {
         ],
         deductions: [
           { reason: 'LOAN', amount: 1000, description: 'Loan instalment' },
-          { reason: 'UNINFORMED_ABSENCE', amount: 500, description: 'Attendance Card: additional absence penalty' },
+          {
+            reason: 'UNINFORMED_ABSENCE',
+            amount: 500,
+            description: 'Attendance Card: additional absence penalty',
+          },
         ],
       },
       {
@@ -131,6 +135,65 @@ describe('aggregateMonthlyPayrollByEmployee', () => {
     expect(row.deductions).toEqual([
       { reason: 'LOAN', amount: 1000, description: 'Loan instalment' },
     ]);
+  });
+
+  it('incentive put on next month’s package: keeps the month’s basic and deductions, adds the incentive', () => {
+    // Tanveer case: September on the old package (fine + medicine), the new
+    // package starts 1 October, and a September incentive landed on an entry
+    // of the new package carrying its full basic.
+    const employee = { id: 'emp-1', fullName: 'Sample' };
+    const rows = aggregateMonthlyPayrollByEmployee([
+      {
+        id: 'sep-entry',
+        month: 9,
+        year: 2026,
+        basicStipend: 40000,
+        totalAllowances: 0,
+        totalDeductions: 12775,
+        netStipend: 27225,
+        status: PayrollStatus.PENDING,
+        stipendRecord: {
+          employeeId: 'emp-1',
+          employee,
+          effectiveFrom: new Date('2025-04-01T00:00:00.000Z'),
+          effectiveTo: new Date('2026-10-01T00:00:00.000Z'),
+        },
+        allowances: [],
+        deductions: [
+          { reason: 'FINE', amount: 1000, description: 'Decreased progress' },
+          { reason: 'MEDICINE_PENDING', amount: 11775, description: null },
+        ],
+      },
+      {
+        id: 'stray-entry',
+        month: 9,
+        year: 2026,
+        basicStipend: 40000,
+        totalAllowances: 46000,
+        totalDeductions: 0,
+        netStipend: 86000,
+        status: PayrollStatus.PENDING,
+        stipendRecord: {
+          employeeId: 'emp-1',
+          employee,
+          effectiveFrom: new Date('2026-10-01T00:00:00.000Z'),
+          effectiveTo: null,
+        },
+        allowances: [
+          {
+            type: 'CUSTOM',
+            amount: 46000,
+            description: 'Incentive: On Progress: monthly progress',
+          },
+        ],
+        deductions: [],
+      },
+    ]);
+    const row = rows[0]!;
+    expect(Number(row.basicStipend)).toBe(40000); // not 80,000
+    expect(Number(row.totalAllowances)).toBe(46000);
+    expect(Number(row.totalDeductions)).toBe(12775);
+    expect(Number(row.netStipend)).toBe(73225); // 40,000 + 46,000 - 12,775
   });
 
   it('keeps different employees as separate rows', () => {

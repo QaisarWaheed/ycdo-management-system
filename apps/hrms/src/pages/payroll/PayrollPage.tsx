@@ -27,6 +27,7 @@ import { PayslipPrintSheet } from '@/components/payroll/PayslipPrintSheet'
 import type { PayslipSlipData } from '@/lib/payslipSlip'
 import {
   buildMonthlyPayrollReportRows,
+  allowancesWithoutIncentives,
   exportMonthlyPayrollCsv,
   PayrollReportPrintSection,
   PrintPayrollReportButton,
@@ -1611,7 +1612,7 @@ function MonthlyPayrollTab() {
                     >
                       {formatPKR(Math.max(0, Number(entry.totalDeductions)))}
                     </TableCell>
-                    <TableCell>{formatPKR(entry.totalAllowances)}</TableCell>
+                    <TableCell>{formatPKR(allowancesWithoutIncentives(entry))}</TableCell>
                     <TableCell className="font-medium">
                       {formatPKR(entry.netStipend)}
                     </TableCell>

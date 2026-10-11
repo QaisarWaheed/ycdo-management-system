@@ -2481,11 +2481,16 @@ export class PayrollService {
         month: entry.month,
         year: entry.year,
       });
-      current = {
-        ...entry,
-        ...refreshed,
-        stipendRecord: entry.stipendRecord,
-      };
+      // createOrGetEntry returns the month's package-bearing entry, which may
+      // be a different segment; only merge it into this one when it is this
+      // one (siblings below are re-read and merged with their own package).
+      if (refreshed.id === entry.id) {
+        current = {
+          ...entry,
+          ...refreshed,
+          stipendRecord: entry.stipendRecord,
+        };
+      }
     }
 
     // Mirror the Payroll tab/History aggregation: when a mid-month raise or
@@ -2507,7 +2512,14 @@ export class PayrollService {
     const orderedPackages = siblingEntries
       .map((s) => s.stipendRecord)
       .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime());
+    const monthStart = Date.UTC(entry.year, entry.month - 1, 1);
+    const nextMonth = Date.UTC(entry.year, entry.month, 1);
+    const coversMonth = (p: { effectiveFrom: Date; effectiveTo: Date | null }) =>
+      p.effectiveFrom.getTime() < nextMonth &&
+      (p.effectiveTo == null || p.effectiveTo.getTime() > monthStart);
     const monthlyPackage =
+      orderedPackages.find((s) => s.effectiveTo == null && coversMonth(s)) ??
+      orderedPackages.find(coversMonth) ??
       orderedPackages.find((s) => s.effectiveTo == null) ??
       orderedPackages[0] ??
       entry.stipendRecord;
@@ -3451,6 +3463,7 @@ export class PayrollService {
       where,
       include: {
         deductions: true,
+        allowances: true,
         stipendRecord: {
           include: {
             employee: {
