@@ -21,6 +21,7 @@ import {
   Monitor,
   Phone,
   Shield,
+  Stethoscope,
   ShieldCheck,
   Timer,
   UserPlus,
@@ -64,6 +65,13 @@ const payApprovalsNavItem = {
   to: '/pay-approvals',
   label: 'Pay Approvals',
   icon: BadgeCheck,
+}
+
+/** Finance enters doctors' monthly figures; executives compare and set incentives. */
+const doctorPerformanceNavItem = {
+  to: '/doctor-performance',
+  label: 'Doctor Performance',
+  icon: Stethoscope,
 }
 
 const activityTrailNavItem = {
@@ -110,7 +118,7 @@ function navItemsForRole(role?: string) {
     const withActivity = [
       ...items,
       payApprovalsNavItem,
-      ...(role === 'SUPER_ADMIN' ? [activityTrailNavItem, shiftsNavItem] : []),
+      ...(role === 'SUPER_ADMIN' ? [doctorPerformanceNavItem, activityTrailNavItem, shiftsNavItem] : []),
     ]
     if (role === 'SUPER_ADMIN') {
       return [...withActivity, appointmentLettersNavItem, ...itTeamNavItems]
@@ -156,6 +164,7 @@ function navItemsForRole(role?: string) {
         ),
       ),
       payApprovalsNavItem,
+      doctorPerformanceNavItem,
     ]
   }
 
@@ -167,6 +176,7 @@ function navItemsForRole(role?: string) {
         ),
       ),
       payApprovalsNavItem,
+      doctorPerformanceNavItem,
     ]
   }
 

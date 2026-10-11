@@ -35,6 +35,7 @@ import { IncentivesModule } from './modules/incentives/incentives.module';
 import { AllowancesModule } from './modules/allowances/allowances.module';
 import { PayApprovalsModule } from './modules/pay-approvals/pay-approvals.module';
 import { AttendanceLockModule } from './modules/attendance-lock/attendance-lock.controller';
+import { DoctorPerformanceModule } from './modules/doctor-performance/doctor-performance.controller';
 import { UserAccessModule } from './modules/user-access/user-access.module';
 import { UserPasswordsModule } from './modules/user-passwords/user-passwords.module';
 import { FaceSyncModule } from './modules/face-sync/face-sync.module';
@@ -90,6 +91,7 @@ import { CareersModule } from './modules/careers/careers.module';
     AllowancesModule,
     PayApprovalsModule,
     AttendanceLockModule,
+    DoctorPerformanceModule,
     UserPasswordsModule,
     UserAccessModule,
     FaceSyncModule,
