@@ -120,6 +120,13 @@ import type {
 } from '@/types'
 
 const IT_PROFILE_ROLES = ['SUPER_ADMIN', 'IT_ADMIN'] as const
+const PAYROLL_FINANCE_ROLES = [
+  'PAYROLL_OFFICER',
+  'PRESIDENT',
+  'FOUNDER',
+  'CHAIRMAN',
+  'SUPER_ADMIN',
+] as const
 const HR_JOB_ROLES = [
   'SUPER_ADMIN',
   'HR_EXECUTIVE',
@@ -1188,7 +1195,9 @@ export function EmployeeProfilePage() {
 
   const canAssignRoles = hasRole([...ROLE_ASSIGNER_ROLES])
 
-  const canEditPayroll = isHrTeam || isItTeam
+  // Finance (Payroll Officer / executives) edits the payroll form alongside HR.
+  const canEditPayroll =
+    isHrTeam || isItTeam || hasRole([...PAYROLL_FINANCE_ROLES])
 
   const canHrJobActions = isHrTeam
   const canOverrideSuspendedStatus = hasRole([...IT_PROFILE_ROLES])

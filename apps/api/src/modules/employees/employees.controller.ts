@@ -43,6 +43,14 @@ import {
 
 /** Any system role can hit these routes; EMPLOYEES_EDIT permission is enforced. */
 const EMPLOYEE_EDIT_ROLES = Object.values(UserRole);
+/** Finance roles may edit the payroll form (joining date) without EMPLOYEES_EDIT. */
+const PAYROLL_FORM_ROLES: UserRole[] = [
+  UserRole.PAYROLL_OFFICER,
+  UserRole.PRESIDENT,
+  UserRole.FOUNDER,
+  UserRole.CHAIRMAN,
+  UserRole.SUPER_ADMIN,
+];
 const BIOMETRIC_REFERENCE_ROLES = Object.values(UserRole).filter(
   (role) => role !== UserRole.EMPLOYEE,
 );
@@ -280,7 +288,12 @@ export class EmployeesController {
     @Param('id') id: string,
     @Body() dto: UpdateEmployeeDto,
     @CurrentUser()
-    user: { id: string; role: UserRole; employeeId?: string | null },
+    user: {
+      id: string;
+      role: UserRole;
+      roles?: UserRole[];
+      employeeId?: string | null;
+    },
   ) {
     const canEditEmployees = await this.permissionsService.userHasPermission(
       user.id,
@@ -295,6 +308,17 @@ export class EmployeesController {
       return this.employeesService.update(id, {
         phone: dto.phone,
         email: dto.email,
+      });
+    }
+
+    const roles = user.roles?.length ? user.roles : [user.role];
+    if (
+      !canEditEmployees &&
+      roles.some((r) => PAYROLL_FORM_ROLES.includes(r)) &&
+      dto.joiningDate !== undefined
+    ) {
+      return this.employeesService.update(id, {
+        joiningDate: dto.joiningDate,
       });
     }
 

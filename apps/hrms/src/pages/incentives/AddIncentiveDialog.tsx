@@ -93,6 +93,12 @@ export function AddIncentiveDialog({
     | { amount?: number; typeId?: string; reason?: string; month?: number; year?: number }
     | undefined
   const queryClient = useQueryClient()
+  // An incentive picked for editing from the list inside the add form.
+  const [localEdit, setLocalEdit] = useState<Incentive | null>(null)
+  const activeEdit = editIncentive ?? localEdit
+  useEffect(() => {
+    if (!open) setLocalEdit(null)
+  }, [open])
   const now = new Date()
   const initialMonth = defaultMonth ?? now.getMonth() + 1
   const initialYear = defaultYear ?? now.getFullYear()
@@ -113,18 +119,18 @@ export function AddIncentiveDialog({
     queryFn: allowancesApi.listIncentiveTypes,
     enabled: open,
   })
-  const isEdit = !!editIncentive || !!editRequest
+  const isEdit = !!activeEdit || !!editRequest
   const [approver, setApprover] = useState<EmployeeApproverTarget>()
   const amount = form.watch('amount')
-  const originalAmount = editIncentive ? Number(editIncentive.amount) : 0
+  const originalAmount = activeEdit ? Number(activeEdit.amount) : 0
   // Approval only for a raise: new incentives, a higher amount, or a pending request.
   const needsApproval =
-    useNeedsPayApproval() && (!editIncentive || amount > originalAmount)
+    useNeedsPayApproval() && (!activeEdit || amount > originalAmount)
 
   useEffect(() => {
     if (!open) return
-    if (editIncentive || editRequest) {
-      const source = editIncentive ?? {
+    if (activeEdit || editRequest) {
+      const source = activeEdit ?? {
         employeeId: editRequest!.employeeId,
         amount: requestValues?.amount ?? 0,
         typeId: requestValues?.typeId,
@@ -140,7 +146,7 @@ export function AddIncentiveDialog({
         amount: Number(source.amount),
         typeId: source.typeId ?? '',
         // Saved incentives store "Type: note"; requests store the note alone.
-        reason: editIncentive ? noteOf(source.reason, typeName) : source.reason,
+        reason: activeEdit ? noteOf(source.reason, typeName) : source.reason,
       })
       setApprover(editRequest?.approverTarget)
       return
@@ -151,7 +157,7 @@ export function AddIncentiveDialog({
     form.setValue('month', initialMonth)
     form.setValue('year', initialYear)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultEmployeeId, initialMonth, initialYear, form, open, editIncentive, editRequest, incentiveTypes])
+  }, [defaultEmployeeId, initialMonth, initialYear, form, open, activeEdit, editRequest, incentiveTypes])
 
   const reason = form.watch('reason')
 
@@ -160,10 +166,10 @@ export function AddIncentiveDialog({
       const { employeeId, ...rest } = values
       const body = { ...rest, reason: values.reason.trim() || undefined }
       if (editRequest) {
-        return payApprovalsApi.editIncentive(editRequest.id, { ...body, approverTarget: approver! })
+        return payApprovalsApi.activeEdit(editRequest.id, { ...body, approverTarget: approver! })
       }
-      if (editIncentive) {
-        return incentivesApi.update(editIncentive.id, {
+      if (activeEdit) {
+        return incentivesApi.update(activeEdit.id, {
           ...body,
           approverTarget: needsApproval ? approver : undefined,
         })
@@ -176,7 +182,7 @@ export function AddIncentiveDialog({
           ? `Sent to ${res.approverLabel} for approval`
           : editRequest
             ? 'Request updated; still waiting for approval'
-            : editIncentive
+            : activeEdit
               ? 'Incentive updated'
               : 'Incentive added successfully',
       })
@@ -191,6 +197,10 @@ export function AddIncentiveDialog({
         typeId: '',
         reason: '',
       })
+      if (localEdit) {
+        setLocalEdit(null)
+        return
+      }
       onOpenChange(false)
       onSuccess?.()
     },
@@ -209,7 +219,7 @@ export function AddIncentiveDialog({
       <DialogContent className={isEdit ? 'max-w-md' : 'max-h-[90vh] max-w-lg overflow-y-auto'}>
         <DialogHeader>
           <DialogTitle>
-            {editRequest ? 'Edit incentive request' : editIncentive ? 'Edit Incentive' : 'Add Incentive'}
+            {editRequest ? 'Edit incentive request' : activeEdit ? 'Edit Incentive' : 'Add Incentive'}
           </DialogTitle>
         </DialogHeader>
         {!isEdit ? (
@@ -218,6 +228,7 @@ export function AddIncentiveDialog({
             defaultMonth={initialMonth}
             defaultYear={initialYear}
             onCancel={() => onOpenChange(false)}
+            onEdit={setLocalEdit}
             onDone={() => {
               onOpenChange(false)
               onSuccess?.()
@@ -231,7 +242,7 @@ export function AddIncentiveDialog({
           >
             {isEdit ? (
               <p className="text-sm font-medium">
-                {editIncentive?.employee?.fullName ?? editRequest?.employee?.fullName}
+                {activeEdit?.employee?.fullName ?? editRequest?.employee?.fullName}
               </p>
             ) : null}
             {!defaultEmployeeId && !isEdit && (
@@ -373,7 +384,7 @@ export function AddIncentiveDialog({
 
             {needsApproval ? (
               <>
-                {editIncentive ? (
+                {activeEdit ? (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                     The amount is higher than before ({originalAmount.toLocaleString('en-PK')}), so
                     it needs approval. The current amount stays until it is approved.
@@ -381,7 +392,7 @@ export function AddIncentiveDialog({
                 ) : null}
                 <ApproverSelect value={approver} onChange={setApprover} id="incentive-approver" />
               </>
-            ) : editIncentive ? (
+            ) : activeEdit ? (
               <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-text-secondary">
                 Saved straight away and the month&apos;s payroll is updated.
               </p>
@@ -396,9 +407,9 @@ export function AddIncentiveDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => (localEdit ? setLocalEdit(null) : onOpenChange(false))}
               >
-                Cancel
+                {localEdit ? 'Back' : 'Cancel'}
               </Button>
               <Button type="submit" disabled={mutation.isPending || (needsApproval && !approver)}>
                 {mutation.isPending
@@ -407,7 +418,7 @@ export function AddIncentiveDialog({
                     ? 'Save request'
                     : needsApproval
                       ? 'Send for approval'
-                      : editIncentive
+                      : activeEdit
                         ? 'Save'
                         : 'Add Incentive'}
               </Button>

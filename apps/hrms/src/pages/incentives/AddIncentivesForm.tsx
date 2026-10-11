@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
 import { allowancesApi, isPendingApproval } from '@/api/endpoints/payApprovals'
@@ -18,7 +18,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { toast } from '@/hooks/use-toast'
+import type { Incentive } from '@/types'
 import { formatPKR } from '@/lib/stipendUtils'
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1)
@@ -43,12 +45,15 @@ export function AddIncentivesForm({
   defaultYear,
   onDone,
   onCancel,
+  onEdit,
 }: {
   defaultEmployeeId?: string
   defaultMonth: number
   defaultYear: number
   onDone: () => void
   onCancel: () => void
+  /** Open a saved incentive of this month for editing. */
+  onEdit?: (incentive: Incentive) => void
 }) {
   const queryClient = useQueryClient()
   const [employeeId, setEmployeeId] = useState(defaultEmployeeId ?? '')
@@ -64,6 +69,24 @@ export function AddIncentivesForm({
     queryKey: ['incentive-types'],
     queryFn: allowancesApi.listIncentiveTypes,
   })
+  const { data: existing = [] } = useQuery({
+    queryKey: ['incentives', { employeeId, month, year }],
+    queryFn: () => incentivesApi.getAll({ employeeId, month, year }),
+    enabled: !!employeeId,
+  })
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const remove = useMutation({
+    mutationFn: (id: string) => incentivesApi.delete(id),
+    onSuccess: () => {
+      toast({ title: 'Incentive deleted' })
+      setDeleteId(null)
+      queryClient.invalidateQueries({ queryKey: ['incentives'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll'] })
+    },
+    onError: (err) =>
+      toast({ title: 'Failed to delete', description: errText(err), variant: 'destructive' }),
+  })
+
   const active = types.filter((t) => t.isActive)
   const items = active.filter((t) => (amounts[t.id] ?? 0) > 0)
   const total = items.reduce((s, t) => s + amounts[t.id], 0)
@@ -166,6 +189,48 @@ export function AddIncentivesForm({
         </div>
       </div>
 
+      {employeeId && existing.length > 0 ? (
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <p className="text-sm font-medium">Already added this month</p>
+          <ul className="divide-y divide-border">
+            {existing.map((i) => (
+              <li key={i.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
+                <div className="min-w-0">
+                  <span className="font-medium">{formatPKR(Number(i.amount))}</span>
+                  <span className="ml-2 truncate text-text-secondary">
+                    {i.type?.name ?? i.reason}
+                  </span>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  {onEdit ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label="Edit incentive"
+                      onClick={() => onEdit(i)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive"
+                    aria-label="Delete incentive"
+                    onClick={() => setDeleteId(i.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div>
         <p className="text-sm font-medium">Incentive by nature</p>
         <p className="text-xs text-text-secondary">
@@ -246,6 +311,17 @@ export function AddIncentivesForm({
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Delete Incentive"
+        description="Are you sure you want to delete this incentive? This will reverse the payroll allowance."
+        confirmLabel="Delete"
+        confirmVariant="destructive"
+        loading={remove.isPending}
+        onConfirm={() => deleteId && remove.mutate(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
     </form>
   )
 }
