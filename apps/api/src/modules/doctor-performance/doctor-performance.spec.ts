@@ -195,6 +195,13 @@ describe('doctor performance', () => {
 
   it('branch sheet: day and night apart, last month beside, admin officer incentives', async () => {
     const prisma = {
+      designation: {
+        findMany: jest.fn().mockResolvedValue([
+          { title: 'BRANCH ADMIN', category: 'ADMIN' },
+          { title: 'ADMIN OFFICER', category: 'VTI ADMIN' },
+          { title: 'LAB INCHARGE', category: 'LABORATORY' },
+        ]),
+      },
       branch: {
         findMany: jest.fn().mockResolvedValue([{ id: 'b1', name: 'Main' }]),
       },
@@ -230,5 +237,8 @@ describe('doctor performance', () => {
     expect(row.shifts[1]).toMatchObject({ shift: 'NIGHT', previous: null });
     expect(row.report).toEqual({ id: 'r1', branchId: 'b1', fileName: 'oct.pdf' });
     expect(row.adminOfficers[0]).toMatchObject({ incentive: 3000, previousIncentive: 0 });
+    expect(prisma.employee.findMany.mock.calls[0][0].where.currentDesignation).toEqual({
+      in: ['BRANCH ADMIN', 'ADMIN OFFICER'],
+    });
   });
 });

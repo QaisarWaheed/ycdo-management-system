@@ -248,6 +248,20 @@ export class DoctorPerformanceService {
       { year, month },
       { year: prev.year, month: prev.month },
     ];
+    // Branch admin staff: every title in the ADMIN category (Branch Admin,
+    // Admin Manager, Operation Manager) plus any "Admin Officer" title.
+    const adminTitles = (
+      await this.prisma.designation.findMany({
+        where: { isDeleted: false },
+        select: { title: true, category: true },
+      })
+    )
+      .filter(
+        (d) =>
+          d.category?.trim().toUpperCase() === 'ADMIN' ||
+          /admin officer/i.test(d.title),
+      )
+      .map((d) => d.title);
     const [branches, records, reports, officers] = await Promise.all([
       this.prisma.branch.findMany({
         where: { isActive: true },
@@ -261,7 +275,7 @@ export class DoctorPerformanceService {
       }),
       this.prisma.employee.findMany({
         where: {
-          currentDesignation: { contains: 'admin officer', mode: 'insensitive' },
+          currentDesignation: { in: adminTitles },
           status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
         },
         select: {
