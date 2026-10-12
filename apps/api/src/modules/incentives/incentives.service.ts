@@ -256,7 +256,7 @@ export class IncentivesService {
     });
   }
 
-  async delete(id: string, actingUserId: string) {
+  async delete(id: string, actingUserId: string, allowLocked = false) {
     const incentive = await this.prisma.incentive.findUnique({
       where: { id },
     });
@@ -270,7 +270,11 @@ export class IncentivesService {
       if (!incentive) {
         throw new NotFoundException(`Incentive with id ${id} not found`);
       }
-      const { payrollEntry, allowance } = await this.pendingIncentiveRow(tx, incentive);
+      const { payrollEntry, allowance } = await this.pendingIncentiveRow(
+        tx,
+        incentive,
+        allowLocked,
+      );
 
       const amount = Number(incentive.amount);
 
@@ -316,7 +320,13 @@ export class IncentivesService {
    * Fix a wrong incentive while its month is still Pending: amount, type,
    * note or month. The payroll rows move with it and the change is logged.
    */
-  async update(id: string, dto: UpdateIncentiveDto, actingUserId: string) {
+  async update(
+    id: string,
+    dto: UpdateIncentiveDto,
+    actingUserId: string,
+    /** Super Admin: also when the month is Processed / Paid. */
+    allowLocked = false,
+  ) {
     const existing = await this.prisma.incentive.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException(`Incentive with id ${id} not found`);
     const reason = await this.resolveReason(dto);
@@ -324,7 +334,11 @@ export class IncentivesService {
     return withPayrollEmployeeTransaction(this.prisma, existing.employeeId, async (tx) => {
       const incentive = await tx.incentive.findUnique({ where: { id } });
       if (!incentive) throw new NotFoundException(`Incentive with id ${id} not found`);
-      const { payrollEntry: oldEntry, allowance } = await this.pendingIncentiveRow(tx, incentive);
+      const { payrollEntry: oldEntry, allowance } = await this.pendingIncentiveRow(
+        tx,
+        incentive,
+        allowLocked,
+      );
       const oldAmount = Number(incentive.amount);
       const moved = dto.month !== incentive.month || dto.year !== incentive.year;
 
@@ -340,7 +354,7 @@ export class IncentivesService {
       const newEntry = moved
         ? await this.getOrCreatePayrollEntry(tx, incentive.employeeId, dto.month, dto.year)
         : oldEntry;
-      if (newEntry.status !== PayrollStatus.PENDING) {
+      if (!allowLocked && newEntry.status !== PayrollStatus.PENDING) {
         throw new BadRequestException(
           `Payroll for ${dto.month}/${dto.year} is already ${newEntry.status}; incentives can only be moved into a PENDING month`,
         );
@@ -426,6 +440,7 @@ export class IncentivesService {
   private async pendingIncentiveRow(
     tx: Prisma.TransactionClient,
     incentive: { employeeId: string; month: number; year: number; reason: string },
+    allowLocked = false,
   ) {
     const payrollEntry = await tx.payrollEntry.findFirst({
       where: {
@@ -441,7 +456,7 @@ export class IncentivesService {
     if (!payrollEntry) {
       throw new NotFoundException('Associated payroll entry not found');
     }
-    if (payrollEntry.status !== PayrollStatus.PENDING) {
+    if (!allowLocked && payrollEntry.status !== PayrollStatus.PENDING) {
       throw new BadRequestException(
         `Payroll for ${incentive.month}/${incentive.year} is already ${payrollEntry.status}; this incentive can no longer be changed`,
       );

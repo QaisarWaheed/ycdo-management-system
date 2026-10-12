@@ -165,7 +165,7 @@ export class IncentivesController {
         user,
       );
     }
-    return this.incentivesService.update(id, dto, user.id);
+    return this.incentivesService.update(id, dto, user.id, isSuperAdmin(user));
   }
 
   @Delete(':id')
@@ -178,8 +178,14 @@ export class IncentivesController {
   )
   delete(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: PayActor & { role: UserRole },
   ) {
-    return this.incentivesService.delete(id, user.id);
+    return this.incentivesService.delete(id, user.id, isSuperAdmin(user));
   }
+}
+
+/** Super Admin may fix an incentive even after its month is Processed / Paid. */
+function isSuperAdmin(user: PayActor) {
+  const roles = user.roles?.length ? user.roles : [user.role];
+  return roles.includes(UserRole.SUPER_ADMIN);
 }
