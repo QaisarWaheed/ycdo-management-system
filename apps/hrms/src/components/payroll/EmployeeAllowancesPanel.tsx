@@ -280,7 +280,6 @@ function AssignAllowanceDialog({
   // package: the change goes into the package from that month and carries on.
   // Other types (Incharge, Admin, ...) use this list from any month.
   const beforeSwitch = startMonth < ALLOWANCES_FROM_MONTH && !!selectedType?.legacyField
-  const isIncrease = !current || amount > Number(current.amount)
   const valid =
     !!typeId &&
     amount > 0 &&
@@ -356,7 +355,7 @@ function AssignAllowanceDialog({
             <Label htmlFor="allowance-note">What is it for? *</Label>
             <Textarea id="allowance-note" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-          {needsApproval && isIncrease ? (
+          {needsApproval ? (
             <ApproverSelect value={approver} onChange={setApprover} />
           ) : null}
         </div>
@@ -365,10 +364,10 @@ function AssignAllowanceDialog({
             Cancel
           </Button>
           <Button
-            disabled={!valid || (needsApproval && isIncrease && !approver) || mutation.isPending}
+            disabled={!valid || (needsApproval && !approver) || mutation.isPending}
             onClick={() => mutation.mutate()}
           >
-            {needsApproval && isIncrease ? 'Send for approval' : 'Save'}
+            {needsApproval ? 'Send for approval' : 'Save'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -379,11 +378,19 @@ function AssignAllowanceDialog({
 function EndAllowanceDialog({ row, onClose }: { row: EmployeeAllowance; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [endMonth, setEndMonth] = useState(thisMonth())
+  // Ending an allowance cuts pay: Accounts needs an executive's approval.
+  const needsApproval = useNeedsPayApproval()
+  const [approver, setApprover] = useState<EmployeeApproverTarget>()
   const mutation = useMutation({
-    mutationFn: () => allowancesApi.end(row.id, endMonth),
-    onSuccess: () => {
-      toast({ title: `${row.type.name} ends after ${monthText(`${endMonth}-01`)}` })
+    mutationFn: () => allowancesApi.end(row.id, endMonth, approver),
+    onSuccess: (res) => {
+      toast({
+        title: isPendingApproval(res)
+          ? `Sent to ${res.approverLabel} for approval`
+          : `${row.type.name} ends after ${monthText(`${endMonth}-01`)}`,
+      })
       queryClient.invalidateQueries({ queryKey: ['employee-allowances', row.employeeId] })
+      queryClient.invalidateQueries({ queryKey: ['pay-approvals'] })
       onClose()
     },
     onError: (err: ApiError) =>
@@ -406,13 +413,19 @@ function EndAllowanceDialog({ row, onClose }: { row: EmployeeAllowance; onClose:
           <p className="text-xs text-muted-foreground">
             Choosing a month before it starts removes it completely.
           </p>
+          {needsApproval ? (
+            <ApproverSelect value={approver} onChange={setApprover} id="allowance-end-approver" />
+          ) : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={!endMonth || mutation.isPending} onClick={() => mutation.mutate()}>
-            End allowance
+          <Button
+            disabled={!endMonth || (needsApproval && !approver) || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {needsApproval ? 'Send for approval' : 'End allowance'}
           </Button>
         </DialogFooter>
       </DialogContent>

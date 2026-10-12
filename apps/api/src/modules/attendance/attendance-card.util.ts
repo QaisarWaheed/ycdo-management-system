@@ -10,7 +10,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { isExitEmployeeStatus } from '../employees/status-effective.util';
-import { splitPaidUnpaidLeaveDays } from '../payroll/payroll-hours.util';
+import { dateKey, splitPaidUnpaidLeaveDays } from '../payroll/payroll-hours.util';
 import {
   calendarDatesForAttendanceMonth,
   pakistanMonthDateRange,
@@ -66,6 +66,7 @@ export async function loadAttendanceCard(
         earlyOutMinutes: true,
         overtimePending: true,
         overtimeApprovedAt: true,
+        payPercent: true,
       },
     }),
     prisma.additionalWorkingDay.findMany({
@@ -98,12 +99,28 @@ export async function loadAttendanceCard(
     loggedDates.add(date);
     return { date, status: log.status };
   });
-  const leave = splitPaidUnpaidLeaveDays({
-    onLeaveDates: logs
-      .filter((log) => log.status === AttendanceStatus.ON_LEAVE)
-      .map((log) => log.date),
+  // Leave days HR gave a pay % (100 / 50 / 0) are paid that way; the rest
+  // follow the monthly allowed-leave quota as before.
+  const onLeaveLogs = logs.filter((log) => log.status === AttendanceStatus.ON_LEAVE);
+  const pct = (log: (typeof logs)[number]) =>
+    (log as { payPercent?: number | null }).payPercent ?? null;
+  const quota = splitPaidUnpaidLeaveDays({
+    onLeaveDates: onLeaveLogs.filter((log) => pct(log) == null).map((log) => log.date),
     monthlyAllowedLeaves: employee.monthlyAllowedLeaves,
   });
+  const fullPayLeave = onLeaveLogs.filter((log) => pct(log) === 100);
+  const halfPayLeave = onLeaveLogs.filter((log) => pct(log) === 50);
+  const noPayLeave = onLeaveLogs.filter((log) => pct(log) === 0);
+  const leave = {
+    paidLeaveDays: quota.paidLeaveDays + fullPayLeave.length,
+    unpaidLeaveDays: quota.unpaidLeaveDays + noPayLeave.length,
+    halfPaidLeaveDays: halfPayLeave.length,
+    paidLeaveDateKeys: new Set([
+      ...quota.paidLeaveDateKeys,
+      ...fullPayLeave.map((log) => dateKey(log.date)),
+    ]),
+    halfPaidLeaveDateKeys: halfPayLeave.map((log) => dateKey(log.date)),
+  };
   const joiningDate = employee.joiningDate
     ? toPakistanDateOnly(employee.joiningDate)
     : null;
@@ -171,6 +188,9 @@ export async function loadAttendanceCard(
     paidLeaveDays: leave.paidLeaveDays,
     unpaidLeaveDays: leave.unpaidLeaveDays,
     paidLeaveDateKeys: [...leave.paidLeaveDateKeys],
+    /** Leave days at 50% pay (part of onLeave). */
+    halfPaidLeaveDays: leave.halfPaidLeaveDays,
+    halfPaidLeaveDateKeys: leave.halfPaidLeaveDateKeys,
     additionalWorkingDays: extraDays.length,
     overtimeHours: Math.round((summary.overtimeMinutes / 60) * 100) / 100,
     pendingOvertimeMinutes: logs.reduce((sum, log) => sum + (log.overtimePending ? log.overtimeMinutes : 0), 0),

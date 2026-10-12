@@ -183,7 +183,7 @@ export class PayApprovalsController {
   }
 
   @Patch(':id')
-  @Roles(...SENDER_ROLES)
+  @Roles(UserRole.SUPER_ADMIN)
   @StrictRoles()
   edit(
     @Param('id') id: string,

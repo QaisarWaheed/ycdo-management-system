@@ -123,38 +123,51 @@ export class AllowancesController {
     return this.allowances.listForEmployee(employeeId);
   }
 
-  /** Executives apply at once; an increase from Accounts goes for approval. */
+  /** Executives apply at once; any change from Accounts goes for approval. */
   @Post('employee-allowances')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
   @StrictRoles()
   async assign(@Body() dto: AssignAllowanceDto, @CurrentUser() user: PayActor) {
     if (!isPayExecutive(user)) {
-      const { isIncrease, summary } = await this.allowances.describeAssign(dto);
-      if (isIncrease) {
-        return this.requests.submit(
-          {
-            kind: PayChangeKind.ALLOWANCE,
-            employeeId: dto.employeeId,
-            payload: { ...dto },
-            summary,
-            reason: dto.note,
-            approverTarget: dto.approverTarget,
-          },
-          user,
-        );
-      }
+      const { summary } = await this.allowances.describeAssign(dto);
+      return this.requests.submit(
+        {
+          kind: PayChangeKind.ALLOWANCE,
+          employeeId: dto.employeeId,
+          payload: { ...dto },
+          summary,
+          reason: dto.note,
+          approverTarget: dto.approverTarget,
+        },
+        user,
+      );
     }
     return this.allowances.assign(dto, user);
   }
 
+  /** Ending an allowance cuts pay: from Accounts it goes for approval. */
   @Patch('employee-allowances/:id/end')
   @Roles(...ALLOWANCE_MANAGE_ROLES)
   @StrictRoles()
-  end(
+  async end(
     @Param('id') id: string,
     @Body() dto: EndAllowanceDto,
     @CurrentUser() user: PayActor,
   ) {
+    if (!isPayExecutive(user)) {
+      const { employeeId, summary } = await this.allowances.describeEnd(id, dto.endMonth);
+      return this.requests.submit(
+        {
+          kind: PayChangeKind.ALLOWANCE,
+          employeeId,
+          payload: { action: 'END', allowanceId: id, endMonth: dto.endMonth },
+          summary,
+          reason: summary,
+          approverTarget: dto.approverTarget,
+        },
+        user,
+      );
+    }
     return this.allowances.end(id, dto.endMonth, user);
   }
 }

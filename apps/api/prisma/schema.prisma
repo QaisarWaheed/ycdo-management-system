@@ -40,12 +40,12 @@ model Branch {
   createdAt            DateTime              @default(now())
   projectId            String?
 
-  project                Project?            @relation(fields: [projectId], references: [id])
+  project                Project?                 @relation(fields: [projectId], references: [id])
   departments            Department[]
   employees              Employee[]
   employmentHistory      EmploymentHistory[]
   suspensionFromRequests SuspensionRequest[]
-  inquiryDestinations    Inquiry[]           @relation("InquiryDestinationBranch")
+  inquiryDestinations    Inquiry[]                @relation("InquiryDestinationBranch")
   attendanceLogs         AttendanceLog[]
   shifts                 Shift[]
   relieverSessions       RelieverSession[]
@@ -54,6 +54,8 @@ model Branch {
   adminUsers             User[]
   faceSyncResults        FaceSyncResult[]
   mutualSwaps            MutualSwap[]
+  shiftPerformance       BranchShiftPerformance[]
+  progressReports        BranchProgressReport[]
 }
 
 model BiometricDevice {
@@ -412,6 +414,8 @@ model AttendanceLog {
   checkIn               DateTime?
   checkOut              DateTime?
   status                AttendanceStatus
+  /// For ON_LEAVE days: pay % from the approved leave (100 / 50 / 0); null = quota rule.
+  payPercent            Int?
   lateMinutes           Int               @default(0)
   /// Minutes the employee checked out before duty end (beyond the 15-min
   /// grace). Tracked separately from lateMinutes — never makes a day LATE.
@@ -615,6 +619,8 @@ enum FineReason {
   NO_UNIFORM
   LEFT_DUTY_POST
   RULE_VIOLATION
+  /// SOP: 10,000 (the staff member who catches it gets a reward incentive).
+  CORRUPTION
   OTHER
 }
 
@@ -979,6 +985,8 @@ model LeaveRecord {
   startDate       DateTime
   endDate         DateTime
   totalDays       Int
+  /// Pay for the leave days chosen by HR: 100 full, 50 half, 0 without pay; null = monthly quota rule.
+  payPercent      Int?
   status          LeaveStatus         @default(PENDING)
   reason          String?
   approvedBy      String?
@@ -1765,6 +1773,8 @@ model DoctorMonthlyPerformance {
   indoorPatients Int      @default(0)
   surgeries      Int      @default(0)
   labTests       Int      @default(0)
+  /// Lab / diagnostic collection (PKR).
+  labCollection  Decimal  @default(0) @db.Decimal(12, 2)
   collection     Decimal  @default(0) @db.Decimal(12, 2)
   note           String?
   updatedById    String?
@@ -1775,4 +1785,47 @@ model DoctorMonthlyPerformance {
 
   @@unique([employeeId, year, month])
   @@index([year, month])
+}
+
+enum BranchShift {
+  DAY
+  NIGHT
+}
+
+/// Branch figures per month and shift (Day / Night admin are judged separately).
+/// Finance enters them; executives compare with last month for Admin Officer incentives.
+model BranchShiftPerformance {
+  id            String      @id @default(uuid())
+  branchId      String
+  year          Int
+  month         Int
+  shift         BranchShift
+  patients      Int         @default(0)
+  labCollection Decimal     @default(0) @db.Decimal(12, 2)
+  collection    Decimal     @default(0) @db.Decimal(12, 2)
+  note          String?
+  updatedById   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, year, month, shift])
+  @@index([year, month])
+}
+
+/// The branch's monthly progress report (PDF / image), opened from the doctor sheet.
+model BranchProgressReport {
+  id           String   @id @default(uuid())
+  branchId     String
+  year         Int
+  month        Int
+  fileName     String
+  fileUrl      String
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, year, month])
 }

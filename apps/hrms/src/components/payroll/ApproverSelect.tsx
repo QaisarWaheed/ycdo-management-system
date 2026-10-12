@@ -21,6 +21,12 @@ export function useCanEditPay() {
 }
 
 /** Executives apply pay increases directly; everyone else sends them for approval. */
+/** Incentives are set only by executives; once saved only they can change them. */
+export function useCanSetIncentive() {
+  const { hasRole } = useAuth()
+  return hasRole(EXECUTIVE_ROLES)
+}
+
 export function useNeedsPayApproval() {
   const { hasRole } = useAuth()
   return !hasRole(EXECUTIVE_ROLES)

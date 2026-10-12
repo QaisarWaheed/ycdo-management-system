@@ -1,3 +1,4 @@
+import { useCanSetIncentive } from '@/components/payroll/ApproverSelect'
 import { selectCurrentStipend } from '@/lib/stipendUtils'
 import { Fragment, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -898,11 +899,8 @@ export function EmployeeProfilePage() {
     enabled: !!id,
   })
 
-  const canAddIncentive =
-    user?.role === 'SUPER_ADMIN' ||
-    user?.role === 'HR_MANAGER' ||
-    user?.role === 'HR_ADMIN_MANAGER' ||
-    user?.role === 'ADMIN_OFFICER'
+  // Only executives add incentives (Founder decision).
+  const canAddIncentive = useCanSetIncentive()
 
   const canEditAdditionalWorkingDays = hasRole([
     ...HR_JOB_ROLES,
@@ -2208,6 +2206,8 @@ export function EmployeeProfilePage() {
             employeeId={id}
             employeeName={employee.fullName}
             employeeCode={employee.employeeCode}
+            designation={employee.currentDesignation}
+            branch={employee.currentBranch ? formatBranchLabel(employee.currentBranch) : null}
             joiningDate={employee.joiningDate}
             stipendRecords={(employee.stipendRecords ?? []) as StipendRecord[]}
             canEdit={canEditPayroll}

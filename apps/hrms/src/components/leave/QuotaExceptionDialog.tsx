@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { LeavePaySelect, leavePayPercent, type LeavePayChoice } from './LeavePaySelect'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { leaveApi } from '@/api/endpoints/leave'
@@ -41,6 +42,7 @@ export function QuotaExceptionDialog({
 }) {
   const [action, setAction] = useState<'APPROVED' | 'REJECTED'>('APPROVED')
   const [notes, setNotes] = useState('')
+  const [pay, setPay] = useState<LeavePayChoice>('')
 
   const { data: quotaContext, isLoading: quotaLoading } = useQuery({
     queryKey: ['leave-quota-context', leave?.id],
@@ -54,6 +56,7 @@ export function QuotaExceptionDialog({
       return leaveApi.decideQuotaException(leave.id, {
         action,
         notes: notes || undefined,
+        payPercent: action === 'APPROVED' ? leavePayPercent(pay) : undefined,
       })
     },
     onSuccess: () => {
@@ -158,6 +161,10 @@ export function QuotaExceptionDialog({
               </label>
             </div>
           </div>
+
+          {action === 'APPROVED' ? (
+            <LeavePaySelect value={pay} onChange={setPay} id="quota-leave-pay" />
+          ) : null}
 
           <div className="space-y-2">
             <Label>Decision reason{action === 'REJECTED' ? ' *' : ''}</Label>

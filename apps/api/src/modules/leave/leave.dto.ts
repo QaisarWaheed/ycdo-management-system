@@ -53,6 +53,12 @@ export class ApproveLeaveDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  /** Pay for these leave days (HR): 100 full, 50 half, 0 without pay; empty = monthly quota rule. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn([0, 50, 100])
+  payPercent?: number;
 }
 
 export class UpdateLeaveStatusDto {
@@ -137,6 +143,12 @@ export class EmergencyLeaveDto {
   @IsNotEmpty()
   @MinLength(10)
   emergencyReason: string;
+
+  /** Pay for these leave days (HR): 100 full, 50 half, 0 without pay; empty = monthly quota rule. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn([0, 50, 100])
+  payPercent?: number;
 }
 
 /** Leave marked from Manual Attendance — immediately APPROVED, no workflow. */
@@ -165,4 +177,10 @@ export class VerifiedLeaveDto {
   @IsOptional()
   @IsUUID()
   relieverId?: string;
+
+  /** Pay for these leave days (HR): 100 full, 50 half, 0 without pay; empty = monthly quota rule. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn([0, 50, 100])
+  payPercent?: number;
 }

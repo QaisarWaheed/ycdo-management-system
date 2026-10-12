@@ -16,6 +16,14 @@ export interface CreateIncentivePayload {
 export const incentivesApi = {
   create: (data: CreateIncentivePayload) =>
     api.post<unknown, Incentive | PendingApprovalResponse>('/incentives', data),
+  stats: (params: { year: number; month: number }) =>
+    api.get<
+      unknown,
+      {
+        monthly: Array<{ year: number; month: number; total: number }>
+        byBranch: Array<{ branch: string; total: number }>
+      }
+    >('/incentives/stats', { params }),
   getAll: (params?: Record<string, unknown>) =>
     api.get<unknown, Incentive[]>('/incentives', { params }),
   getByEmployee: (employeeId: string) =>

@@ -146,7 +146,7 @@ export function PayApprovalsPage() {
           </Button>
         </>
       ) : null}
-      {status === 'PENDING' && canAmend && r.kind === 'INCENTIVE' ? (
+      {status === 'PENDING' && hasRole(['SUPER_ADMIN']) && r.kind === 'INCENTIVE' ? (
         <Button size="sm" variant="outline" onClick={() => setEditRequest(r)}>
           Edit
         </Button>

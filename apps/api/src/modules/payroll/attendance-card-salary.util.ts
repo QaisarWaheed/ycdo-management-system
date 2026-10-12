@@ -8,6 +8,8 @@ export type SalaryAttendanceCard = {
   earlyCheckout?: number;
   /** Days the employee did not check out (closed by the scheduler). */
   missingCheckout?: number;
+  /** Leave days HR approved at 50% pay (part of onLeave, paid half). */
+  halfPaidLeaveDays?: number;
 };
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 export function calculateCardSalary(card: SalaryAttendanceCard, basic: number, workingHours: number) {
@@ -15,10 +17,10 @@ export function calculateCardSalary(card: SalaryAttendanceCard, basic: number, w
   for (const key of counts) if (!Number.isFinite(card[key]) || card[key] < 0) throw new Error('Invalid Attendance Card value');
   if (!Number.isFinite(basic) || basic < 0 || !Number.isFinite(workingHours) || workingHours <= 0 || card.calendarDays < 1) throw new Error('Valid Basic Stipend and Working Hours required');
   const classifications = card.present + card.absent + card.uninformedAbsent + card.late + card.halfDay + card.shortLeave + card.onLeave + card.holiday + card.swapCovered + card.unmarked;
-  if (classifications > card.calendarDays || card.paidLeaveDays + card.unpaidLeaveDays !== card.onLeave) throw new Error('Attendance Card classifications/quota are inconsistent');
+  if (classifications > card.calendarDays || card.paidLeaveDays + card.unpaidLeaveDays + (card.halfPaidLeaveDays ?? 0) !== card.onLeave) throw new Error('Attendance Card classifications/quota are inconsistent');
   const dailyRate = basic / card.calendarDays;
   const hourlyRate = dailyRate / workingHours;
-  const paidDays = card.present + card.late + card.shortLeave + card.holiday + card.swapCovered + card.paidLeaveDays + card.halfDay * 0.5;
+  const paidDays = card.present + card.late + card.shortLeave + card.holiday + card.swapCovered + card.paidLeaveDays + (card.halfPaidLeaveDays ?? 0) * 0.5 + card.halfDay * 0.5;
   const earnedBasic = round(paidDays * dailyRate);
   const absencePenalty = round((card.absent + card.uninformedAbsent) * dailyRate);
   const latePenalty = round(Math.floor(card.late / 3) * dailyRate);

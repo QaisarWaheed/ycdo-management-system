@@ -314,7 +314,21 @@ export class AllowancesService {
     return saved;
   }
 
-  /** Stop an allowance after `endMonth` (a decrease, so no approval needed). */
+  /** "End Night Monitoring 3,000 after Oct 2026" for an approval request. */
+  async describeEnd(id: string, endMonth: string) {
+    const row = await this.prisma.employeeAllowance.findUnique({
+      where: { id },
+      include: { type: true },
+    });
+    if (!row) throw new NotFoundException('Allowance not found');
+    const end = parseMonth(endMonth);
+    return {
+      employeeId: row.employeeId,
+      summary: `End ${row.type.name} ${pkr(Number(row.amount))} after ${label(end.date)}`,
+    };
+  }
+
+  /** Stop an allowance after `endMonth` (executives directly; Accounts via approval). */
   async end(id: string, endMonth: string, user: Actor) {
     const row = await this.prisma.employeeAllowance.findUnique({
       where: { id },

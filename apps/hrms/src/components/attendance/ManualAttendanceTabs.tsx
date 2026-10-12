@@ -1,3 +1,8 @@
+import {
+  LeavePaySelect,
+  leavePayPercent,
+  type LeavePayChoice,
+} from '@/components/leave/LeavePaySelect'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search } from 'lucide-react'
@@ -942,6 +947,7 @@ export function MarkLeaveManualTab() {
     'REGULAR' | 'SHORT_LEAVE' | 'EMERGENCY'
   >('REGULAR')
   const [reason, setReason] = useState('')
+  const [leavePay, setLeavePay] = useState<LeavePayChoice>('')
   const [relieverId, setRelieverId] = useState('')
   const [selectedReliever, setSelectedReliever] = useState<Employee | undefined>()
   const [markingId, setMarkingId] = useState<string | null>(null)
@@ -1031,6 +1037,7 @@ export function MarkLeaveManualTab() {
         leaveType,
         reason: reason.trim(),
         ...(relieverId ? { relieverId } : {}),
+        ...(leaveType === 'SHORT_LEAVE' ? {} : { payPercent: leavePayPercent(leavePay) }),
       }),
     onSuccess: () => {
       toast({
@@ -1127,6 +1134,11 @@ export function MarkLeaveManualTab() {
             disabled={leaveType === 'SHORT_LEAVE'}
           />
         </div>
+        {leaveType !== 'SHORT_LEAVE' ? (
+          <div className="sm:col-span-2 lg:col-span-2">
+            <LeavePaySelect value={leavePay} onChange={setLeavePay} id="manual-leave-pay" />
+          </div>
+        ) : null}
         <div className="space-y-1 sm:col-span-2 lg:col-span-4">
           <Label>Reason *</Label>
           <Textarea

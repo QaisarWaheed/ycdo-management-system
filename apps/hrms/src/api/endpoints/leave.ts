@@ -41,6 +41,8 @@ export interface HRAssignRelieverPayload {
 export interface ApproveLeavePayload {
   action: 'APPROVED' | 'REJECTED'
   notes?: string
+  /** HR final approval: 100 full, 50 half, 0 without pay; omitted = monthly quota. */
+  payPercent?: number
 }
 
 export interface EmergencyLeavePayload {
@@ -63,6 +65,8 @@ export interface VerifiedLeavePayload {
   leaveType: 'REGULAR' | 'SHORT_LEAVE' | 'EMERGENCY'
   reason: string
   relieverId?: string
+  /** 100 full, 50 half, 0 without pay; omitted = monthly quota. */
+  payPercent?: number
 }
 
 export const leaveApi = {

@@ -91,6 +91,13 @@ export class PayApprovalsService {
         }
         return this.payroll.updateActiveStipend(payload as any, user.id);
       case PayChangeKind.ALLOWANCE: {
+        if (payload.action === 'END') {
+          return this.allowances.end(
+            String(payload.allowanceId),
+            String(payload.endMonth),
+            user,
+          );
+        }
         const [y, m] = String(payload.startMonth).split('-').map(Number);
         const open = await this.firstOpenMonth(request.employeeId, y, m);
         if (payload.endMonth) {

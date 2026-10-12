@@ -474,11 +474,13 @@ export class PayrollController {
     user: PayActor,
   ) {
     if (isPayExecutive(user)) return null;
-    const { isIncrease, summary } = await this.payChangeRequests.describePackageChange(
+    const { summary } = await this.payChangeRequests.describePackageChange(
       dto.employeeId,
       { ...dto },
     );
-    if (!isIncrease) return null;
+    // Accounts cannot raise or cut pay on their own (Founder decision);
+    // only a change with no money effect saves directly.
+    if (!summary || summary.startsWith('No change')) return null;
     return this.payChangeRequests.submit(
       {
         kind,

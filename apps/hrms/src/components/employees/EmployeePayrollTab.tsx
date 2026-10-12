@@ -1,10 +1,12 @@
+import { printPayFixation } from '@/components/payroll/printPayFixation'
+import { allowancesApi } from '@/api/endpoints/payApprovals'
 import { useCanEditPay } from '@/components/payroll/ApproverSelect'
 import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
 import { selectCurrentStipend } from '@/lib/stipendUtils'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { Pencil } from 'lucide-react'
+import { Pencil, Printer } from 'lucide-react'
 import { advanceLoanApi } from '@/api/endpoints/advanceLoan'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { payrollApi } from '@/api/endpoints/payroll'
@@ -256,6 +258,8 @@ type EmployeePayrollTabProps = {
   employeeId: string
   employeeName?: string
   employeeCode?: string
+  designation?: string | null
+  branch?: string | null
   joiningDate: string
   stipendRecords?: StipendRecord[]
   canEdit?: boolean
@@ -266,6 +270,8 @@ export function EmployeePayrollTab({
   employeeId,
   employeeName,
   employeeCode,
+  designation,
+  branch,
   joiningDate,
   stipendRecords = [],
   canEdit = false,
@@ -331,12 +337,30 @@ export function EmployeePayrollTab({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-lg">Current Stipend Record</CardTitle>
+          <div className="flex gap-2">
+          {latestStipend ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const allowances = await queryClient.fetchQuery({
+                  queryKey: ['employee-allowances', employeeId],
+                  queryFn: () => allowancesApi.listForEmployee(employeeId),
+                })
+                printPayFixation({ employeeName, employeeCode, designation, branch, stipend: latestStipend, allowances })
+              }}
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Pay Fixation
+            </Button>
+          ) : null}
           {canEdit && (
             <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit Payroll
             </Button>
           )}
+          </div>
         </CardHeader>
         <CardContent>
           <p className="mb-4 text-sm">

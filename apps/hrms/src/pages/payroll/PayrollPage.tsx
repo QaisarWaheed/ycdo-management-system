@@ -49,6 +49,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
@@ -89,6 +90,7 @@ import {
 import {
   ApproverSelect,
   useCanEditPay,
+  useCanSetIncentive,
   useNeedsPayApproval,
 } from '@/components/payroll/ApproverSelect'
 import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
@@ -926,7 +928,9 @@ function MonthlyPayrollTab() {
   })
   const [branchId, setBranchId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
-  const [designationFilter, setDesignationFilter] = useState('')
+  // Several categories at once (e.g. MOs + WMOs) for viewing and printing.
+  const [designationPicks, setDesignationPicks] = useState<string[]>([])
+  const designationFilter = designationPicks.length === 1 ? designationPicks[0] : ''
   const [statusFilter, setStatusFilter] = useState(ALL)
   const [empStatusFilter, setEmpStatusFilter] = useState(ALL)
   const [selectedPrintIds, setSelectedPrintIds] = useState<Set<string>>(new Set())
@@ -942,7 +946,7 @@ function MonthlyPayrollTab() {
   const [incentiveEmployeeId, setIncentiveEmployeeId] = useState<string | null>(
     null,
   )
-  const canAddIncentive = useCanEditPay()
+  const canAddIncentive = useCanSetIncentive()
   const [confirmGenerate, setConfirmGenerate] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetAllUnpaidMonths, setResetAllUnpaidMonths] = useState(false)
@@ -1012,6 +1016,14 @@ function MonthlyPayrollTab() {
         e.attendance?.worked ??
         (e.attendance?.present ?? 0) + (e.attendance?.late ?? 0) > 0
       if (!worked) return false
+      // categories (designations) picked
+      if (
+        designationPicks.length > 1 &&
+        !designationPicks.some(
+          (d) => d.toLowerCase() === (emp?.currentDesignation ?? '').trim().toLowerCase(),
+        )
+      )
+        return false
       // employee status filter
       if (empStatusFilter !== ALL && emp?.status !== empStatusFilter) return false
       // name/code search
@@ -1023,7 +1035,7 @@ function MonthlyPayrollTab() {
       }
       return true
     })
-  }, [entries, nameSearch, empStatusFilter])
+  }, [entries, nameSearch, empStatusFilter, designationPicks])
 
   const { page, setPage, totalPages, paginated, total } = usePagination(
     filteredEntries,
@@ -1276,7 +1288,7 @@ function MonthlyPayrollTab() {
       format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy'),
       branchLabel,
       departmentLabel,
-      designationFilter || 'All Designations',
+      designationPicks.length ? designationPicks.join(', ') : 'All Designations',
       statusFilter !== ALL ? statusFilter : 'All Statuses',
     ].join(' · ')
   }, [
@@ -1377,22 +1389,38 @@ function MonthlyPayrollTab() {
 
           <div className="space-y-1">
             <Label>Designation</Label>
-            <Select
-              value={designationFilter || 'all'}
-              onValueChange={(v) => setDesignationFilter(v === 'all' ? '' : v)}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="All Designations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Designations</SelectItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-[220px] justify-between font-normal">
+                  <span className="truncate">
+                    {designationPicks.length === 0
+                      ? 'All Designations'
+                      : designationPicks.length === 1
+                        ? designationPicks[0]
+                        : `${designationPicks.length} categories`}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="max-h-80 w-64 overflow-y-auto">
+                <DropdownMenuItem onSelect={() => setDesignationPicks([])}>
+                  All Designations
+                </DropdownMenuItem>
                 {designationOptions.map((title) => (
-                  <SelectItem key={title} value={title}>
+                  <DropdownMenuCheckboxItem
+                    key={title}
+                    checked={designationPicks.includes(title)}
+                    onSelect={(e) => e.preventDefault()}
+                    onCheckedChange={(on) =>
+                      setDesignationPicks((prev) =>
+                        on ? [...prev, title] : prev.filter((t) => t !== title),
+                      )
+                    }
+                  >
                     {title}
-                  </SelectItem>
+                  </DropdownMenuCheckboxItem>
                 ))}
-              </SelectContent>
-            </Select>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="space-y-1">
@@ -1455,9 +1483,12 @@ function MonthlyPayrollTab() {
               onDone={clearPrintSlips}
               summary={{
                 month: format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy'),
-                scope: branchId
-                  ? branches.find((b) => b.id === branchId)?.name ?? 'Branch'
-                  : 'All branches',
+                scope: [
+                  branchId
+                    ? branches.find((b) => b.id === branchId)?.name ?? 'Branch'
+                    : 'All branches',
+                  ...(designationPicks.length ? [designationPicks.join(', ')] : []),
+                ].join(' · '),
               }}
             />
           )}

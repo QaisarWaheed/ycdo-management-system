@@ -92,7 +92,7 @@ export class PayChangeRequestsService {
   ) {
     if (!input.approverTarget) {
       throw new BadRequestException(
-        'This increases pay and needs approval: choose President, Founder or Chairman Admin',
+        'This pay change needs approval: choose President, Founder or Chairman Admin',
       );
     }
     const { approverTarget: _drop, ...payload } = input.payload;

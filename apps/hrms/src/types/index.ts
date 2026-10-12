@@ -918,8 +918,12 @@ export const FINE_REASONS: { value: string; label: string }[] = [
   { value: 'NO_UNIFORM', label: 'Fine: No uniform' },
   { value: 'LEFT_DUTY_POST', label: 'Fine: Leaving duty post' },
   { value: 'RULE_VIOLATION', label: 'Fine: Rule violation' },
+  { value: 'CORRUPTION', label: 'Fine: Corruption' },
   { value: 'OTHER', label: 'Fine: Other' },
 ]
+
+/** SOP fine amounts shown on the Add Deduction forms (Founder: corruption = 10,000). */
+export const FINE_SOP_AMOUNTS: Record<string, number> = { CORRUPTION: 10000 }
 
 /**
  * Fields on the "Add Deduction" forms: every manual cause, with the single
@@ -940,7 +944,9 @@ export const MANUAL_DEDUCTION_FIELDS: {
     key: `FINE:${f.value}`,
     reason: 'FINE' as DeductionType,
     fineReason: f.value,
-    label: f.label,
+    label: FINE_SOP_AMOUNTS[f.value]
+      ? `${f.label} (SOP ${FINE_SOP_AMOUNTS[f.value].toLocaleString()})`
+      : f.label,
   })),
 ]
 

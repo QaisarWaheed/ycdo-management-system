@@ -127,8 +127,11 @@ export const allowancesApi = {
     approverTarget?: EmployeeApproverTarget
   }) =>
     api.post<unknown, EmployeeAllowance | PendingApprovalResponse>('/employee-allowances', data),
-  end: (id: string, endMonth: string) =>
-    api.patch<unknown, { id: string }>(`/employee-allowances/${id}/end`, { endMonth }),
+  end: (id: string, endMonth: string, approverTarget?: EmployeeApproverTarget) =>
+    api.patch<unknown, { id: string } | PendingApprovalResponse>(
+      `/employee-allowances/${id}/end`,
+      { endMonth, approverTarget },
+    ),
 }
 
 export const payApprovalsApi = {

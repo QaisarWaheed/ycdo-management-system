@@ -30,6 +30,8 @@ export type PerformanceFigures = {
   indoorPatients: number;
   surgeries: number;
   labTests: number;
+  /** Lab / diagnostic collection (PKR). */
+  labCollection: number;
   collection: number;
 };
 
@@ -38,6 +40,7 @@ export const FIGURE_KEYS: Array<keyof PerformanceFigures> = [
   'indoorPatients',
   'surgeries',
   'labTests',
+  'labCollection',
   'collection',
 ];
 

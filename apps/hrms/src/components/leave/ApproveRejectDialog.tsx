@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import type { LeaveRecord } from '@/types'
+import { LeavePaySelect, leavePayPercent, type LeavePayChoice } from './LeavePaySelect'
 
 export type ApprovalRole =
   | 'ADMIN_MANAGER'
@@ -36,6 +37,7 @@ export function ApproveRejectDialog({
 }) {
   const [action, setAction] = useState<'APPROVED' | 'REJECTED'>('APPROVED')
   const [notes, setNotes] = useState('')
+  const [pay, setPay] = useState<LeavePayChoice>('')
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -50,13 +52,14 @@ export function ApproveRejectDialog({
       ) {
         return leaveApi.deptApprove(leave.id, payload)
       }
-      return leaveApi.hrApprove(leave.id, payload)
+      return leaveApi.hrApprove(leave.id, { ...payload, payPercent: leavePayPercent(pay) })
     },
     onSuccess: () => {
       toast({
         title: action === 'APPROVED' ? 'Leave approved' : 'Leave rejected',
       })
       setNotes('')
+      setPay('')
       setAction('APPROVED')
       onOpenChange(false)
       onSuccess()
@@ -72,6 +75,13 @@ export function ApproveRejectDialog({
   })
 
   if (!leave) return null
+
+  // Pay % is chosen at HR's final approval (not at branch / department stage).
+  const isFinalStage = !(
+    role === 'ADMIN_MANAGER' ||
+    role === 'ADMIN_OFFICER' ||
+    (role === 'SUPER_ADMIN' && (leave.status === 'PENDING' || leave.status === 'BRANCH_APPROVED'))
+  )
 
   const employeeName = leave.employee
     ? leave.employee.fullName
@@ -125,6 +135,10 @@ export function ApproveRejectDialog({
               </label>
             </div>
           </div>
+
+          {isFinalStage && action === 'APPROVED' ? (
+            <LeavePaySelect value={pay} onChange={setPay} id="approve-leave-pay" />
+          ) : null}
 
           <div className="space-y-2">
             <Label>

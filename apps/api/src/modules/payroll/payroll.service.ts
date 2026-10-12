@@ -1411,7 +1411,8 @@ export class PayrollService {
       .filter(
         (d) =>
           d.status === AttendanceStatus.ON_LEAVE &&
-          !card.paidLeaveDateKeys.includes(d.date),
+          !card.paidLeaveDateKeys.includes(d.date) &&
+          !(card.halfPaidLeaveDateKeys ?? []).includes(d.date),
       )
       .map((d) => new Date(d.date));
   }
@@ -2610,6 +2611,7 @@ export class PayrollService {
           facts: dayFacts,
           employee,
           paidLeaveDateKeys: card.paidLeaveDateKeys ?? [],
+          halfPaidLeaveDateKeys: card.halfPaidLeaveDateKeys ?? [],
           paidDays: Math.round((card.calendarDays - unpaidDays) * 10) / 10,
         })
       : undefined;
@@ -3422,9 +3424,13 @@ export class PayrollService {
       dailyDutyHours: hours,
       daysInMonth: card.calendarDays,
       workedMinutes: 0,
-      paidLeaveMinutes: ownsMonth ? card.paidLeaveDays * hours * 60 : 0,
+      paidLeaveMinutes: ownsMonth
+        ? (card.paidLeaveDays + (card.halfPaidLeaveDays ?? 0) * 0.5) * hours * 60
+        : 0,
       policyCreditMinutes: ownsMonth
-        ? (salary.paidDays - card.paidLeaveDays) * hours * 60
+        ? (salary.paidDays - card.paidLeaveDays - (card.halfPaidLeaveDays ?? 0) * 0.5) *
+          hours *
+          60
         : 0,
       payableDays: ownsMonth ? salary.paidDays : 0,
       creditedAttendanceDays: ownsMonth ? salary.paidDays : 0,

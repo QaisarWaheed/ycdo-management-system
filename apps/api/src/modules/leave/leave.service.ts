@@ -614,6 +614,7 @@ export class LeaveService {
             status: LeaveStatus.APPROVED,
             currentStage: LeaveApprovalStage.HR_OPERATIONS,
             approvedBy: actingUser.id,
+            ...(dto.payPercent != null ? { payPercent: dto.payPercent } : {}),
           },
           include: {
             employee: true,
@@ -728,6 +729,7 @@ export class LeaveService {
           data: {
             status: LeaveStatus.APPROVED,
             approvedBy: actingUser.id,
+            ...(dto.payPercent != null ? { payPercent: dto.payPercent } : {}),
           },
           include: {
             employee: true,
@@ -1043,6 +1045,7 @@ export class LeaveService {
             : LeaveStatus.PENDING_APPROVAL,
           currentStage: null,
           approvedBy: withinQuota ? actingUser.id : null,
+          payPercent: dto.payPercent ?? null,
         },
         include: { employee: true },
       });
@@ -1194,6 +1197,7 @@ export class LeaveService {
           reason: dto.reason.trim(),
           status: LeaveStatus.APPROVED,
           currentStage: null,
+          payPercent: dto.payPercent ?? null,
         },
         include: { employee: true },
       });
@@ -1921,6 +1925,7 @@ export class LeaveService {
       startDate: Date;
       endDate: Date;
       leaveType: LeaveType;
+      payPercent?: number | null;
       employee: {
         currentBranchId: string;
         weeklyOffWeekdays?: number[] | null;
@@ -1978,6 +1983,7 @@ export class LeaveService {
           overtimePending: false,
           dutyStartTimeSnapshot: leave.employee.dutyStartTime ?? null,
           dutyEndTimeSnapshot: leave.employee.dutyEndTime ?? null,
+          payPercent: weeklyOff ? null : (leave.payPercent ?? null),
         },
         // Do not overwrite a HOLIDAY created since the initial read.
         update: {},
@@ -1991,6 +1997,7 @@ export class LeaveService {
             overtimeMinutes: 0, overtimePending: false,
             dutyStartTimeSnapshot: leave.employee.dutyStartTime ?? null,
             dutyEndTimeSnapshot: leave.employee.dutyEndTime ?? null,
+            payPercent: leave.payPercent ?? null,
           };
       if (existing || updated.status !== status) {
         const changed = await tx.attendanceLog.updateMany({

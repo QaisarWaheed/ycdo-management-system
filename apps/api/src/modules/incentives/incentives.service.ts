@@ -204,6 +204,45 @@ export class IncentivesService {
     });
   }
 
+  /** Monthly totals for the 12 months ending `year`/`month`, and that month by branch. */
+  async stats(year: number, month: number) {
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(Date.UTC(year, month - 12 + i, 1));
+      return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+    });
+    const [monthly, thisMonth] = await Promise.all([
+      this.prisma.incentive.groupBy({
+        by: ['year', 'month'],
+        where: { OR: months },
+        _sum: { amount: true },
+      }),
+      this.prisma.incentive.findMany({
+        where: { year, month },
+        select: {
+          amount: true,
+          employee: { select: { currentBranch: { select: { name: true } } } },
+        },
+      }),
+    ]);
+    const byBranch = new Map<string, number>();
+    for (const i of thisMonth) {
+      const name = i.employee.currentBranch?.name ?? 'No branch';
+      byBranch.set(name, (byBranch.get(name) ?? 0) + Number(i.amount));
+    }
+    return {
+      monthly: months.map((m) => ({
+        ...m,
+        total: Number(
+          monthly.find((g) => g.year === m.year && g.month === m.month)?._sum
+            .amount ?? 0,
+        ),
+      })),
+      byBranch: [...byBranch.entries()]
+        .map(([branch, total]) => ({ branch, total }))
+        .sort((x, y) => y.total - x.total),
+    };
+  }
+
   async findOne(id: string) {
     const incentive = await this.prisma.incentive.findUnique({ where: { id } });
     if (!incentive) throw new NotFoundException(`Incentive with id ${id} not found`);

@@ -102,4 +102,9 @@ export class EndAllowanceDto {
   @Matches(MONTH, { message: MONTH_MSG })
   @IsNotEmpty()
   endMonth: string;
+
+  /** Executive who approves it when Accounts ends an allowance. */
+  @IsOptional()
+  @IsEnum(EmployeeApproverTarget)
+  approverTarget?: EmployeeApproverTarget;
 }

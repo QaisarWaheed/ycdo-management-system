@@ -8,6 +8,10 @@ import {
 } from '@/api/endpoints/doctorPerformance'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { allowancesApi } from '@/api/endpoints/payApprovals'
+import {
+  BranchPerformancePanel,
+  openBranchReport,
+} from '@/components/payroll/BranchPerformancePanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -26,6 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
@@ -36,7 +41,8 @@ const FIELDS: Array<{ key: FigureKey; label: string; money?: boolean }> = [
   { key: 'indoorPatients', label: 'Indoor patients' },
   { key: 'surgeries', label: 'Surgeries' },
   { key: 'labTests', label: 'Lab tests' },
-  { key: 'collection', label: 'Collection (PKR)', money: true },
+  { key: 'labCollection', label: 'Lab collection (PKR)', money: true },
+  { key: 'collection', label: 'Total collection (PKR)', money: true },
 ]
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const num = (n: number) => Math.round(n).toLocaleString('en-PK')
@@ -102,6 +108,28 @@ export function DoctorPerformancePage() {
     queryFn: allowancesApi.listIncentiveTypes,
     enabled: canIncentive,
   })
+  // Branch progress reports, linked from each doctor's branch name.
+  const { data: branchSheet } = useQuery({
+    queryKey: ['branch-performance', year, month],
+    queryFn: () => doctorPerformanceApi.branches({ year, month }),
+  })
+  const reportFor = (branchId?: string | null) =>
+    branchSheet?.rows.find((b) => b.branch.id === branchId)?.report ?? null
+  const branchLabel = (r: DoctorPerformanceRow) => {
+    const report = reportFor(r.employee.branchId)
+    return report && r.employee.branch ? (
+      <button
+        type="button"
+        className="text-primary underline"
+        title="Open branch progress report"
+        onClick={() => openBranchReport(report)}
+      >
+        {r.employee.branch}
+      </button>
+    ) : (
+      r.employee.branch
+    )
+  }
   const activeTypes = types.filter((t) => t.isActive)
   const defaultType = activeTypes[0]?.id
 
@@ -202,7 +230,15 @@ export function DoctorPerformancePage() {
       <Trend prev={r.previous?.[f.key] ?? null} cur={r.current?.[f.key] ?? null} />
     )
 
-  const incentiveList = (r: DoctorPerformanceRow) =>
+  const incentiveList = (r: DoctorPerformanceRow) => (
+    <div className="space-y-0.5">
+      <div className="text-xs text-muted-foreground">
+        Last month: <b className="tabular-nums text-foreground">{num(r.previousIncentive ?? 0)}</b>
+      </div>
+      {incentiveLines(r)}
+    </div>
+  )
+  const incentiveLines = (r: DoctorPerformanceRow) =>
     r.incentives.length ? (
       <div className="space-y-0.5">
         {r.incentives.map((i, n) => (
@@ -325,6 +361,12 @@ export function DoctorPerformancePage() {
         ) : null}
       </div>
 
+      <Tabs defaultValue="doctors">
+        <TabsList>
+          <TabsTrigger value="doctors">Doctors</TabsTrigger>
+          <TabsTrigger value="branches">Branches (Day / Night)</TabsTrigger>
+        </TabsList>
+        <TabsContent value="doctors" className="space-y-4">
       {canEnter || canIncentive ? (
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-md border bg-background/95 p-2 text-sm">
           {canEnter ? (
@@ -365,7 +407,8 @@ export function DoctorPerformancePage() {
                 <div>
                   <div className="font-semibold">{r.employee.fullName}</div>
                   <div className="text-xs text-muted-foreground">
-                    {[r.employee.employeeCode, r.employee.designation, r.employee.branch].filter(Boolean).join(' · ')}
+                    {[r.employee.employeeCode, r.employee.designation].filter(Boolean).join(' · ')}
+                    {r.employee.branch ? <> · {branchLabel(r)}</> : null}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -381,7 +424,7 @@ export function DoctorPerformancePage() {
                   ))}
                 </div>
                 <div>
-                  <div className="text-xs text-muted-foreground">Incentives this month</div>
+                  <div className="text-xs text-muted-foreground">Incentives</div>
                   {incentiveList(r)}
                 </div>
                 {canIncentive ? rewardInput(r) : null}
@@ -401,18 +444,18 @@ export function DoctorPerformancePage() {
                 {FIELDS.map((f) => (
                   <TableHead key={f.key}>{f.label}</TableHead>
                 ))}
-                <TableHead>Incentives this month</TableHead>
+                <TableHead>Incentives</TableHead>
                 {canIncentive ? <TableHead>Give incentive</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center">Loading…</TableCell>
+                  <TableCell colSpan={10} className="text-center">Loading…</TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground">
                     No doctors found
                   </TableCell>
                 </TableRow>
@@ -422,7 +465,8 @@ export function DoctorPerformancePage() {
                     <TableCell className="min-w-[180px]">
                       <div className="font-medium">{r.employee.fullName}</div>
                       <div className="text-xs text-muted-foreground">
-                        {[r.employee.designation, r.employee.branch].filter(Boolean).join(' · ')}
+                        {r.employee.designation}
+                        {r.employee.branch ? <> · {branchLabel(r)}</> : null}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -447,6 +491,17 @@ export function DoctorPerformancePage() {
           </Table>
         </CardContent>
       </Card>
+        </TabsContent>
+        <TabsContent value="branches">
+          <BranchPerformancePanel
+            year={year}
+            month={month}
+            canEnter={canEnter}
+            canIncentive={canIncentive}
+            incentiveTypeId={defaultType}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

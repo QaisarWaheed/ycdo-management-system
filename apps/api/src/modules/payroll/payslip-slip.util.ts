@@ -182,6 +182,7 @@ export const FINE_REASON_LABELS: Record<string, string> = {
   NO_UNIFORM: 'Fine: No uniform',
   LEFT_DUTY_POST: 'Fine: Leaving duty post',
   RULE_VIOLATION: 'Fine: Rule violation',
+  CORRUPTION: 'Fine: Corruption',
   OTHER: 'Fine: Other',
 };
 

@@ -54,6 +54,7 @@ describe('doctor performance', () => {
             indoorPatients: 40,
             surgeries: 3,
             labTests: 210,
+            labCollection: 90000,
             collection: 450000,
             note: null,
           },
@@ -65,6 +66,7 @@ describe('doctor performance', () => {
             indoorPatients: 35,
             surgeries: 2,
             labTests: 180,
+            labCollection: 80000,
             collection: 390000,
             note: null,
           },
@@ -72,6 +74,7 @@ describe('doctor performance', () => {
         upsert: jest.fn(),
       },
       incentive: {
+        groupBy: jest.fn().mockResolvedValue([{ employeeId: 'd1', _sum: { amount: 3000 } }]),
         findMany: jest
           .fn()
           .mockResolvedValue([
@@ -123,6 +126,7 @@ describe('doctor performance', () => {
       },
       current: { opdPatients: 950, collection: 450000 },
       previous: { opdPatients: 820, collection: 390000 },
+      previousIncentive: 3000,
       incentives: [
         { name: 'On Progress', amount: 5000, pending: false },
         { amount: 2000, pending: true },
@@ -145,6 +149,7 @@ describe('doctor performance', () => {
             indoorPatients: 0,
             surgeries: 0,
             labTests: 0,
+            labCollection: 0,
             collection: 0,
           },
         ],
@@ -163,6 +168,7 @@ describe('doctor performance', () => {
           indoorPatients: 40,
           surgeries: 3,
           labTests: 210,
+          labCollection: 90000,
           collection: 450000,
           note: ' ',
         },
@@ -185,5 +191,44 @@ describe('doctor performance', () => {
     expect(prisma.auditLog.create.mock.calls[0][0].data.action).toBe(
       'DOCTOR_PERFORMANCE_SAVED',
     );
+  });
+
+  it('branch sheet: day and night apart, last month beside, admin officer incentives', async () => {
+    const prisma = {
+      branch: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'b1', name: 'Main' }]),
+      },
+      branchShiftPerformance: {
+        findMany: jest.fn().mockResolvedValue([
+          { branchId: 'b1', shift: 'DAY', year: 2026, month: 10, patients: 120, labCollection: 5000, collection: 90000, note: null },
+          { branchId: 'b1', shift: 'DAY', year: 2026, month: 9, patients: 100, labCollection: 4000, collection: 80000, note: null },
+          { branchId: 'b1', shift: 'NIGHT', year: 2026, month: 10, patients: 40, labCollection: 1000, collection: 30000, note: null },
+        ]),
+      },
+      branchProgressReport: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'r1', branchId: 'b1', fileName: 'oct.pdf' }]),
+      },
+      employee: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'a1', fullName: 'Officer', employeeCode: 'Y-9', currentDesignation: 'ADMIN OFFICER', currentBranchId: 'b1' },
+        ]),
+      },
+      incentive: {
+        groupBy: jest
+          .fn()
+          .mockResolvedValueOnce([{ employeeId: 'a1', _sum: { amount: 3000 } }])
+          .mockResolvedValueOnce([]),
+      },
+    };
+    const sheet = await new DoctorPerformanceService(prisma as never).branches(2026, 10);
+    const [row] = sheet.rows;
+    expect(row.shifts[0]).toMatchObject({
+      shift: 'DAY',
+      current: { patients: 120 },
+      previous: { patients: 100 },
+    });
+    expect(row.shifts[1]).toMatchObject({ shift: 'NIGHT', previous: null });
+    expect(row.report).toEqual({ id: 'r1', branchId: 'b1', fileName: 'oct.pdf' });
+    expect(row.adminOfficers[0]).toMatchObject({ incentive: 3000, previousIncentive: 0 });
   });
 });

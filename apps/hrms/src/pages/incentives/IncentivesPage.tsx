@@ -1,4 +1,6 @@
-import { useCanEditPay } from '@/components/payroll/ApproverSelect'
+import { useCanSetIncentive } from '@/components/payroll/ApproverSelect'
+import { IncentiveCharts } from '@/components/payroll/IncentiveCharts'
+import { useAuth } from '@/hooks/useAuth'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -59,12 +61,15 @@ export function IncentivesPage() {
     year: now.getFullYear(),
   })
   const [addOpen, setAddOpen] = useState(false)
-  const canEditPay = useCanEditPay()
+  // Only executives add, edit or delete incentives; Finance and HR view.
+  const canEditPay = useCanSetIncentive()
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const [editItem, setEditItem] = useState<Incentive | null>(null)
-  // Same people who may add pay (Finance + executives); the API enforces it.
+  // Only executives delete; the API enforces it.
   const canDelete = canEditPay
+  const { hasRole } = useAuth()
+  const canSeeCharts = hasRole(['PRESIDENT', 'FOUNDER', 'CHAIRMAN', 'SUPER_ADMIN', 'PAYROLL_OFFICER'])
 
   const filters = useMemo(
     () => ({
@@ -123,6 +128,8 @@ export function IncentivesPage() {
         </Button>
         ) : null}
       </div>
+
+      {canSeeCharts ? <IncentiveCharts year={monthYear.year} month={monthYear.month} /> : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {[

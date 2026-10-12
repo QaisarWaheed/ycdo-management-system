@@ -24,6 +24,8 @@ export interface PayslipDayBreakdown {
   swapCovered: number;
   holiday: number;
   paidLeave: number;
+  /** Leave days at 50% pay. */
+  halfPayLeave: number;
   unpaidLeave: number;
   absent: number;
   uninformedAbsent: number;
@@ -43,6 +45,7 @@ export interface PayslipDayDates {
   absent: string[];
   uninformedAbsent: string[];
   paidLeave: string[];
+  halfPayLeave: string[];
   unpaidLeave: string[];
   halfDay: string[];
   notMarked: string[];
@@ -181,6 +184,8 @@ export function buildPayslipDayDetails(input: {
     statusEffectiveFrom?: Date | null;
   };
   paidLeaveDateKeys: string[];
+  /** Leave days HR approved at 50% pay. */
+  halfPaidLeaveDateKeys?: string[];
   paidDays: number;
   now?: Date;
 }): PayslipDayDetails {
@@ -202,6 +207,7 @@ export function buildPayslipDayDetails(input: {
     new Date((input.now ?? new Date()).getTime() + 5 * 60 * 60 * 1000),
   );
   const paidLeave = new Set(input.paidLeaveDateKeys);
+  const halfPaidLeave = new Set(input.halfPaidLeaveDateKeys ?? []);
   const byDate = new Map(facts.logs.map((l) => [key(l.date), l]));
 
   const dates: PayslipDayDates = {
@@ -211,6 +217,7 @@ export function buildPayslipDayDetails(input: {
     absent: [],
     uninformedAbsent: [],
     paidLeave: [],
+    halfPayLeave: [],
     unpaidLeave: [],
     halfDay: [],
     notMarked: [],
@@ -234,6 +241,7 @@ export function buildPayslipDayDetails(input: {
     swapCovered: 0,
     holiday: 0,
     paidLeave: 0,
+    halfPayLeave: 0,
     unpaidLeave: 0,
     absent: 0,
     uninformedAbsent: 0,
@@ -285,6 +293,9 @@ export function buildPayslipDayDetails(input: {
         if (paidLeave.has(k)) {
           b.paidLeave++;
           dates.paidLeave.push(label);
+        } else if (halfPaidLeave.has(k)) {
+          b.halfPayLeave++;
+          dates.halfPayLeave.push(label);
         } else {
           b.unpaidLeave++;
           dates.unpaidLeave.push(label);
@@ -331,6 +342,11 @@ export function unpaidDayParts(
       label: 'Unpaid leave',
       days: b.unpaidLeave,
       note: list(d.dates.unpaidLeave),
+    },
+    {
+      label: 'Leave at 50% pay',
+      days: b.halfPayLeave * 0.5,
+      note: list(d.dates.halfPayLeave),
     },
     { label: 'Absent', days: b.absent, note: list(d.dates.absent) },
     {

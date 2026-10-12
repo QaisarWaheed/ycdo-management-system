@@ -2,8 +2,10 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -35,11 +37,10 @@ export class IncentivesController {
     private payChangeRequests: PayChangeRequestsService,
   ) {}
 
-  /** Finance (and executives) only; HR cannot add pay. */
+  /** Only executives set incentives (Founder decision); Finance can view. */
   @Post()
   @StrictRoles()
   @Roles(
-    UserRole.PAYROLL_OFFICER,
     UserRole.PRESIDENT,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
@@ -87,6 +88,23 @@ export class IncentivesController {
     return this.incentivesService.findAll(query, user);
   }
 
+  /** Graphs: last 12 months' totals and this month by branch. */
+  @Get('stats')
+  @StrictRoles()
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+    UserRole.PRESIDENT,
+    UserRole.PAYROLL_OFFICER,
+  )
+  stats(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('month', ParseIntPipe) month: number,
+  ) {
+    return this.incentivesService.stats(year, month);
+  }
+
   @Get('employee/:employeeId')
   @RoutePermission(Permission.INCENTIVES_VIEW)
   @Roles(
@@ -100,9 +118,17 @@ export class IncentivesController {
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
     UserRole.IT_ADMIN,
+    UserRole.PAYROLL_OFFICER,
     UserRole.EMPLOYEE,
   )
-  findByEmployee(@Param('employeeId') employeeId: string) {
+  findByEmployee(
+    @Param('employeeId') employeeId: string,
+    @CurrentUser() user: { role: UserRole; employeeId?: string | null },
+  ) {
+    // Portal: an employee may read only their own incentives.
+    if (user.role === UserRole.EMPLOYEE && user.employeeId !== employeeId) {
+      throw new ForbiddenException('You can only view your own incentives');
+    }
     return this.incentivesService.findByEmployee(employeeId);
   }
 
@@ -114,7 +140,6 @@ export class IncentivesController {
   @Patch(':id')
   @StrictRoles()
   @Roles(
-    UserRole.PAYROLL_OFFICER,
     UserRole.PRESIDENT,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
@@ -146,7 +171,6 @@ export class IncentivesController {
   @Delete(':id')
   @StrictRoles()
   @Roles(
-    UserRole.PAYROLL_OFFICER,
     UserRole.PRESIDENT,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
