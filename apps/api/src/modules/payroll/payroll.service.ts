@@ -1899,12 +1899,15 @@ export class PayrollService {
     entryId: string,
     dto: UpdatePayrollStatusDto,
     actingUserId: string,
+    /** Super Admin may reopen a Processed / Paid entry to correct it. */
+    canReopen = false,
   ) {
     if (!this.transactionBound)
       return withPayrollEmployeeTransaction(
         this.prisma,
         await this.entryEmployeeId(entryId),
-        (tx) => this.inTransaction(tx).updateStatus(entryId, dto, actingUserId),
+        (tx) =>
+          this.inTransaction(tx).updateStatus(entryId, dto, actingUserId, canReopen),
       );
 
     const entry = await this.prisma.payrollEntry.findUnique({
@@ -1918,7 +1921,7 @@ export class PayrollService {
       throw new NotFoundException(`Payroll entry with id ${entryId} not found`);
     }
 
-    this.validateStatusTransition(entry.status, dto.status);
+    this.validateStatusTransition(entry.status, dto.status, canReopen);
 
     // Accounts finalise only months whose attendance HR has verified.
     if (dto.status === PayrollStatus.PROCESSED) {
@@ -4274,9 +4277,14 @@ export class PayrollService {
   private validateStatusTransition(
     current: PayrollStatus,
     next: PayrollStatus,
+    canReopen = false,
   ): void {
     if (next === PayrollStatus.PENDING) {
-      throw new BadRequestException('Cannot revert payroll entry to pending');
+      // Reopen for correction (Super Admin): edits work again, then re-finalise.
+      if (canReopen && current !== PayrollStatus.PENDING) return;
+      throw new BadRequestException(
+        'Only Super Admin can reopen a payroll entry to Pending',
+      );
     }
 
     if (current === PayrollStatus.PENDING && next === PayrollStatus.PROCESSED) {

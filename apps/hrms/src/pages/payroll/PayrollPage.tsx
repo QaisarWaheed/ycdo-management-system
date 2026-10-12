@@ -1,3 +1,4 @@
+import { useAuth } from '@/hooks/useAuth'
 import { useCallback, useMemo, useState, Fragment } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
@@ -939,6 +940,8 @@ function MonthlyPayrollTab() {
   const [allowancesFor, setAllowancesFor] = useState<{ id: string; name: string } | null>(null)
   const canFinalize = useCanFinalizePayroll()
   const canFinanceEdit = useCanEditPay()
+  // Super Admin reopens a Processed / Paid salary to correct a mistake.
+  const canReopen = useAuth().hasRole(['SUPER_ADMIN'])
   const [finalizeOpen, setFinalizeOpen] = useState(false)
   const [addDeductionEntry, setAddDeductionEntry] = useState<PayrollEntry | null>(
     null,
@@ -1758,6 +1761,15 @@ function MonthlyPayrollTab() {
                               Mark as Paid
                             </DropdownMenuItem>
                           )}
+                          {entry.status !== 'PENDING' && canReopen && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setConfirmStatus({ id: entry.id, status: 'PENDING' })
+                              }
+                            >
+                              Reopen for correction
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -2025,7 +2037,11 @@ function MonthlyPayrollTab() {
       <ConfirmDialog
         open={!!confirmStatus}
         title="Update Payroll Status"
-        description={`Mark this entry as ${confirmStatus?.status}?`}
+        description={
+          confirmStatus?.status === 'PENDING'
+            ? 'Reopen this salary to Pending? Basic, allowances, incentives and deductions can be corrected, then mark it Processed / Paid again.'
+            : `Mark this entry as ${confirmStatus?.status}?`
+        }
         confirmLabel="Confirm"
         loading={statusMutation.isPending}
         onConfirm={() =>

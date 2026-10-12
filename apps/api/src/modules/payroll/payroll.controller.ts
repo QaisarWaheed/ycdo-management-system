@@ -324,9 +324,15 @@ export class PayrollController {
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollStatusDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
   ) {
-    return this.payrollService.updateStatus(id, dto, user.id);
+    const roles = user.roles?.length ? user.roles : [user.role];
+    return this.payrollService.updateStatus(
+      id,
+      dto,
+      user.id,
+      roles.includes(UserRole.SUPER_ADMIN),
+    );
   }
 
   @Get('summary')

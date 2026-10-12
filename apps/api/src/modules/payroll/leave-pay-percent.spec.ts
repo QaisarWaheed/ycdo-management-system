@@ -7,12 +7,27 @@ const day = (d: number) => new Date(Date.UTC(2026, 8, d));
 describe('leave pay percentage (HR choice)', () => {
   it('a 50% leave day pays half a day of basic', () => {
     const base = {
-      calendarDays: 30, present: 20, absent: 0, uninformedAbsent: 0, late: 0,
-      halfDay: 0, shortLeave: 0, holiday: 4, swapCovered: 0, unmarked: 0,
-      additionalWorkingDays: 0, overtimeHours: 0,
+      calendarDays: 30,
+      present: 20,
+      absent: 0,
+      uninformedAbsent: 0,
+      late: 0,
+      halfDay: 0,
+      shortLeave: 0,
+      holiday: 4,
+      swapCovered: 0,
+      unmarked: 0,
+      additionalWorkingDays: 0,
+      overtimeHours: 0,
     };
     const full = calculateCardSalary(
-      { ...base, onLeave: 6, paidLeaveDays: 0, unpaidLeaveDays: 0, halfPaidLeaveDays: 6 },
+      {
+        ...base,
+        onLeave: 6,
+        paidLeaveDays: 0,
+        unpaidLeaveDays: 0,
+        halfPaidLeaveDays: 6,
+      },
       30000,
       8,
     );
@@ -59,7 +74,9 @@ describe('leave pay percentage (HR choice)', () => {
     expect(card.halfPaidLeaveDays).toBe(2);
     expect(card.paidLeaveDays).toBe(2); // full-pay day + 1 quota day
     expect(card.unpaidLeaveDays).toBe(2); // without-pay day + 1 over quota
-    expect(card.paidLeaveDateKeys).toEqual(expect.arrayContaining(['2026-09-04', '2026-09-06']));
+    expect(card.paidLeaveDateKeys).toEqual(
+      expect.arrayContaining(['2026-09-04', '2026-09-06']),
+    );
     expect(card.halfPaidLeaveDateKeys).toEqual(['2026-09-02', '2026-09-03']);
     // still consistent for the salary arithmetic
     expect(() => calculateCardSalary(card as never, 30000, 8)).not.toThrow();
