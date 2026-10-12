@@ -111,7 +111,7 @@ export function EmployeeAllowancesPanel({
           <h3 className="font-semibold">Allowances</h3>
           <p className="text-xs text-muted-foreground">
             Incharge, Admin, Night Monitoring and other types are paid from the month you choose.
-            Before {monthText(`${ALLOWANCES_FROM_MONTH}-01`)} Travelling Exp, Reward, Reward on
+            Before {monthText(`${ALLOWANCES_FROM_MONTH}-01`)} Allowances, Reward, Reward on
             Progress and Petrol come from the stipend package.
           </p>
         </div>

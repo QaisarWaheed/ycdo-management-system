@@ -3376,7 +3376,7 @@ export class PayrollService {
         );
       } else {
         const legacy: Array<[string, number]> = [
-          ['Travelling Exp', pkg.allowances || 0],
+          ['Allowances', pkg.allowances || 0],
           ['Reward', pkg.reward || 0],
           ['Reward On Progress', pkg.progressReward || 0],
           ['Petrol', pkg.fuelAllowance || 0],

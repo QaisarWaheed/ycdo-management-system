@@ -215,6 +215,10 @@ const humanNote = (d?: string | null) => {
   return t && !t.startsWith('Attendance Card') ? t : undefined;
 };
 
+const DEDUCTION_LABELS: Record<string, string> = {
+  VEHICLE_INSTALLMENT: 'Vehicle Installment',
+};
+
 type DeductionBucket = keyof PayslipSlipData['deductions'];
 
 function deductionBucket(d: SlipDeductionRow): DeductionBucket {
@@ -353,7 +357,7 @@ export function buildPayslipSections(input: {
       { label: 'Reward', amount: earnings.rewards },
       { label: 'Reward On Progress', amount: earnings.rewardOnProgress },
       { label: 'Petrol', amount: earnings.fuel },
-      { label: 'Travelling Exp', amount: pkg.allowances },
+      { label: 'Allowances', amount: pkg.allowances },
       ...packageLines,
       { label: 'Previous Month', amount: earnings.previousMonth },
       { label: 'Mobile Load', amount: earnings.mobileLoad },
@@ -413,7 +417,16 @@ export function buildPayslipSections(input: {
     } else if (d.reason === 'DISCIPLINARY_FINE') {
       discipline.push({ label: 'Disciplinary action fine', amount, note: humanNote(desc) });
     } else {
-      other.push({ label: titleCase(d.reason), amount, note: humanNote(desc) });
+      const named = d.reason === 'OTHER' ? humanNote(desc) : undefined;
+      other.push(
+        named
+          ? { label: named, amount }
+          : {
+              label: DEDUCTION_LABELS[d.reason] ?? titleCase(d.reason),
+              amount,
+              note: humanNote(desc),
+            },
+      );
     }
   }
 

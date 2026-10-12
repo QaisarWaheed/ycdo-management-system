@@ -158,7 +158,10 @@ export class IncentivesController {
           kind: PayChangeKind.INCENTIVE,
           employeeId: current.employeeId,
           payload: { incentiveId: id, ...values },
-          summary: await this.payChangeRequests.describeIncentiveChange(current, dto),
+          summary: await this.payChangeRequests.describeIncentiveChange(
+            current,
+            dto,
+          ),
           reason: dto.reason,
           approverTarget,
         },

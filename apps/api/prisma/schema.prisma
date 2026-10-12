@@ -637,6 +637,8 @@ enum DeductionType {
   ADVANCE
   ELECTRICITY_BILL
   MOBILE_BILL
+  /// Bike / electric scooty / vehicle instalment.
+  VEHICLE_INSTALLMENT
   /// Fine entered by hand in payroll; DISCIPLINARY_FINE is reserved for
   /// system fines linked to attendance/inquiry records.
   FINE

@@ -707,6 +707,7 @@ export type DeductionType =
   | 'ADVANCE'
   | 'ELECTRICITY_BILL'
   | 'MOBILE_BILL'
+  | 'VEHICLE_INSTALLMENT'
   | 'FINE'
 
 export interface PayrollDeduction {
@@ -902,6 +903,7 @@ export const DEDUCTION_TYPES: { value: DeductionType; label: string }[] = [
   { value: 'ADVANCE', label: 'Advances' },
   { value: 'ELECTRICITY_BILL', label: 'Electricity Bill' },
   { value: 'MOBILE_BILL', label: 'Mobile Bill' },
+  { value: 'VEHICLE_INSTALLMENT', label: 'Vehicle Installment' },
   { value: 'OTHER', label: 'Other Deductions' },
   { value: 'FINE', label: 'Fine' },
 ]

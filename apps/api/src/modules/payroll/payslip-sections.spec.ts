@@ -123,7 +123,7 @@ describe('buildPayslipSections', () => {
       },
       { label: 'Reward On Progress', amount: 1000 },
       { label: 'Petrol', amount: 3000 },
-      { label: 'Travelling Exp', amount: 2000 },
+      { label: 'Allowances', amount: 2000 },
     ]);
   });
 
@@ -164,5 +164,33 @@ describe('buildPayslipSections', () => {
       { label: 'Advance', amount: 1000, note: 'monthly package' },
       { label: 'Health', amount: 100, note: 'monthly package' },
     ]);
+  });
+
+  it('vehicle instalment has its own label; an Other deduction is named by what Finance wrote', () => {
+    const other = buildPayslipSections({
+      earnings,
+      deductions: { ...deductions, other: 15000 },
+      deductionRows: [
+        {
+          reason: 'VEHICLE_INSTALLMENT',
+          amount: 10000,
+          description: 'Electric scooty',
+        },
+        { reason: 'OTHER', amount: 5000, description: 'Uniform recovery' },
+      ],
+      allowanceRows: [],
+      pkg: { allowances: 0, fineDeduction: 0 },
+      totalDays: 30,
+    }).find((s) => s.key === 'other')!.lines;
+    expect(other).toEqual(
+      expect.arrayContaining([
+        {
+          label: 'Vehicle Installment',
+          amount: 10000,
+          note: 'Electric scooty',
+        },
+        { label: 'Uniform recovery', amount: 5000 },
+      ]),
+    );
   });
 });

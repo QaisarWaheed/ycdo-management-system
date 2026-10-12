@@ -13,6 +13,7 @@ export const MANUAL_DEDUCTION_REASONS: DeductionType[] = [
   DeductionType.ADVANCE,
   DeductionType.ELECTRICITY_BILL,
   DeductionType.MOBILE_BILL,
+  DeductionType.VEHICLE_INSTALLMENT,
   DeductionType.OTHER,
   DeductionType.FINE,
 ];

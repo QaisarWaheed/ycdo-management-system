@@ -52,7 +52,7 @@ const PACKAGE_DEDUCTIONS = [
 ] as const;
 const FIELD_LABELS: Record<string, string> = {
   basicStipend: 'Basic',
-  allowances: 'Travelling Exp',
+  allowances: 'Allowances',
   reward: 'Reward',
   progressReward: 'Reward On Progress',
   fuelAllowance: 'Petrol',

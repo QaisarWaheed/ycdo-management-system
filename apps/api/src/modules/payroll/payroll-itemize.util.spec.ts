@@ -16,14 +16,14 @@ describe('itemizePayrollEntries', () => {
         {
           employee,
           basicStipend: 20000,
-          // package 7000 (Pharmacy 2000 + Travelling Exp 5000) + OT 800 + incentive 1500 + manual 500
+          // package 7000 (Pharmacy 2000 + Allowances 5000) + OT 800 + incentive 1500 + manual 500
           totalAllowances: 9800,
           // late 667 + fine 300 + early checkout 1000 + package loan 2000
           totalDeductions: 3967,
           netStipend: 25833,
           packageAllowanceLines: [
             { label: 'Pharmacy', amount: 2000 },
-            { label: 'Travelling Exp', amount: 5000 },
+            { label: 'Allowances', amount: 5000 },
           ],
           allowances: [
             { type: 'OVERTIME', amount: 800 },
@@ -50,7 +50,7 @@ describe('itemizePayrollEntries', () => {
     expect(row.allowances).toEqual({
       Overtime: 800,
       Pharmacy: 2000,
-      'Travelling Exp': 5000,
+      'Allowances': 5000,
     });
     expect(row.incentives).toEqual({
       'Manual addition': 500,

@@ -47,7 +47,7 @@ export function PayslipDocument({
     { label: 'Previous Month', amount: slip.earnings.previousMonth },
     { label: 'Reward', amount: slip.earnings.rewards },
     { label: 'Petrol', amount: slip.earnings.fuel },
-    { label: 'Travelling Exp', amount: slip.earnings.otherAllowance },
+    { label: 'Allowances', amount: slip.earnings.otherAllowance },
   ]
 
   const deductionsData = [

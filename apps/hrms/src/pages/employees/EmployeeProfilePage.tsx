@@ -1194,8 +1194,8 @@ export function EmployeeProfilePage() {
   const canAssignRoles = hasRole([...ROLE_ASSIGNER_ROLES])
 
   // Finance (Payroll Officer / executives) edits the payroll form alongside HR.
-  const canEditPayroll =
-    isHrTeam || isItTeam || hasRole([...PAYROLL_FINANCE_ROLES])
+  // Pay (package, deductions) is Finance + executives only; HR views.
+  const canEditPayroll = hasRole([...PAYROLL_FINANCE_ROLES])
 
   const canHrJobActions = isHrTeam
   const canOverrideSuspendedStatus = hasRole([...IT_PROFILE_ROLES])
