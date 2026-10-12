@@ -297,13 +297,24 @@ export class DoctorPerformanceService {
             _sum: { amount: true },
           })
         : Promise.resolve([]);
-    const [now, before] = await Promise.all([totals(months[0]), totals(months[1])]);
+    const [now, before] = await Promise.all([
+      totals(months[0]),
+      totals(months[1]),
+    ]);
     const sum = (rows: typeof now, id: string) =>
       Number(rows.find((g) => g.employeeId === id)?._sum.amount ?? 0);
-    const find = (branchId: string, shift: BranchShift, y: number, m: number) => {
+    const find = (
+      branchId: string,
+      shift: BranchShift,
+      y: number,
+      m: number,
+    ) => {
       const r = records.find(
         (x) =>
-          x.branchId === branchId && x.shift === shift && x.year === y && x.month === m,
+          x.branchId === branchId &&
+          x.shift === shift &&
+          x.year === y &&
+          x.month === m,
       );
       return r ? shiftFigures(r) : null;
     };
@@ -362,7 +373,13 @@ export class DoctorPerformanceService {
               shift: r.shift,
             },
           },
-          create: { branchId: r.branchId, year, month, shift: r.shift, ...data },
+          create: {
+            branchId: r.branchId,
+            year,
+            month,
+            shift: r.shift,
+            ...data,
+          },
           update: data,
         });
       }),
@@ -398,7 +415,11 @@ export class DoctorPerformanceService {
     const fileUrl = `/uploads/branch-reports/${path.basename(file.path)}`;
     const where = { branchId_year_month: { branchId, year, month } };
     const old = await this.prisma.branchProgressReport.findUnique({ where });
-    const data = { fileName: file.originalname, fileUrl, uploadedById: user.id };
+    const data = {
+      fileName: file.originalname,
+      fileUrl,
+      uploadedById: user.id,
+    };
     const saved = await this.prisma.branchProgressReport.upsert({
       where,
       create: { branchId, year, month, ...data },

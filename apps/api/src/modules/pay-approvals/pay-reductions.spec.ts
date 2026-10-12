@@ -29,11 +29,16 @@ describe('Accounts cannot cut pay without approval', () => {
       end: jest.fn().mockResolvedValue({ id: 'a1' }),
       assign: jest.fn().mockResolvedValue({ id: 'a1' }),
     };
-    const requests = { submit: jest.fn().mockResolvedValue({ pendingApproval: true }) };
-    const controller = Object.assign(Object.create(AllowancesController.prototype), {
-      allowances,
-      requests,
-    }) as AllowancesController;
+    const requests = {
+      submit: jest.fn().mockResolvedValue({ pendingApproval: true }),
+    };
+    const controller = Object.assign(
+      Object.create(AllowancesController.prototype),
+      {
+        allowances,
+        requests,
+      },
+    ) as AllowancesController;
     return { controller, allowances, requests };
   }
 
@@ -54,7 +59,13 @@ describe('Accounts cannot cut pay without approval', () => {
 
   it('lowering an allowance from Accounts also needs approval; executives apply directly', async () => {
     const { controller, allowances, requests } = allowancesController();
-    const dto = { employeeId: 'e1', typeId: 't', amount: 3000, startMonth: '2026-10', note: 'cut' };
+    const dto = {
+      employeeId: 'e1',
+      typeId: 't',
+      amount: 3000,
+      startMonth: '2026-10',
+      note: 'cut',
+    };
     await controller.assign(dto as never, finance);
     expect(requests.submit).toHaveBeenCalled();
     expect(allowances.assign).not.toHaveBeenCalled();
@@ -65,16 +76,36 @@ describe('Accounts cannot cut pay without approval', () => {
   it('a package cut from Accounts is submitted; a no-money edit is not', async () => {
     const describe = jest.fn();
     const submit = jest.fn().mockResolvedValue({ pendingApproval: true });
-    const controller = Object.assign(Object.create(PayrollController.prototype), {
-      payChangeRequests: { describePackageChange: describe, submit },
-    }) as unknown as { packageApproval: (k: PayChangeKind, d: unknown, u: unknown) => Promise<unknown> };
-    describe.mockResolvedValueOnce({ isIncrease: false, summary: 'Basic 30,000 → 25,000' });
+    const controller = Object.assign(
+      Object.create(PayrollController.prototype),
+      {
+        payChangeRequests: { describePackageChange: describe, submit },
+      },
+    ) as unknown as {
+      packageApproval: (
+        k: PayChangeKind,
+        d: unknown,
+        u: unknown,
+      ) => Promise<unknown>;
+    };
+    describe.mockResolvedValueOnce({
+      isIncrease: false,
+      summary: 'Basic 30,000 → 25,000',
+    });
     await expect(
-      controller.packageApproval(PayChangeKind.PACKAGE_EDIT, { employeeId: 'e1' }, finance),
+      controller.packageApproval(
+        PayChangeKind.PACKAGE_EDIT,
+        { employeeId: 'e1' },
+        finance,
+      ),
     ).resolves.toEqual({ pendingApproval: true });
     describe.mockResolvedValueOnce({ isIncrease: false, summary: 'No change' });
     await expect(
-      controller.packageApproval(PayChangeKind.PACKAGE_EDIT, { employeeId: 'e1' }, finance),
+      controller.packageApproval(
+        PayChangeKind.PACKAGE_EDIT,
+        { employeeId: 'e1' },
+        finance,
+      ),
     ).resolves.toBeNull();
     expect(submit).toHaveBeenCalledTimes(1);
   });

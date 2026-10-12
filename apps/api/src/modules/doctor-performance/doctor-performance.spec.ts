@@ -74,17 +74,17 @@ describe('doctor performance', () => {
         upsert: jest.fn(),
       },
       incentive: {
-        groupBy: jest.fn().mockResolvedValue([{ employeeId: 'd1', _sum: { amount: 3000 } }]),
-        findMany: jest
+        groupBy: jest
           .fn()
-          .mockResolvedValue([
-            {
-              employeeId: 'd1',
-              amount: 5000,
-              reason: 'On Progress',
-              type: { name: 'On Progress' },
-            },
-          ]),
+          .mockResolvedValue([{ employeeId: 'd1', _sum: { amount: 3000 } }]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            employeeId: 'd1',
+            amount: 5000,
+            reason: 'On Progress',
+            type: { name: 'On Progress' },
+          },
+        ]),
       },
       payChangeRequest: {
         findMany: jest.fn().mockResolvedValue([
@@ -207,18 +207,57 @@ describe('doctor performance', () => {
       },
       branchShiftPerformance: {
         findMany: jest.fn().mockResolvedValue([
-          { branchId: 'b1', shift: 'DAY', year: 2026, month: 10, patients: 120, labCollection: 5000, collection: 90000, note: null },
-          { branchId: 'b1', shift: 'DAY', year: 2026, month: 9, patients: 100, labCollection: 4000, collection: 80000, note: null },
-          { branchId: 'b1', shift: 'NIGHT', year: 2026, month: 10, patients: 40, labCollection: 1000, collection: 30000, note: null },
+          {
+            branchId: 'b1',
+            shift: 'DAY',
+            year: 2026,
+            month: 10,
+            patients: 120,
+            labCollection: 5000,
+            collection: 90000,
+            note: null,
+          },
+          {
+            branchId: 'b1',
+            shift: 'DAY',
+            year: 2026,
+            month: 9,
+            patients: 100,
+            labCollection: 4000,
+            collection: 80000,
+            note: null,
+          },
+          {
+            branchId: 'b1',
+            shift: 'NIGHT',
+            year: 2026,
+            month: 10,
+            patients: 40,
+            labCollection: 1000,
+            collection: 30000,
+            note: null,
+          },
         ]),
       },
       branchProgressReport: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'r1', branchId: 'b1', fileName: 'oct.pdf' }]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'r1', branchId: 'b1', fileName: 'oct.pdf' },
+          ]),
       },
       employee: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: 'a1', fullName: 'Officer', employeeCode: 'Y-9', currentDesignation: 'ADMIN OFFICER', currentBranchId: 'b1' },
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            {
+              id: 'a1',
+              fullName: 'Officer',
+              employeeCode: 'Y-9',
+              currentDesignation: 'ADMIN OFFICER',
+              currentBranchId: 'b1',
+            },
+          ]),
       },
       incentive: {
         groupBy: jest
@@ -227,7 +266,10 @@ describe('doctor performance', () => {
           .mockResolvedValueOnce([]),
       },
     };
-    const sheet = await new DoctorPerformanceService(prisma as never).branches(2026, 10);
+    const sheet = await new DoctorPerformanceService(prisma as never).branches(
+      2026,
+      10,
+    );
     const [row] = sheet.rows;
     expect(row.shifts[0]).toMatchObject({
       shift: 'DAY',
@@ -235,9 +277,18 @@ describe('doctor performance', () => {
       previous: { patients: 100 },
     });
     expect(row.shifts[1]).toMatchObject({ shift: 'NIGHT', previous: null });
-    expect(row.report).toEqual({ id: 'r1', branchId: 'b1', fileName: 'oct.pdf' });
-    expect(row.adminOfficers[0]).toMatchObject({ incentive: 3000, previousIncentive: 0 });
-    expect(prisma.employee.findMany.mock.calls[0][0].where.currentDesignation).toEqual({
+    expect(row.report).toEqual({
+      id: 'r1',
+      branchId: 'b1',
+      fileName: 'oct.pdf',
+    });
+    expect(row.adminOfficers[0]).toMatchObject({
+      incentive: 3000,
+      previousIncentive: 0,
+    });
+    expect(
+      prisma.employee.findMany.mock.calls[0][0].where.currentDesignation,
+    ).toEqual({
       in: ['BRANCH ADMIN', 'ADMIN OFFICER'],
     });
   });
