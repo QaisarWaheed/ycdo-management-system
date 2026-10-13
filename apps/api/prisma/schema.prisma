@@ -64,6 +64,11 @@ model BiometricDevice {
   branchId  String
   label     String?
   createdAt DateTime @default(now())
+  /// Learned clock error (receive time − device time); used only to spot offline dumps.
+  clockOffsetSec    Int?
+  /// Unconfirmed new clock error after a possible clock re-set.
+  clockCandidateSec Int?
+  clockCandidateAt  DateTime?
 
   branch Branch @relation(fields: [branchId], references: [id])
 }

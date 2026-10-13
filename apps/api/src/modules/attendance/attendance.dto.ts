@@ -70,6 +70,11 @@ export class RawScanDto {
   @IsString()
   timestamp?: string;
 
+  /** When the gateway received the punch (its clock, not the device's). */
+  @IsOptional()
+  @IsDateString()
+  receivedTime?: string;
+
   /** Per-device monotonically increasing event id — the idempotency key together with deviceId. */
   @IsString()
   @IsNotEmpty()

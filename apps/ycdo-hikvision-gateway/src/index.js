@@ -185,55 +185,6 @@ INSERT INTO events (
   @sub_event_type, @source_ip, @raw_json, @delivery_status, @hrms_reason, @next_attempt_at, @created_at, @updated_at
 )`);
 
-const STALE_PUNCH_MS = 30 * 60 * 1000;
-const FUTURE_PUNCH_MS = 5 * 60 * 1000;
-const BAD_CALENDAR_MS = 24 * 60 * 60 * 1000;
-
-function parseDevicePunchMs(deviceTime) {
-  const raw = String(deviceTime || "").trim();
-  const instant = Date.parse(raw);
-  const naive = raw.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
-  const pktWall = naive
-    ? Date.parse(`${naive[1].replace(" ", "T")}+05:00`)
-    : NaN;
-  return { instant, pktWall };
-}
-
-function pakistanMinutesOfDay(ms) {
-  const pk = new Date(ms + 5 * 60 * 60 * 1000);
-  return pk.getUTCHours() * 60 + pk.getUTCMinutes();
-}
-
-function clockOfDayClose(aMs, bMs) {
-  if (!Number.isFinite(aMs) || !Number.isFinite(bMs)) return false;
-  const diff = Math.abs(pakistanMinutesOfDay(aMs) - pakistanMinutesOfDay(bMs));
-  return Math.min(diff, 24 * 60 - diff) <= 30;
-}
-
-function isLiveDeviceClock(t, recv) {
-  const delta = recv - t;
-  return delta <= STALE_PUNCH_MS && delta >= -FUTURE_PUNCH_MS;
-}
-
-function isStaleReconnectDump(deviceTime, receivedAt) {
-  const recv = Date.parse(String(receivedAt));
-  const { instant, pktWall } = parseDevicePunchMs(deviceTime);
-  if (!Number.isFinite(recv)) return false;
-  const candidates = [instant, pktWall].filter((t) => Number.isFinite(t));
-  if (candidates.some((t) => isLiveDeviceClock(t, recv))) return false;
-  if (
-    candidates.some(
-      (t) => Math.abs(recv - t) > BAD_CALENDAR_MS && clockOfDayClose(t, recv),
-    )
-  ) {
-    return false;
-  }
-  const t = Number.isFinite(instant) ? instant : pktWall;
-  if (!Number.isFinite(t)) return false;
-  const delta = recv - t;
-  return delta > STALE_PUNCH_MS || delta < -FUTURE_PUNCH_MS;
-}
-
 function normalizeIp(ip) {
   if (!ip) return "";
   let v = String(ip).trim();
@@ -439,7 +390,8 @@ app.post("/hikvision/event/:token", upload.any(), (req, res) => {
   }
 
   const now = new Date().toISOString();
-  const staleDump = isStaleReconnectDump(n.deviceTime, n.receivedTime);
+  // HRMS stamps the punch at receive time and rejects offline dumps using
+  // each device's learned clock error, so every event is forwarded.
   try {
     const info = insertEvent.run({
       event_key: n.eventKey,
@@ -456,14 +408,14 @@ app.post("/hikvision/event/:token", upload.any(), (req, res) => {
       sub_event_type: n.subEventType,
       source_ip: n.sourceIp,
       raw_json: JSON.stringify(n.raw),
-      delivery_status: staleDump ? "REJECTED_BY_HRMS" : "PENDING",
-      hrms_reason: staleDump ? "STALE_DEVICE_EVENT" : null,
-      next_attempt_at: staleDump ? null : now,
+      delivery_status: "PENDING",
+      hrms_reason: null,
+      next_attempt_at: now,
       created_at: now,
       updated_at: now,
     });
     saveImages(req, info.lastInsertRowid);
-    log("info", staleDump ? "Stale reconnect dump ignored" : "Attendance event queued", {
+    log("info", "Attendance event queued", {
       id: Number(info.lastInsertRowid), deviceId: n.deviceId, employeeNo: n.employeeNo,
       status: n.attendanceStatus, serialNo: n.serialNo, deviceTime: n.deviceTime,
     });
@@ -526,6 +478,7 @@ function payloadForHrms(row) {
     biometricId: String(row.employee_no),
     eventTime: row.device_time,
     timestamp: row.device_time,
+    receivedTime: row.received_time,
     deviceId: row.device_id,
     deviceStatus: statusForHrms,
   };

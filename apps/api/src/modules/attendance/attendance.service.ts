@@ -77,7 +77,7 @@ import {
   CHECKOUT_TOO_SOON_REASON,
   devicePunchRejectReason,
   isCheckoutTooSoon,
-  resolveRawScanPunchTime,
+  resolveDevicePunch,
 } from './device-punch-time.util';
 import {
   applyDisciplineRules,
@@ -266,18 +266,17 @@ export class AttendanceService {
     // and a mis-registered or shared device used to stamp logs with a branch
     // that disagreed with the employee's profile.
     const branchId = employee.currentBranchId ?? device?.branchId ?? null;
-    // Live stream has no trustworthy device clock (TZ skew), so punch time is
-    // API now. If an agent *did* send a timestamp, still refuse hours-old
-    // reconnect dumps so they cannot stamp the whole branch at receive time.
-    if (dto.timestamp) {
-      const dumpReason = devicePunchRejectReason(
-        resolveRawScanPunchTime({ timestamp: dto.timestamp }).verdict,
-      );
-      if (dumpReason) {
-        throw new BadRequestException(dumpReason);
-      }
+    // Punch time is API now (Pakistan time), never the device clock. A sent
+    // timestamp only flags offline reconnect dumps against the device's
+    // learned clock error.
+    const punchClock = await this.resolveDevicePunchClock(device, {
+      timestamp: dto.timestamp,
+    });
+    const dumpReason = devicePunchRejectReason(punchClock.verdict);
+    if (dumpReason) {
+      throw new BadRequestException(dumpReason);
     }
-    const checkTime = new Date();
+    const checkTime = punchClock.checkTime;
     const twentyFourHour = is24HourShift(employee);
     // Night shifts: a punch after midnight still belongs to yesterday's
     // duty day (e.g. 01:00 against 20:00–08:00 → prior calendar date).
@@ -352,9 +351,10 @@ export class AttendanceService {
       where: { deviceId: dto.deviceId },
     });
     const branchId = employee.currentBranchId ?? device?.branchId ?? null;
-    const punchClock = resolveRawScanPunchTime({
+    const punchClock = await this.resolveDevicePunchClock(device, {
       eventTime: dto.eventTime,
       timestamp: dto.timestamp,
+      receivedTime: dto.receivedTime,
     });
     const staleReason = devicePunchRejectReason(punchClock.verdict);
     if (staleReason) {
@@ -478,6 +478,33 @@ export class AttendanceService {
     }
 
     return txResult;
+  }
+
+  /**
+   * Punch time = Pakistan time at receipt; the device clock only flags
+   * offline dumps. Persists the device's learned clock error.
+   */
+  private async resolveDevicePunchClock(
+    device: {
+      id: string;
+      clockOffsetSec: number | null;
+      clockCandidateSec: number | null;
+      clockCandidateAt: Date | null;
+    } | null,
+    times: {
+      eventTime?: string;
+      timestamp?: string;
+      receivedTime?: string;
+    },
+  ) {
+    const resolved = resolveDevicePunch({ ...times, clock: device });
+    if (device && resolved.nextClock) {
+      await this.prisma.biometricDevice.update({
+        where: { id: device.id },
+        data: resolved.nextClock,
+      });
+    }
+    return resolved;
   }
 
   /**

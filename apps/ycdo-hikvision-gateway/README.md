@@ -118,7 +118,7 @@ Set the device Time & Attendance mode so it sends explicit statuses for Check In
 2. Perform one Check In.
 3. Verify gateway log says `Attendance event queued`.
 4. Verify `/health` pending returns to `0` after HRMS accepts it.
-5. Confirm HRMS stored the **device event time**, not receiver time.
+5. Confirm HRMS stored the **Pakistan time the punch was received**, not the device clock.
 6. Repeat Check In: HRMS should keep the original check-in and record/return `ALREADY_CHECKED_IN`.
 7. Test Check Out after Check In: should succeed.
 8. Test Check Out without a valid Check In on a controlled test employee/date: HRMS should reject logically.
