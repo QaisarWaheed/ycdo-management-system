@@ -1,5 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { EmployeeStatus, Prisma } from '@prisma/client';
+import { mapInBatches } from '../../common/batch.util';
 import {
   normalizeDesignationName,
   normalizeOrgName,
@@ -51,8 +57,9 @@ export class DesignationsService {
         orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
       })
       .then(async (designations) => {
-        const designationsWithCounts = await Promise.all(
-          designations.map(async (d) => {
+        const designationsWithCounts = await mapInBatches(
+          designations,
+          async (d) => {
             const placementOrScope =
               this.accessScopeService.employeeMatchesDepartmentDesignationFilter(
                 { designation: d.title },
@@ -74,16 +81,19 @@ export class DesignationsService {
               ...d,
               employees: employeesCount,
             };
-          }),
+          },
         );
 
         return designationsWithCounts;
       });
   }
 
-  create(dto: CreateDesignationDto) {
+  async create(dto: CreateDesignationDto) {
     const title = normalizeDesignationName(dto.title);
-    const category = normalizeOrgName(dto.category);
+    if (!title) {
+      throw new BadRequestException('Title cannot be empty');
+    }
+    const category = await this.resolveDepartmentName(dto.category);
 
     return this.prisma.designation.upsert({
       where: { title },
@@ -93,14 +103,30 @@ export class DesignationsService {
   }
 
   async update(id: string, dto: UpdateDesignationDto) {
-    await this.ensureExists(id);
+    const existing = await this.prisma.designation.findFirst({
+      where: { id, isDeleted: false },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Designation with id ${id} not found`);
+    }
 
     const data: Prisma.DesignationUpdateInput = {};
+    let renamedTo: string | null = null;
     if (dto.title !== undefined) {
-      data.title = normalizeDesignationName(dto.title);
+      const title = normalizeDesignationName(dto.title);
+      if (!title) {
+        throw new BadRequestException('Title cannot be empty');
+      }
+      if (title !== existing.title) {
+        renamedTo = title;
+      }
+      data.title = title;
     }
-    if (dto.category !== undefined) {
-      data.category = normalizeOrgName(dto.category);
+    if (
+      dto.category !== undefined &&
+      normalizeOrgName(dto.category) !== normalizeOrgName(existing.category)
+    ) {
+      data.category = await this.resolveDepartmentName(dto.category);
     }
     if (dto.sortOrder !== undefined) {
       data.sortOrder = dto.sortOrder;
@@ -109,7 +135,37 @@ export class DesignationsService {
       data.isActive = dto.isActive;
     }
 
-    return this.prisma.designation.update({ where: { id }, data });
+    if (!renamedTo) {
+      return this.prisma.designation.update({ where: { id }, data });
+    }
+
+    const newTitle = renamedTo;
+    // title is @unique, so a hidden (deleted/inactive) row can still hold the
+    // name. Block renames onto a visible designation; move hidden ones aside.
+    const clash = await this.prisma.designation.findUnique({
+      where: { title: newTitle },
+    });
+    if (clash && clash.isActive && !clash.isDeleted) {
+      throw new ConflictException(
+        `Designation "${newTitle}" already exists`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      if (clash) {
+        await tx.designation.update({
+          where: { id: clash.id },
+          data: { title: `${newTitle} (ARCHIVED ${clash.id.slice(0, 8)})` },
+        });
+      }
+      const updated = await tx.designation.update({ where: { id }, data });
+      // Employees store the designation as free text; keep them attached.
+      await tx.employee.updateMany({
+        where: { currentDesignation: existing.title },
+        data: { currentDesignation: newTitle },
+      });
+      return updated;
+    });
   }
 
   async deactivate(id: string) {
@@ -146,12 +202,19 @@ export class DesignationsService {
     return { message: 'Deleted', affectedEmployees };
   }
 
-  private async ensureExists(id: string) {
-    const designation = await this.prisma.designation.findFirst({
-      where: { id, isDeleted: false },
+  /** Designation.category must name an active department, or it is orphaned. */
+  private async resolveDepartmentName(raw: string) {
+    const name = normalizeOrgName(raw);
+    const department = await this.prisma.department.findFirst({
+      where: {
+        name: { equals: name, mode: 'insensitive' },
+        isActive: true,
+        isDeleted: false,
+      },
     });
-    if (!designation) {
-      throw new NotFoundException(`Designation with id ${id} not found`);
+    if (!department) {
+      throw new BadRequestException(`Department "${name}" does not exist`);
     }
+    return department.name;
   }
 }

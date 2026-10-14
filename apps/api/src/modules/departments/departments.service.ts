@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { mapInBatches } from '../../common/batch.util';
 import { Prisma } from '@prisma/client';
 import { EmployeeStatus } from '@prisma/client';
 import {
@@ -52,8 +58,9 @@ export class DepartmentsService {
 
     const relevant = await this.scopeToPlacement(departments, query);
 
-    return Promise.all(
-      relevant.map(async (department) => {
+    return mapInBatches(
+      relevant,
+      async (department) => {
         const employees = await this.prisma.employee.count({
           where:
             this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
@@ -64,7 +71,7 @@ export class DepartmentsService {
           ...department,
           _count: { employees },
         };
-      }),
+      },
     );
   }
 
@@ -145,19 +152,52 @@ export class DepartmentsService {
   }
 
   async update(id: string, dto: UpdateDepartmentDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
 
     const data: Prisma.DepartmentUpdateInput = {};
+    let renamedTo: string | null = null;
     if (dto.name !== undefined) {
-      data.name = normalizeDepartmentName(dto.name);
+      const name = normalizeDepartmentName(dto.name);
+      if (!name) {
+        throw new BadRequestException('Name cannot be empty');
+      }
+      if (name !== existing.name) {
+        renamedTo = name;
+      }
+      data.name = name;
     }
     if (dto.sortOrder !== undefined) {
       data.sortOrder = dto.sortOrder;
     }
 
-    return this.prisma.department.update({
-      where: { id },
-      data,
+    if (!renamedTo) {
+      return this.prisma.department.update({ where: { id }, data });
+    }
+
+    const newName = renamedTo;
+    // name is @unique, so a hidden (deleted/inactive) row can still hold it.
+    const clash = await this.prisma.department.findUnique({
+      where: { name: newName },
+    });
+    if (clash && clash.isActive && !clash.isDeleted) {
+      throw new ConflictException(`Department "${newName}" already exists`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      if (clash) {
+        await tx.department.update({
+          where: { id: clash.id },
+          data: { name: `${newName} (ARCHIVED ${clash.id.slice(0, 8)})` },
+        });
+      }
+      const updated = await tx.department.update({ where: { id }, data });
+      // Designation.category stores the department name as text; without this
+      // the designations split off under the old name.
+      await tx.designation.updateMany({
+        where: { category: { equals: existing.name, mode: 'insensitive' } },
+        data: { category: newName },
+      });
+      return updated;
     });
   }
 

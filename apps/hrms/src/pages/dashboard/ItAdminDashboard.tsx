@@ -700,6 +700,7 @@ function DepartmentsTab() {
       setEditDept(null)
       setName('')
       queryClient.invalidateQueries({ queryKey: ['departments'] })
+      queryClient.invalidateQueries({ queryKey: ['designations'] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -976,6 +977,7 @@ function DesignationsTab() {
       setEditItem(null)
       setTitle('')
       queryClient.invalidateQueries({ queryKey: ['designations'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
