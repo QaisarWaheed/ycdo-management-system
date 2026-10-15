@@ -35,6 +35,7 @@ function fixture(initialEntry = true, frozenAmount?: number) {
   const delegates = (get: () => any) => {
     const view = (row: any) => row ? { ...row, deductions: get().deductions.filter((d: any) => d.payrollEntryId === row.id), allowances: get().allowances.filter((a: any) => a.payrollEntryId === row.id) } : null;
     return {
+      letter: { findMany: jest.fn(async () => []) },
       $queryRaw: jest.fn(async () => { events.push('lock'); return [{ id: dto.employeeId }]; }),
       employee: { findUnique: async () => ({ id: dto.employeeId, status: 'ACTIVE', fullName: 'Test Employee', employeeCode: 'TEST', dutyTotalHours: 8 }) },
       payrollEntry: {
@@ -92,10 +93,10 @@ describe('Card salary public API transaction contract (in-memory database)', () 
     await Promise.all(Array.from({ length: 5 }, (_, i) => i % 2 ? f.service.createOrGetEntry(dto) : f.service.recomputeEmployeeMonth(dto)));
     const final = f.snapshot();
     expect(final.entries).toHaveLength(1);
-    expect(final.entries[0].netStipend).toBe(30000);
-    expect(final.deductions).toHaveLength(2);
+    expect(final.entries[0].netStipend).toBe(31000);
+    expect(final.deductions).toHaveLength(1);
     expect(final.allowances).toHaveLength(2);
-    expect(new Set(final.deductions.map((d: any) => d.reason)).size).toBe(2);
+    expect(new Set(final.deductions.map((d: any) => d.reason)).size).toBe(1);
     expect(new Set(final.allowances.map((a: any) => a.type)).size).toBe(2);
     expect(f.events.filter(event => event === 'lock')).toHaveLength(10);
   });
@@ -103,8 +104,8 @@ describe('Card salary public API transaction contract (in-memory database)', () 
   it('repeated refresh preserves manual money exactly once', async () => {
     const f = fixture(); await f.service.createOrGetEntry(dto); await f.service.recomputeEmployeeMonth(dto);
     const final = f.snapshot();
-    expect(final.entries[0].netStipend).toBe(29900);
-    expect(final.deductions).toHaveLength(3);
+    expect(final.entries[0].netStipend).toBe(30900);
+    expect(final.deductions).toHaveLength(2);
     expect(final.deductions.filter((d: any) => d.id === 'manual')).toHaveLength(1);
     expect(final.allowances).toHaveLength(2);
   });
@@ -112,7 +113,7 @@ describe('Card salary public API transaction contract (in-memory database)', () 
   it('allows a frozen zero sibling and preserves it', async () => {
     const f = fixture(true, 0); const frozen = f.snapshot().entries[1];
     await f.service.createOrGetEntry(dto);
-    expect(f.snapshot().entries[0].netStipend).toBe(29900);
+    expect(f.snapshot().entries[0].netStipend).toBe(30900);
     expect(f.snapshot().entries[1]).toEqual(frozen);
   });
 

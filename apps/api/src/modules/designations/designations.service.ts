@@ -1,3 +1,4 @@
+import { orgWriteError } from '../../common/org-write.util';
 import {
   BadRequestException,
   ConflictException,
@@ -29,6 +30,7 @@ export class DesignationsService {
     const where: Prisma.DesignationWhereInput = {
       isActive: true,
       isDeleted: false,
+      ...(query?.search?.trim() ? { title: { contains: query.search.trim(), mode: 'insensitive' as const } } : {}),
     };
 
     if (query?.department) {
@@ -54,7 +56,7 @@ export class DesignationsService {
     return this.prisma.designation
       .findMany({
         where,
-        orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+        orderBy: { title: 'asc' },
       })
       .then(async (designations) => {
         const designationsWithCounts = await mapInBatches(
@@ -95,11 +97,15 @@ export class DesignationsService {
     }
     const category = await this.resolveDepartmentName(dto.category);
 
+    const existing = await this.prisma.designation.findFirst({ where: { title: { equals: title, mode: 'insensitive' } } });
+    if (existing?.isActive && !existing.isDeleted && normalizeOrgName(existing.category) !== category) {
+      throw new ConflictException('This designation already belongs to another department. Edit it instead of creating a duplicate.');
+    }
     return this.prisma.designation.upsert({
-      where: { title },
+      where: { title: existing?.title ?? title },
       update: { category, isActive: true, isDeleted: false },
       create: { title, category },
-    });
+    }).catch(orgWriteError);
   }
 
   async update(id: string, dto: UpdateDesignationDto) {
@@ -136,7 +142,7 @@ export class DesignationsService {
     }
 
     if (!renamedTo) {
-      return this.prisma.designation.update({ where: { id }, data });
+      return this.prisma.designation.update({ where: { id }, data }).catch(orgWriteError);
     }
 
     const newTitle = renamedTo;
@@ -165,7 +171,7 @@ export class DesignationsService {
         data: { currentDesignation: newTitle },
       });
       return updated;
-    });
+    }, { timeout: 30_000, maxWait: 20_000 }).catch(orgWriteError);
   }
 
   async deactivate(id: string) {

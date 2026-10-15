@@ -1,5 +1,3 @@
-jest.mock('puppeteer', () => ({ default: { launch: jest.fn() } }));
-
 import { buildPdfFooterTemplate } from './pdf.helper';
 import { COMPUTER_GENERATED_NOTICE } from './letter-templates.helper';
 

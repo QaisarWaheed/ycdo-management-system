@@ -169,11 +169,11 @@ describe('classifyDutyCheckout — early checkout is separate from lateness', ()
       status: AttendanceStatus.PRESENT,
     });
   });
-  it('leaving within the 15-minute grace is not an early checkout', () => {
+  it('leaving before duty end has no grace window', () => {
     expect(
       classifyDutyCheckout(log('09:00'), employee, pkt(10, '16:45'))
         .earlyOutMinutes,
-    ).toBe(0);
+    ).toBe(15);
     expect(
       classifyDutyCheckout(log('09:00'), employee, pkt(10, '16:44'))
         .earlyOutMinutes,

@@ -1,3 +1,5 @@
+import { CHECK_IN_GRACE_MINUTES, LATE_GRACE_MINUTES } from '../../common/duty.util';
+import { MISSING_CHECKOUT_GRACE_MINUTES } from './missing-checkout-policy';
 import {
   assertAttendanceOpen,
   isAttendanceLocked,
@@ -107,6 +109,7 @@ import {
 } from './attendance-calendar.util';
 import { isWeeklyOffDate } from './weekly-off.util';
 import {
+  computeShiftEndDateTime,
   calculateLateMinutesFromCheckIn,
   DEFAULT_DUTY_START,
   getShiftAttendanceDate,
@@ -594,7 +597,13 @@ export class AttendanceService {
     if (punchType === 'AUTO') {
       const openRegular = twentyFourHour
         ? null
-        : await this.findOpenRegularLogForAuto(employee, dateOnly, db);
+        : await this.findOpenRegularLogForAuto(employee, dateOnly, db, checkTime);
+      if (openRegular && openRegular.date.getTime() !== dateOnly.getTime()) {
+        dateOnly = openRegular.date;
+        if (await isAttendanceLocked(db, branchId, dateOnly)) {
+          throw new ConflictException('Attendance month is verified and locked; punch ignored');
+        }
+      }
       punchType = openRegular ? 'CHECKOUT' : 'CHECKIN';
     }
 
@@ -1507,11 +1516,15 @@ export class AttendanceService {
     dto: ApproveOvertimeDto,
     actingUserId: string,
   ) {
-    const log = await this.prisma.attendanceLog.findUnique({ where: { id } });
+    const log = await this.prisma.attendanceLog.findUnique({ where: { id },
+      include: { employee: { select: { status: true, statusEffectiveFrom: true, joiningDate: true } } },
+    });
 
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
+    assertEmployeeEligibleForAttendanceRecord(log.employee.status,
+      this.employeeAttendanceContext(log.employee), log.date);
     await assertAttendanceOpen(this.prisma, { date: log.date, branchId: log.branchId });
 
     return this.prisma.attendanceLog.update({
@@ -1636,6 +1649,8 @@ export class AttendanceService {
             fullName: true,
             employeeCode: true,
             status: true,
+            statusEffectiveFrom: true,
+            joiningDate: true,
             currentBranchId: true,
             dutyStartTime: true,
             dutyEndTime: true,
@@ -3084,10 +3099,13 @@ export class AttendanceService {
   ) {
     const session = await this.prisma.relieverSession.findUnique({
       where: { id: dto.sessionId },
+      include: { employee: { select: { status: true, statusEffectiveFrom: true, joiningDate: true } } },
     });
     if (!session) {
       throw new NotFoundException(`Reliever session ${dto.sessionId} not found`);
     }
+    assertEmployeeEligibleForRelieverAttendance(session.employee.status,
+      this.employeeAttendanceContext(session.employee), session.date);
     if (!session.checkIn) {
       throw new BadRequestException('Session has no check-in');
     }
@@ -3164,10 +3182,13 @@ export class AttendanceService {
 
     const session = await this.prisma.relieverSession.findUnique({
       where: { id: sessionId },
+      include: { employee: { select: { status: true, statusEffectiveFrom: true, joiningDate: true } } },
     });
     if (!session) {
       throw new NotFoundException(`Reliever session ${sessionId} not found`);
     }
+    assertEmployeeEligibleForRelieverAttendance(session.employee.status,
+      this.employeeAttendanceContext(session.employee), session.date);
     await assertAttendanceOpen(this.prisma, {
       date: session.date,
       branchId: session.branchId,
@@ -3854,7 +3875,7 @@ export class AttendanceService {
     if (!shift) {
       const defaultStart = 9 * 60;
       const defaultMidpoint = 13 * 60;
-      if (checkInMinutes <= defaultStart + 15) {
+      if (checkInMinutes <= defaultStart + CHECK_IN_GRACE_MINUTES) {
         return { status: AttendanceStatus.PRESENT, lateMinutes: 0 };
       }
       if (checkInMinutes <= defaultMidpoint) {
@@ -3872,9 +3893,9 @@ export class AttendanceService {
     const startMinutes = this.parseTimeToMinutes(shift.startTime);
     const endMinutes = this.parseTimeToMinutes(shift.endTime);
     const midpoint = Math.floor((startMinutes + endMinutes) / 2);
-    const graceEnd = startMinutes + 15;
+    const graceEnd = startMinutes + LATE_GRACE_MINUTES;
 
-    if (checkInMinutes <= graceEnd) {
+    if (checkInMinutes <= startMinutes + CHECK_IN_GRACE_MINUTES) {
       return { status: AttendanceStatus.PRESENT, lateMinutes: 0 };
     }
 
@@ -4037,6 +4058,7 @@ export class AttendanceService {
     },
     dateOnly: Date,
     db: PrismaService | Prisma.TransactionClient = this.prisma,
+    checkTime = new Date(),
   ) {
     const todayOpen = await this.findOpenRegularLogForDate(
       employee.id,
@@ -4050,14 +4072,20 @@ export class AttendanceService {
       employee.dutyStartTime ?? null,
       employee.dutyEndTime ?? null,
     );
-    if (!overnight) return null;
-
-    return this.findOpenRegularLogForDate(
+    const previous = await this.findOpenRegularLogForDate(
       employee.id,
       this.pakistanYesterday(dateOnly),
       true,
       db,
     );
+    if (!previous || overnight) return previous;
+    // A late-evening duty can finish before midnight while its checkout window ends after it.
+    const duty = resolveAttendanceDutyTimes(previous, employee);
+    if (!duty.dutyStartTime || !duty.dutyEndTime) return null;
+    const end = computeShiftEndDateTime(previous.date, duty.dutyEndTime,
+      isOvernightShift(duty.dutyStartTime, duty.dutyEndTime));
+    const minutesAfterEnd = (checkTime.getTime() - end.getTime()) / 60000;
+    return minutesAfterEnd >= 0 && minutesAfterEnd <= MISSING_CHECKOUT_GRACE_MINUTES ? previous : null;
   }
 
   /**

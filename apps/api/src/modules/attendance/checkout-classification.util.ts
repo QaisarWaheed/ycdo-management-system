@@ -12,8 +12,7 @@ import { computeShiftEndDateTime } from './shift-time.util';
 
 /**
  * Classify a REGULAR session at check-out. Lateness comes from check-in only;
- * leaving early is recorded separately as earlyOutMinutes (beyond the 15-min
- * grace) and never turns the day LATE or HALF_DAY — it has its own
+ * leaving early is recorded separately as earlyOutMinutes (without a grace window) and never turns the day LATE or HALF_DAY — it has its own
  * early-checkout discipline track.
  */
 export function classifyDutyCheckout(
@@ -60,7 +59,7 @@ export function classifyDutyCheckout(
   );
   const earlyMinutes = Math.max(
     0,
-    Math.round((end.getTime() - checkOut.getTime()) / 60000),
+    Math.ceil((end.getTime() - checkOut.getTime()) / 60000),
   );
   const lateMinutes = computeBiometricLateMinutes(log.checkIn, {
     ...employee,

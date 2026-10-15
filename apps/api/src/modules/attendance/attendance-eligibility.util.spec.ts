@@ -100,7 +100,7 @@ describe('attendance-eligibility.util', () => {
       assertEmployeeEligibleForAttendance({
         status: EmployeeStatus.PENDING_APPROVAL,
       }),
-    ).toThrow(/locked until this employee is approved/);
+    ).toThrow(ATTENDANCE_PENDING_APPROVAL_MESSAGE);
   });
 
   it('throws an appointed lock message', () => {

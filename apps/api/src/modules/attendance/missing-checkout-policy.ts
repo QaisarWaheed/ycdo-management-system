@@ -1,3 +1,6 @@
+/** Staff may check out through duty end + two hours, without automatic OT. */
+export const MISSING_CHECKOUT_GRACE_MINUTES = 120;
+
 /**
  * Note stamped by ShiftMissingCheckoutScheduler when it closes an open session
  * at scheduled duty end. The checkOut it writes is not a real punch, so this

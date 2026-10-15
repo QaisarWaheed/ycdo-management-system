@@ -69,6 +69,7 @@ export const employeesApi = {
     api.post<unknown, Employee>('/employees', data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch(`/employees/${id}`, data),
+  generateStatusCommunication: (id: string, reason?: string) => api.post(`/employees/${id}/status-communication`, {reason}),
   changeStatus: (id: string, data: Record<string, unknown>) =>
     api.patch(`/employees/${id}/status`, data),
   transfer: (id: string, data: Record<string, unknown>) =>

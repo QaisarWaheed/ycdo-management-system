@@ -1,3 +1,4 @@
+import { AlphabeticalSelect } from '@/components/ui/alphabetical-select'
 import { useEffect, useState } from 'react'
 import { hrCareersApi, type JobPosting } from '../../api/endpoints/careers'
 import { Button } from '../../components/ui/button'
@@ -167,11 +168,11 @@ export default function HRCareersPage() {
                 </div>
                 <div>
                   <Label>Status</Label>
-                  <select className="mt-1 w-full border rounded-md px-3 py-2 text-sm" value={form.status} onChange={set('status')}>
+                  <AlphabeticalSelect className="mt-1 w-full border rounded-md px-3 py-2 text-sm" value={form.status} onChange={set('status')}>
                     <option value="OPEN">Open</option>
                     <option value="DRAFT">Draft</option>
                     <option value="CLOSED">Closed</option>
-                  </select>
+                  </AlphabeticalSelect>
                 </div>
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}

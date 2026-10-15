@@ -1,3 +1,4 @@
+import { AlphabeticalSelect } from '@/components/ui/alphabetical-select'
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -80,7 +81,7 @@ export function HospitalScopeSelect({
 
       <div className="space-y-1">
         <Label className="text-xs">Hospital project</Label>
-        <select
+        <AlphabeticalSelect
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           value={selectedProject?.id ?? ''}
           disabled={disabled}
@@ -95,13 +96,13 @@ export function HospitalScopeSelect({
               {project.name}
             </option>
           ))}
-        </select>
+        </AlphabeticalSelect>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="space-y-1">
           <Label className="text-xs">Department</Label>
-          <select
+          <AlphabeticalSelect
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             value={departmentId}
             disabled={disabled}
@@ -116,11 +117,11 @@ export function HospitalScopeSelect({
                 {dept.name}
               </option>
             ))}
-          </select>
+          </AlphabeticalSelect>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Designation (optional)</Label>
-          <select
+          <AlphabeticalSelect
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             value={designationId}
             disabled={disabled || !departmentId}
@@ -132,7 +133,7 @@ export function HospitalScopeSelect({
                 {designation.title}
               </option>
             ))}
-          </select>
+          </AlphabeticalSelect>
         </div>
       </div>
 

@@ -168,9 +168,10 @@ export function dutyWindowsOverlap(a: DutyWindow, b: DutyWindow): boolean {
 
 /** Minutes after duty start that are still counted as on time. */
 export const LATE_GRACE_MINUTES = 15;
+export const CHECK_IN_GRACE_MINUTES = 18;
 
 /** Minutes before duty end a check-out may happen without counting as an early check-out. */
-export const EARLY_OUT_GRACE_MINUTES = 15;
+export const EARLY_OUT_GRACE_MINUTES = 0;
 
 /**
  * A check-in earlier than this many minutes before duty start is credited as
@@ -219,7 +220,7 @@ export function assessCheckIn(
   const offset = signedMinutesFromDutyStart(minutesOfDay, dutyStartMin);
 
   if (offset >= 0) {
-    const late = offset - graceMinutes;
+    const late = offset <= Math.max(graceMinutes, CHECK_IN_GRACE_MINUTES) ? 0 : offset - graceMinutes;
     return {
       lateMinutes: late > 0 ? late : 0,
       earlyMinutes: 0,

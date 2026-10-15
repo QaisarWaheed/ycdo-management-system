@@ -21,7 +21,8 @@ import { computeShiftEndDateTime, toPakistanDateOnly } from './shift-time.util';
  *
  * Closure stores scheduled duty end and preserves attendance status and saved OT.
  */
-export const MISSING_CHECKOUT_GRACE_MINUTES = 30;
+export { MISSING_CHECKOUT_GRACE_MINUTES } from './missing-checkout-policy';
+import { MISSING_CHECKOUT_GRACE_MINUTES } from './missing-checkout-policy';
 
 export type MissingCheckoutEmployee = {
   dutyStartTime: string | null;
@@ -74,14 +75,14 @@ export function evaluateMissingCheckoutEligibility(
   );
   const minutesPastEnd = (now.getTime() - shiftEnd.getTime()) / 60000;
 
-  if (minutesPastEnd < MISSING_CHECKOUT_GRACE_MINUTES) {
+  if (minutesPastEnd <= MISSING_CHECKOUT_GRACE_MINUTES) {
     return { eligible: false, reason: 'still inside shift/checkout grace' };
   }
 
   return { eligible: true, shiftEnd, minutesPastEnd };
 }
 
-/** At duty end + 30 minutes, close at scheduled end and apply the missed-checkout discipline cycle. */
+/** After duty end + 2 hours, close at scheduled end and apply the missed-checkout discipline cycle. */
 @Injectable()
 export class ShiftMissingCheckoutScheduler {
   private readonly logger = new Logger(ShiftMissingCheckoutScheduler.name);

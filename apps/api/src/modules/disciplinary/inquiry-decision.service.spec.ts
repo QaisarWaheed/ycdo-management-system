@@ -23,6 +23,7 @@ jest.mock('../letters/pdf.helper', () => ({
 import { InquiryDecisionService } from './inquiry-decision.service';
 
 describe('InquiryDecisionService', () => {
+  afterEach(() => jest.useRealTimers());
   const inquiryId = 'inq-1';
   const actionId = 'action-1';
   const employeeId = 'emp-1';
@@ -293,6 +294,7 @@ describe('InquiryDecisionService', () => {
   });
 
   it('applies DISMISS on approval without transfer or ACTIVE reinstatement', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-15T10:00:00.000Z'));
     const inquiry = openInquiry({
       finding: InquiryFinding.GUILTY,
       finalAction: InquiryFinalAction.DISMISS,
@@ -306,7 +308,7 @@ describe('InquiryDecisionService', () => {
 
     expect(tx.employee.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { status: EmployeeStatus.DISMISSED },
+        data: { status: EmployeeStatus.DISMISSED, statusEffectiveFrom: new Date('2026-10-15T00:00:00.000Z') },
       }),
     );
     expect(tx.user.updateMany).toHaveBeenCalledWith(
@@ -321,6 +323,7 @@ describe('InquiryDecisionService', () => {
   });
 
   it('applies TERMINATE and disables login', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-15T10:00:00.000Z'));
     const inquiry = openInquiry({
       finding: InquiryFinding.GUILTY,
       finalAction: InquiryFinalAction.TERMINATE,
@@ -334,7 +337,7 @@ describe('InquiryDecisionService', () => {
 
     expect(tx.employee.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { status: EmployeeStatus.TERMINATED },
+        data: { status: EmployeeStatus.TERMINATED, statusEffectiveFrom: new Date('2026-10-15T00:00:00.000Z') },
       }),
     );
     expect(tx.user.updateMany).toHaveBeenCalledWith(
@@ -343,6 +346,7 @@ describe('InquiryDecisionService', () => {
   });
 
   it('maps REST to existing EmployeeStatus.ON_REST', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-15T10:00:00.000Z'));
     const inquiry = openInquiry({
       finding: InquiryFinding.GUILTY,
       finalAction: InquiryFinalAction.REST,
@@ -356,7 +360,7 @@ describe('InquiryDecisionService', () => {
 
     expect(tx.employee.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { status: EmployeeStatus.ON_REST },
+        data: { status: EmployeeStatus.ON_REST, statusEffectiveFrom: new Date('2026-10-15T00:00:00.000Z') },
       }),
     );
     expect(tx.employmentHistory.create).not.toHaveBeenCalled();

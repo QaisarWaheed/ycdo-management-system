@@ -1,3 +1,4 @@
+import { AlphabeticalSelect } from '@/components/ui/alphabetical-select'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Navigate } from 'react-router-dom'
@@ -323,7 +324,7 @@ export function AppointmentLetterSettingsPage() {
             />
           </div>
           <div className="flex flex-wrap gap-3">
-            <select
+            <AlphabeticalSelect
               className="rounded border px-2 py-1 text-sm"
               value={coverageDept}
               onChange={(e) => setCoverageDept(e.target.value)}
@@ -336,8 +337,8 @@ export function AppointmentLetterSettingsPage() {
                   </option>
                 ),
               )}
-            </select>
-            <select
+            </AlphabeticalSelect>
+            <AlphabeticalSelect
               className="rounded border px-2 py-1 text-sm"
               value={coverageStatus}
               onChange={(e) => setCoverageStatus(e.target.value)}
@@ -350,7 +351,7 @@ export function AppointmentLetterSettingsPage() {
               </option>
               <option value="INVALID_ROLE">INVALID_ROLE</option>
               <option value="INACTIVE_MAPPING">INACTIVE_MAPPING</option>
-            </select>
+            </AlphabeticalSelect>
           </div>
           <Card>
             <CardContent className="p-0">
@@ -417,7 +418,7 @@ export function AppointmentLetterSettingsPage() {
           <div className="space-y-3">
             <div className="space-y-1">
               <Label>Department</Label>
-              <select
+              <AlphabeticalSelect
                 className="w-full rounded border px-2 py-2 text-sm"
                 value={form.departmentId}
                 onChange={(e) =>
@@ -430,7 +431,7 @@ export function AppointmentLetterSettingsPage() {
                     {d.name}
                   </option>
                 ))}
-              </select>
+              </AlphabeticalSelect>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -449,7 +450,7 @@ export function AppointmentLetterSettingsPage() {
             {!form.applyToUnmappedDesignations && (
               <div className="space-y-1">
                 <Label>Designation</Label>
-                <select
+                <AlphabeticalSelect
                   className="w-full rounded border px-2 py-2 text-sm"
                   value={form.designationId}
                   onChange={(e) =>
@@ -462,12 +463,12 @@ export function AppointmentLetterSettingsPage() {
                       {d.title}
                     </option>
                   ))}
-                </select>
+                </AlphabeticalSelect>
               </div>
             )}
             <div className="space-y-1">
               <Label>Template family</Label>
-              <select
+              <AlphabeticalSelect
                 className="w-full rounded border px-2 py-2 text-sm"
                 value={form.templateCode}
                 onChange={(e) => {
@@ -486,7 +487,7 @@ export function AppointmentLetterSettingsPage() {
                     {t.familyName ?? t.name} ({t.code})
                   </option>
                 ))}
-              </select>
+              </AlphabeticalSelect>
             </div>
             <div className="space-y-1">
               <Label>Language</Label>

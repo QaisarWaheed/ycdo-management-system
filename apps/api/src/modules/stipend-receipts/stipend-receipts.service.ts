@@ -1,3 +1,4 @@
+import { completedStipendPeriods, isCompletedStipendPeriod } from './stipend-period.util';
 import {
   BadRequestException,
   Injectable,
@@ -16,6 +17,7 @@ export class StipendReceiptsService {
   constructor(private prisma: PrismaService) {}
 
   async generateMonthlyReceipts(month: number, year: number) {
+    if (!isCompletedStipendPeriod(month, year)) throw new BadRequestException('Salary acceptance is for the previous month or earlier, not the current or a future month.');
     const employees = await this.prisma.employee.findMany({
       where: {
         status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
@@ -99,6 +101,8 @@ export class StipendReceiptsService {
       throw new BadRequestException('You can only respond to your own receipts');
     }
 
+    if (!isCompletedStipendPeriod(receipt.month, receipt.year)) throw new BadRequestException('This salary month is not yet complete.');
+
     if (receipt.status !== StipendStatus.PENDING) {
       throw new BadRequestException(
         `Receipt is already ${receipt.status.toLowerCase()}`,
@@ -154,7 +158,7 @@ export class StipendReceiptsService {
 
   findMyReceipts(employeeId: string) {
     return this.prisma.stipendReceipt.findMany({
-      where: { employeeId },
+      where: { employeeId, ...completedStipendPeriods() },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     });
   }
@@ -188,6 +192,7 @@ export class StipendReceiptsService {
       where: {
         employeeId,
         status: StipendStatus.PENDING,
+        ...completedStipendPeriods(),
         deadlineAt: { gt: new Date() },
       },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
@@ -198,6 +203,7 @@ export class StipendReceiptsService {
     const expired = await this.prisma.stipendReceipt.findMany({
       where: {
         status: StipendStatus.PENDING,
+        ...completedStipendPeriods(),
         deadlineAt: { lt: new Date() },
       },
     });

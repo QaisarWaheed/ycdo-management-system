@@ -15,16 +15,16 @@ function fixture(overrides:any={}) {
  return {db,service,employee,get:()=>row};
 }
 describe('duty windows and saved Card overtime',()=>{
- it.each(['07:00','06:30','08:15','08:16'])('check-in %s preserves saved OT and existing grace',async time=>{
+ it.each(['07:00','06:30','08:15','08:19'])('check-in %s preserves saved OT and existing grace',async time=>{
   const {service,employee,get}=fixture({checkIn:null,status:'UNMARKED',overtimeMinutes:120});
   await service.biometricRegularCheckIn(employee,'b',at(time),day,false);
-  expect(get().status).toBe(time==='08:16'?'LATE':'PRESENT');
+  expect(get().status).toBe(time==='08:19'?'LATE':'PRESENT');
   expect(get().overtimeMinutes).toBe(120);
  });
  it.each([
   // Lateness comes from check-in only; leaving early is earlyOutMinutes
-  // (beyond the 15-min grace) and never makes the day LATE/HALF_DAY.
-  ['08:00','19:45',0,0,'PRESENT'],['08:00','19:30',0,30,'PRESENT'],
+  // (without early checkout grace) and never makes the day LATE/HALF_DAY.
+  ['08:00','19:45',0,15,'PRESENT'],['08:00','19:30',0,30,'PRESENT'],
   ['08:35','19:30',20,30,'LATE'],['09:45','19:30',90,30,'LATE'],
   ['09:46','19:30',91,30,'LATE'],['10:16','20:00',121,0,'HALF_DAY'],
   ['06:30','21:00',0,0,'PRESENT'],
@@ -41,7 +41,7 @@ describe('duty windows and saved Card overtime',()=>{
   expect(get().overtimeMinutes).toBe(0);
  });
  it.each(['PRESENT','LATE','HALF_DAY'])('missing checkout closes at duty end and preserves %s without a financial change',async status=>{
-  jest.useFakeTimers();jest.setSystemTime(at('20:30'));
+  jest.useFakeTimers();jest.setSystemTime(new Date(at('22:00').getTime()+1));
   try {
    jest.mocked(applyMissingCheckoutDiscipline).mockClear();
    const {db,get}=fixture({status,lateMinutes:status==='HALF_DAY'?121:status==='LATE'?20:0,overtimeMinutes:120});
@@ -58,16 +58,30 @@ describe('duty windows and saved Card overtime',()=>{
 });
 
 describe('checkout boundary and saved OT edge cases',()=>{
+ it.each(['20:00','21:00','22:00'])('checkout at %s within the two-hour window creates no overtime',async time=>{
+  const {service,employee,get}=fixture();
+  await service.biometricRegularCheckout(employee,'b',at(time),day,false);
+  expect(get().checkOut).toEqual(at(time));
+  expect(get().earlyOutMinutes).toBe(0);
+  expect(get().overtimeMinutes).toBe(0);
+ });
+ it.each([['00:30',true],['01:00',true],['01:01',false],['08:00',false]])('late-evening duty checkout window at %s resolves prior day: %s',async(time,expected)=>{
+  const previous={date:day,checkIn:at('11:00'),dutyStartTimeSnapshot:'11:00',dutyEndTimeSnapshot:'23:00'};
+  const service:any=Object.create(AttendanceService.prototype);
+  service.findOpenRegularLogForDate=jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(previous);
+  const found=await service.findOpenRegularLogForAuto({id:'e',dutyStartTime:'11:00',dutyEndTime:'23:00'},new Date('2026-08-15'),{},new Date(`2026-08-15T${time}:00+05:00`));
+  expect(found).toBe(expected?previous:null);
+ });
  it.each(['07:00','06:30'])('%s check-in does not generate OT when saved value is zero',async time=>{
   const {service,employee,get}=fixture({checkIn:null,status:'UNMARKED'});
   await service.biometricRegularCheckIn(employee,'b',at(time),day,false);
   expect(get().status).toBe('PRESENT');expect(get().overtimeMinutes).toBe(0);
  });
- it('waits until exactly the thirty-minute deadline',async()=>{
-  jest.useFakeTimers();jest.setSystemTime(new Date(at('20:30').getTime()-1));
+ it('keeps the full two-hour window open, then auto-closes',async()=>{
+  jest.useFakeTimers();jest.setSystemTime(at('22:00'));
   try {const {db,get}=fixture();const scheduler=new ShiftMissingCheckoutScheduler(db,{} as any);
    await scheduler.flagMissingCheckouts();expect(get().checkOut).toBeNull();
-   jest.setSystemTime(at('20:30'));await scheduler.flagMissingCheckouts();expect(get().checkOut).toEqual(at('20:00'));
+   jest.setSystemTime(new Date(at('22:00').getTime()+1));await scheduler.flagMissingCheckouts();expect(get().checkOut).toEqual(at('20:00'));
   } finally {jest.useRealTimers();}
  });
   it('uses snapshotted overnight duty for early departure',async()=>{

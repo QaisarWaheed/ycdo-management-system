@@ -59,6 +59,11 @@ const URDU_IDENTITY_FIELDS: LetterFieldDef[] = [
 export const LETTER_FIELD_CONFIG: Partial<
   Record<LetterType, LetterFieldDef[]>
 > = {
+  CUSTOM: [
+    { key: 'subject', label: 'Subject' },
+    { key: 'letterBody', label: 'Letter Content', type: 'textarea', hint: 'Write the complete letter in English or Urdu.' },
+    { key: 'senderTitle', label: 'Sender Title (optional)' },
+  ],
   APPOINTMENT: [
     { key: 'stipendAmount', label: 'Stipend Amount (Rs.)', type: 'number' },
     { key: 'hoursPerDay', label: 'Hours Per Day', type: 'number' },
@@ -125,6 +130,8 @@ export const LETTER_FIELD_CONFIG: Partial<
     },
   ],
   EXPLANATION_FINE: [
+    { key: 'payrollFineAmount', label: 'Payroll Fine Amount (PKR)', type: 'number', min: 0.01, max: 99999999.99, step: 0.01, hint: 'Numeric amount deducted from salary. Attendance fines use the attendance card.' },
+    { key: 'payrollFineMonth', label: 'Payroll Deduction Month (YYYY-MM)', hint: 'For example 2026-10. Leave blank to use the letter month.' },
     ...URDU_IDENTITY_FIELDS,
     { key: 'adviceLetterNo', label: 'سابقہ Letter of Advice نمبر (اختیاری)' },
     {
@@ -180,6 +187,8 @@ export const LETTER_FIELD_CONFIG: Partial<
     },
   ],
   FINE: [
+    { key: 'payrollFineAmount', label: 'Payroll Fine Amount (PKR)', type: 'number', min: 0.01, max: 99999999.99, step: 0.01, hint: 'Numeric amount deducted from salary. Attendance fines use the attendance card.' },
+    { key: 'payrollFineMonth', label: 'Payroll Deduction Month (YYYY-MM)', hint: 'For example 2026-10. Leave blank to use the letter month.' },
     {
       key: 'finePreset',
       label: 'قسمِ جرمانہ',
@@ -442,6 +451,8 @@ export function getLetterRequiredFields(
 
   const optionalKeys = new Set([
     'senderTitle',
+    'payrollFineAmount',
+    'payrollFineMonth',
     'finePreset',
     'fineReason',
     'absentDate',

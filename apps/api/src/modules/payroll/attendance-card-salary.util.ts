@@ -22,7 +22,7 @@ export function calculateCardSalary(card: SalaryAttendanceCard, basic: number, w
   const hourlyRate = dailyRate / workingHours;
   const paidDays = card.present + card.late + card.shortLeave + card.holiday + card.swapCovered + card.paidLeaveDays + (card.halfPaidLeaveDays ?? 0) * 0.5 + card.halfDay * 0.5;
   const earnedBasic = round(paidDays * dailyRate);
-  const absencePenalty = round((card.absent + card.uninformedAbsent) * dailyRate);
+  const absencePenalty = round(card.uninformedAbsent * dailyRate);
   const latePenalty = round(Math.floor(card.late / 3) * dailyRate);
   // Same cadence as lateness, on its own count: every 3 early checkouts = 1 day.
   const earlyCheckoutPenalty = round(Math.floor((card.earlyCheckout ?? 0) / 3) * dailyRate);
@@ -49,7 +49,7 @@ export function isLegacyAttendanceDeduction(row: { reason?: string; description?
   if (row.reason === 'DISCIPLINARY_FINE' && /^(Missing checkout deduction|Late arrival deduction|Early checkout deduction|Attendance Card: every 3 Early Checkout|Attendance Card: every 3 Missing Checkout)/.test(row.description ?? '')) return true;
   return row.reason === 'OTHER' && /^Unmarked day \(/.test(row.description ?? '');
 }
-export const CARD_ABSENCE_DESCRIPTION = 'Attendance Card: additional absence penalty';
+export const CARD_ABSENCE_DESCRIPTION = 'Attendance Card: additional uninformed absence penalty';
 export const CARD_LATE_DESCRIPTION = 'Attendance Card: every 3 Late';
 export const CARD_EARLY_CHECKOUT_DESCRIPTION = 'Attendance Card: every 3 Early Checkout';
 export const CARD_MISSING_CHECKOUT_DESCRIPTION = 'Attendance Card: every 3 Missing Checkout';

@@ -1199,6 +1199,7 @@ export type DocumentType =
   | 'OTHER'
 
 export const LETTER_TYPES: { value: LetterType; label: string }[] = [
+  { value: 'CUSTOM', label: 'Custom Letter' },
   { value: 'APPOINTMENT', label: 'Selection / Appointment' },
   { value: 'WARNING', label: 'Warning' },
   { value: 'ADVICE', label: 'Advice' },

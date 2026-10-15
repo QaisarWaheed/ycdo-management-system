@@ -669,10 +669,11 @@ function DepartmentsTab() {
     null,
   )
   const [name, setName] = useState('')
+  const [search, setSearch] = useState('')
 
   const { data: departments = [], isLoading } = useQuery({
-    queryKey: ['departments'],
-    queryFn: () => departmentsApi.getAll(),
+    queryKey: ['departments', {search}],
+    queryFn: () => departmentsApi.getAll({search}),
   })
 
   const createMutation = useMutation({
@@ -682,6 +683,10 @@ function DepartmentsTab() {
       setName('')
       setCreateOpen(false)
       queryClient.invalidateQueries({ queryKey: ['departments'] })
+      queryClient.invalidateQueries({ queryKey: ['designations'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employee'] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -701,6 +706,11 @@ function DepartmentsTab() {
       setName('')
       queryClient.invalidateQueries({ queryKey: ['departments'] })
       queryClient.invalidateQueries({ queryKey: ['designations'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employee'] })
+      queryClient.invalidateQueries({ queryKey: ['designations'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -726,6 +736,10 @@ function DepartmentsTab() {
             : undefined,
       })
       queryClient.invalidateQueries({ queryKey: ['departments'] })
+      queryClient.invalidateQueries({ queryKey: ['designations'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employee'] })
     },
     onError: () => {
       toast({ title: 'Failed to deactivate department', variant: 'destructive' })
@@ -739,7 +753,8 @@ function DepartmentsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-end gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <Input aria-label="Search departments by name" placeholder="Search department by name..." value={search} onChange={e=>setSearch(e.target.value)} className="max-w-sm" />
         <Button
           className="bg-primary hover:bg-primary-dark"
           onClick={() => setCreateOpen(true)}
@@ -903,6 +918,7 @@ function DesignationsTab() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editItem, setEditItem] = useState<Designation | null>(null)
   const [title, setTitle] = useState('')
+  const [search, setSearch] = useState('')
   const [department, setDepartment] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState<string>('all')
   const [employeesDesignation, setEmployeesDesignation] =
@@ -919,11 +935,11 @@ function DesignationsTab() {
   )
 
   const { data: designations = [], isLoading } = useQuery({
-    queryKey: ['designations', departmentFilter],
+    queryKey: ['designations', departmentFilter, search],
     queryFn: () =>
       departmentFilter === 'all'
-        ? designationsApi.getAll()
-        : designationsApi.getAll({ category: departmentFilter }),
+        ? designationsApi.getAll({search})
+        : designationsApi.getAll({ category: departmentFilter, search }),
   })
 
   const filterOptions = useMemo(() => {
@@ -958,6 +974,7 @@ function DesignationsTab() {
       setDepartment(departmentNames[0] ?? '')
       setCreateOpen(false)
       queryClient.invalidateQueries({ queryKey: ['designations'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -977,6 +994,7 @@ function DesignationsTab() {
       setEditItem(null)
       setTitle('')
       queryClient.invalidateQueries({ queryKey: ['designations'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
       queryClient.invalidateQueries({ queryKey: ['employees'] })
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
@@ -1003,6 +1021,7 @@ function DesignationsTab() {
             : undefined,
       })
       queryClient.invalidateQueries({ queryKey: ['designations'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
     },
     onError: () => {
       toast({ title: 'Failed to deactivate designation', variant: 'destructive' })
@@ -1024,6 +1043,7 @@ function DesignationsTab() {
 
   return (
     <div className="space-y-4">
+      <Input aria-label="Search designations by name" placeholder="Search designation by name..." value={search} onChange={e=>setSearch(e.target.value)} className="max-w-sm" />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
           <Label>Filter by Department</Label>

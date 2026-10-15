@@ -37,8 +37,7 @@ export function SearchableSelect({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return options
-    return options.filter((o) => o.toLowerCase().includes(q))
+    return [...new Set(options)].filter((o) => !q || o.toLowerCase().includes(q)).sort((a,b) => a.localeCompare(b, undefined, {sensitivity:'base',numeric:true}))
   }, [options, query])
 
   const exactMatch = useMemo(() => {

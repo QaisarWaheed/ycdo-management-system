@@ -401,8 +401,8 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
     expect(after.basicStipend).toBe(800);
   });
 
-  // ABSENT loses its own pay and adds the Card absence penalty.
-  it('2: PRESENT -> ABSENT removes paid Basic and adds one daily-rate penalty', async () => {
+  // Informed ABSENT loses only its own pay.
+  it('2: PRESENT -> ABSENT removes only one day of paid Basic', async () => {
     const db = new FakeDb();
     seedEmployee(db);
     const sr = seedStipend(db, 24800, new Date(Date.UTC(2000, 0, 1)), null);
@@ -423,7 +423,7 @@ describe('PayrollService.recomputePendingPayrollForAttendanceDate', () => {
 
     expect(afterPresent).toBe(1600);
     expect(afterAbsent).toBe(800);
-    expect([...db.payrollEntries.values()][0].totalDeductions).toBe(800);
+    expect([...db.payrollEntries.values()][0].totalDeductions).toBe(0);
   });
 
   // 3. Historical August correction made later recomputes August, not the

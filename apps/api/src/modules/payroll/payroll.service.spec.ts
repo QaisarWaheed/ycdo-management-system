@@ -320,7 +320,7 @@ describe('PayrollService.computeHourlyBreakdown — Attendance Card status credi
     expect(b.paidLeaveMinutes).toBe(FULL_DAY_MINUTES);
     expect(b.workedMinutes).toBe(0);
   });
-  it('G: ABSENT and UNINFORMED_ABSENT earn zero with one extra day-rate penalty each', async () => {
+  it('G: both absences earn zero, only UNINFORMED_ABSENT has an extra day-rate penalty', async () => {
     const logs = [
       buildLog(3, AttendanceStatus.ABSENT),
       buildLog(4, AttendanceStatus.UNINFORMED_ABSENT),
@@ -328,14 +328,14 @@ describe('PayrollService.computeHourlyBreakdown — Attendance Card status credi
     const withoutDeduction = await computeBreakdown(logs);
     expect(withoutDeduction.policyCreditMinutes).toBe(0);
     expect(withoutDeduction.workedMinutes).toBe(0);
-    expect(withoutDeduction.disciplineDeductions).toBe(1600);
+    expect(withoutDeduction.disciplineDeductions).toBe(800);
     expect(withoutDeduction.payrollBasicStipend).toBe(0);
     const withDeduction = await computeBreakdown(logs, {
       existingDeductions: [{ amount: 1600 }],
     });
     expect(withDeduction.policyCreditMinutes).toBe(withoutDeduction.policyCreditMinutes);
     expect(withDeduction.hourlyBasicEarned).toBe(withoutDeduction.hourlyBasicEarned);
-    expect(withDeduction.disciplineDeductions).toBe(3200);
+    expect(withDeduction.disciplineDeductions).toBe(2400);
     expect(withDeduction.netStipend).toBe(
       Math.max(0, Math.round((withoutDeduction.netStipend - 1600) * 100) / 100),
     );
@@ -817,8 +817,8 @@ describe('PayrollService — contractual PayrollEntry basic stipend', () => {
     expect(b.creditedAttendanceDays).toBe(25);
     const expectedBasic = roundMoney(100000 * 25 / 31);
     expect(b.payrollBasicStipend).toBe(expectedBasic);
-    expect(b.disciplineDeductions).toBe(6451.61);
-    expect(b.netStipend).toBe(roundMoney(expectedBasic - 6451.61));
+    expect(b.disciplineDeductions).toBe(0);
+    expect(b.netStipend).toBe(expectedBasic);
   });
 
   it('E: mid-month stipend start earns only the two stored PRESENT dates', async () => {

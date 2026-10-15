@@ -5,12 +5,14 @@ jest.mock('../attendance/discipline.helper', () => ({ repairLateDisciplineForPay
 const card = { calendarDays: 31, present: 27, absent: 1, uninformedAbsent: 0, late: 3, halfDay: 0, shortLeave: 0, onLeave: 0, paidLeaveDays: 0, unpaidLeaveDays: 0, holiday: 0, swapCovered: 0, unmarked: 0, additionalWorkingDays: 1, overtimeHours: 8, missingDates: [], days: [], paidLeaveDateKeys: [], risks: [] };
 function setup(status = 'PENDING') {
   let deductions = [{id:'old', reason:'UNINFORMED_ABSENCE',description:'Absent without approved leave (2 days stipend)',amount:2000}, {id:'fine', reason:'DISCIPLINARY_FINE',description:'Inquiry fine — case',amount:100}];
+  let deductionId = 0;
   let allowances = [{id:'old-ot',type:'OVERTIME',amount:9999}];
   let entry: any = {id:'entry',status,basicStipend:31000,totalDeductions:2100,totalAllowances:9999,netStipend:38899};
   const view = () => ({...entry,deductions,allowances});
   const prisma:any = {
+    letter: {findMany:jest.fn(async()=>[])},
     payrollEntry: {findFirst:jest.fn(async()=>null),findUnique:jest.fn(async()=>view()),findUniqueOrThrow:jest.fn(async()=>view()),update:jest.fn(async({data})=>{entry={...entry,...data};return view();})},
-    payrollDeduction:{deleteMany:jest.fn(async({where})=>{deductions=deductions.filter(d=>!where.id.in.includes(d.id));}),create:jest.fn(async({data})=>{const row={id:'d'+deductions.length,...data};deductions.push(row);return row;})},
+    payrollDeduction:{findFirst:jest.fn(async({where})=>deductions.find(d=>d.description.startsWith(where.description.startsWith))??null),deleteMany:jest.fn(async({where})=>{deductions=deductions.filter(d=>!where.id.in.includes(d.id));}),create:jest.fn(async({data})=>{const row={id:'d'+(++deductionId),...data};deductions.push(row);return row;})},
     allowance:{deleteMany:jest.fn(async({where})=>{allowances=allowances.filter(a=>!where.id.in.includes(a.id));}),create:jest.fn(async({data})=>{const row={id:'a'+allowances.length,...data};allowances.push(row);return row;})},
   };
   const svc:any=new PayrollService(prisma,{} as any);
@@ -43,12 +45,26 @@ describe('Card is the only attendance financial owner',()=>{
   });
   it('replaces legacy attendance amounts once, preserves fixed manual fine, and is repeatable',async()=>{
     const {run,view}=setup(); await run(); const a=view();
-    // 30 paid days - 1 extra absence DR - 1 late DR + AWD + 8 OT hours - manual fine.
-    expect(a.netStipend).toBe(29900);
+    // 30 paid days - 1 late DR + AWD + 8 OT hours - manual fine.
+    expect(a.netStipend).toBe(30900);
     expect(a.deductions.find(d=>d.id==='fine')).toBeDefined();
-    expect(a.deductions).toHaveLength(3);
+    expect(a.deductions).toHaveLength(2);
     expect(a.allowances).toHaveLength(2);
-    await run(); expect(view().netStipend).toBe(29900); expect(view().deductions).toHaveLength(3); expect(view().allowances).toHaveLength(2);
+    await run(); expect(view().netStipend).toBe(30900); expect(view().deductions).toHaveLength(2); expect(view().allowances).toHaveLength(2);
+  });
+  it('collects previously sent uniform/custom fines and never doubles them on rebuild',async()=>{
+    const {run,view,prisma}=setup();
+    prisma.letter.findMany.mockResolvedValue([
+      {id:'uniform',employeeId:'e',letterType:'FINE',generatedAt:new Date('2026-08-05'),letterNo:'10/YCDO/2026',variables:{finePreset:'UNIFORM',fineAmount:'200/-',deductionMonth:'August 2026'}},
+      {id:'custom',employeeId:'e',letterType:'EXPLANATION_FINE',generatedAt:new Date('2026-08-06'),letterNo:'11/YCDO/2026',variables:{fineReason:'Custom reason',fineAmount:'500',deductionMonth:'August 2026'}},
+      {id:'other-month',employeeId:'e',letterType:'FINE',generatedAt:new Date('2026-08-06'),variables:{fineAmount:'999',payrollFineMonth:'2026-09'}},
+    ]);
+    await run();
+    expect(view().netStipend).toBe(30200);
+    expect(view().deductions.filter(d=>d.description.startsWith('Letter fine ['))).toHaveLength(2);
+    await run();
+    expect(view().netStipend).toBe(30200);
+    expect(view().deductions.filter(d=>d.description.startsWith('Letter fine ['))).toHaveLength(2);
   });
   it.each(['PAID','PROCESSED'])('does not rewrite %s',async status=>{const {run,prisma}=setup(status);await run();expect(prisma.payrollEntry.update).not.toHaveBeenCalled();});
   it('rejects recomputation alongside a frozen sibling before financial writes',async()=>{

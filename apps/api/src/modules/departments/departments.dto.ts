@@ -20,6 +20,10 @@ export class UpdateDepartmentDto extends PartialType(CreateDepartmentDto) {}
 export class DepartmentQueryDto {
   @IsOptional()
   @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsString()
   branchId?: string;
 
   @IsOptional()

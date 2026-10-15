@@ -61,8 +61,8 @@ describe('AttendanceService remaining write-path eligibility', () => {
     expect(prisma.attendanceLog.update).not.toHaveBeenCalled();
   });
 
-  it('relieverCheckOut rejects APPOINTED', async () => {
-    const { service, prisma } = makeService(EmployeeStatus.APPOINTED);
+  it('relieverCheckOut rejects PENDING_APPROVAL', async () => {
+    const { service, prisma } = makeService(EmployeeStatus.PENDING_APPROVAL);
 
     await expect(
       service.relieverCheckOut({ sessionId: 'sess-1' }, 'user-1'),

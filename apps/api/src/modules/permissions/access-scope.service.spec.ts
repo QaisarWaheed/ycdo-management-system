@@ -109,32 +109,11 @@ describe('AccessScopeService helpers', () => {
         designation: 'PHARMACY INCHARGE',
       }),
     ).toEqual({
-      OR: [
-        {
-          currentDepartmentId: 'dept-pharm',
-          currentDesignation: {
-            equals: 'PHARMACY INCHARGE',
-            mode: 'insensitive',
-          },
-        },
-        {
-          user: {
-            managerScopes: {
-              some: {
-                isActive: true,
-                project: { type: ProjectType.HOSPITAL },
-                departmentId: 'dept-pharm',
-                designation: {
-                  title: {
-                    equals: 'PHARMACY INCHARGE',
-                    mode: 'insensitive',
-                  },
-                },
-              },
-            },
-          },
-        },
-      ],
+      currentDepartmentId: 'dept-pharm',
+      currentDesignation: {
+        equals: 'PHARMACY INCHARGE',
+        mode: 'insensitive',
+      },
     });
   });
 

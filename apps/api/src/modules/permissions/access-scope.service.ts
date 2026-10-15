@@ -183,8 +183,8 @@ export class AccessScopeService {
   }
 
   /**
-   * Department/designation list filters match either actual employee placement
-   * or an active hospital manager scope on the linked user account.
+   * Department/designation list filters match actual employee placement.
+   * Authorization scopes are applied separately by employeeListWhere.
    */
   employeeMatchesDepartmentDesignationFilter(filters: {
     departmentId?: string;
@@ -205,33 +205,8 @@ export class AccessScopeService {
       };
     }
 
-    const scopeClause: Prisma.UserManagerScopeWhereInput = {
-      isActive: true,
-      project: { type: ProjectType.HOSPITAL },
-    };
-    if (departmentId) {
-      scopeClause.departmentId = departmentId;
-    }
-    if (designation) {
-      // Department-wide scopes (no designation) count for department filters only.
-      // For designation filters, require an exact designation-title match.
-      scopeClause.designation = {
-        title: { equals: designation, mode: 'insensitive' },
-      };
-    }
-
-    return {
-      OR: [
-        actual,
-        {
-          user: {
-            managerScopes: {
-              some: scopeClause,
-            },
-          },
-        },
-      ],
-    };
+    // Placement filters describe the employee's assignment, never their access scopes.
+    return actual;
   }
 
   /**

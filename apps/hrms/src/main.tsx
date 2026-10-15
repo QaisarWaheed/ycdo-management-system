@@ -18,6 +18,10 @@ const queryClient = new QueryClient({
   },
 })
 
+for (const key of ['departments', 'designations']) {
+  queryClient.setQueryDefaults([key], { staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: 'always' })
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

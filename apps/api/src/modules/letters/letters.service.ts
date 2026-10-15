@@ -1,3 +1,5 @@
+import { CUSTOM_LETTER_TEMPLATE } from './custom-letter.template';
+import { applyLetterFine, letterFine, LETTER_FINE_PREFIX } from './letter-fine.util';
 import { lockPayrollEmployee, withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
 import {
   BadRequestException,
@@ -837,15 +839,15 @@ export class LettersService implements OnModuleInit {
       );
     }
 
-    if (letterType === LetterType.CUSTOM && !templateCodeOverride) {
-      throw new BadRequestException(
-        'templateCode is required for CUSTOM letters',
-      );
+    if (letterType === LetterType.CUSTOM && (!templateCodeOverride || templateCodeOverride === 'CUSTOM')) {
+      await this.prisma.letterTemplate.upsert({
+        where: { code: 'CUSTOM' }, update: {}, create: CUSTOM_LETTER_TEMPLATE,
+      });
     }
 
     const code =
       letterType === LetterType.CUSTOM
-        ? templateCodeOverride!
+        ? (templateCodeOverride || 'CUSTOM')
         : templateCodeForLetterType(letterType);
     const template = await this.prisma.letterTemplate.findFirst({
       where: { code, active: true },
@@ -873,6 +875,16 @@ export class LettersService implements OnModuleInit {
     }
 
     const normalized = this.normalizeExtraFields(letterType, extraFields);
+    if ((letterType === LetterType.FINE || letterType === LetterType.EXPLANATION_FINE) &&
+        !normalized.disciplineCategory && !normalized.inquiryId &&
+        !['ABSENT', 'LATE_DEDUCTION'].includes(String(normalized.finePreset)) &&
+        !letterFine({ id: 'preview', employeeId, letterType, generatedAt: new Date(), variables: normalized })) {
+      throw new BadRequestException('Enter a positive numeric payroll fine amount (PKR), for example 500, and a valid deduction month (YYYY-MM).');
+    }
+    if (normalized.payrollFineMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(normalized.payrollFineMonth))) {
+      throw new BadRequestException('Payroll fine month must use YYYY-MM, for example 2026-10.');
+    }
+
 
     const requiredMissing: string[] = [];
     for (const key of template.requiredVars) {
@@ -931,6 +943,7 @@ export class LettersService implements OnModuleInit {
         : '',
       ...normalized,
       letterNo,
+      templateName: template.name,
       letterRef: buildLetterRef(letterType, letterNo, template.letterCode),
       // Prefer HR-typed overrides (set after spread so they win over empties).
       // Urdu letter types get an auto-transliterated/translated fallback from
@@ -1786,7 +1799,7 @@ export class LettersService implements OnModuleInit {
       acknowledgement: true,
     } as const;
 
-    const txResult = await this.prisma.$transaction(async (tx) => {
+    const txResult = await withPayrollEmployeeTransaction(this.prisma, letter.employeeId, async (tx) => {
       const current = await tx.letter.findUnique({
         where: { id: letterId },
         include: letterEmployeeInclude,
@@ -1797,6 +1810,7 @@ export class LettersService implements OnModuleInit {
       if (current.status === LetterStatus.REVERSED) {
         throw new BadRequestException('Cannot send a reversed letter');
       }
+      await applyLetterFine(tx, current);
       if (current.status === LetterStatus.SENT) {
         return { alreadySent: true as const, letter: current };
       }
@@ -2388,6 +2402,7 @@ export class LettersService implements OnModuleInit {
   private async tryUnwindFineDeduction(
     tx: Prisma.TransactionClient,
     letter: {
+      id?: string;
       employeeId: string;
       letterType: LetterType;
       variables: unknown;
@@ -2410,9 +2425,9 @@ export class LettersService implements OnModuleInit {
         reason: {
           in: [DeductionType.DISCIPLINARY_FINE, DeductionType.LATE_ARRIVAL],
         },
-        ...(incidentDate
-          ? { description: { contains: incidentDate } }
-          : {}),
+        ...(letter.id && letterFine({ ...letter, id: letter.id })
+          ? { description: { startsWith: `${LETTER_FINE_PREFIX}${letter.id}]` } }
+          : incidentDate ? { description: { contains: incidentDate } } : {}),
       },
       include: {
         payrollEntry: {

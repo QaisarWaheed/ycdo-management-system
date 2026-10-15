@@ -550,3 +550,9 @@ export class ActiveShiftQueryDto {
   @IsString()
   departmentId?: string;
 }
+
+export class StatusCommunicationDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}

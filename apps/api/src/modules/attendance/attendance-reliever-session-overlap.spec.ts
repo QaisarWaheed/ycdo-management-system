@@ -67,7 +67,7 @@ function makeService(opts: {
   };
   const prisma = {
     relieverSession: {
-      findUnique: jest.fn().mockResolvedValue(opts.session),
+      findUnique: jest.fn().mockResolvedValue({ ...opts.session, employee: { status: 'ACTIVE' } }),
       findMany: findManyCall,
     },
     $transaction: jest.fn(async (cb: any) => cb(tx)),
@@ -276,7 +276,7 @@ describe('AttendanceService.updateRelieverSession — overlap validation', () =>
       auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
     const prisma = {
-      relieverSession: { findUnique: jest.fn().mockResolvedValue(session), findMany: findManyCall },
+      relieverSession: { findUnique: jest.fn().mockResolvedValue({ ...session, employee: { status: 'ACTIVE' } }), findMany: findManyCall },
       $transaction: jest.fn(async (cb: any) => cb(tx)),
     };
     const payrollService = { recomputePendingPayrollForAttendanceDate: jest.fn().mockResolvedValue(undefined) };

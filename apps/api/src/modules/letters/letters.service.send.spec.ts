@@ -59,7 +59,8 @@ describe('LettersService.sendLetter', () => {
       letterNo: '1/YCDO/2026',
       fileUrl: '/uploads/letters/x.pdf',
       replyDeadline: null,
-      variables: {},
+      generatedAt: new Date('2026-10-15T10:00:00Z'),
+      variables: letterType === LetterType.FINE ? {fineAmount: '200', payrollFineMonth: '2026-10'} : {},
       content,
       employee: employeeEmbed,
       acknowledgement: null,
@@ -111,6 +112,9 @@ describe('LettersService.sendLetter', () => {
     let letterRow = { ...letter };
 
     const tx = {
+      $queryRaw: jest.fn(),
+      payrollDeduction: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      payrollEntry: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       letter: {
         findUnique: jest.fn().mockImplementation(async () => letterRow),
         update: jest.fn().mockImplementation(async () => {

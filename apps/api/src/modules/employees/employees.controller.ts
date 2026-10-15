@@ -22,6 +22,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import {
   ActiveShiftQueryDto,
   ChangeStatusDto,
+  StatusCommunicationDto,
   CreateEmployeeDto,
   EmployeeQueryDto,
   ToggleHideProfilePhotoDto,
@@ -336,6 +337,14 @@ export class EmployeesController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
   transfer(@Param('id') id: string, @Body() dto: TransferDto) {
     return this.employeesService.transfer(id, dto);
+  }
+
+  @Post(':id/status-communication')
+  @RoutePermission(Permission.LETTERS_GENERATE)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_ADMIN_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
+  generateStatusCommunication(@Param('id') id: string, @Body() dto: StatusCommunicationDto,
+    @CurrentUser() user: {id: string; role: UserRole}) {
+    return this.employeesService.generateStatusCommunication(id, dto.reason, user);
   }
 
   @Patch(':id/status')

@@ -1,4 +1,7 @@
+import { useEffect, useRef } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '@/hooks/useAuth'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 import JobsPublicPage from '@/pages/careers/JobsPublicPage'
 import JobDetailPublicPage from '@/pages/careers/JobDetailPublicPage'
@@ -43,6 +46,15 @@ import { BiometricIdsPage } from '@/pages/employees/BiometricIdsPage'
 import { PortalLoginStatusPage } from '@/pages/portal/PortalLoginStatusPage'
 
 export default function App() {
+  const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const previousUserId = useRef<string | null>(user?.id ?? null)
+  useEffect(() => {
+    const nextUserId = user?.id ?? null
+    if (previousUserId.current !== nextUserId) queryClient.clear()
+    previousUserId.current = nextUserId
+  }, [queryClient, user?.id])
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

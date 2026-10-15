@@ -87,8 +87,20 @@ describe('LettersService.generateSystemLetter draft-until-send', () => {
       whatsappService as never,
     );
 
-    return { service, tx, whatsappService, created };
+    return { service, tx, whatsappService, created, prisma };
   }
+
+  it('generates a custom draft from subject and free text without an admin template', async () => {
+    const { service, tx, prisma } = build();
+    const { CUSTOM_LETTER_TEMPLATE } = await import('./custom-letter.template');
+    Object.assign(prisma.letterTemplate, { upsert: jest.fn().mockResolvedValue({}) });
+    prisma.letterTemplate.findFirst.mockResolvedValue({ ...CUSTOM_LETTER_TEMPLATE, id: 'custom', version: 1 } as never);
+    const result = await service.generateSystemLetter({ employeeId, letterType: LetterType.CUSTOM,
+      extraFields: { subject: 'Office notice', letterBody: 'First line\nSecond line' } }, 'user-hr');
+    expect(result.letter).toMatchObject({ status: 'DRAFT', templateCode: 'CUSTOM', variables: expect.objectContaining({ subject: 'Office notice', letterBody: 'First line\nSecond line' }) });
+    expect(result.previewHtml).toContain('Office notice');
+    expect(tx.notification.create).not.toHaveBeenCalled();
+  });
 
   it('keeps REINSTATEMENT as DRAFT and does not WhatsApp or notify', async () => {
     const { service, tx, created } = build();

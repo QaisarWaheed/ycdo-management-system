@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
-import puppeteer, { type Browser, type Page } from 'puppeteer';
+import type { Browser, Page } from 'puppeteer';
 import {
   COMPUTER_GENERATED_NOTICE,
   appendComputerGeneratedNotice,
@@ -43,6 +43,8 @@ function resolveChromePath(): string | undefined {
 }
 
 async function launchBrowser(): Promise<Browser> {
+  // Load the ESM browser dependency only when a PDF/image actually needs it.
+  const { default: puppeteer } = await import('puppeteer');
   const executablePath = resolveChromePath();
   return puppeteer.launch({
     ...(executablePath ? { executablePath } : {}),

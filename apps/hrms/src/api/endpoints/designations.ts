@@ -9,6 +9,7 @@ export interface Designation {
 }
 
 export interface DesignationQueryParams {
+  search?: string
   category?: string
   categories?: string
   department?: string

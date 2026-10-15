@@ -79,6 +79,7 @@ export function deductionReportLabel(d: {
       return 'Early checkout';
     if (desc.startsWith(CARD_MISSING_CHECKOUT_DESCRIPTION))
       return 'Missed checkout';
+    if (desc.startsWith('Letter fine [')) return desc.replace(/^Letter fine \[[^\]]+\] /, 'Letter fine ');
     return 'Disciplinary fine';
   }
   if (d.reason === 'UNINFORMED_ABSENCE') return 'Absence';

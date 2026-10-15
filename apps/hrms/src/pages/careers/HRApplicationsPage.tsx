@@ -1,3 +1,4 @@
+import { AlphabeticalSelect } from '@/components/ui/alphabetical-select'
 import { useEffect, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { hrCareersApi, type CareerApplication } from '../../api/endpoints/careers'
@@ -98,7 +99,7 @@ export default function HRApplicationsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <select
+                  <AlphabeticalSelect
                     className="text-sm border rounded-md px-2 py-1"
                     value={app.status}
                     disabled={updatingId === app.id}
@@ -106,7 +107,7 @@ export default function HRApplicationsPage() {
                     onChange={(e) => handleStatusChange(app.id, e.target.value as AppStatus)}
                   >
                     {ALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  </AlphabeticalSelect>
                   {expandedId === app.id ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                 </div>
               </div>

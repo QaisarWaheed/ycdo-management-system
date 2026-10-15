@@ -2794,6 +2794,8 @@ function StipendReceiptStatusBadge({ status }: { status: StipendStatus }) {
 function StipendReceiptsTab() {
   const queryClient = useQueryClient()
   const now = new Date()
+  now.setDate(1)
+  now.setMonth(now.getMonth() - 1)
   const [monthYear, setMonthYear] = useState({
     month: now.getMonth() + 1,
     year: now.getFullYear(),

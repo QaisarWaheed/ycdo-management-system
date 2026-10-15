@@ -67,6 +67,7 @@ export function DesignationSearchSelect({
     for (const d of filtered) {
       const list = map.get(d.category) ?? []
       list.push(d)
+      list.sort((a,b) => a.title.localeCompare(b.title))
       map.set(d.category, list)
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
@@ -100,7 +101,7 @@ export function DesignationSearchSelect({
 
   const handleFocus = () => {
     if (disabled) return
-    setSearch(value ?? '')
+    setSearch('')
     setOpen(true)
   }
 

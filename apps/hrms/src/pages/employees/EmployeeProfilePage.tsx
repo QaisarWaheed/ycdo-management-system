@@ -78,6 +78,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { AlphabeticalSelect } from '@/components/ui/alphabetical-select'
 import {
   Select,
   SelectContent,
@@ -118,6 +119,7 @@ import type {
   PreviousEmployment,
   QualType,
   StipendRecord,
+  LETTER_TYPES,
 } from '@/types'
 
 const IT_PROFILE_ROLES = ['SUPER_ADMIN', 'IT_ADMIN'] as const
@@ -712,6 +714,8 @@ export function EmployeeProfilePage() {
   const [editJobOpen, setEditJobOpen] = useState(false)
   const [prevEmpOpen, setPrevEmpOpen] = useState(false)
   const [incentiveOpen, setIncentiveOpen] = useState(false)
+  const [profileMonth, setProfileMonth] = useState('')
+  const [letterCategory, setLetterCategory] = useState('ALL')
   const [faceSyncOpen, setFaceSyncOpen] = useState(false)
   const [attendanceToEdit, setAttendanceToEdit] =
     useState<AttendanceLog | null>(null)
@@ -866,8 +870,17 @@ export function EmployeeProfilePage() {
   })
 
   const { data: letters = [], isLoading: loadingLetters } = useQuery({
-    queryKey: ['letters', id],
-    queryFn: () => lettersApi.getAll({ employeeId: id }),
+    queryKey: ['letters', id, profileMonth, letterCategory],
+    queryFn: () => {
+      const params: Record<string, unknown> = { employeeId: id }
+      if (profileMonth) {
+        const [y, m] = profileMonth.split('-').map(Number)
+        params.startDate = `${profileMonth}-01`
+        params.endDate = new Date(y, m, 0, 23, 59, 59).toISOString()
+      }
+      if (letterCategory !== 'ALL') params.letterType = letterCategory
+      return lettersApi.getAll(params)
+    },
     enabled: !!id,
   })
 
@@ -912,6 +925,10 @@ export function EmployeeProfilePage() {
     (sum, i) => sum + Number(i.amount),
     0,
   )
+  const visibleIncentives = (incentives as Incentive[]).filter((item) =>
+    !profileMonth || `${item.year}-${String(item.month).padStart(2, '0')}` === profileMonth,
+  )
+  const visibleIncentiveTotal = visibleIncentives.reduce((sum, item) => sum + Number(item.amount), 0)
 
   const deletePrevEmpMutation = useMutation({
     mutationFn: (recordId: string) => previousEmploymentApi.delete(recordId),
@@ -1199,6 +1216,7 @@ export function EmployeeProfilePage() {
 
   const canHrJobActions = isHrTeam
   const canOverrideSuspendedStatus = hasRole([...IT_PROFILE_ROLES])
+  const [statusCommunicationPending, setStatusCommunicationPending] = useState(false)
 
   const canEditBranchDuty =
     canHrJobActions && user?.employeeId !== employee.id
@@ -1591,6 +1609,27 @@ export function EmployeeProfilePage() {
                 onClick={() => setStatusOpen(true)}
               >
                 Change Status
+              </Button>
+            )}
+            {canHrJobActions && employee.status !== 'PENDING_APPROVAL' && (
+              <Button
+                variant="outline"
+                className="w-full"
+                disabled={statusCommunicationPending}
+                onClick={async () => {
+                  setStatusCommunicationPending(true)
+                  try {
+                    await employeesApi.generateStatusCommunication(employee.id)
+                    queryClient.invalidateQueries({ queryKey: ['letters'] })
+                    toast({ title: 'Status communication generated' })
+                  } catch {
+                    toast({ title: 'Could not generate status communication', variant: 'destructive' })
+                  } finally {
+                    setStatusCommunicationPending(false)
+                  }
+                }}
+              >
+                {statusCommunicationPending ? 'Generating...' : 'Generate Status Letter / Notification'}
               </Button>
             )}
             {canHrJobActions && employee.status === 'PENDING_APPROVAL' && (
@@ -2491,6 +2530,10 @@ export function EmployeeProfilePage() {
         </TabsContent>
 
         <TabsContent value="letters" className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div><Label htmlFor="profile-letter-month">Month</Label><Input id="profile-letter-month" type="month" value={profileMonth} onChange={(e) => setProfileMonth(e.target.value)} /></div>
+            <div><Label htmlFor="profile-letter-category">Category</Label><AlphabeticalSelect id="profile-letter-category" value={letterCategory} onChange={(e) => setLetterCategory(e.target.value)}><option value="ALL">All categories</option>{LETTER_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</AlphabeticalSelect></div>
+          </div>
           <Button
             className="bg-primary hover:bg-primary-dark"
             onClick={() => setLetterOpen(true)}
@@ -2528,7 +2571,7 @@ export function EmployeeProfilePage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      letters.map((letter) => {
+                        letters.map((letter) => {
                         const status = letterStatus(letter)
                         return (
                           <TableRow
@@ -2996,7 +3039,7 @@ export function EmployeeProfilePage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(incentives as Incentive[]).length === 0 ? (
+                    {visibleIncentives.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="text-text-secondary">
                           No incentives recorded
@@ -3004,7 +3047,7 @@ export function EmployeeProfilePage() {
                       </TableRow>
                     ) : (
                       <>
-                        {(incentives as Incentive[]).map((item) => (
+                        {visibleIncentives.map((item) => (
                           <TableRow key={item.id}>
                             <TableCell>
                               {item.month}/{item.year}
@@ -3026,7 +3069,7 @@ export function EmployeeProfilePage() {
                         <TableRow className="bg-surface font-semibold">
                           <TableCell>Total</TableCell>
                           <TableCell className="text-green-600">
-                            PKR {incentiveTotal.toLocaleString('en-PK')}
+                            PKR {visibleIncentiveTotal.toLocaleString('en-PK')}
                           </TableCell>
                           <TableCell colSpan={3} />
                         </TableRow>

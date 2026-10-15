@@ -3,7 +3,7 @@ const card = (changes = {}) => ({ calendarDays: 31, present: 31, absent: 0, unin
 describe('August Card salary', () => {
   it.each([
     ['Present', {}, 31000],
-    ['Absent exactly 2 DR impact', { present: 30, absent: 1 }, 29000],
+    ['Informed absent exactly 1 DR impact', { present: 30, absent: 1 }, 30000],
     ['UA exactly 2 DR impact', { present: 30, uninformedAbsent: 1 }, 29000],
     ['3 Late', { present: 28, late: 3 }, 30000],
     ['6 Late', { present: 25, late: 6 }, 29000],
@@ -16,7 +16,7 @@ describe('August Card salary', () => {
     ['Swap', { present: 30, swapCovered: 1 }, 31000],
     ['AWD', { additionalWorkingDays: 1 }, 32000],
     ['OT', { overtimeHours: 8 }, 32000],
-    ['combination', { present: 22, absent: 1, uninformedAbsent: 1, late: 3, halfDay: 1, shortLeave: 1, holiday: 1, unmarked: 1, additionalWorkingDays: 1 }, 25500],
+    ['combination', { present: 22, absent: 1, uninformedAbsent: 1, late: 3, halfDay: 1, shortLeave: 1, holiday: 1, unmarked: 1, additionalWorkingDays: 1 }, 26500],
   ])('%s', (_label, changes, expected) => expect(calculateCardSalary(card(changes), 31000, 8).attendanceSalary).toBe(expected));
   it('rejects double classifications', () => expect(() => calculateCardSalary(card({ holiday: 1 }), 31000, 8)).toThrow());
   it('preserves manual fine but identifies duplicate attendance rows', () => {

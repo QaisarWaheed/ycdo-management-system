@@ -1,3 +1,5 @@
+import { statusLetterTemplate } from '../letters/status-letter.template';
+import { toPakistanDateOnly } from '../attendance/attendance-late.util';
 import { withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
 import { seedLegacyPackageAllowances } from '../allowances/package-allowances.util';
 import {
@@ -32,6 +34,7 @@ import {
   LeaveStatus,
   MaritalStatus,
   Prisma,
+  Permission,
   StaffType,
   SuspensionRequestStatus,
   UserRole,
@@ -1242,6 +1245,27 @@ export class EmployeesService {
         },
       },
     });
+  }
+
+  async generateStatusCommunication(id: string, reason: string | undefined, actor: {id: string; role: UserRole}) {
+    await this.accessScopeService.assertEmployeeAccess(actor.id, actor.role, Permission.LETTERS_GENERATE, id);
+    const employee = await this.findOne(id);
+    if (employee.status === EmployeeStatus.PENDING_APPROVAL) throw new BadRequestException('Pending Approval does not have a status letter or notification.');
+    const label = employee.status.replace(/_/g, ' ');
+    const template = statusLetterTemplate(employee.status);
+    const effectiveDate = employee.statusEffectiveFrom ?? new Date();
+    if (template) {
+      await this.prisma.letterTemplate.upsert({where: {code: template.code}, update: {}, create: template});
+      return this.lettersService.generateSystemLetter({employeeId: id, letterType: LetterType.CUSTOM,
+        templateCode: template.code, extraFields: {staffStatus: employee.status, staffStatusLabel: label,
+          statusReason: reason?.trim() || `Employee status: ${label}`,
+          statusEffectiveDate: toPakistanDateOnly(effectiveDate).toISOString().slice(0,10),
+        }}, actor.id);
+    }
+    const notification = await this.prisma.notification.create({data: {employeeId: id,
+      type: 'EMPLOYEE_STATUS_CHANGED', message: `Your employment status is ${label}.${reason?.trim() ? ' ' + reason.trim() : ''}`,
+    }});
+    return {notification};
   }
 
   async changeStatus(

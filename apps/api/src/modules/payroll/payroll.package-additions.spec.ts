@@ -24,6 +24,7 @@ describe('global stored package additions to generated Card salary and payslip',
     if (!input.existing) entry = null;
     const view = () => entry && ({ ...entry, allowances, deductions, stipendRecord: { ...pkg, employee } });
     const db: any = {
+      letter: { findMany: jest.fn(async () => []) },
       employee: { findUnique: jest.fn(async () => employee) },
       attendanceLog: { findMany: jest.fn(async () => Array.from({ length: 31 }, (_, i) => ({ date: new Date(Date.UTC(2026, 7, i + 1)), status: 'PRESENT', overtimeMinutes: i === 0 ? (input.ot ?? 0) * 60 : 0, overtimePending: true, overtimeApprovedAt: null, lateMinutes: 0 }))) },
       additionalWorkingDay: { findMany: jest.fn(async () => Array.from({ length: input.awd ?? 0 }, () => ({ date: new Date('2026-08-01') }))) },

@@ -1,3 +1,9 @@
+// These tests cover the post-commit payroll hook; consequence arithmetic is tested separately.
+jest.mock('./discipline.helper', () => ({
+  ...jest.requireActual('./discipline.helper'),
+  reconcileAttendanceFinancialConsequences: jest.fn().mockResolvedValue({}),
+}));
+
 // attendance.service.ts imports discipline.helper.ts, which imports
 // issueAutoTemplatedLetter at module scope, which transitively pulls in
 // puppeteer (ESM-only, breaks Jest's default CommonJS transform). Stub the
@@ -149,6 +155,7 @@ describe('AttendanceService — payroll recompute wiring', () => {
       note: null,
       employee: {
         id: EMP_ID,
+        status: 'ACTIVE',
         fullName: 'Test',
         employeeCode: 'E-1',
         currentBranchId: 'branch-1',
@@ -224,6 +231,7 @@ describe('AttendanceService — payroll recompute wiring', () => {
       note: null,
       employee: {
         id: EMP_ID,
+        status: 'ACTIVE',
         fullName: 'Test',
         employeeCode: 'E-1',
         currentBranchId: 'branch-1',
@@ -304,6 +312,7 @@ describe('AttendanceService — payroll recompute wiring', () => {
       note: null,
       employee: {
         id: EMP_ID,
+        status: 'ACTIVE',
         fullName: 'Test',
         employeeCode: 'E-1',
         currentBranchId: 'branch-1',

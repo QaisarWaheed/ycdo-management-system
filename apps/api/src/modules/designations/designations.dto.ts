@@ -35,6 +35,10 @@ export class UpdateDesignationDto {
 export class DesignationQueryDto {
   @IsOptional()
   @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsString()
   category?: string;
 
   @IsOptional()

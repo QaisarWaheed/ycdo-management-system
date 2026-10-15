@@ -1,3 +1,4 @@
+import { AlphabeticalSelect } from '@/components/ui/alphabetical-select'
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { publicJobsApi, applicantApi, type JobPosting, type AcademicRecord, type Experience } from '../../api/endpoints/careers'
@@ -125,12 +126,12 @@ export default function JobDetailPublicPage() {
                 <div><Label>Date of Birth</Label><Input className="mt-1" type="date" value={bio.dateOfBirth} onChange={(e) => setBio((b) => ({ ...b, dateOfBirth: e.target.value }))} /></div>
                 <div>
                   <Label>Gender</Label>
-                  <select className="mt-1 w-full border rounded-md px-3 py-2 text-sm" value={bio.gender} onChange={(e) => setBio((b) => ({ ...b, gender: e.target.value }))}>
+                  <AlphabeticalSelect className="mt-1 w-full border rounded-md px-3 py-2 text-sm" value={bio.gender} onChange={(e) => setBio((b) => ({ ...b, gender: e.target.value }))}>
                     <option value="">Select</option>
                     <option value="MALE">Male</option>
                     <option value="FEMALE">Female</option>
                     <option value="OTHER">Other</option>
-                  </select>
+                  </AlphabeticalSelect>
                 </div>
                 <div><Label>CNIC</Label><Input className="mt-1" placeholder="XXXXX-XXXXXXX-X" value={bio.cnic} onChange={(e) => setBio((b) => ({ ...b, cnic: e.target.value }))} /></div>
                 <div><Label>City</Label><Input className="mt-1" value={bio.city} onChange={(e) => setBio((b) => ({ ...b, city: e.target.value }))} /></div>

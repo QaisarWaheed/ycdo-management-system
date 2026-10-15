@@ -211,7 +211,7 @@ const titleCase = (s: string) => {
 };
 /** Hand-entered notes only; system text ("Attendance Card: …") is replaced by counts. */
 const humanNote = (d?: string | null) => {
-  const t = (d ?? '').trim();
+  const t = (d ?? '').trim().replace(/^Letter fine \[[^\]]+\] /, 'Letter fine ');
   return t && !t.startsWith('Attendance Card') ? t : undefined;
 };
 
@@ -377,7 +377,6 @@ export function buildPayslipSections(input: {
   const used: Partial<Record<DeductionBucket, number>> = {};
   const every3 = (n: number | undefined, one: string, dates?: string[]) =>
     n ? `${withDates(plural(n, one), dates)} (every 3 = 1 day)` : undefined;
-  const absences = dd ? [...dd.absent, ...dd.uninformedAbsent] : [];
 
   for (const d of deductionRows) {
     const amount = Number(d.amount) || 0;
@@ -385,6 +384,7 @@ export function buildPayslipSections(input: {
     used[bucket] = (used[bucket] ?? 0) + amount;
     const desc = d.description ?? '';
     if (bucket === 'absence') {
+      const absences = dd ? (desc.startsWith('Attendance Card: additional uninformed absence penalty') ? dd.uninformedAbsent : [...dd.absent, ...dd.uninformedAbsent]) : [];
       attendance.push({
         label: 'Absence fine',
         amount,

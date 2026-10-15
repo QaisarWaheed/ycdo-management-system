@@ -2011,7 +2011,7 @@ async function issueMissingCheckoutLetterIfNotAlready(
 
 export type EarlyCheckoutOptions = {
   checkOut: Date;
-  /** Minutes before duty end (already beyond the 15-min grace). */
+  /** Minutes before duty end; no early checkout grace. */
   earlyOutMinutes: number;
 };
 

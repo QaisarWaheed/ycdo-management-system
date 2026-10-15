@@ -1,3 +1,4 @@
+import { letterFine, LETTER_FINE_PREFIX } from '../letters/letter-fine.util';
 import {
   buildPayslipDayDetails,
   loadSlipDayFacts,
@@ -1511,12 +1512,25 @@ export class PayrollService {
       dto.year,
     );
     // Missing dates are left unpaid (not counted as Absent); payroll proceeds with the data available.
+    const issuedFineLetters = await this.prisma.letter.findMany({
+      where: { employeeId: dto.employeeId, status: 'SENT', letterType: { in: [LetterType.FINE, LetterType.EXPLANATION_FINE] } },
+    });
+    const letterFines = issuedFineLetters.map(letterFine).filter(fine =>
+      fine !== null && fine.month === dto.month && fine.year === dto.year);
+    const newLetterFines: NonNullable<ReturnType<typeof letterFine>>[] = [];
+    if (applyContractualPackage) for (const fine of letterFines) {
+      if (!fine) continue;
+      const existing = await this.prisma.payrollDeduction.findFirst({ where: {
+        description: { startsWith: `${LETTER_FINE_PREFIX}${fine.letterId}]` }, payrollEntry: { stipendRecord: { employeeId: dto.employeeId } },
+      } });
+      if (!existing) newLetterFines.push(fine);
+    }
     const context = {
       stipendRecord,
       employee,
       applyContractualPackage,
       attendanceCard,
-      existingDeductions: entry?.deductions ?? [],
+      existingDeductions: [...(entry?.deductions ?? []), ...newLetterFines],
       existingAllowances: entry?.allowances ?? [],
     };
     const breakdown = await this.computeHourlyBreakdown(
@@ -1558,6 +1572,11 @@ export class PayrollService {
         },
         include: { deductions: true, allowances: true },
       });
+    for (const fine of newLetterFines) {
+      await this.prisma.payrollDeduction.create({ data: {
+        payrollEntryId: entry.id, reason: fine.reason, amount: fine.amount, description: fine.description,
+      } });
+    }
     // Card owns all attendance money. Replace legacy managed rows, retain unrelated stored adjustments.
     const legacyDeductions = entry.deductions.filter(
       isLegacyAttendanceDeduction,
@@ -2902,28 +2921,11 @@ export class PayrollService {
       )
         return [item];
 
-      // Presentation only: allocate the stored penalty, never recalculate or add a charge.
-      const description =
-        'Attendance Card: additional absence penalty; the unpaid day is already reflected in earned stipend.';
-      if (!counts.uninformedAbsent)
-        return [{ ...item, reason: 'ABSENCE', description }];
-      if (!counts.absent)
-        return [{ ...item, reason: 'UNINFORMED ABSENCE', description }];
-      const absenceAmount =
-        Math.round(
-          ((item.amount * counts.absent) /
-            (counts.absent + counts.uninformedAbsent) +
-            Number.EPSILON) *
-            100,
-        ) / 100;
-      return [
-        { reason: 'ABSENCE', description, amount: absenceAmount },
-        {
-          reason: 'UNINFORMED ABSENCE',
-          description,
-          amount: Math.round((item.amount - absenceAmount) * 100) / 100,
-        },
-      ];
+      return [{
+        ...item,
+        reason: 'UNINFORMED ABSENCE',
+        description: 'Attendance Card: additional uninformed absence penalty; the unpaid day is already reflected in earned stipend.',
+      }];
     });
 
     const earningsTotal = computeEarningsTotal(earnings);

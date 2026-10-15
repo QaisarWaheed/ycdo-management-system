@@ -94,7 +94,7 @@ export async function rebuildStoredLetterHtml(
     return htmlContent;
   }
 
-  const code = templateCodeForLetterType(letter.letterType);
+  const code = letter.letterType === LetterType.CUSTOM ? (letter.templateCode || 'CUSTOM') : templateCodeForLetterType(letter.letterType);
   const template = await prisma.letterTemplate.findFirst({
     where: { code, active: true },
   });

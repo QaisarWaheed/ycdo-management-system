@@ -322,7 +322,15 @@ export const ruleBookCategories: FlowCategory[] = [
           {
             title: '3 hours later',
             detail:
-              'Still no check-in → upgraded to UNINFORMED_ABSENT. Each day deducts 2 days stipend.',
+              'Still no check-in → upgraded to UNINFORMED_ABSENT. Each uninformed day deducts 2 days stipend; informed ABSENT deducts 1 day.',
+          },
+          {
+            title: 'Check-out after duty end',
+            detail: 'Staff may check out up to 2 hours after scheduled duty end. This does not create overtime; HR records overtime manually. After the window, automatic closure stores scheduled duty end and applies the existing missed-checkout Advice/Warning/Fine cycle (every 3 = 1 day).',
+          },
+          {
+            title: 'Early check-out',
+            detail: 'There is no early check-out grace. Any check-out before duty end follows its own monthly Advice/Warning/Fine cycle (every 3 = 1 day), with a suspension recommendation at the 9th occurrence.',
           },
           {
             title: 'More than 2 days in a month',

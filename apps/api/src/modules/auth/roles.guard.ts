@@ -47,10 +47,7 @@ export class RolesGuard implements CanActivate {
     const { user } = context.switchToHttp().getRequest();
     if (!user?.id) return false;
 
-    const effectiveRoles =
-      (user.roles as UserRole[] | undefined)?.length
-        ? (user.roles as UserRole[])
-        : await this.permissionsService.getUserEffectiveRoles(user.id);
+    const effectiveRoles = await this.permissionsService.getUserEffectiveRoles(user.id);
 
     user.roles = effectiveRoles;
     user.role = user.role ?? effectiveRoles[0];

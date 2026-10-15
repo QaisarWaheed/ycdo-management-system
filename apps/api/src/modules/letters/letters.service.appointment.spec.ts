@@ -48,6 +48,7 @@ describe('LettersService appointment Phase 3A', () => {
     const created: { status?: LetterStatus; letterType?: LetterType; templateCode?: string } = {};
     let claimedStatus: LetterStatus | undefined;
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: employeeId }]),
       letter: {
         create: jest.fn().mockImplementation(async ({ data }: { data: { status: LetterStatus; letterType: LetterType; templateCode?: string } }) => {
           created.status = data.status;
