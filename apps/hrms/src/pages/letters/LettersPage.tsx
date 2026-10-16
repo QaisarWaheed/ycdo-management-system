@@ -1003,7 +1003,7 @@ function PendingLetterShareDialog({
               </p>
               <p>
                 <span className="text-text-secondary">Type: </span>
-                {letterTypeLabel(letter.letterType)}
+                {letterTypeLabel(letter.letterType, letter.templateCode)}
               </p>
               <p>
                 <span className="text-text-secondary">Phone: </span>
@@ -1570,7 +1570,7 @@ export function LettersPage() {
                           variant="outline"
                           className={letterTypeBadgeClass(letter.letterType)}
                         >
-                          {letterTypeLabel(letter.letterType)}
+                          {letterTypeLabel(letter.letterType, letter.templateCode)}
                         </Badge>
                         {letter.letterType === 'APPOINTMENT' &&
                           letter.templateCode && (
@@ -1827,7 +1827,7 @@ export function LettersPage() {
                             variant="outline"
                             className={letterTypeBadgeClass(letter.letterType)}
                           >
-                            {letterTypeLabel(letter.letterType)}
+                          {letterTypeLabel(letter.letterType, letter.templateCode)}
                           </Badge>
                         </TableCell>
                         <TableCell>

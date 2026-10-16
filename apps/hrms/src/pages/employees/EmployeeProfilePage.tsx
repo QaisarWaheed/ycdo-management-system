@@ -2583,7 +2583,7 @@ export function EmployeeProfilePage() {
                             }
                           >
                             <TableCell>
-                              {letterTypeLabel(letter.letterType)}
+                              {letterTypeLabel(letter.letterType, letter.templateCode)}
                             {letter.status && letter.status !== 'SENT' && (
                               <Badge
                                 variant="secondary"

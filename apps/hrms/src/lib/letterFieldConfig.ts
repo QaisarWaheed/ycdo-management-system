@@ -532,7 +532,8 @@ const POSITIVE_TYPES: LetterType[] = [
   'EXPERIENCE',
 ]
 
-export function letterTypeLabel(type: string): string {
+export function letterTypeLabel(type: string, templateCode?: string | null): string {
+  if (type === 'CUSTOM' && templateCode === 'STATUS_ON_REST') return 'Rest Letter'
   if (type === 'SUSPENSION_ELIGIBILITY') return 'اہلیت برائے معطلی'
   if (type === 'NEAR_SUSPENSION_WARNING') {
     return 'تنبیہی نوٹس برائے ممکنہ معطلی'
