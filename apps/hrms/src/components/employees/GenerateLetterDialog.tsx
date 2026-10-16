@@ -64,11 +64,19 @@ export function GenerateLetterDialog({
     [allTemplates],
   )
 
+  const isRestSelection = selectedValue === 'status:ON_REST'
   const isCustomSelection = selectedValue.startsWith('custom:')
-  const customCode = isCustomSelection ? selectedValue.slice('custom:'.length) : undefined
-  const letterType: LetterType = isCustomSelection ? 'CUSTOM' : (selectedValue as LetterType)
+  const customCode = isRestSelection
+    ? 'STATUS_ON_REST'
+    : isCustomSelection ? selectedValue.slice('custom:'.length) : undefined
+  const letterType: LetterType = isRestSelection || isCustomSelection ? 'CUSTOM' : (selectedValue as LetterType)
   const selectedCustomTemplate = customTemplates.find((t) => t.code === customCode)
-  const customFieldDefs = selectedCustomTemplate?.fieldsSchema ?? undefined
+  const customFieldDefs = isRestSelection
+    ? [
+        { key: 'statusReason', label: 'Reason / Details', type: 'textarea' as const, required: true },
+        { key: 'statusEffectiveDate', label: 'Effective Date', type: 'date' as const, required: true },
+      ]
+    : selectedCustomTemplate?.fieldsSchema ?? undefined
 
   const extraFields = getLetterExtraFields(letterType, customFieldDefs)
   const requiredFields = getLetterRequiredFields(letterType, customFieldDefs)
@@ -292,7 +300,8 @@ export function GenerateLetterDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {GENERATE_LETTER_TYPES.map((t) => (
+            <SelectItem value="status:ON_REST">Rest Letter</SelectItem>
+            {GENERATE_LETTER_TYPES.map((t) => (
                   <SelectItem key={t.value} value={t.value}>
                     {t.label}
                   </SelectItem>

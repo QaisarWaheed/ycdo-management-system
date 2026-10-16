@@ -1,4 +1,5 @@
 import { CUSTOM_LETTER_TEMPLATE } from './custom-letter.template';
+import { statusLetterTemplate } from './status-letter.template';
 import { applyLetterFine, letterFine, LETTER_FINE_PREFIX } from './letter-fine.util';
 import { lockPayrollEmployee, withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
 import {
@@ -839,7 +840,14 @@ export class LettersService implements OnModuleInit {
       );
     }
 
-    if (letterType === LetterType.CUSTOM && (!templateCodeOverride || templateCodeOverride === 'CUSTOM')) {
+    if (letterType === LetterType.CUSTOM && templateCodeOverride === 'STATUS_ON_REST') {
+      const restTemplate = statusLetterTemplate(EmployeeStatus.ON_REST);
+      if (restTemplate) {
+        await this.prisma.letterTemplate.upsert({
+          where: { code: restTemplate.code }, update: {}, create: restTemplate,
+        });
+      }
+    } else if (letterType === LetterType.CUSTOM && (!templateCodeOverride || templateCodeOverride === 'CUSTOM')) {
       await this.prisma.letterTemplate.upsert({
         where: { code: 'CUSTOM' }, update: {}, create: CUSTOM_LETTER_TEMPLATE,
       });
