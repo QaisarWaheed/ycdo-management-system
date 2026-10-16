@@ -1,9 +1,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY package.json ./
 
-RUN npm ci --no-audit --no-fund
+RUN npm install --no-package-lock --legacy-peer-deps --no-audit --no-fund
 
 COPY vite.config.ts ./
 COPY tsconfig*.json ./
