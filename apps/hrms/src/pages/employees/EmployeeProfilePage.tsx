@@ -79,6 +79,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { AlphabeticalSelect } from '@/components/ui/alphabetical-select'
+import { LETTER_TYPES } from '@/types'
 import {
   Select,
   SelectContent,
@@ -119,7 +120,6 @@ import type {
   PreviousEmployment,
   QualType,
   StipendRecord,
-  LETTER_TYPES,
 } from '@/types'
 
 const IT_PROFILE_ROLES = ['SUPER_ADMIN', 'IT_ADMIN'] as const
@@ -716,6 +716,7 @@ export function EmployeeProfilePage() {
   const [incentiveOpen, setIncentiveOpen] = useState(false)
   const [profileMonth, setProfileMonth] = useState('')
   const [letterCategory, setLetterCategory] = useState('ALL')
+  const [statusCommunicationPending, setStatusCommunicationPending] = useState(false)
   const [faceSyncOpen, setFaceSyncOpen] = useState(false)
   const [attendanceToEdit, setAttendanceToEdit] =
     useState<AttendanceLog | null>(null)
@@ -1216,7 +1217,6 @@ export function EmployeeProfilePage() {
 
   const canHrJobActions = isHrTeam
   const canOverrideSuspendedStatus = hasRole([...IT_PROFILE_ROLES])
-  const [statusCommunicationPending, setStatusCommunicationPending] = useState(false)
 
   const canEditBranchDuty =
     canHrJobActions && user?.employeeId !== employee.id
