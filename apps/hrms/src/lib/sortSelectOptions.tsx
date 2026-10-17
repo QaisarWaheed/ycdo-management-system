@@ -20,5 +20,16 @@ export function sortSelectOptions(children: ReactNode): ReactNode[] {
     const value = String(node.props.value ?? '')
     return node.props.disabled || /^(all|none|__all__|)$/i.test(value) && !node.props.label ? 0 : 1
   }
+  // Months and weekdays keep their calendar order (January → December, Sunday → Saturday).
+  const labels = mapped.filter((n) => rank(n) === 1).map((n) => label(n).trim().toLowerCase())
+  if (labels.length && labels.every((l) => CALENDAR_LABELS.has(l)))
+    return mapped.sort((a, b) => rank(a) - rank(b))
   return mapped.sort((a,b) => rank(a)-rank(b) || compareOptionLabels(label(a), label(b)))
 }
+
+const CALENDAR_LABELS = new Set([
+  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
+  'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
+  'sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat',
+])

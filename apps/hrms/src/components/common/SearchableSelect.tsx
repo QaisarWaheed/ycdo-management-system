@@ -3,6 +3,14 @@ import { Plus } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
+const MONTH_NAMES = new Set(
+  [
+    'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+    'september', 'october', 'november', 'december',
+    'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
+  ],
+)
+
 export interface SearchableSelectProps {
   options: string[]
   value: string
@@ -38,9 +46,15 @@ export function SearchableSelect({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     // "All …" placeholders stay pinned on top; everything else sorts A–Z.
+    // Month lists keep their calendar order (January → December).
     const isAll = (o: string) => /^all\b/i.test(o)
-    return [...new Set(options)]
-      .filter((o) => !q || o.toLowerCase().includes(q))
+    const unique = [...new Set(options)].filter(
+      (o) => !q || o.toLowerCase().includes(q),
+    )
+    if (unique.length && unique.every((o) => isAll(o) || MONTH_NAMES.has(o.trim().toLowerCase()))) {
+      return unique.sort((a, b) => Number(isAll(b)) - Number(isAll(a)))
+    }
+    return unique
       .sort(
         (a, b) =>
           Number(isAll(b)) - Number(isAll(a)) ||
