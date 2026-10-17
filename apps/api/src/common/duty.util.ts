@@ -180,8 +180,16 @@ export function dutyWindowMismatch(
   if (!start || !end || totalHours == null || totalHours >= 20) return null;
   let window = parseDutyTimeToMinutes(end) - parseDutyTimeToMinutes(start);
   if (window <= 0) window += 1440;
-  if (window < 20 * 60) return null;
-  return `Duty ${start} → ${end} spans ${Math.round(window / 60)} hours but total hours is ${totalHours}. Check the end time (e.g. 10:00 PM is 22:00, midnight is 00:00).`;
+  const hours = Math.round((window / 60) * 10) / 10;
+  if (window >= 20 * 60) {
+    return `Duty ${start} → ${end} spans ${Math.round(window / 60)} hours but total hours is ${totalHours}. Check the end time (e.g. 10:00 PM is 22:00, midnight is 00:00).`;
+  }
+  // Times decide late / checkout rules, total hours decide pay: they must agree
+  // (up to 1 hour for a break), e.g. 08:00 → 20:00 is 12 hours, not 8.
+  if (Math.abs(hours - totalHours) > 1) {
+    return `Duty ${start} → ${end} is ${hours} hours but total hours is ${totalHours}. Make the times and total hours match.`;
+  }
+  return null;
 }
 
 /** Minutes after duty start that are still counted as on time. */

@@ -222,7 +222,10 @@ export function pickDutyCheckout(
 }
 
 /** HR-entered overtime (Point 20): >0 goes PENDING for HR Operations; 0 clears the review. */
-export function hrEnteredOvertimeFields(minutes: number, requestedById: string) {
+export function hrEnteredOvertimeFields(
+  minutes: number,
+  requestedById: string,
+) {
   const pending = minutes > 0;
   return {
     overtimePending: pending,

@@ -26,15 +26,19 @@ function prisma(status: EmployeeStatus, statusEffectiveFrom: Date | null) {
     },
     // Worked 1–10 Oct; a stray PRESENT on 20 Oct (inside the suspension).
     attendanceLog: {
-      findMany: jest.fn().mockResolvedValue([
-        ...Array.from({ length: 10 }, (_, i) => present(i + 1)),
-        present(20),
-      ]),
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          ...Array.from({ length: 10 }, (_, i) => present(i + 1)),
+          present(20),
+        ]),
     },
     additionalWorkingDay: {
       findMany: jest
         .fn()
-        .mockResolvedValue([{ date: new Date(Date.UTC(2026, 9, 25)), relieverSessionId: null }]),
+        .mockResolvedValue([
+          { date: new Date(Date.UTC(2026, 9, 25)), relieverSessionId: null },
+        ]),
     },
   } as never;
 }
@@ -68,7 +72,12 @@ describe('suspension pay cut-off (Point 25)', () => {
   });
 
   it('after reinstatement nothing is paid back automatically (no logs = unpaid)', async () => {
-    const card = await loadAttendanceCard(prisma(EmployeeStatus.ACTIVE, null), 'e1', 10, 2026);
+    const card = await loadAttendanceCard(
+      prisma(EmployeeStatus.ACTIVE, null),
+      'e1',
+      10,
+      2026,
+    );
     // Only the stored days count; the empty suspension days stay unpaid.
     expect(calculateCardSalary(card, 31000, 8).paidDays).toBe(11);
   });

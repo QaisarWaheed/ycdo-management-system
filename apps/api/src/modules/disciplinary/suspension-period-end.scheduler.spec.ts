@@ -19,17 +19,29 @@ describe('SuspensionPeriodEndScheduler (Point 25)', () => {
       user: {
         findMany: jest
           .fn()
-          .mockResolvedValue([{ employeeId: 'hr-1' }, { employeeId: 'hr-2' }, { employeeId: 'hr-1' }]),
+          .mockResolvedValue([
+            { employeeId: 'hr-1' },
+            { employeeId: 'hr-2' },
+            { employeeId: 'hr-1' },
+          ]),
       },
       notification: { create: jest.fn() },
     };
     const prisma = {
       suspensionRequest: {
-        findMany: jest.fn(async () => (request.periodEndAlertedAt ? [] : [request])),
+        findMany: jest.fn(async () =>
+          request.periodEndAlertedAt ? [] : [request],
+        ),
       },
-      $transaction: jest.fn(async (work: (c: typeof tx) => unknown) => work(tx)),
+      $transaction: jest.fn(async (work: (c: typeof tx) => unknown) =>
+        work(tx),
+      ),
     };
-    return { scheduler: new SuspensionPeriodEndScheduler(prisma as never), prisma, tx };
+    return {
+      scheduler: new SuspensionPeriodEndScheduler(prisma as never),
+      prisma,
+      tx,
+    };
   }
 
   it('alerts HR once per ended suspension', async () => {
@@ -43,7 +55,8 @@ describe('SuspensionPeriodEndScheduler (Point 25)', () => {
       data: {
         employeeId: 'hr-1',
         type: 'SUSPENSION_PERIOD_ENDED',
-        message: 'Suspension period ended for Ali Khan (YC-001) on 2026-10-15: reinstate or extend',
+        message:
+          'Suspension period ended for Ali Khan (YC-001) on 2026-10-15: reinstate or extend',
       },
     });
     expect(prisma.suspensionRequest.findMany).toHaveBeenCalledWith(
