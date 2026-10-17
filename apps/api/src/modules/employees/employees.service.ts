@@ -14,6 +14,7 @@ import { inferShiftNameFromDuty } from '../../common/shift-inference.util';
 import { normalizeWeeklyOffWeekdays } from '../attendance/weekly-off.util';
 import {
   DUTY_FILTER_GRACE_MINUTES,
+  dutyWindowMismatch,
   getDutyWindow,
   isOnDutyAt,
   hoursBetweenDutyTimes,
@@ -51,9 +52,7 @@ import {
 import { LettersService } from '../letters/letters.service';
 import { appointmentExtraFieldsFromEmployee } from '../letters/selection-letter.helper';
 import { FaceSyncService } from '../face-sync/face-sync.service';
-import {
-  toPakistanMinutesOfDay,
-} from '../attendance/attendance-late.util';
+import { toPakistanMinutesOfDay } from '../attendance/attendance-late.util';
 import { generateEmployeeCode } from './employee-code.helper';
 import { getHierarchyPriority } from '../../common/hierarchy.util';
 import { enforceBranchScope } from '../../common/branch-scope.util';
@@ -174,8 +173,14 @@ export class EmployeesService {
   }
 
   async create(dto: CreateEmployeeDto, actingUser?: ActingUser) {
-    const actorRoles = [...(actingUser?.roles ?? []), ...(actingUser?.role ? [actingUser.role] : [])] as UserRole[];
-    if (dto.staffType === StaffType.EXISTING && !hasAnyRole(actorRoles, [UserRole.SUPER_ADMIN])) {
+    const actorRoles = [
+      ...(actingUser?.roles ?? []),
+      ...(actingUser?.role ? [actingUser.role] : []),
+    ] as UserRole[];
+    if (
+      dto.staffType === StaffType.EXISTING &&
+      !hasAnyRole(actorRoles, [UserRole.SUPER_ADMIN])
+    ) {
       throw new ForbiddenException('Only Super Admin can add Existing Staff');
     }
     this.validateCreateDto(dto);
@@ -272,8 +277,7 @@ export class EmployeesService {
       fineDeduction,
       healthDeduction,
     });
-    const loginEmail =
-      dto.email || `${employeeCode.toLowerCase()}@ycdo.org`;
+    const loginEmail = dto.email || `${employeeCode.toLowerCase()}@ycdo.org`;
 
     const existingUserEmail = await this.prisma.user.findUnique({
       where: { email: loginEmail },
@@ -462,10 +466,7 @@ export class EmployeesService {
     return { created };
   }
 
-  private isAdminManagerRole(
-    designation: string,
-    userRole?: string,
-  ): boolean {
+  private isAdminManagerRole(designation: string, userRole?: string): boolean {
     if (userRole === 'ADMIN_MANAGER') return true;
     return designation === 'Admin Manager';
   }
@@ -655,17 +656,24 @@ export class EmployeesService {
       where.bloodGroup = filters.bloodGroup;
     }
 
-    if (filters.search) {
+    const search = filters.search?.trim();
+    if (search) {
       andConditions.push({
         OR: [
-          { fullName: { contains: filters.search, mode: 'insensitive' } },
+          { fullName: { contains: search, mode: 'insensitive' } },
           {
-            employeeCode: { contains: filters.search, mode: 'insensitive' },
+            employeeCode: { contains: search, mode: 'insensitive' },
           },
-          { cnic: { contains: filters.search, mode: 'insensitive' } },
+          { cnic: { contains: search, mode: 'insensitive' } },
           {
             currentBranch: {
-              name: { contains: filters.search, mode: 'insensitive' },
+              name: { contains: search, mode: 'insensitive' },
+            },
+          },
+          { currentDesignation: { contains: search, mode: 'insensitive' } },
+          {
+            currentDepartment: {
+              name: { contains: search, mode: 'insensitive' },
             },
           },
         ],
@@ -926,7 +934,10 @@ export class EmployeesService {
   }
 
   /** Personal details of every employee matching the list filters, as .xlsx. */
-  async exportPersonalDetails(filters: EmployeeFilters, actingUser: ActingUser) {
+  async exportPersonalDetails(
+    filters: EmployeeFilters,
+    actingUser: ActingUser,
+  ) {
     // Reuse the list query so filters, access scope and ordering match the screen.
     const listed = (await this.findAll(
       { ...filters, count: undefined },
@@ -986,15 +997,15 @@ export class EmployeesService {
     };
   }
 
-  async update(
-    id: string,
-    dto: UpdateEmployeeDto,
-  ) {
+  async update(id: string, dto: UpdateEmployeeDto) {
     await this.findOne(id);
 
     const sanitizedDto = dto;
 
-    if (sanitizedDto.currentBranchId !== undefined || sanitizedDto.currentDepartmentId !== undefined) {
+    if (
+      sanitizedDto.currentBranchId !== undefined ||
+      sanitizedDto.currentDepartmentId !== undefined
+    ) {
       throw new BadRequestException(
         'Use the transfer endpoint to change branch or department',
       );
@@ -1002,8 +1013,10 @@ export class EmployeesService {
 
     const data: Prisma.EmployeeUpdateInput = {};
 
-    if (sanitizedDto.fullName !== undefined) data.fullName = sanitizedDto.fullName;
-    if (sanitizedDto.fatherName !== undefined) data.fatherName = sanitizedDto.fatherName;
+    if (sanitizedDto.fullName !== undefined)
+      data.fullName = sanitizedDto.fullName;
+    if (sanitizedDto.fatherName !== undefined)
+      data.fatherName = sanitizedDto.fatherName;
     if (sanitizedDto.phone !== undefined) data.phone = sanitizedDto.phone;
     if (sanitizedDto.email !== undefined) data.email = sanitizedDto.email;
     if (sanitizedDto.dateOfBirth !== undefined) {
@@ -1034,21 +1047,26 @@ export class EmployeesService {
       data.spouseContactNumber = sanitizedDto.spouseContactNumber;
     }
     if (sanitizedDto.caste !== undefined) data.caste = sanitizedDto.caste;
-    if (sanitizedDto.domicile !== undefined) data.domicile = sanitizedDto.domicile;
+    if (sanitizedDto.domicile !== undefined)
+      data.domicile = sanitizedDto.domicile;
     if (sanitizedDto.currentAddress !== undefined) {
       data.currentAddress = sanitizedDto.currentAddress;
     }
     if (sanitizedDto.permanentAddress !== undefined) {
       data.permanentAddress = sanitizedDto.permanentAddress;
     }
-    if (sanitizedDto.district !== undefined) data.district = sanitizedDto.district;
+    if (sanitizedDto.district !== undefined)
+      data.district = sanitizedDto.district;
     if (sanitizedDto.tehsil !== undefined) data.tehsil = sanitizedDto.tehsil;
     if (sanitizedDto.policeStation !== undefined) {
       data.policeStation = sanitizedDto.policeStation;
     }
-    if (sanitizedDto.bloodGroup !== undefined) data.bloodGroup = sanitizedDto.bloodGroup;
-    if (sanitizedDto.dutyStartTime !== undefined) data.dutyStartTime = sanitizedDto.dutyStartTime;
-    if (sanitizedDto.dutyEndTime !== undefined) data.dutyEndTime = sanitizedDto.dutyEndTime;
+    if (sanitizedDto.bloodGroup !== undefined)
+      data.bloodGroup = sanitizedDto.bloodGroup;
+    if (sanitizedDto.dutyStartTime !== undefined)
+      data.dutyStartTime = sanitizedDto.dutyStartTime;
+    if (sanitizedDto.dutyEndTime !== undefined)
+      data.dutyEndTime = sanitizedDto.dutyEndTime;
     if (sanitizedDto.dutyTotalHours !== undefined) {
       data.dutyTotalHours = sanitizedDto.dutyTotalHours;
     }
@@ -1060,12 +1078,14 @@ export class EmployeesService {
         sanitizedDto.weeklyOffWeekdays,
       );
     }
-    if (sanitizedDto.province !== undefined) data.province = sanitizedDto.province;
+    if (sanitizedDto.province !== undefined)
+      data.province = sanitizedDto.province;
     if (sanitizedDto.city !== undefined) data.city = sanitizedDto.city;
     if (sanitizedDto.permanentProvince !== undefined) {
       data.permanentProvince = sanitizedDto.permanentProvince;
     }
-    if (sanitizedDto.permanentCity !== undefined) data.permanentCity = sanitizedDto.permanentCity;
+    if (sanitizedDto.permanentCity !== undefined)
+      data.permanentCity = sanitizedDto.permanentCity;
 
     if (sanitizedDto.email) {
       const existingEmail = await this.prisma.employee.findFirst({
@@ -1105,8 +1125,7 @@ export class EmployeesService {
           where: { id: shiftId },
         });
         if (shift) {
-          data.dutyStartTime =
-            sanitizedDto.dutyStartTime ?? shift.startTime;
+          data.dutyStartTime = sanitizedDto.dutyStartTime ?? shift.startTime;
           data.dutyEndTime = sanitizedDto.dutyEndTime ?? shift.endTime;
           data.dutyTotalHours =
             sanitizedDto.dutyTotalHours ??
@@ -1247,25 +1266,56 @@ export class EmployeesService {
     });
   }
 
-  async generateStatusCommunication(id: string, reason: string | undefined, actor: {id: string; role: UserRole}) {
-    await this.accessScopeService.assertEmployeeAccess(actor.id, actor.role, Permission.LETTERS_GENERATE, id);
+  async generateStatusCommunication(
+    id: string,
+    reason: string | undefined,
+    actor: { id: string; role: UserRole },
+  ) {
+    await this.accessScopeService.assertEmployeeAccess(
+      actor.id,
+      actor.role,
+      Permission.LETTERS_GENERATE,
+      id,
+    );
     const employee = await this.findOne(id);
-    if (employee.status === EmployeeStatus.PENDING_APPROVAL) throw new BadRequestException('Pending Approval does not have a status letter or notification.');
+    if (employee.status === EmployeeStatus.PENDING_APPROVAL)
+      throw new BadRequestException(
+        'Pending Approval does not have a status letter or notification.',
+      );
     const label = employee.status.replace(/_/g, ' ');
     const template = statusLetterTemplate(employee.status);
     const effectiveDate = employee.statusEffectiveFrom ?? new Date();
     if (template) {
-      await this.prisma.letterTemplate.upsert({where: {code: template.code}, update: {}, create: template});
-      return this.lettersService.generateSystemLetter({employeeId: id, letterType: LetterType.CUSTOM,
-        templateCode: template.code, extraFields: {staffStatus: employee.status, staffStatusLabel: label,
-          statusReason: reason?.trim() || `Employee status: ${label}`,
-          statusEffectiveDate: toPakistanDateOnly(effectiveDate).toISOString().slice(0,10),
-        }}, actor.id);
+      await this.prisma.letterTemplate.upsert({
+        where: { code: template.code },
+        update: {},
+        create: template,
+      });
+      return this.lettersService.generateSystemLetter(
+        {
+          employeeId: id,
+          letterType: LetterType.CUSTOM,
+          templateCode: template.code,
+          extraFields: {
+            staffStatus: employee.status,
+            staffStatusLabel: label,
+            statusReason: reason?.trim() || `Employee status: ${label}`,
+            statusEffectiveDate: toPakistanDateOnly(effectiveDate)
+              .toISOString()
+              .slice(0, 10),
+          },
+        },
+        actor.id,
+      );
     }
-    const notification = await this.prisma.notification.create({data: {employeeId: id,
-      type: 'EMPLOYEE_STATUS_CHANGED', message: `Your employment status is ${label}.${reason?.trim() ? ' ' + reason.trim() : ''}`,
-    }});
-    return {notification};
+    const notification = await this.prisma.notification.create({
+      data: {
+        employeeId: id,
+        type: 'EMPLOYEE_STATUS_CHANGED',
+        message: `Your employment status is ${label}.${reason?.trim() ? ' ' + reason.trim() : ''}`,
+      },
+    });
+    return { notification };
   }
 
   async changeStatus(
@@ -1361,7 +1411,10 @@ export class EmployeesService {
 
     const data: Prisma.EmployeeUpdateInput =
       leavingSuspension && dto.status === EmployeeStatus.ACTIVE
-        ? suspensionInquiryReinstatementData(new Date(), dto.statusEffectiveFrom)
+        ? suspensionInquiryReinstatementData(
+            new Date(),
+            dto.statusEffectiveFrom,
+          )
         : {
             status: dto.status,
             statusEffectiveFrom: buildStatusEffectiveFromUpdate(
@@ -1484,9 +1537,7 @@ export class EmployeesService {
     }
   }
 
-  private normalizeOptionalDuty(
-    value?: string | null,
-  ): string | undefined {
+  private normalizeOptionalDuty(value?: string | null): string | undefined {
     if (value == null || value === '') return undefined;
     try {
       return normalizeDutyTimeToHhMm(value);
@@ -1546,6 +1597,13 @@ export class EmployeesService {
     dutyEndTime?: string | null,
     dutyTotalHours?: number | null,
   ): Promise<string | undefined> {
+    // Every duty write path passes through here with the final values.
+    const mismatch = dutyWindowMismatch(
+      dutyStartTime,
+      dutyEndTime,
+      dutyTotalHours,
+    );
+    if (mismatch) throw new BadRequestException(mismatch);
     const shiftName = inferShiftNameFromDuty(
       dutyStartTime,
       dutyEndTime,
@@ -1646,6 +1704,7 @@ export class EmployeesService {
         `Department with id ${departmentId} not found`,
       );
     }
+    return department;
   }
 
   async getTotalWorkingHours(employeeId: string) {
@@ -1682,7 +1741,15 @@ export class EmployeesService {
 
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const monthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
 
     let totalMinutes = 0;
     let thisMonthMinutes = 0;
@@ -1719,9 +1786,7 @@ export class EmployeesService {
     const totalHours = Math.round((totalMinutes / 60) * 100) / 100;
     const thisMonthHours = Math.round((thisMonthMinutes / 60) * 100) / 100;
     const averageDailyHours =
-      totalDays > 0
-        ? Math.round((totalHours / totalDays) * 100) / 100
-        : 0;
+      totalDays > 0 ? Math.round((totalHours / totalDays) * 100) / 100 : 0;
 
     return {
       totalMinutes,
@@ -1755,21 +1820,62 @@ export class EmployeesService {
       await this.ensureBranchExists(dto.currentBranchId);
     }
 
+    const departmentChanged =
+      dto.currentDepartmentId !== undefined &&
+      dto.currentDepartmentId !== employee.currentDepartmentId;
+
     if (dto.currentDepartmentId) {
-      await this.ensureDepartmentExists(dto.currentDepartmentId);
+      const department = await this.ensureDepartmentExists(
+        dto.currentDepartmentId,
+      );
+      // Designation.category holds the department name; a department move
+      // that strands the designation must go through Transfer instead.
+      if (departmentChanged && employee.currentDesignation) {
+        const designationFits = await this.prisma.designation.findFirst({
+          where: {
+            title: { equals: employee.currentDesignation, mode: 'insensitive' },
+            category: { equals: department.name, mode: 'insensitive' },
+            isActive: true,
+            isDeleted: false,
+          },
+        });
+        if (!designationFits) {
+          throw new BadRequestException(
+            `Designation "${employee.currentDesignation}" does not belong to department "${department.name}". Use Transfer to change department and designation together.`,
+          );
+        }
+      }
     }
 
+    const historyDepartmentId =
+      dto.currentDepartmentId ?? employee.currentDepartmentId;
+
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (branchChanged && dto.currentBranchId) {
+      // History rows require department + designation; unplaced staff skip it.
+      if (
+        (branchChanged || departmentChanged) &&
+        historyDepartmentId &&
+        employee.currentDesignation
+      ) {
+        const effectiveDate = new Date();
+        const openHistory = await tx.employmentHistory.findFirst({
+          where: { employeeId: id, endDate: null },
+          orderBy: { effectiveDate: 'desc' },
+        });
+        if (openHistory) {
+          await tx.employmentHistory.update({
+            where: { id: openHistory.id },
+            data: { endDate: effectiveDate },
+          });
+        }
         await tx.employmentHistory.create({
           data: {
             employeeId: id,
-            branchId: dto.currentBranchId,
-            departmentId:
-              dto.currentDepartmentId ?? employee.currentDepartmentId,
+            branchId: targetBranchId,
+            departmentId: historyDepartmentId,
             designation: employee.currentDesignation,
             changeType: ChangeType.TRANSFERRED,
-            effectiveDate: new Date(),
+            effectiveDate,
           },
         });
       }
@@ -1808,8 +1914,7 @@ export class EmployeesService {
       }
 
       const nextStart =
-        this.normalizeOptionalDuty(dto.dutyStartTime) ??
-        employee.dutyStartTime;
+        this.normalizeOptionalDuty(dto.dutyStartTime) ?? employee.dutyStartTime;
       const nextEnd =
         this.normalizeOptionalDuty(dto.dutyEndTime) ?? employee.dutyEndTime;
       const nextHours = dto.dutyTotalHours ?? employee.dutyTotalHours;
@@ -1974,8 +2079,9 @@ export class EmployeesService {
     dto: UpdateEmployeeRolesDto,
     actingUser: { id: string; role: UserRole },
   ) {
-    const actorRoles =
-      await this.permissionsService.getUserEffectiveRoles(actingUser.id);
+    const actorRoles = await this.permissionsService.getUserEffectiveRoles(
+      actingUser.id,
+    );
     if (!canAssignRoles(actorRoles.length ? actorRoles : [actingUser.role])) {
       throw new ForbiddenException(
         'Only HR, IT, or Super Admin can assign roles',
@@ -2017,10 +2123,7 @@ export class EmployeesService {
     }
 
     const actorIsSuperAdmin = actorRoles.includes(UserRole.SUPER_ADMIN);
-    if (
-      allRoles.includes(UserRole.SUPER_ADMIN) &&
-      !actorIsSuperAdmin
-    ) {
+    if (allRoles.includes(UserRole.SUPER_ADMIN) && !actorIsSuperAdmin) {
       throw new ForbiddenException(
         'Only Super Admin can assign the Super Admin role',
       );
@@ -2103,7 +2206,10 @@ export class EmployeesService {
     file: Express.Multer.File,
   ): Promise<string> {
     const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-    const tempFile = path.join(os.tmpdir(), `${employeeId}-${Date.now()}${ext}`);
+    const tempFile = path.join(
+      os.tmpdir(),
+      `${employeeId}-${Date.now()}${ext}`,
+    );
 
     try {
       if (file.buffer?.length) {
@@ -2141,8 +2247,8 @@ export class EmployeesService {
     query: ActiveShiftQueryDto,
     actingUser?: BranchScopedUser,
   ) {
-    const scopedQuery = { ...query }
-    enforceBranchScope(scopedQuery, actingUser)
+    const scopedQuery = { ...query };
+    enforceBranchScope(scopedQuery, actingUser);
 
     const today = new Date(scopedQuery.date);
     today.setHours(0, 0, 0, 0);
@@ -2164,12 +2270,11 @@ export class EmployeesService {
     const employees = await this.prisma.employee.findMany({
       where: {
         status: {
-          in: [
-            EmployeeStatus.ACTIVE,
-            EmployeeStatus.TRAINEE,
-          ],
+          in: [EmployeeStatus.ACTIVE, EmployeeStatus.TRAINEE],
         },
-        ...(scopedQuery.branchId ? { currentBranchId: scopedQuery.branchId } : {}),
+        ...(scopedQuery.branchId
+          ? { currentBranchId: scopedQuery.branchId }
+          : {}),
         ...(andConditions.length ? { AND: andConditions } : {}),
       },
       include: {
@@ -2218,9 +2323,7 @@ export class EmployeesService {
 
     const nextId = maxId + 1;
     if (nextId > 99999) {
-      throw new BadRequestException(
-        'Biometric ID limit reached (max 99999)',
-      );
+      throw new BadRequestException('Biometric ID limit reached (max 99999)');
     }
     return nextId;
   }
@@ -2295,9 +2398,7 @@ export class EmployeesService {
   async generateAllBiometricIds(actingUserId: string) {
     const total = await this.prisma.employee.count();
     if (total > 99999) {
-      throw new BadRequestException(
-        'Biometric ID limit reached (max 99999)',
-      );
+      throw new BadRequestException('Biometric ID limit reached (max 99999)');
     }
 
     const result = await this.prisma.$transaction(

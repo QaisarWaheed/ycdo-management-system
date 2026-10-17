@@ -1380,17 +1380,19 @@ function absenceSopViolations(
 ): string {
   const kind =
     category === 'UNINFORMED_ABSENT' ? 'بلا اطلاع غیر حاضری' : 'غیر حاضری';
+  // Payroll (Attendance Card): informed ABSENT = 1 day, UNINFORMED_ABSENT = 2 days.
+  const days = category === 'UNINFORMED_ABSENT' ? 'دو یوم' : 'ایک یوم';
   const lines = [
     `آج مورخہ ${dayKey} آپ کی ${kind} ریکارڈ کی گئی ہے۔`,
-    'تنظیمی ضابطے کے مطابق اس غیر حاضری پر دو یوم کی تنخواہ / وظیفہ منہا کیا جائے گا۔',
+    `تنظیمی ضابطے کے مطابق اس غیر حاضری پر ${days} کی تنخواہ / وظیفہ منہا کیا جائے گا۔`,
   ];
   if (occurrence <= 1) {
     lines.push(
-      'اگر اسی کیلنڈر ماہ میں دوبارہ غیر حاضری ہوئی تو دوبارہ دو یوم کی کٹوتی ہوگی۔ تیسری مرتبہ معطلی پر غور کیا جائے گا۔',
+      `اگر اسی کیلنڈر ماہ میں دوبارہ غیر حاضری ہوئی تو دوبارہ ${days} کی کٹوتی ہوگی۔ تیسری مرتبہ معطلی پر غور کیا جائے گا۔`,
     );
   } else if (occurrence === 2) {
     lines.push(
-      'یہ اس ماہ کی دوسری غیر حاضری ہے — دوبارہ دو یوم کی کٹوتی ہوگی۔ تیسری مرتبہ معطلی پر غور کیا جائے گا۔',
+      `یہ اس ماہ کی دوسری غیر حاضری ہے — دوبارہ ${days} کی کٹوتی ہوگی۔ تیسری مرتبہ معطلی پر غور کیا جائے گا۔`,
     );
   } else {
     lines.push(
@@ -3078,8 +3080,10 @@ export type ReconcileAttendanceFinancialConsequencesResult = {
  *      UNINFORMED_ABSENT -> UNINFORMED_ABSENT): true no-op — nothing to do.
  *      ABSENT_FAMILY -> ABSENT_FAMILY, subtype CHANGED (ABSENT <->
  *      UNINFORMED_ABSENT): the FINANCIAL deduction is deliberately left
- *        untouched (same 2-day amount either way — reversing and
- *        reapplying would be pure churn and risks the exact double-
+ *        untouched (the legacy per-day row is 2 days for both subtypes;
+ *        Attendance Card payroll re-derives 1 day for ABSENT vs 2 days for
+ *        UNINFORMED_ABSENT from the final status on rebuild — reversing and
+ *        reapplying here would be pure churn and risks the exact double-
  *        deduction this function exists to prevent), but the two subtypes
  *        are NOT discipline-equivalent, so this is a discipline-only
  *        promotion/demotion, not a full no-op:

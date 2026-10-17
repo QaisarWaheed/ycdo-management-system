@@ -795,6 +795,49 @@ export function EmployeeProfilePage() {
     )
   }, [attendanceLogs, attendanceSummary?.missingDates])
 
+  // HR fixed a wrong duty: re-apply this month's machine punches by the rules.
+  const canRecalculateMonth = hasRole([
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+  ])
+  const recalculateMonth = useMutation({
+    mutationFn: () => attendanceApi.recalculateMonth({ employeeId: id!, year, month }),
+    onSuccess: (r) => {
+      const changed = r.days.filter(
+        (d) =>
+          d.result === 'recalculated' &&
+          (d.before?.status !== d.after?.status || d.before?.lateMinutes !== d.after?.lateMinutes),
+      )
+      toast({
+        title: `Recalculated ${r.recalculated} day(s)${r.failed ? `, ${r.failed} failed` : ''}`,
+        description:
+          [
+            changed.length
+              ? `Changed: ${changed
+                  .map((d) => `${d.date.slice(8, 10)}: ${d.before?.status} → ${d.after?.status}${d.after?.lateMinutes ? ` (${d.after.lateMinutes} min late)` : ''}`)
+                  .join(', ')}`
+              : 'No status changes',
+            ...r.days.filter((d) => d.result === 'failed').map((d) => `${d.date}: ${d.reason}`),
+          ].join('\n'),
+        variant: r.failed ? 'destructive' : undefined,
+      })
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll-history', id] })
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string | string[] } } })?.response
+        ?.data?.message
+      toast({
+        title: 'Could not recalculate',
+        description: Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error'),
+        variant: 'destructive',
+      })
+    },
+  })
+
   const openAttendanceUpdate = async (row: AttendanceLogRow) => {
     if (!id) return
     if (!row.isMissing) {
@@ -1218,8 +1261,14 @@ export function EmployeeProfilePage() {
   const canHrJobActions = isHrTeam
   const canOverrideSuspendedStatus = hasRole([...IT_PROFILE_ROLES])
 
-  const canEditBranchDuty =
-    canHrJobActions && user?.employeeId !== employee.id
+  // Mirrors the API roles on POST :id/transfer and PATCH :id/branch-duty.
+  const canTransfer = hasRole([
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+  ])
+  const canEditBranchDuty = canTransfer && user?.employeeId !== employee.id
 
   const hasPersonalInfo =
     employee.bloodGroup ||
@@ -1672,7 +1721,7 @@ export function EmployeeProfilePage() {
                 </Button>
               </>
             )}
-            {canHrJobActions && (
+            {canTransfer && (
               <Button
                 variant="outline"
                 className="w-full"
@@ -2104,8 +2153,25 @@ export function EmployeeProfilePage() {
           )}
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-lg">Attendance Log</CardTitle>
+              {canRecalculateMonth && !monthPayrollPaid ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={recalculateMonth.isPending}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Recalculate ${format(new Date(year, month - 1, 1), 'MMMM yyyy')} by the rules with the current duty (${employee.dutyStartTime ?? '?'}–${employee.dutyEndTime ?? '?'})?\n\nMachine check-ins and check-outs are re-applied: late, half day, early checkout, missed checkout and their letters / fines, then salary. Leave, holidays, swaps and manual days are not changed.`,
+                      )
+                    )
+                      recalculateMonth.mutate()
+                  }}
+                >
+                  {recalculateMonth.isPending ? 'Recalculating…' : 'Recalculate month by rules'}
+                </Button>
+              ) : null}
             </CardHeader>
             <CardContent>
               {!attendanceUnlocked && (

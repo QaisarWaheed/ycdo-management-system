@@ -392,6 +392,9 @@ export async function reconcileShortLeaveAttendance(
       status: AttendanceStatus.SHORT_LEAVE,
       source: AttendanceSource.MANUAL,
       note: 'Approved short leave',
+      // The early departure is now approved leave: it must stop counting in
+      // the "every 3 early checkouts = 1 day" payroll rule.
+      earlyOutMinutes: 0,
     },
   });
 

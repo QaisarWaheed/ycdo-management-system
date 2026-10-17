@@ -589,6 +589,21 @@ describe('LettersService.sendLetter', () => {
     expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
   });
 
+  it('returns alreadySent for a raced SENT fine letter without touching finalized payroll', async () => {
+    const { service, tx } = build({
+      letterType: LetterType.FINE,
+      employeeStatus: EmployeeStatus.ACTIVE,
+    });
+    tx.letter.findUnique.mockResolvedValueOnce(draftLetter(LetterType.FINE, LetterStatus.SENT));
+    tx.payrollEntry.findMany.mockResolvedValue([{ id: 'p', status: 'PAID' }]);
+
+    const result = await service.sendLetter(letterId, actingUserId, UserRole.HR_MANAGER);
+
+    expect(result.alreadySent).toBe(true);
+    expect(tx.payrollDeduction.findFirst).not.toHaveBeenCalled();
+    expect(tx.payrollEntry.findMany).not.toHaveBeenCalled();
+  });
+
   it('snapshots Employee.currentBranchId at issue time, not a preparation-time value', async () => {
     const { service, tx } = build({
       letterType: LetterType.SUSPENSION,

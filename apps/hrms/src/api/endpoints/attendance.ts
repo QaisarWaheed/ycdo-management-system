@@ -12,6 +12,23 @@ export const attendanceApi = {
     api.post<unknown, AttendanceLog>('/attendance/manual', data),
   update: (id: string, data: Record<string, unknown>) =>
     api.patch<unknown, AttendanceLog>(`/attendance/${id}`, data),
+  /** Re-apply the month's machine punches with the employee's current duty. */
+  recalculateMonth: (data: { employeeId: string; year: number; month: number }) =>
+    api.post<
+      unknown,
+      {
+        recalculated: number
+        skipped: number
+        failed: number
+        days: Array<{
+          date: string
+          result: 'recalculated' | 'skipped' | 'failed'
+          reason?: string
+          before?: { status: string; lateMinutes: number }
+          after?: { status: string; lateMinutes: number }
+        }>
+      }
+    >('/attendance/recalculate-month', data),
   getTrail: (id: string) =>
     api.get<
       unknown,

@@ -1574,7 +1574,7 @@ export class PayrollService {
       });
     for (const fine of newLetterFines) {
       await this.prisma.payrollDeduction.create({ data: {
-        payrollEntryId: entry.id, reason: fine.reason, amount: fine.amount, description: fine.description,
+        payrollEntryId: entry.id, reason: fine.reason, fineReason: fine.fineReason, amount: fine.amount, description: fine.description,
       } });
     }
     // Card owns all attendance money. Replace legacy managed rows, retain unrelated stored adjustments.

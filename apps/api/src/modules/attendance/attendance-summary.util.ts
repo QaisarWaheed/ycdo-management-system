@@ -56,7 +56,11 @@ export function summarizeAttendanceLogs(
     weeklyOff,
     overtimeMinutes: logs.reduce((sum, log) => sum + log.overtimeMinutes, 0),
     totalLateMinutes: logs.reduce((sum, log) => sum + log.lateMinutes, 0),
-    earlyCheckout: logs.filter((log) => (log.earlyOutMinutes ?? 0) > 0).length,
+    // Approved short leave is not an early checkout (older rows may still carry minutes).
+    earlyCheckout: logs.filter(
+      (log) =>
+        (log.earlyOutMinutes ?? 0) > 0 && log.status !== AttendanceStatus.SHORT_LEAVE,
+    ).length,
     totalEarlyOutMinutes: logs.reduce(
       (sum, log) => sum + (log.earlyOutMinutes ?? 0),
       0,

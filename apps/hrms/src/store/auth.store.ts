@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { User } from '@/types'
 import { isHrmsSystemUser } from '@/lib/hrmsAccess'
+import { queryClient } from '@/lib/queryClient'
 
 interface AuthState {
   token: string | null
@@ -42,11 +43,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     localStorage.setItem('hrms_token', token)
     localStorage.setItem('hrms_user', JSON.stringify(user))
+    queryClient.clear()
     set({ token, user, isAuthenticated: true })
   },
   logout: () => {
     localStorage.removeItem('hrms_token')
     localStorage.removeItem('hrms_user')
+    queryClient.clear()
     set({ token: null, user: null, isAuthenticated: false })
   },
   updateUser: (user) => {

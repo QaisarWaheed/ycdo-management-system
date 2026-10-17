@@ -883,6 +883,12 @@ export class LettersService implements OnModuleInit {
     }
 
     const normalized = this.normalizeExtraFields(letterType, extraFields);
+    if (template.code.startsWith('STATUS_') && !normalized.staffStatusLabel) {
+      // Same label employees.service.generateStatusCommunication sends.
+      const status = template.code.slice('STATUS_'.length);
+      normalized.staffStatus ??= status;
+      normalized.staffStatusLabel = status.replace(/_/g, ' ');
+    }
     if ((letterType === LetterType.FINE || letterType === LetterType.EXPLANATION_FINE) &&
         !normalized.disciplineCategory && !normalized.inquiryId &&
         !['ABSENT', 'LATE_DEDUCTION'].includes(String(normalized.finePreset)) &&
@@ -1818,10 +1824,10 @@ export class LettersService implements OnModuleInit {
       if (current.status === LetterStatus.REVERSED) {
         throw new BadRequestException('Cannot send a reversed letter');
       }
-      await applyLetterFine(tx, current);
       if (current.status === LetterStatus.SENT) {
         return { alreadySent: true as const, letter: current };
       }
+      await applyLetterFine(tx, current);
       if (
         current.letterType === LetterType.APPOINTMENT &&
         !this.appointmentStatusesAllowedToSend(employeeStatus).includes(
@@ -2424,61 +2430,91 @@ export class LettersService implements OnModuleInit {
         ? vars.incidentDate.slice(0, 10)
         : null;
 
-    const deductions = await tx.payrollDeduction.findMany({
-      where: {
-        OR: [{ description: null }, { NOT: { description: { startsWith: 'Attendance Card:' } } }],
-        payrollEntry: {
-          stipendRecord: { employeeId: letter.employeeId },
-        },
-        reason: {
-          in: [DeductionType.DISCIPLINARY_FINE, DeductionType.LATE_ARRIVAL],
-        },
-        ...(letter.id && letterFine({ ...letter, id: letter.id })
-          ? { description: { startsWith: `${LETTER_FINE_PREFIX}${letter.id}]` } }
-          : incidentDate ? { description: { contains: incidentDate } } : {}),
+    const base = {
+      payrollEntry: {
+        stipendRecord: { employeeId: letter.employeeId },
       },
-      include: {
-        payrollEntry: {
-          select: {
-            id: true,
-            status: true,
-            totalDeductions: true,
-            netStipend: true,
+      reason: {
+        in: [DeductionType.DISCIPLINARY_FINE, DeductionType.LATE_ARRIVAL],
+      },
+    };
+    const include = {
+      payrollEntry: {
+        select: {
+          id: true,
+          status: true,
+          totalDeductions: true,
+          netStipend: true,
+        },
+      },
+    } as const;
+
+    // Only this letter's own `Letter fine [<id>]` rows are owned by it; never
+    // fall back to an unscoped filter (that deleted other letters' fines).
+    const own = letter.id
+      ? await tx.payrollDeduction.findMany({
+          where: {
+            ...base,
+            description: { startsWith: `${LETTER_FINE_PREFIX}${letter.id}]` },
           },
-        },
-      },
-      take: 10,
-    });
+          include,
+        })
+      : [];
+    // Legacy incident-dated rows: never another letter's fine or a Card aggregate.
+    const deductions = own.length
+      ? own
+      : incidentDate
+        ? await tx.payrollDeduction.findMany({
+            where: {
+              ...base,
+              OR: [{ description: null }, { NOT: { description: { startsWith: 'Attendance Card:' } } }],
+              description: { contains: incidentDate },
+              AND: [{ NOT: { description: { startsWith: LETTER_FINE_PREFIX } } }],
+            },
+            include,
+            take: 10,
+          })
+        : [];
 
     if (deductions.length === 0) {
       return { undone: false, skippedReason: null };
     }
 
-    const pending = deductions.find(
+    const allPending = deductions.filter(
       (d) => d.payrollEntry.status === PayrollStatus.PENDING,
     );
-    if (!pending) {
+    // Own rows: remove every one. Legacy incident match: one row, as before.
+    const pending = own.length ? allPending : allPending.slice(0, 1);
+    if (pending.length === 0) {
       return {
         undone: false,
         skippedReason: 'fine not undone (payroll finalized)',
       };
     }
 
-    const amount = Number(pending.amount);
-    await tx.payrollDeduction.delete({ where: { id: pending.id } });
-    await tx.payrollEntry.update({
-      where: { id: pending.payrollEntry.id },
-      data: {
-        totalDeductions: {
-          decrement: amount,
+    for (const row of pending) {
+      const amount = Number(row.amount);
+      await tx.payrollDeduction.delete({ where: { id: row.id } });
+      await tx.payrollEntry.update({
+        where: { id: row.payrollEntry.id },
+        data: {
+          totalDeductions: {
+            decrement: amount,
+          },
+          netStipend: {
+            increment: amount,
+          },
         },
-        netStipend: {
-          increment: amount,
-        },
-      },
-    });
+      });
+    }
 
-    return { undone: true, skippedReason: null };
+    return {
+      undone: true,
+      skippedReason:
+        own.length && pending.length < own.length
+          ? 'fine partly undone (payroll finalized)'
+          : null,
+    };
   }
 
   private async listWhere(

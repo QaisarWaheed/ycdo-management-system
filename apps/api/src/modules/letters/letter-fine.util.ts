@@ -1,9 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
-import { DeductionType, LetterType, Prisma } from '@prisma/client';
+import { DeductionType, FineReason, LetterType, Prisma } from '@prisma/client';
 import { pakistanYearMonthFromDate } from '../attendance/attendance-calendar.util';
 import { lockPayrollEmployee } from '../payroll/payroll-write-lock.util';
 
 export const LETTER_FINE_PREFIX = 'Letter fine [';
+/** Letter fine presets that have a payslip fine category (ABSENT/LATE_DEDUCTION are attendance-owned; ELECTRICITY has none). */
+const PRESET_FINE_REASON: Record<string, FineReason> = { UNIFORM: FineReason.NO_UNIFORM };
 type FineLetter = { id: string; employeeId: string; letterType: LetterType; generatedAt: Date; letterNo?: string | null; variables: unknown; content?: unknown };
 function manualFineVariables(letter: FineLetter) {
   const vars = { ...((letter.content ?? {}) as Record<string, unknown>), ...((letter.variables ?? {}) as Record<string, unknown>) };
@@ -30,6 +32,7 @@ export function letterFine(letter: FineLetter) {
     month = index + 1; if (statedYear) year = Number(statedYear[1]);
   }
   return { letterId: letter.id, month, year, amount, reason: DeductionType.DISCIPLINARY_FINE,
+    fineReason: PRESET_FINE_REASON[String(vars.finePreset)] ?? null,
     description: `${LETTER_FINE_PREFIX}${letter.id}] ${letter.letterNo ?? letter.id} — ${String(vars.fineReason || vars.violations || vars.finePreset || 'Fine')}` };
 }
 
@@ -49,7 +52,7 @@ export async function applyLetterFine(tx: Prisma.TransactionClient, letter: Fine
   if (entries.some(row => row.status !== 'PENDING')) throw new BadRequestException('Fine month payroll is finalized. Reopen it or select an unpaid deduction month.');
   const entry = entries[0];
   if (!entry) return;
-  await tx.payrollDeduction.create({ data: { payrollEntryId: entry.id, reason: fine.reason, amount: fine.amount, description: fine.description } });
+  await tx.payrollDeduction.create({ data: { payrollEntryId: entry.id, reason: fine.reason, fineReason: fine.fineReason, amount: fine.amount, description: fine.description } });
   await tx.payrollEntry.update({ where: { id: entry.id }, data: {
     totalDeductions: { increment: fine.amount }, netStipend: { decrement: fine.amount },
   } });

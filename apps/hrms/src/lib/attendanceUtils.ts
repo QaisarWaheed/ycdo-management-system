@@ -50,6 +50,9 @@ function signedMinutesFromDutyStart(
   return diff
 }
 
+/** Arrivals up to this many minutes after duty start are Present. */
+const CHECK_IN_GRACE_MINUTES = 18
+
 export function calcLateMinutes(
   checkInTime: string,
   dutyStart: string,
@@ -61,6 +64,9 @@ export function calcLateMinutes(
 
   const minutesSince = signedMinutesFromDutyStart(checkIn, dutyTotal)
 
+  // Same as the API (assessCheckIn): up to 18 minutes is on time; after that
+  // late minutes count from the 15-minute grace (19 → 4).
+  if (minutesSince <= Math.max(graceMinutes, CHECK_IN_GRACE_MINUTES)) return 0
   const lateMinutes = minutesSince - graceMinutes
   return lateMinutes > 0 ? lateMinutes : 0
 }

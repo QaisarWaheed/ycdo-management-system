@@ -334,7 +334,7 @@ export class EmployeesController {
   }
 
   @Post(':id/transfer')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_ADMIN_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
   transfer(@Param('id') id: string, @Body() dto: TransferDto) {
     return this.employeesService.transfer(id, dto);
   }
@@ -362,6 +362,7 @@ export class EmployeesController {
     UserRole.SUPER_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
   updateBranchDuty(

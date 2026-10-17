@@ -75,7 +75,9 @@ export function evaluateMissingCheckoutEligibility(
   );
   const minutesPastEnd = (now.getTime() - shiftEnd.getTime()) / 60000;
 
-  if (minutesPastEnd <= MISSING_CHECKOUT_GRACE_MINUTES) {
+  // The whole last minute of the window still counts (a 10:00:40 PM punch
+  // for a duty ending 8:00 PM is "10:00 PM").
+  if (minutesPastEnd < MISSING_CHECKOUT_GRACE_MINUTES + 1) {
     return { eligible: false, reason: 'still inside shift/checkout grace' };
   }
 

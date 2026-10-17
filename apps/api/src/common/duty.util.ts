@@ -166,6 +166,24 @@ export function dutyWindowsOverlap(a: DutyWindow, b: DutyWindow): boolean {
   return false;
 }
 
+/**
+ * A duty whose start → end spans 20h+ makes the employee "24-hour staff"
+ * (no late / checkout rules). When the stated total hours are far less, the
+ * end time was almost certainly mistyped (e.g. 14:00 → 10:00 meant 22:00).
+ * Returns the error text, or null when the window and hours agree.
+ */
+export function dutyWindowMismatch(
+  start?: string | null,
+  end?: string | null,
+  totalHours?: number | null,
+): string | null {
+  if (!start || !end || totalHours == null || totalHours >= 20) return null;
+  let window = parseDutyTimeToMinutes(end) - parseDutyTimeToMinutes(start);
+  if (window <= 0) window += 1440;
+  if (window < 20 * 60) return null;
+  return `Duty ${start} → ${end} spans ${Math.round(window / 60)} hours but total hours is ${totalHours}. Check the end time (e.g. 10:00 PM is 22:00, midnight is 00:00).`;
+}
+
 /** Minutes after duty start that are still counted as on time. */
 export const LATE_GRACE_MINUTES = 15;
 export const CHECK_IN_GRACE_MINUTES = 18;
@@ -220,7 +238,10 @@ export function assessCheckIn(
   const offset = signedMinutesFromDutyStart(minutesOfDay, dutyStartMin);
 
   if (offset >= 0) {
-    const late = offset <= Math.max(graceMinutes, CHECK_IN_GRACE_MINUTES) ? 0 : offset - graceMinutes;
+    const late =
+      offset <= Math.max(graceMinutes, CHECK_IN_GRACE_MINUTES)
+        ? 0
+        : offset - graceMinutes;
     return {
       lateMinutes: late > 0 ? late : 0,
       earlyMinutes: 0,

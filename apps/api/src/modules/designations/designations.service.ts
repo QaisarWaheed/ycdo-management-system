@@ -95,7 +95,7 @@ export class DesignationsService {
     if (!title) {
       throw new BadRequestException('Title cannot be empty');
     }
-    const category = await this.resolveDepartmentName(dto.category);
+    const category = (await this.resolveDepartment(dto.category)).name;
 
     const existing = await this.prisma.designation.findFirst({ where: { title: { equals: title, mode: 'insensitive' } } });
     if (existing?.isActive && !existing.isDeleted && normalizeOrgName(existing.category) !== category) {
@@ -118,6 +118,7 @@ export class DesignationsService {
 
     const data: Prisma.DesignationUpdateInput = {};
     let renamedTo: string | null = null;
+    let movedToDepartment: { id: string } | null = null;
     if (dto.title !== undefined) {
       const title = normalizeDesignationName(dto.title);
       if (!title) {
@@ -132,7 +133,9 @@ export class DesignationsService {
       dto.category !== undefined &&
       normalizeOrgName(dto.category) !== normalizeOrgName(existing.category)
     ) {
-      data.category = await this.resolveDepartmentName(dto.category);
+      const department = await this.resolveDepartment(dto.category);
+      data.category = department.name;
+      movedToDepartment = department;
     }
     if (dto.sortOrder !== undefined) {
       data.sortOrder = dto.sortOrder;
@@ -141,8 +144,27 @@ export class DesignationsService {
       data.isActive = dto.isActive;
     }
 
+    // Staff holding this designation follow it to its new department.
+    const moveStaff = (tx: Prisma.TransactionClient, title: string) =>
+      movedToDepartment
+        ? tx.employee.updateMany({
+            where: {
+              currentDesignation: { equals: title, mode: 'insensitive' },
+              status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+            },
+            data: { currentDepartmentId: movedToDepartment.id },
+          })
+        : undefined;
+
     if (!renamedTo) {
-      return this.prisma.designation.update({ where: { id }, data }).catch(orgWriteError);
+      if (!movedToDepartment) {
+        return this.prisma.designation.update({ where: { id }, data }).catch(orgWriteError);
+      }
+      return this.prisma.$transaction(async (tx) => {
+        const updated = await tx.designation.update({ where: { id }, data });
+        await moveStaff(tx, existing.title);
+        return updated;
+      }, { timeout: 30_000, maxWait: 20_000 }).catch(orgWriteError);
     }
 
     const newTitle = renamedTo;
@@ -170,6 +192,7 @@ export class DesignationsService {
         where: { currentDesignation: existing.title },
         data: { currentDesignation: newTitle },
       });
+      await moveStaff(tx, newTitle);
       return updated;
     }, { timeout: 30_000, maxWait: 20_000 }).catch(orgWriteError);
   }
@@ -209,7 +232,7 @@ export class DesignationsService {
   }
 
   /** Designation.category must name an active department, or it is orphaned. */
-  private async resolveDepartmentName(raw: string) {
+  private async resolveDepartment(raw: string) {
     const name = normalizeOrgName(raw);
     const department = await this.prisma.department.findFirst({
       where: {
@@ -221,6 +244,6 @@ export class DesignationsService {
     if (!department) {
       throw new BadRequestException(`Department "${name}" does not exist`);
     }
-    return department.name;
+    return department;
   }
 }

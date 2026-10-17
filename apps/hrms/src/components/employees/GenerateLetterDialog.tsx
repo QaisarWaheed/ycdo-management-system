@@ -60,7 +60,7 @@ export function GenerateLetterDialog({
     enabled: open,
   })
   const customTemplates = useMemo(
-    () => allTemplates.filter((t) => t.isCustom),
+    () => allTemplates.filter((t) => t.isCustom && !t.code.startsWith('STATUS_')),
     [allTemplates],
   )
 

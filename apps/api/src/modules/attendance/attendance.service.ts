@@ -1,4 +1,7 @@
-import { CHECK_IN_GRACE_MINUTES, LATE_GRACE_MINUTES } from '../../common/duty.util';
+import {
+  CHECK_IN_GRACE_MINUTES,
+  LATE_GRACE_MINUTES,
+} from '../../common/duty.util';
 import { MISSING_CHECKOUT_GRACE_MINUTES } from './missing-checkout-policy';
 import {
   assertAttendanceOpen,
@@ -36,6 +39,7 @@ import {
   LeaveStatus,
   LeaveType,
   LetterType,
+  PayrollStatus,
   Permission,
   Prisma,
   ProjectType,
@@ -83,9 +87,12 @@ import {
 } from './device-punch-time.util';
 import {
   applyDisciplineRules,
+  applyMissingCheckoutDiscipline,
   reconcileAttendanceFinancialConsequences,
   MISSING_CHECKOUT_AUTO_NOTE,
 } from './discipline.helper';
+import { evaluateMissingCheckoutEligibility } from './shift-missing-checkout.scheduler';
+import { dutyWindowMismatch } from '../../common/duty.util';
 import {
   countShortLeaveOccurrencesThisMonth,
   evaluateShortLeaveDeviation,
@@ -151,6 +158,12 @@ import {
 } from '../employees/status-effective.util';
 
 const OVERTIME_GRACE_MINUTES = 60;
+/**
+ * An auto-closed (missed checkout) session stores checkOut = scheduled duty
+ * end. A real checkout up to this long after it still completes the day:
+ * covers the 2-hour window plus late device sync.
+ */
+const AUTO_CLOSED_CHECKOUT_REOPEN_MINUTES = 180;
 const FULL_ATTENDANCE_EDIT_ROLES: UserRole[] = [
   UserRole.SUPER_ADMIN,
   UserRole.IT_ADMIN,
@@ -181,6 +194,25 @@ function stripMissingCheckoutMarker(note: string | null | undefined): string {
     .split(' | ')
     .filter((part) => part.trim() !== MISSING_CHECKOUT_AUTO_NOTE)
     .join(' | ');
+}
+
+/**
+ * The machine checkout that closes a duty: the last CHECKOUT punch after the
+ * check-in, before the next day's check-in and within 20 hours.
+ */
+export function pickDutyCheckout(
+  checkIn: Date,
+  nextCheckIn: Date | null,
+  checkouts: Date[],
+): Date | undefined {
+  const limit = Math.min(
+    nextCheckIn?.getTime() ?? Infinity,
+    checkIn.getTime() + 20 * 3_600_000,
+  );
+  return checkouts
+    .filter((c) => c.getTime() > checkIn.getTime() && c.getTime() < limit)
+    .sort((a, b) => a.getTime() - b.getTime())
+    .pop();
 }
 
 @Injectable()
@@ -303,7 +335,11 @@ export class AttendanceService {
       result,
       employee.dutyStartTime,
     );
-    await this.maybeRecomputePayrollForPunchResult(employee.id, dateOnly, result);
+    await this.maybeRecomputePayrollForPunchResult(
+      employee.id,
+      dateOnly,
+      result,
+    );
     return result;
   }
 
@@ -597,11 +633,18 @@ export class AttendanceService {
     if (punchType === 'AUTO') {
       const openRegular = twentyFourHour
         ? null
-        : await this.findOpenRegularLogForAuto(employee, dateOnly, db, checkTime);
+        : await this.findOpenRegularLogForAuto(
+            employee,
+            dateOnly,
+            db,
+            checkTime,
+          );
       if (openRegular && openRegular.date.getTime() !== dateOnly.getTime()) {
         dateOnly = openRegular.date;
         if (await isAttendanceLocked(db, branchId, dateOnly)) {
-          throw new ConflictException('Attendance month is verified and locked; punch ignored');
+          throw new ConflictException(
+            'Attendance month is verified and locked; punch ignored',
+          );
         }
       }
       punchType = openRegular ? 'CHECKOUT' : 'CHECKIN';
@@ -619,10 +662,7 @@ export class AttendanceService {
 
       if (openRegular?.checkIn) {
         const sameDay = openRegular.date.getTime() === dateOnly.getTime();
-        if (
-          sameDay &&
-          openRegular.status === AttendanceStatus.UNMARKED
-        ) {
+        if (sameDay && openRegular.status === AttendanceStatus.UNMARKED) {
           // checkIn is set but status was never finalized — fix it and
           // report success instead of rejecting as a duplicate.
           const swapExempt = await this.isLateExemptForSwap(
@@ -650,7 +690,11 @@ export class AttendanceService {
     }
 
     if (punchType === 'CHECKOUT' && !twentyFourHour) {
-      const openRegular = await this.findOpenRegularLog(employee.id, dateOnly);
+      const openRegular = await this.findOpenRegularLog(
+        employee.id,
+        dateOnly,
+        checkTime,
+      );
       if (!openRegular) {
         throw new BadRequestException(
           'No open check-in found for this employee today.',
@@ -659,10 +703,7 @@ export class AttendanceService {
     }
 
     if (punchType === 'OVERTIME_CHECKIN') {
-      await this.assertRegularShiftCompletedForOvertime(
-        employee.id,
-        dateOnly,
-      );
+      await this.assertRegularShiftCompletedForOvertime(employee.id, dateOnly);
       const existingOt = await this.findOvertimeLogForDate(
         employee.id,
         dateOnly,
@@ -1060,7 +1101,11 @@ export class AttendanceService {
       };
     }
 
-    const openRegular = await this.findOpenRegularLog(employee.id, dateOnly);
+    const openRegular = await this.findOpenRegularLog(
+      employee.id,
+      dateOnly,
+      checkTime,
+    );
 
     if (!openRegular) {
       throw new BadRequestException(
@@ -1072,8 +1117,15 @@ export class AttendanceService {
       throw new BadRequestException(CHECKOUT_TOO_SOON_REASON);
     }
 
-    const swapExempt = await this.isLateExemptForSwap(db, employee.id, dateOnly, openRegular.status);
-    const classification = swapExempt ? {} : classifyDutyCheckout(openRegular, employee, checkTime);
+    const swapExempt = await this.isLateExemptForSwap(
+      db,
+      employee.id,
+      dateOnly,
+      openRegular.status,
+    );
+    const classification = swapExempt
+      ? {}
+      : classifyDutyCheckout(openRegular, employee, checkTime);
 
     const log = await this.runInTx(db, async (tx) => {
       return tx.attendanceLog.update({
@@ -1083,6 +1135,10 @@ export class AttendanceService {
           ...classification,
           sessionClosedAt: null,
           ...punchSourcesForBiometricCheckOut(),
+          // A real checkout replaces the scheduler's auto checkout.
+          ...((openRegular.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE)
+            ? { note: stripMissingCheckoutMarker(openRegular.note) || null }
+            : {}),
         },
       });
     });
@@ -1109,10 +1165,7 @@ export class AttendanceService {
   ) {
     await this.assertRegularShiftCompletedForOvertime(employee.id, dateOnly);
 
-    const existingOt = await this.findOvertimeLogForDate(
-      employee.id,
-      dateOnly,
-    );
+    const existingOt = await this.findOvertimeLogForDate(employee.id, dateOnly);
     if (existingOt?.checkIn) {
       throw new ConflictException(
         'Employee already has an overtime check-in today.',
@@ -1281,9 +1334,7 @@ export class AttendanceService {
       }
     }
 
-    const dateOnly = toPakistanDateOnly(
-      new Date(`${dto.date}T00:00:00+05:00`),
-    );
+    const dateOnly = toPakistanDateOnly(new Date(`${dto.date}T00:00:00+05:00`));
     await assertAttendanceOpen(this.prisma, {
       date: dateOnly,
       branchId: employee.currentBranchId,
@@ -1304,8 +1355,12 @@ export class AttendanceService {
       },
     });
 
-    const checkIn = dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : undefined;
-    const checkOut = dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : undefined;
+    const checkIn = dto.checkIn
+      ? parseAttendanceDateTime(dto.checkIn)
+      : undefined;
+    const checkOut = dto.checkOut
+      ? parseAttendanceDateTime(dto.checkOut)
+      : undefined;
 
     let status = dto.status;
     let lateMinutes = dto.lateMinutes ?? 0;
@@ -1356,12 +1411,12 @@ export class AttendanceService {
       dateOnly,
       existing?.status ?? status,
     );
-    if (
-      swapExempt ||
-      status === AttendanceStatus.SWAP_COVERED
-    ) {
+    if (swapExempt || status === AttendanceStatus.SWAP_COVERED) {
       lateMinutes = 0;
-      if (status === AttendanceStatus.LATE || status === AttendanceStatus.HALF_DAY) {
+      if (
+        status === AttendanceStatus.LATE ||
+        status === AttendanceStatus.HALF_DAY
+      ) {
         status = AttendanceStatus.PRESENT;
       }
       if (existing?.status === AttendanceStatus.SWAP_COVERED) {
@@ -1371,17 +1426,29 @@ export class AttendanceService {
 
     let earlyOutMinutes = 0;
     if (checkIn && checkOut && !swapExempt) {
-      const classification = classifyDutyCheckout({ ...existing, date: dateOnly, checkIn, status, lateMinutes }, employee, checkOut);
+      const classification = classifyDutyCheckout(
+        { ...existing, date: dateOnly, checkIn, status, lateMinutes },
+        employee,
+        checkOut,
+      );
       status = classification.status ?? status;
       lateMinutes = classification.lateMinutes ?? lateMinutes;
       earlyOutMinutes = classification.earlyOutMinutes;
     }
-    const canSaveOvertime = FULL_ATTENDANCE_EDIT_ROLES.includes(actingUser.role);
+    const canSaveOvertime = FULL_ATTENDANCE_EDIT_ROLES.includes(
+      actingUser.role,
+    );
     if (dto.overtimeMinutes !== undefined && !canSaveOvertime) {
-      throw new ForbiddenException('Only HR, IT, or Super Admin can update overtime minutes');
+      throw new ForbiddenException(
+        'Only HR, IT, or Super Admin can update overtime minutes',
+      );
     }
-    const overtimeMinutes = dto.overtimeMinutes ?? existing?.overtimeMinutes ?? 0;
-    const overtimePending = dto.overtimeMinutes !== undefined ? false : existing?.overtimePending ?? false;
+    const overtimeMinutes =
+      dto.overtimeMinutes ?? existing?.overtimeMinutes ?? 0;
+    const overtimePending =
+      dto.overtimeMinutes !== undefined
+        ? false
+        : (existing?.overtimePending ?? false);
 
     const result = await this.prisma.$transaction(async (tx) => {
       let effectiveStatus = status;
@@ -1466,7 +1533,8 @@ export class AttendanceService {
             ? punchSourcesForManualCheckIn(Boolean(checkOut))
             : { source: AttendanceSource.MANUAL }),
           note:
-            checkOut && (existing?.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE)
+            checkOut &&
+            (existing?.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE)
               ? stripMissingCheckoutMarker(dto.note ?? existing?.note)
               : dto.note,
         },
@@ -1516,16 +1584,31 @@ export class AttendanceService {
     dto: ApproveOvertimeDto,
     actingUserId: string,
   ) {
-    const log = await this.prisma.attendanceLog.findUnique({ where: { id },
-      include: { employee: { select: { status: true, statusEffectiveFrom: true, joiningDate: true } } },
+    const log = await this.prisma.attendanceLog.findUnique({
+      where: { id },
+      include: {
+        employee: {
+          select: {
+            status: true,
+            statusEffectiveFrom: true,
+            joiningDate: true,
+          },
+        },
+      },
     });
 
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
-    assertEmployeeEligibleForAttendanceRecord(log.employee.status,
-      this.employeeAttendanceContext(log.employee), log.date);
-    await assertAttendanceOpen(this.prisma, { date: log.date, branchId: log.branchId });
+    assertEmployeeEligibleForAttendanceRecord(
+      log.employee.status,
+      this.employeeAttendanceContext(log.employee),
+      log.date,
+    );
+    await assertAttendanceOpen(this.prisma, {
+      date: log.date,
+      branchId: log.branchId,
+    });
 
     return this.prisma.attendanceLog.update({
       where: { id },
@@ -1667,7 +1750,10 @@ export class AttendanceService {
     if (!log) {
       throw new NotFoundException(`Attendance log with id ${id} not found`);
     }
-    await assertAttendanceOpen(this.prisma, { date: log.date, branchId: log.branchId });
+    await assertAttendanceOpen(this.prisma, {
+      date: log.date,
+      branchId: log.branchId,
+    });
 
     assertEmployeeEligibleForAttendanceRecord(
       log.employee.status,
@@ -1741,7 +1827,9 @@ export class AttendanceService {
       data.checkIn = dto.checkIn ? parseAttendanceDateTime(dto.checkIn) : null;
     }
     if (dto.checkOut !== undefined) {
-      data.checkOut = dto.checkOut ? parseAttendanceDateTime(dto.checkOut) : null;
+      data.checkOut = dto.checkOut
+        ? parseAttendanceDateTime(dto.checkOut)
+        : null;
     }
     if (dto.checkIn === null) {
       // A checkout without a check-in is invalid; clear the full session.
@@ -1752,7 +1840,13 @@ export class AttendanceService {
     if (
       data.checkOut === null ||
       (dto.status !== undefined &&
-        !([AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.HALF_DAY] as AttendanceStatus[]).includes(dto.status))
+        !(
+          [
+            AttendanceStatus.PRESENT,
+            AttendanceStatus.LATE,
+            AttendanceStatus.HALF_DAY,
+          ] as AttendanceStatus[]
+        ).includes(dto.status))
     ) {
       data.earlyOutMinutes = 0;
     }
@@ -1832,10 +1926,23 @@ export class AttendanceService {
     // unrelated edit.
     if (
       dto.status === undefined &&
-      (dto.checkIn !== undefined || (dto.checkOut !== undefined &&
-        ([AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.HALF_DAY] as AttendanceStatus[]).includes(log.status))) &&
+      (dto.checkIn !== undefined ||
+        (dto.checkOut !== undefined &&
+          (
+            [
+              AttendanceStatus.PRESENT,
+              AttendanceStatus.LATE,
+              AttendanceStatus.HALF_DAY,
+            ] as AttendanceStatus[]
+          ).includes(log.status))) &&
       effectiveCheckIn &&
-      !([AttendanceStatus.HOLIDAY, AttendanceStatus.SHORT_LEAVE, AttendanceStatus.ON_LEAVE] as AttendanceStatus[]).includes(log.status)
+      !(
+        [
+          AttendanceStatus.HOLIDAY,
+          AttendanceStatus.SHORT_LEAVE,
+          AttendanceStatus.ON_LEAVE,
+        ] as AttendanceStatus[]
+      ).includes(log.status)
     ) {
       const swapExempt = await this.isLateExemptForSwap(
         this.prisma,
@@ -1843,7 +1950,11 @@ export class AttendanceService {
         log.date,
         log.status,
       );
-      if (is24HourShift(log.employee) || swapExempt || log.status === AttendanceStatus.SWAP_COVERED) {
+      if (
+        is24HourShift(log.employee) ||
+        swapExempt ||
+        log.status === AttendanceStatus.SWAP_COVERED
+      ) {
         data.status =
           log.status === AttendanceStatus.SWAP_COVERED
             ? AttendanceStatus.SWAP_COVERED
@@ -1868,9 +1979,19 @@ export class AttendanceService {
           : 0;
         data.status = statusFromLateMinutes(lateMinutes);
         data.lateMinutes = lateMinutes;
-        if (effectiveCheckOut) Object.assign(data, classifyDutyCheckout({
-          ...log, checkIn: effectiveCheckIn, status: data.status as AttendanceStatus,
-        }, log.employee, effectiveCheckOut));
+        if (effectiveCheckOut)
+          Object.assign(
+            data,
+            classifyDutyCheckout(
+              {
+                ...log,
+                checkIn: effectiveCheckIn,
+                status: data.status as AttendanceStatus,
+              },
+              log.employee,
+              effectiveCheckOut,
+            ),
+          );
       }
     }
 
@@ -1883,6 +2004,17 @@ export class AttendanceService {
     }
     if (dto.note !== undefined) {
       data.note = dto.note;
+      // A note-only edit must not silently cancel a missed checkout: keep the
+      // marker unless a real checkout time is supplied (handled below).
+      if (
+        dto.checkOut === undefined &&
+        (log.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE) &&
+        !(dto.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE)
+      ) {
+        data.note = [dto.note?.trim(), MISSING_CHECKOUT_AUTO_NOTE]
+          .filter(Boolean)
+          .join(' | ');
+      }
     }
     if (
       dto.checkOut !== undefined &&
@@ -2646,12 +2778,11 @@ export class AttendanceService {
     }
 
     if (actingUser?.id) {
-      employeeWhere =
-        await this.accessScopeService.narrowEmployeeWhereForActor(
-          actingUser.id,
-          actingUser.role as UserRole,
-          employeeWhere,
-        );
+      employeeWhere = await this.accessScopeService.narrowEmployeeWhereForActor(
+        actingUser.id,
+        actingUser.role as UserRole,
+        employeeWhere,
+      );
     }
     const medicineWhere = isMedicineManagerRole(actingUser?.role)
       ? medicineEmployeeWhere()
@@ -2666,9 +2797,7 @@ export class AttendanceService {
           : medicineWhere;
 
     const isSingleDay =
-      !!query.startDate &&
-      !!query.endDate &&
-      query.startDate === query.endDate;
+      !!query.startDate && !!query.endDate && query.startDate === query.endDate;
 
     const dateOnly = isSingleDay
       ? this.toDateOnly(new Date(query.startDate!))
@@ -2708,10 +2837,7 @@ export class AttendanceService {
 
     if (query.month && query.year) {
       const { start } = pakistanMonthDateRange(query.year, query.month);
-      const visibleEnd = pakistanVisibleAttendanceEnd(
-        query.year,
-        query.month,
-      );
+      const visibleEnd = pakistanVisibleAttendanceEnd(query.year, query.month);
       if (!visibleEnd) {
         where.date = { gte: start, lte: new Date(0) };
       } else {
@@ -2832,17 +2958,17 @@ export class AttendanceService {
           : log.employee,
       }))
       .sort((a, b) => {
-      const aPriority = getHierarchyPriority(
-        a.employee?.currentDesignation ?? '',
-      );
-      const bPriority = getHierarchyPriority(
-        b.employee?.currentDesignation ?? '',
-      );
-      if (aPriority !== bPriority) return aPriority - bPriority;
-      return (a.employee?.fullName ?? '').localeCompare(
-        b.employee?.fullName ?? '',
-      );
-    });
+        const aPriority = getHierarchyPriority(
+          a.employee?.currentDesignation ?? '',
+        );
+        const bPriority = getHierarchyPriority(
+          b.employee?.currentDesignation ?? '',
+        );
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return (a.employee?.fullName ?? '').localeCompare(
+          b.employee?.fullName ?? '',
+        );
+      });
 
     const dutyFilter = this.resolveDutyFilter(query);
     let result = mapped;
@@ -2863,10 +2989,7 @@ export class AttendanceService {
     // this keeps the dashboard correct even if a stale row remains.
     if (isQueryingToday) {
       result = result.filter((log) => {
-        if (
-          log.status !== AttendanceStatus.UNMARKED ||
-          log.checkIn != null
-        ) {
+        if (log.status !== AttendanceStatus.UNMARKED || log.checkIn != null) {
           return true;
         }
         const dutyStart =
@@ -2887,9 +3010,7 @@ export class AttendanceService {
 
     // Only meaningful for a single day that is today (PKT).
     const isSingleDay =
-      !!query.startDate &&
-      !!query.endDate &&
-      query.startDate === query.endDate;
+      !!query.startDate && !!query.endDate && query.startDate === query.endDate;
     if (!isSingleDay) return 'all';
 
     const pkToday = toPakistanDateOnly(new Date());
@@ -3032,7 +3153,9 @@ export class AttendanceService {
       select: { id: true, currentBranchId: true, status: true },
     });
     if (!employee) {
-      throw new NotFoundException(`Employee with id ${dto.employeeId} not found`);
+      throw new NotFoundException(
+        `Employee with id ${dto.employeeId} not found`,
+      );
     }
     assertEmployeeEligibleForRelieverAttendance(
       employee.status,
@@ -3054,7 +3177,9 @@ export class AttendanceService {
       },
     });
     if (openSession) {
-      throw new ConflictException('Reliever already has an open session for this date');
+      throw new ConflictException(
+        'Reliever already has an open session for this date',
+      );
     }
 
     const completed = await this.prisma.relieverSession.findFirst({
@@ -3093,19 +3218,29 @@ export class AttendanceService {
     return session;
   }
 
-  async relieverCheckOut(
-    dto: RelieverCheckOutDto,
-    addedById: string,
-  ) {
+  async relieverCheckOut(dto: RelieverCheckOutDto, addedById: string) {
     const session = await this.prisma.relieverSession.findUnique({
       where: { id: dto.sessionId },
-      include: { employee: { select: { status: true, statusEffectiveFrom: true, joiningDate: true } } },
+      include: {
+        employee: {
+          select: {
+            status: true,
+            statusEffectiveFrom: true,
+            joiningDate: true,
+          },
+        },
+      },
     });
     if (!session) {
-      throw new NotFoundException(`Reliever session ${dto.sessionId} not found`);
+      throw new NotFoundException(
+        `Reliever session ${dto.sessionId} not found`,
+      );
     }
-    assertEmployeeEligibleForRelieverAttendance(session.employee.status,
-      this.employeeAttendanceContext(session.employee), session.date);
+    assertEmployeeEligibleForRelieverAttendance(
+      session.employee.status,
+      this.employeeAttendanceContext(session.employee),
+      session.date,
+    );
     if (!session.checkIn) {
       throw new BadRequestException('Session has no check-in');
     }
@@ -3182,13 +3317,24 @@ export class AttendanceService {
 
     const session = await this.prisma.relieverSession.findUnique({
       where: { id: sessionId },
-      include: { employee: { select: { status: true, statusEffectiveFrom: true, joiningDate: true } } },
+      include: {
+        employee: {
+          select: {
+            status: true,
+            statusEffectiveFrom: true,
+            joiningDate: true,
+          },
+        },
+      },
     });
     if (!session) {
       throw new NotFoundException(`Reliever session ${sessionId} not found`);
     }
-    assertEmployeeEligibleForRelieverAttendance(session.employee.status,
-      this.employeeAttendanceContext(session.employee), session.date);
+    assertEmployeeEligibleForRelieverAttendance(
+      session.employee.status,
+      this.employeeAttendanceContext(session.employee),
+      session.date,
+    );
     await assertAttendanceOpen(this.prisma, {
       date: session.date,
       branchId: session.branchId,
@@ -3432,7 +3578,14 @@ export class AttendanceService {
         relieverOnly: false,
         shiftId: { not: null },
       },
-      select: { id: true, currentBranchId: true, weeklyOffWeekdays: true, status: true, statusEffectiveFrom: true, joiningDate: true },
+      select: {
+        id: true,
+        currentBranchId: true,
+        weeklyOffWeekdays: true,
+        status: true,
+        statusEffectiveFrom: true,
+        joiningDate: true,
+      },
     });
 
     const existingLogs = await this.prisma.attendanceLog.findMany({
@@ -3450,7 +3603,9 @@ export class AttendanceService {
       activeEmployees.filter((e) => !lockedBranches.has(e.currentBranchId)),
       dateOnly,
     );
-    const loggedEmployeeIds = new Set(existingLogs.map((log) => log.employeeId));
+    const loggedEmployeeIds = new Set(
+      existingLogs.map((log) => log.employeeId),
+    );
 
     const absentEmployees = activeEmployees.filter(
       (emp) =>
@@ -3686,14 +3841,24 @@ export class AttendanceService {
     if (is24HourShift(employee)) {
       status = AttendanceStatus.PRESENT;
       lateMinutes = 0;
+    } else if (
+      await this.isLateExemptForSwap(
+        this.prisma,
+        employeeId,
+        dateOnly,
+        existing?.status,
+      )
+    ) {
+      status =
+        existing?.status === AttendanceStatus.SWAP_COVERED
+          ? AttendanceStatus.SWAP_COVERED
+          : AttendanceStatus.PRESENT;
+      lateMinutes = 0;
     } else {
-      ({ status, lateMinutes } = this.determineCheckInStatus(
-        checkTime,
-        employee.shift,
-      ));
-      if (status === AttendanceStatus.LATE && lateMinutes > 120) {
-        status = AttendanceStatus.HALF_DAY;
-      }
+      // Same rule as a machine punch: the employee's own duty start, 18-minute
+      // grace, late beyond 15 minutes, half day after 120.
+      lateMinutes = computeBiometricLateMinutes(checkTime, employee);
+      status = this.statusForBiometricCheckIn(lateMinutes, employee);
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -3802,13 +3967,20 @@ export class AttendanceService {
     const checkTime = new Date();
     const dateOnly = this.toDateOnly(checkTime);
 
-    const existing = await this.findOpenRegularLog(employeeId, dateOnly);
+    const existing = await this.findOpenRegularLog(
+      employeeId,
+      dateOnly,
+      checkTime,
+    );
 
     if (!existing?.checkIn) {
       throw new BadRequestException('Must check in before checking out');
     }
 
-    if (existing.checkOut) {
+    const autoClosed = (existing.note ?? '').includes(
+      MISSING_CHECKOUT_AUTO_NOTE,
+    );
+    if (existing.checkOut && !autoClosed) {
       throw new BadRequestException('Already checked out today');
     }
 
@@ -3829,6 +4001,12 @@ export class AttendanceService {
         data: {
           checkOut: checkTime,
           ...classifyDutyCheckout(existing, employee, checkTime),
+          ...(autoClosed
+            ? {
+                sessionClosedAt: null,
+                note: stripMissingCheckoutMarker(existing.note) || null,
+              }
+            : {}),
           checkOutSource: AttendanceSource.MANUAL,
           source: summarizeLegacySource(
             existing.checkInSource,
@@ -3925,9 +4103,7 @@ export class AttendanceService {
     const checkOutMinutes = toPakistanMinutesOfDay(checkOut);
     const dutyEnd =
       employee?.dutyEndTime?.trim() || employee?.shift?.endTime || null;
-    const endMinutes = dutyEnd
-      ? this.parseTimeToMinutes(dutyEnd)
-      : 18 * 60;
+    const endMinutes = dutyEnd ? this.parseTimeToMinutes(dutyEnd) : 18 * 60;
     const overtimeThreshold = endMinutes + OVERTIME_GRACE_MINUTES;
 
     if (checkOutMinutes > overtimeThreshold) {
@@ -4023,17 +4199,46 @@ export class AttendanceService {
    * Includes internally-closed missing-checkout sessions so a later biometric
    * checkout can still complete the day and reverse that discipline.
    */
-  private async findOpenRegularLog(employeeId: string, dateOnly: Date) {
+  private async findOpenRegularLog(
+    employeeId: string,
+    dateOnly: Date,
+    checkTime?: Date,
+  ) {
     const todayOpen = await this.findOpenRegularLogForDate(
       employeeId,
       dateOnly,
       false,
     );
     if (todayOpen) return todayOpen;
-    return this.findOpenRegularLogForDate(
+    const yesterdayOpen = await this.findOpenRegularLogForDate(
       employeeId,
       this.pakistanYesterday(dateOnly),
       false,
+    );
+    if (yesterdayOpen || !checkTime) return yesterdayOpen;
+    // The scheduler auto-closes a session at duty end once the 2-hour window
+    // passes (it writes checkOut). A real checkout that arrives soon after —
+    // punched at 10:00:30, or a device that synced late — still completes
+    // that day instead of being rejected with "No open check-in".
+    const autoClosed = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId,
+        type: AttendanceLogType.REGULAR,
+        date: { in: [dateOnly, this.pakistanYesterday(dateOnly)] },
+        checkIn: { not: null },
+        sessionClosedAt: { not: null },
+        note: { contains: MISSING_CHECKOUT_AUTO_NOTE },
+      },
+      orderBy: { date: 'desc' },
+    });
+    return (
+      autoClosed.find(
+        (r) =>
+          r.checkOut &&
+          r.checkIn! < checkTime &&
+          checkTime.getTime() - r.checkOut.getTime() <=
+            AUTO_CLOSED_CHECKOUT_REOPEN_MINUTES * 60_000,
+      ) ?? null
     );
   }
 
@@ -4082,10 +4287,16 @@ export class AttendanceService {
     // A late-evening duty can finish before midnight while its checkout window ends after it.
     const duty = resolveAttendanceDutyTimes(previous, employee);
     if (!duty.dutyStartTime || !duty.dutyEndTime) return null;
-    const end = computeShiftEndDateTime(previous.date, duty.dutyEndTime,
-      isOvernightShift(duty.dutyStartTime, duty.dutyEndTime));
+    const end = computeShiftEndDateTime(
+      previous.date,
+      duty.dutyEndTime,
+      isOvernightShift(duty.dutyStartTime, duty.dutyEndTime),
+    );
     const minutesAfterEnd = (checkTime.getTime() - end.getTime()) / 60000;
-    return minutesAfterEnd >= 0 && minutesAfterEnd <= MISSING_CHECKOUT_GRACE_MINUTES ? previous : null;
+    return minutesAfterEnd >= 0 &&
+      minutesAfterEnd <= MISSING_CHECKOUT_GRACE_MINUTES
+      ? previous
+      : null;
   }
 
   /**
@@ -4198,13 +4409,8 @@ export class AttendanceService {
     }
   }
 
-  async importRecord(
-    dto: ImportAttendanceDto,
-    actingUserId: string,
-  ) {
-    const dateOnly = toPakistanDateOnly(
-      new Date(`${dto.date}T00:00:00+05:00`),
-    );
+  async importRecord(dto: ImportAttendanceDto, actingUserId: string) {
+    const dateOnly = toPakistanDateOnly(new Date(`${dto.date}T00:00:00+05:00`));
     const type = dto.type ?? AttendanceLogType.REGULAR;
 
     const existing = await this.prisma.attendanceLog.findFirst({
@@ -4245,14 +4451,14 @@ export class AttendanceService {
 
     const checkIn = dto.checkIn
       ? parseAttendanceDateTime(dto.checkIn)
-      : existing?.checkIn ?? null;
+      : (existing?.checkIn ?? null);
     const checkOut = dto.checkOut
       ? parseAttendanceDateTime(dto.checkOut)
-      : existing?.checkOut ?? null;
+      : (existing?.checkOut ?? null);
     const lateMinutes =
       checkIn && !is24HourShift(employee)
         ? computeBiometricLateMinutes(checkIn, employee)
-        : existing?.lateMinutes ?? 0;
+        : (existing?.lateMinutes ?? 0);
 
     const log = await this.prisma.$transaction(async (tx) => {
       const attendanceLog = existing
@@ -4561,6 +4767,316 @@ export class AttendanceService {
       near,
       due,
       counts: { near: near.length, due: due.length },
+    };
+  }
+
+  /**
+   * HR fixed a wrong duty: replay the month's real machine punches through
+   * the normal check-in / check-out rules with the employee's CURRENT duty.
+   * Each biometric day is reset and its stored check-in and the last machine
+   * checkout of that duty are pushed through biometricRegularCheckIn /
+   * biometricRegularCheckout, then late / missing-checkout discipline and
+   * payroll are reconciled exactly as for a live punch. Leave, holidays, swap
+   * days and manually entered days are left alone. Paid / Processed months
+   * are refused.
+   */
+  async recalculateMonthFromPunches(
+    employeeId: string,
+    year: number,
+    month: number,
+    actingUser: { id: string; role: UserRole },
+  ) {
+    await this.accessScopeService.assertEmployeeAccess(
+      actingUser.id,
+      actingUser.role,
+      Permission.ATTENDANCE_EDIT,
+      employeeId,
+    );
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { shift: true },
+    });
+    if (!employee) throw new NotFoundException('Employee not found');
+    const mismatch = dutyWindowMismatch(
+      employee.dutyStartTime,
+      employee.dutyEndTime,
+      employee.dutyTotalHours,
+    );
+    if (mismatch)
+      throw new BadRequestException(`Fix the duty first. ${mismatch}`);
+
+    const from = new Date(Date.UTC(year, month - 1, 1));
+    const to = new Date(Date.UTC(year, month, 1));
+    const locked = await this.prisma.payrollEntry.count({
+      where: {
+        month,
+        year,
+        stipendRecord: { employeeId },
+        status: { not: PayrollStatus.PENDING },
+      },
+    });
+    if (locked) {
+      throw new BadRequestException(
+        'This month is already Processed / Paid; reopen the salary before recalculating attendance',
+      );
+    }
+
+    const logs = await this.prisma.attendanceLog.findMany({
+      where: {
+        employeeId,
+        type: AttendanceLogType.REGULAR,
+        date: { gte: from, lt: to },
+      },
+      orderBy: { date: 'asc' },
+    });
+    const checkouts = await this.prisma.processedDeviceEvent.findMany({
+      where: {
+        employeeId,
+        punchType: 'CHECKOUT',
+        processedAt: {
+          gte: new Date(from.getTime() - 86_400_000),
+          lt: new Date(to.getTime() + 2 * 86_400_000),
+        },
+      },
+      orderBy: { processedAt: 'asc' },
+      select: { processedAt: true },
+    });
+
+    const twentyFourHour = is24HourShift(employee);
+    const SKIP: AttendanceStatus[] = [
+      AttendanceStatus.ON_LEAVE,
+      AttendanceStatus.HOLIDAY,
+      AttendanceStatus.SWAP_COVERED,
+      AttendanceStatus.SHORT_LEAVE,
+      AttendanceStatus.ABSENT,
+    ];
+    const clean = (note: string | null) =>
+      (note ?? '')
+        .split(' | ')
+        .map((x) => x.trim())
+        .filter(
+          (x) =>
+            x &&
+            x !== '24-hour shift check-in' &&
+            x !== MISSING_CHECKOUT_AUTO_NOTE,
+        )
+        .join(' | ') || null;
+    const now = new Date();
+    const days: Array<{
+      date: string;
+      result: 'recalculated' | 'skipped' | 'failed';
+      reason?: string;
+      before?: { status: string; lateMinutes: number; checkOut: Date | null };
+      after?: { status: string; lateMinutes: number; checkOut: Date | null };
+    }> = [];
+
+    for (let i = 0; i < logs.length; i++) {
+      const log = logs[i];
+      const date = log.date.toISOString().slice(0, 10);
+      if (!log.checkIn || SKIP.includes(log.status)) {
+        days.push({
+          date,
+          result: 'skipped',
+          reason: log.checkIn ? log.status : 'no check-in',
+        });
+        continue;
+      }
+      if (log.checkInSource !== AttendanceSource.BIOMETRIC) {
+        days.push({ date, result: 'skipped', reason: 'entered manually' });
+        continue;
+      }
+      try {
+        await assertAttendanceOpen(this.prisma, {
+          date: log.date,
+          branchId: log.branchId,
+        });
+      } catch {
+        days.push({
+          date,
+          result: 'skipped',
+          reason: 'attendance month locked',
+        });
+        continue;
+      }
+
+      // The last machine checkout of this duty: after check-in, before the
+      // next day's check-in and within 20 hours.
+      const checkIn = log.checkIn;
+      const nextIn = logs.slice(i + 1).find((l) => l.checkIn)?.checkIn;
+      const machineOut = pickDutyCheckout(
+        checkIn,
+        nextIn ?? null,
+        checkouts.map((c) => c.processedAt),
+      );
+      const keptOut =
+        !machineOut &&
+        log.checkOut &&
+        log.checkOutSource &&
+        log.checkOutSource !== AttendanceSource.BIOMETRIC &&
+        !(log.note ?? '').includes(MISSING_CHECKOUT_AUTO_NOTE)
+          ? log.checkOut
+          : null;
+      const checkOutAt = machineOut ?? keptOut;
+
+      const before = {
+        status: log.status,
+        lateMinutes: log.lateMinutes,
+        checkIn: log.checkIn,
+        checkOut: log.checkOut,
+        note: log.note,
+      };
+      try {
+        await this.prisma.attendanceLog.update({
+          where: { id: log.id },
+          data: {
+            checkIn: null,
+            checkOut: null,
+            status: AttendanceStatus.UNMARKED,
+            lateMinutes: 0,
+            earlyOutMinutes: 0,
+            sessionClosedAt: null,
+            note: clean(log.note),
+            dutyStartTimeSnapshot: employee.dutyStartTime ?? null,
+            dutyEndTimeSnapshot: employee.dutyEndTime ?? null,
+          },
+        });
+        await this.biometricRegularCheckIn(
+          employee,
+          log.branchId,
+          checkIn,
+          log.date,
+          twentyFourHour,
+        );
+        let closed = false;
+        if (checkOutAt && !twentyFourHour) {
+          try {
+            await this.biometricRegularCheckout(
+              employee,
+              log.branchId,
+              checkOutAt,
+              log.date,
+              false,
+            );
+            closed = true;
+            if (keptOut) {
+              await this.prisma.attendanceLog.update({
+                where: { id: log.id },
+                data: { checkOutSource: log.checkOutSource },
+              });
+            }
+          } catch {
+            // e.g. checkout too soon after check-in — treat as no checkout
+          }
+        }
+        if (!closed && !twentyFourHour) {
+          const duty = {
+            dutyStartTime: employee.dutyStartTime,
+            dutyEndTime: employee.dutyEndTime,
+          };
+          const evaluation = evaluateMissingCheckoutEligibility(
+            employee,
+            log.date,
+            now,
+            duty,
+          );
+          if (evaluation.eligible && evaluation.shiftEnd > checkIn) {
+            await this.prisma.$transaction(async (tx) => {
+              const current = await tx.attendanceLog.findUnique({
+                where: { id: log.id },
+              });
+              await tx.attendanceLog.update({
+                where: { id: log.id },
+                data: {
+                  checkOut: evaluation.shiftEnd,
+                  sessionClosedAt: now,
+                  note: [current?.note?.trim(), MISSING_CHECKOUT_AUTO_NOTE]
+                    .filter(Boolean)
+                    .join(' | '),
+                },
+              });
+              await applyMissingCheckoutDiscipline(tx, employeeId, log.date, {
+                checkIn,
+                dutyEndTime: employee.dutyEndTime,
+              });
+            });
+          }
+        }
+        const after = await this.prisma.attendanceLog.findUniqueOrThrow({
+          where: { id: log.id },
+        });
+        await this.runConsequenceReconcile(
+          employeeId,
+          log.date,
+          before,
+          after,
+          employee.dutyStartTime,
+        );
+        days.push({
+          date,
+          result: 'recalculated',
+          before: {
+            status: before.status,
+            lateMinutes: before.lateMinutes,
+            checkOut: before.checkOut,
+          },
+          after: {
+            status: after.status,
+            lateMinutes: after.lateMinutes,
+            checkOut: after.checkOut,
+          },
+        });
+      } catch (err) {
+        // Put the day back exactly as it was.
+        await this.prisma.attendanceLog.update({
+          where: { id: log.id },
+          data: {
+            checkIn: log.checkIn,
+            checkOut: log.checkOut,
+            status: log.status,
+            lateMinutes: log.lateMinutes,
+            earlyOutMinutes: log.earlyOutMinutes,
+            sessionClosedAt: log.sessionClosedAt,
+            note: log.note,
+            checkInSource: log.checkInSource,
+            checkOutSource: log.checkOutSource,
+            dutyStartTimeSnapshot: log.dutyStartTimeSnapshot,
+            dutyEndTimeSnapshot: log.dutyEndTimeSnapshot,
+          },
+        });
+        days.push({
+          date,
+          result: 'failed',
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    await this.payrollService.recomputePendingPayrollForAttendanceDate(
+      employeeId,
+      from,
+    );
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actingUser.id,
+        action: 'ATTENDANCE_MONTH_RECALCULATED',
+        entity: 'Employee',
+        entityId: employeeId,
+        changes: {
+          year,
+          month,
+          duty: `${employee.dutyStartTime}-${employee.dutyEndTime}`,
+          recalculated: days.filter((d) => d.result === 'recalculated').length,
+          failed: days.filter((d) => d.result === 'failed').length,
+        } as Prisma.InputJsonValue,
+      },
+    });
+    return {
+      year,
+      month,
+      recalculated: days.filter((d) => d.result === 'recalculated').length,
+      skipped: days.filter((d) => d.result === 'skipped').length,
+      failed: days.filter((d) => d.result === 'failed').length,
+      days,
     };
   }
 }

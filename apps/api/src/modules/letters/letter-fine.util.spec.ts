@@ -8,10 +8,10 @@ const letter: any = { id: 'l1', employeeId: 'e', letterType: 'FINE',
 
 describe('letter fines', () => {
   it('keeps the amount, selected month, reference and cause', () => {
-    expect(letterFine(letter)).toMatchObject({ amount: 200, month: 10, year: 2026,
+    expect(letterFine(letter)).toMatchObject({ amount: 200, month: 10, year: 2026, reason: 'DISCIPLINARY_FINE', fineReason: 'NO_UNIFORM',
       description: 'Letter fine [l1] 12/YCDO/2026 — UNIFORM' });
     expect(letterFine({ ...letter, variables: { fineAmount: 'Rs. 1,250.50', deductionMonth: 'November 2026', fineReason: 'Custom fine' } }))
-      .toMatchObject({ amount: 1250.5, month: 11, year: 2026 });
+      .toMatchObject({ amount: 1250.5, month: 11, year: 2026, fineReason: null });
     expect(letterFine({ ...letter, letterType: 'EXPLANATION_FINE', variables: { payrollFineAmount: '500', payrollFineMonth: '2026-12' } }))
       .toMatchObject({ amount: 500, month: 12, year: 2026 });
   });
@@ -37,6 +37,7 @@ describe('letter fines', () => {
     const tx = db();
     await applyLetterFine(tx, letter); await applyLetterFine(tx, letter);
     expect(tx.payrollDeduction.create).toHaveBeenCalledTimes(1);
+    expect(tx.payrollDeduction.create.mock.calls[0][0].data).toMatchObject({ reason: 'DISCIPLINARY_FINE', fineReason: 'NO_UNIFORM' });
     expect(tx.payrollEntry.update).toHaveBeenCalledWith({ where: { id: 'p' }, data: {
       totalDeductions: { increment: 200 }, netStipend: { decrement: 200 },
     } });

@@ -114,7 +114,7 @@ function useReportOptions() {
   )
 
   const { data: departments = [] } = useQuery({
-    queryKey: ['departments-all'],
+    queryKey: ['departments', 'all'],
     queryFn: () => departmentsApi.getAll(),
   })
 
@@ -127,7 +127,7 @@ function useReportOptions() {
   )
 
   const { data: designations = [] } = useQuery({
-    queryKey: ['designations-all'],
+    queryKey: ['designations', 'all'],
     queryFn: () => designationsApi.getAll(),
   })
 

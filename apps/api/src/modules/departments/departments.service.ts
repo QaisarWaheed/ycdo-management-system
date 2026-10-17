@@ -66,10 +66,18 @@ export class DepartmentsService {
       relevant,
       async (department) => {
         const employees = await this.prisma.employee.count({
-          where:
-            this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
-              departmentId: department.id,
-            }),
+          where: {
+            AND: [
+              this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
+                departmentId: department.id,
+              }) ?? {},
+              {
+                status: {
+                  in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED],
+                },
+              },
+            ],
+          },
         });
         return {
           ...department,

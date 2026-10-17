@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { branchesApi } from '@/api/endpoints/branches'
 import { departmentsApi } from '@/api/endpoints/departments'
+import { designationsApi } from '@/api/endpoints/designations'
 import { employeesApi } from '@/api/endpoints/employees'
 import { projectsApi } from '@/api/endpoints/projects'
 import { shiftsApi } from '@/api/endpoints/shifts'
@@ -171,6 +172,24 @@ export function EmployeeFiltersBar({
     queryFn: () => departmentsApi.getAll(),
   })
 
+  const selectedDepartmentName = departments.find(
+    (d) => d.id === filters.departmentId,
+  )?.name
+  const designationParams = selectedDepartmentName
+    ? { department: selectedDepartmentName }
+    : undefined
+  const { data: designations = [] } = useQuery({
+    queryKey: ['designations', designationParams],
+    queryFn: () => designationsApi.getAll(designationParams),
+  })
+  const designationOptions = useMemo(
+    () =>
+      [...new Set(designations.map((d) => d.title))].sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }),
+      ),
+    [designations],
+  )
+
   const { data: filterOptions } = useQuery({
     queryKey: ['employees', 'filter-options'],
     queryFn: () => employeesApi.getFilterOptions(),
@@ -297,11 +316,13 @@ export function EmployeeFiltersBar({
             }
             onChange={(label) => {
               if (label === 'All Departments') {
-                update({ departmentId: '' })
+                update({ departmentId: '', designation: '' })
                 return
               }
               const dept = departments.find((d) => d.name === label)
-              if (dept) update({ departmentId: dept.id })
+              if (dept && dept.id !== filters.departmentId) {
+                update({ departmentId: dept.id, designation: '' })
+              }
             }}
             placeholder="Search department..."
           />
@@ -329,7 +350,7 @@ export function EmployeeFiltersBar({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_FILTER}>All Designations</SelectItem>
-              {(filterOptions?.designations ?? []).map((d) => (
+              {designationOptions.map((d) => (
                 <SelectItem key={d} value={d}>
                   {d}
                 </SelectItem>

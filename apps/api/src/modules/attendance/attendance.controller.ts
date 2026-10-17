@@ -28,6 +28,7 @@ import {
   OvertimePunchDto,
   PortalCheckDto,
   RawScanDto,
+  RecalculateMonthDto,
   RelieverCheckInDto,
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
@@ -151,6 +152,27 @@ export class AttendanceController {
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
     return this.attendanceService.updateAttendance(id, dto, user);
+  }
+
+  /** HR fixed a duty: re-apply the month's machine punches with the current duty. */
+  @Post('recalculate-month')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+  )
+  recalculateMonth(
+    @Body() dto: RecalculateMonthDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.attendanceService.recalculateMonthFromPunches(
+      dto.employeeId,
+      dto.year,
+      dto.month,
+      user,
+    );
   }
 
   @Get('timer/:employeeId')

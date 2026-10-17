@@ -291,13 +291,13 @@ export function buildPayslipSections(input: {
   const sum = (rows: Array<{ amount: unknown }>) =>
     money(rows.reduce((s, r) => s + (Number(r.amount) || 0), 0));
 
-  // Same label + note lines are added together; zero lines dropped.
-  const collect = (lines: PayslipLine[]) => {
+  // Same label + note lines are added together (unless merge=false); zero lines dropped.
+  const collect = (lines: PayslipLine[], merge = true) => {
     const out: PayslipLine[] = [];
     for (const l of lines) {
       const amount = money(l.amount);
       if (Math.abs(amount) < 0.005) continue;
-      const same = out.find((o) => o.label === l.label && o.note === l.note);
+      const same = merge && out.find((o) => o.label === l.label && o.note === l.note);
       if (same) same.amount = money(same.amount + amount);
       else out.push({ label: l.label, amount, ...(l.note ? { note: l.note } : {}) });
     }
@@ -408,7 +408,7 @@ export function buildPayslipSections(input: {
         amount,
         note: every3(counts.missingCheckout, 'missed checkout', dd?.missedCheckout),
       });
-    } else if (d.reason === 'FINE') {
+    } else if (d.reason === 'FINE' || (d.reason === 'DISCIPLINARY_FINE' && d.fineReason && desc.startsWith('Letter fine ['))) {
       discipline.push({
         label: FINE_REASON_LABELS[d.fineReason ?? 'OTHER'] ?? FINE_REASON_LABELS.OTHER,
         amount,
@@ -456,7 +456,7 @@ export function buildPayslipSections(input: {
   return [
     { key: 'earnings', title: 'Pay & Allowances', lines: earningLines },
     { key: 'attendance', title: 'Attendance Deductions', lines: collect(attendance) },
-    { key: 'discipline', title: 'Discipline Fines', lines: collect(discipline) },
+    { key: 'discipline', title: 'Discipline Fines', lines: collect(discipline, false) },
     { key: 'other', title: 'Other Deductions', lines: collect(other) },
   ];
 }

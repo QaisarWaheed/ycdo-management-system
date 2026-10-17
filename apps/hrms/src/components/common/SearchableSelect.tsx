@@ -37,7 +37,15 @@ export function SearchableSelect({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return [...new Set(options)].filter((o) => !q || o.toLowerCase().includes(q)).sort((a,b) => a.localeCompare(b, undefined, {sensitivity:'base',numeric:true}))
+    // "All …" placeholders stay pinned on top; everything else sorts A–Z.
+    const isAll = (o: string) => /^all\b/i.test(o)
+    return [...new Set(options)]
+      .filter((o) => !q || o.toLowerCase().includes(q))
+      .sort(
+        (a, b) =>
+          Number(isAll(b)) - Number(isAll(a)) ||
+          a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }),
+      )
   }, [options, query])
 
   const exactMatch = useMemo(() => {

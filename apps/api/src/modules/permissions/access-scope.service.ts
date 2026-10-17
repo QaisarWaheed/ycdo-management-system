@@ -433,7 +433,7 @@ export class AccessScopeService {
     const designations = await this.prisma.designation.findMany({
       where: { isActive: true, isDeleted: false },
       select: { id: true, title: true, category: true, sortOrder: true },
-      orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+      orderBy: { title: 'asc' },
     });
 
     return projects.map((project) => {
@@ -445,10 +445,7 @@ export class AccessScopeService {
             !dept.isDeleted &&
             isHospitalAssignableDepartment(dept.name),
         )
-        .sort(
-          (a, b) =>
-            a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
-        )
+        .sort((a, b) => a.name.localeCompare(b.name))
         .map((dept) => {
           const deptName = dept.name.trim().toUpperCase();
           const deptDesignations = designations.filter(

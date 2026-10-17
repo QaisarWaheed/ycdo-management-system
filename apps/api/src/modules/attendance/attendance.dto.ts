@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsEnum,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -411,4 +412,21 @@ export class UpdateRelieverSessionDto {
   @IsOptional()
   @IsDateString()
   checkOut?: string;
+}
+
+
+export class RecalculateMonthDto {
+  @IsUUID()
+  employeeId: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  year: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month: number;
 }

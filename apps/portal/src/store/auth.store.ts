@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { User } from '@/types'
 import { canAccessPortal } from '@/lib/portalRoles'
+import { queryClient } from '@/lib/queryClient'
 
 interface AuthState {
   token: string | null
@@ -40,11 +41,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     localStorage.setItem('portal_token', token)
     localStorage.setItem('portal_user', JSON.stringify(user))
+    queryClient.clear()
     set({ token, user, isAuthenticated: true })
   },
   logout: () => {
     localStorage.removeItem('portal_token')
     localStorage.removeItem('portal_user')
+    queryClient.clear()
     set({ token: null, user: null, isAuthenticated: false })
   },
   hydrate: () => {
