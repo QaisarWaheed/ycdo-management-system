@@ -31,28 +31,39 @@ export class DepartmentsService {
     const name = normalizeDepartmentName(dto.name);
     if (!name) throw new BadRequestException('Name cannot be empty');
 
-    const existing = await this.prisma.department.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
-    return this.prisma.department.upsert({
-      where: { name: existing?.name ?? name },
-      update: {
-        isActive: true,
-        isDeleted: false,
-        branchId: null,
-        ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
-      },
-      create: {
-        name,
-        branchId: null,
-        sortOrder: dto.sortOrder,
-      },
-    }).catch(orgWriteError);
+    const existing = await this.prisma.department.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' } },
+    });
+    return this.prisma.department
+      .upsert({
+        where: { name: existing?.name ?? name },
+        update: {
+          isActive: true,
+          isDeleted: false,
+          branchId: null,
+          ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+        },
+        create: {
+          name,
+          branchId: null,
+          sortOrder: dto.sortOrder,
+        },
+      })
+      .catch(orgWriteError);
   }
 
   async findAll(query?: DepartmentQueryDto) {
     const where: Prisma.DepartmentWhereInput = {
       isActive: true,
       isDeleted: false,
-      ...(query?.search?.trim() ? { name: { contains: query.search.trim(), mode: 'insensitive' as const } } : {}),
+      ...(query?.search?.trim()
+        ? {
+            name: {
+              contains: query.search.trim(),
+              mode: 'insensitive' as const,
+            },
+          }
+        : {}),
     };
 
     const departments = await this.prisma.department.findMany({
@@ -62,29 +73,26 @@ export class DepartmentsService {
 
     const relevant = departments;
 
-    return mapInBatches(
-      relevant,
-      async (department) => {
-        const employees = await this.prisma.employee.count({
-          where: {
-            AND: [
-              this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
-                departmentId: department.id,
-              }) ?? {},
-              {
-                status: {
-                  in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED],
-                },
+    return mapInBatches(relevant, async (department) => {
+      const employees = await this.prisma.employee.count({
+        where: {
+          AND: [
+            this.accessScopeService.employeeMatchesDepartmentDesignationFilter({
+              departmentId: department.id,
+            }) ?? {},
+            {
+              status: {
+                in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED],
               },
-            ],
-          },
-        });
-        return {
-          ...department,
-          _count: { employees },
-        };
-      },
-    );
+            },
+          ],
+        },
+      });
+      return {
+        ...department,
+        _count: { employees },
+      };
+    });
   }
 
   async findOne(id: string) {
@@ -119,7 +127,9 @@ export class DepartmentsService {
     }
 
     if (!renamedTo) {
-      return this.prisma.department.update({ where: { id }, data }).catch(orgWriteError);
+      return this.prisma.department
+        .update({ where: { id }, data })
+        .catch(orgWriteError);
     }
 
     const newName = renamedTo;
@@ -131,22 +141,27 @@ export class DepartmentsService {
       throw new ConflictException(`Department "${newName}" already exists`);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      if (clash) {
-        await tx.department.update({
-          where: { id: clash.id },
-          data: { name: `${newName} (ARCHIVED ${clash.id.slice(0, 8)})` },
-        });
-      }
-      const updated = await tx.department.update({ where: { id }, data });
-      // Designation.category stores the department name as text; without this
-      // the designations split off under the old name.
-      await tx.designation.updateMany({
-        where: { category: { equals: existing.name, mode: 'insensitive' } },
-        data: { category: newName },
-      });
-      return updated;
-    }, { timeout: 30_000, maxWait: 20_000 }).catch(orgWriteError);
+    return this.prisma
+      .$transaction(
+        async (tx) => {
+          if (clash) {
+            await tx.department.update({
+              where: { id: clash.id },
+              data: { name: `${newName} (ARCHIVED ${clash.id.slice(0, 8)})` },
+            });
+          }
+          const updated = await tx.department.update({ where: { id }, data });
+          // Designation.category stores the department name as text; without this
+          // the designations split off under the old name.
+          await tx.designation.updateMany({
+            where: { category: { equals: existing.name, mode: 'insensitive' } },
+            data: { category: newName },
+          });
+          return updated;
+        },
+        { timeout: 30_000, maxWait: 20_000 },
+      )
+      .catch(orgWriteError);
   }
 
   async deactivate(id: string) {

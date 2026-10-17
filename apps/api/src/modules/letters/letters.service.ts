@@ -1,7 +1,14 @@
 import { CUSTOM_LETTER_TEMPLATE } from './custom-letter.template';
 import { statusLetterTemplate } from './status-letter.template';
-import { applyLetterFine, letterFine, LETTER_FINE_PREFIX } from './letter-fine.util';
-import { lockPayrollEmployee, withPayrollEmployeeTransaction } from '../payroll/payroll-write-lock.util';
+import {
+  applyLetterFine,
+  letterFine,
+  LETTER_FINE_PREFIX,
+} from './letter-fine.util';
+import {
+  lockPayrollEmployee,
+  withPayrollEmployeeTransaction,
+} from '../payroll/payroll-write-lock.util';
 import {
   BadRequestException,
   ConflictException,
@@ -331,7 +338,8 @@ export class LettersService implements OnModuleInit {
         enSubtitle: dto.enSubtitle,
         letterCode: dto.letterCode,
         primaryLanguage: dto.primaryLanguage ?? 'ur',
-        fieldsSchema: (dto.fieldsSchema ?? []) as unknown as Prisma.InputJsonValue,
+        fieldsSchema: (dto.fieldsSchema ??
+          []) as unknown as Prisma.InputJsonValue,
         requiredVars: dto.requiredVars ?? [],
         isCustom: true,
         version: 1,
@@ -404,9 +412,7 @@ export class LettersService implements OnModuleInit {
   async deleteTemplate(code: string, actingUserId: string) {
     const existing = await this.getTemplate(code);
     if (!existing.isCustom) {
-      throw new BadRequestException(
-        'Built-in letter types cannot be deleted',
-      );
+      throw new BadRequestException('Built-in letter types cannot be deleted');
     }
 
     const template = await this.prisma.letterTemplate.update({
@@ -549,10 +555,7 @@ export class LettersService implements OnModuleInit {
    * System / internal callers that already checked access.
    * Renders the seeded template PDF and creates the Letter row.
    */
-  async generateSystemLetter(
-    dto: GenerateLetterDto,
-    actingUserId = 'SYSTEM',
-  ) {
+  async generateSystemLetter(dto: GenerateLetterDto, actingUserId = 'SYSTEM') {
     if (dto.letterType === LetterType.APPOINTMENT) {
       return this.generateSelectionLetter(dto, actingUserId);
     }
@@ -604,11 +607,7 @@ export class LettersService implements OnModuleInit {
       htmlContent,
       appointmentPdfOptions(variables, letterNo),
     );
-    const fileUrl = await this.persistPdf(
-      pdfBuffer,
-      letterNo,
-      dto.employeeId,
-    );
+    const fileUrl = await this.persistPdf(pdfBuffer, letterNo, dto.employeeId);
 
     try {
       const letter = await this.prisma.$transaction(async (tx) => {
@@ -835,27 +834,35 @@ export class LettersService implements OnModuleInit {
     });
 
     if (!employee) {
-      throw new NotFoundException(
-        `Employee with id ${employeeId} not found`,
-      );
+      throw new NotFoundException(`Employee with id ${employeeId} not found`);
     }
 
-    if (letterType === LetterType.CUSTOM && templateCodeOverride === 'STATUS_ON_REST') {
+    if (
+      letterType === LetterType.CUSTOM &&
+      templateCodeOverride === 'STATUS_ON_REST'
+    ) {
       const restTemplate = statusLetterTemplate(EmployeeStatus.ON_REST);
       if (restTemplate) {
         await this.prisma.letterTemplate.upsert({
-          where: { code: restTemplate.code }, update: {}, create: restTemplate,
+          where: { code: restTemplate.code },
+          update: {},
+          create: restTemplate,
         });
       }
-    } else if (letterType === LetterType.CUSTOM && (!templateCodeOverride || templateCodeOverride === 'CUSTOM')) {
+    } else if (
+      letterType === LetterType.CUSTOM &&
+      (!templateCodeOverride || templateCodeOverride === 'CUSTOM')
+    ) {
       await this.prisma.letterTemplate.upsert({
-        where: { code: 'CUSTOM' }, update: {}, create: CUSTOM_LETTER_TEMPLATE,
+        where: { code: 'CUSTOM' },
+        update: {},
+        create: CUSTOM_LETTER_TEMPLATE,
       });
     }
 
     const code =
       letterType === LetterType.CUSTOM
-        ? (templateCodeOverride || 'CUSTOM')
+        ? templateCodeOverride || 'CUSTOM'
         : templateCodeForLetterType(letterType);
     const template = await this.prisma.letterTemplate.findFirst({
       where: { code, active: true },
@@ -889,16 +896,32 @@ export class LettersService implements OnModuleInit {
       normalized.staffStatus ??= status;
       normalized.staffStatusLabel = status.replace(/_/g, ' ');
     }
-    if ((letterType === LetterType.FINE || letterType === LetterType.EXPLANATION_FINE) &&
-        !normalized.disciplineCategory && !normalized.inquiryId &&
-        !['ABSENT', 'LATE_DEDUCTION'].includes(String(normalized.finePreset)) &&
-        !letterFine({ id: 'preview', employeeId, letterType, generatedAt: new Date(), variables: normalized })) {
-      throw new BadRequestException('Enter a positive numeric payroll fine amount (PKR), for example 500, and a valid deduction month (YYYY-MM).');
+    if (
+      (letterType === LetterType.FINE ||
+        letterType === LetterType.EXPLANATION_FINE) &&
+      !normalized.disciplineCategory &&
+      !normalized.inquiryId &&
+      !['ABSENT', 'LATE_DEDUCTION'].includes(String(normalized.finePreset)) &&
+      !letterFine({
+        id: 'preview',
+        employeeId,
+        letterType,
+        generatedAt: new Date(),
+        variables: normalized,
+      })
+    ) {
+      throw new BadRequestException(
+        'Enter a positive numeric payroll fine amount (PKR), for example 500, and a valid deduction month (YYYY-MM).',
+      );
     }
-    if (normalized.payrollFineMonth && !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(normalized.payrollFineMonth))) {
-      throw new BadRequestException('Payroll fine month must use YYYY-MM, for example 2026-10.');
+    if (
+      normalized.payrollFineMonth &&
+      !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(normalized.payrollFineMonth))
+    ) {
+      throw new BadRequestException(
+        'Payroll fine month must use YYYY-MM, for example 2026-10.',
+      );
     }
-
 
     const requiredMissing: string[] = [];
     for (const key of template.requiredVars) {
@@ -908,7 +931,11 @@ export class LettersService implements OnModuleInit {
         if (!lines.length) requiredMissing.push(key);
         continue;
       }
-      if (value === undefined || value === null || String(value).trim() === '') {
+      if (
+        value === undefined ||
+        value === null ||
+        String(value).trim() === ''
+      ) {
         requiredMissing.push(key);
       }
     }
@@ -970,20 +997,17 @@ export class LettersService implements OnModuleInit {
       designation:
         String(normalized.designation ?? '').trim() ||
         (isEnglishLetterType
-          ? employee.currentDesignation ?? ''
+          ? (employee.currentDesignation ?? '')
           : translateDesignation(employee.currentDesignation)),
       department:
         String(normalized.department ?? '').trim() ||
         employee.currentDepartment?.name ||
         '',
-      role:
-        String(normalized.role ?? '').trim() ||
-        employee.user?.role ||
-        '',
+      role: String(normalized.role ?? '').trim() || employee.user?.role || '',
       branch:
         String(normalized.branch ?? '').trim() ||
         (isEnglishLetterType
-          ? employee.currentBranch?.name ?? ''
+          ? (employee.currentBranch?.name ?? '')
           : translateBranch(employee.currentBranch?.name)),
       violations: parseViolationLines(
         normalized.violations ?? normalized.warningReason,
@@ -1203,7 +1227,11 @@ export class LettersService implements OnModuleInit {
     const requiredMissing: string[] = [];
     for (const key of template.requiredVars) {
       const value = extraFields[key];
-      if (value === undefined || value === null || String(value).trim() === '') {
+      if (
+        value === undefined ||
+        value === null ||
+        String(value).trim() === ''
+      ) {
         requiredMissing.push(key);
       }
     }
@@ -1339,7 +1367,10 @@ export class LettersService implements OnModuleInit {
         return await uploadPdfToCloudinary(pdfBuffer, publicId, 'letters');
       } catch (err) {
         // Fall back to local disk so download/regenerate still works.
-        console.error('Cloudinary letter upload failed; using local uploads:', err);
+        console.error(
+          'Cloudinary letter upload failed; using local uploads:',
+          err,
+        );
       }
     }
 
@@ -1405,11 +1436,10 @@ export class LettersService implements OnModuleInit {
     const letterNo = letter.letterNo ?? (await this.nextLetterNo());
     const built =
       letter.letterType === LetterType.APPOINTMENT
-        ? await this.buildSelectionLetterHtml(
-            letter.employeeId,
-            extraFields,
-            { letterNo, draft: true },
-          )
+        ? await this.buildSelectionLetterHtml(letter.employeeId, extraFields, {
+            letterNo,
+            draft: true,
+          })
         : await this.buildTemplatedLetterHtml(
             letter.employeeId,
             letter.letterType,
@@ -1755,7 +1785,9 @@ export class LettersService implements OnModuleInit {
     if (letter.letterType === LetterType.APPOINTMENT) {
       const allowed = this.appointmentStatusesAllowedToSend(employeeStatus);
       if (!allowed.includes(letter.status)) {
-        throw new BadRequestException(APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE);
+        throw new BadRequestException(
+          APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE,
+        );
       }
     }
 
@@ -1768,8 +1800,8 @@ export class LettersService implements OnModuleInit {
     const letterLabel =
       letter.letterType === LetterType.CUSTOM
         ? String(
-            (letter.variables as Record<string, unknown> | null)?.templateName ??
-              'Custom',
+            (letter.variables as Record<string, unknown> | null)
+              ?.templateName ?? 'Custom',
           )
         : letter.letterType.replace(/_/g, ' ');
     const letterNo = letter.letterNo ?? letterId.slice(0, 8);
@@ -1813,88 +1845,131 @@ export class LettersService implements OnModuleInit {
       acknowledgement: true,
     } as const;
 
-    const txResult = await withPayrollEmployeeTransaction(this.prisma, letter.employeeId, async (tx) => {
-      const current = await tx.letter.findUnique({
-        where: { id: letterId },
-        include: letterEmployeeInclude,
-      });
-      if (!current) {
-        throw new NotFoundException(`Letter with id ${letterId} not found`);
-      }
-      if (current.status === LetterStatus.REVERSED) {
-        throw new BadRequestException('Cannot send a reversed letter');
-      }
-      if (current.status === LetterStatus.SENT) {
-        return { alreadySent: true as const, letter: current };
-      }
-      await applyLetterFine(tx, current);
-      if (
-        current.letterType === LetterType.APPOINTMENT &&
-        !this.appointmentStatusesAllowedToSend(employeeStatus).includes(
-          current.status,
-        )
-      ) {
-        throw new BadRequestException(APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE);
-      }
-
-      if (current.letterType === LetterType.SUSPENSION) {
-        return this.issueApprovedSuspensionInTx(tx, {
-          letter: current,
-          actingUserId,
-          letterNo,
-          letterLabel,
-          requiresAck,
-          replyDeadline,
-          letterEmployeeInclude,
+    const txResult = await withPayrollEmployeeTransaction(
+      this.prisma,
+      letter.employeeId,
+      async (tx) => {
+        const current = await tx.letter.findUnique({
+          where: { id: letterId },
+          include: letterEmployeeInclude,
         });
-      }
+        if (!current) {
+          throw new NotFoundException(`Letter with id ${letterId} not found`);
+        }
+        if (current.status === LetterStatus.REVERSED) {
+          throw new BadRequestException('Cannot send a reversed letter');
+        }
+        if (current.status === LetterStatus.SENT) {
+          return { alreadySent: true as const, letter: current };
+        }
+        await applyLetterFine(tx, current);
+        if (
+          current.letterType === LetterType.APPOINTMENT &&
+          !this.appointmentStatusesAllowedToSend(employeeStatus).includes(
+            current.status,
+          )
+        ) {
+          throw new BadRequestException(
+            APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE,
+          );
+        }
 
-      const appointmentPatch =
-        current.letterType === LetterType.APPOINTMENT && appointmentSend
-          ? {
-              fileUrl: appointmentSend.fileUrl,
-              variables: appointmentSend.variables as Prisma.InputJsonValue,
-              templateCode: appointmentSend.templateCode,
-              templateVersion: appointmentSend.templateVersion,
+        if (current.letterType === LetterType.SUSPENSION) {
+          return this.issueApprovedSuspensionInTx(tx, {
+            letter: current,
+            actingUserId,
+            letterNo,
+            letterLabel,
+            requiresAck,
+            replyDeadline,
+            letterEmployeeInclude,
+          });
+        }
+
+        const appointmentPatch =
+          current.letterType === LetterType.APPOINTMENT && appointmentSend
+            ? {
+                fileUrl: appointmentSend.fileUrl,
+                variables: appointmentSend.variables as Prisma.InputJsonValue,
+                templateCode: appointmentSend.templateCode,
+                templateVersion: appointmentSend.templateVersion,
+              }
+            : {};
+
+        if (current.letterType === LetterType.APPOINTMENT) {
+          const allowed = this.appointmentStatusesAllowedToSend(employeeStatus);
+          const claimed = await tx.letter.updateMany({
+            where: { id: letterId, status: { in: allowed } },
+            data: {
+              status: LetterStatus.SENT,
+              requiresAcknowledgement: requiresAck,
+              replyDeadline: replyDeadline ?? undefined,
+              ...appointmentPatch,
+            },
+          });
+          if (claimed.count !== 1) {
+            const raced = await tx.letter.findUnique({
+              where: { id: letterId },
+              include: letterEmployeeInclude,
+            });
+            if (raced?.status === LetterStatus.SENT) {
+              return { alreadySent: true as const, letter: raced };
             }
-          : {};
+            throw new BadRequestException(
+              APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE,
+            );
+          }
+          const record = await tx.letter.findUnique({
+            where: { id: letterId },
+            include: letterEmployeeInclude,
+          });
+          if (!record) {
+            throw new NotFoundException(`Letter with id ${letterId} not found`);
+          }
+          await applyDisciplineDeductionOnLetterSend(tx, {
+            employeeId: current.employeeId,
+            letterType: current.letterType,
+            variables: current.variables,
+            content: current.content,
+          });
+          await tx.notification.create({
+            data: {
+              employeeId: letter.employeeId,
+              type: 'LETTER_ISSUED',
+              message: `A ${letterLabel} letter (${letterNo}) has been issued to you.`,
+            },
+          });
+          await tx.auditLog.create({
+            data: {
+              userId: actingUserId,
+              action: 'LETTER_SENT',
+              entity: 'Letter',
+              entityId: letterId,
+              changes: { letterNo, letterType: letter.letterType },
+            },
+          });
+          await this.notifyInquiryResolvedOnFinalLetterSend(tx, current);
+          return { alreadySent: false as const, letter: record };
+        }
 
-      if (current.letterType === LetterType.APPOINTMENT) {
-        const allowed = this.appointmentStatusesAllowedToSend(employeeStatus);
-        const claimed = await tx.letter.updateMany({
-          where: { id: letterId, status: { in: allowed } },
+        const record = await tx.letter.update({
+          where: { id: letterId },
           data: {
             status: LetterStatus.SENT,
             requiresAcknowledgement: requiresAck,
             replyDeadline: replyDeadline ?? undefined,
             ...appointmentPatch,
           },
-        });
-        if (claimed.count !== 1) {
-          const raced = await tx.letter.findUnique({
-            where: { id: letterId },
-            include: letterEmployeeInclude,
-          });
-          if (raced?.status === LetterStatus.SENT) {
-            return { alreadySent: true as const, letter: raced };
-          }
-          throw new BadRequestException(
-            APPOINTMENT_SEND_REQUIRES_APPROVAL_MESSAGE,
-          );
-        }
-        const record = await tx.letter.findUnique({
-          where: { id: letterId },
           include: letterEmployeeInclude,
         });
-        if (!record) {
-          throw new NotFoundException(`Letter with id ${letterId} not found`);
-        }
+
         await applyDisciplineDeductionOnLetterSend(tx, {
           employeeId: current.employeeId,
           letterType: current.letterType,
           variables: current.variables,
           content: current.content,
         });
+
         await tx.notification.create({
           data: {
             employeeId: letter.employeeId,
@@ -1902,6 +1977,7 @@ export class LettersService implements OnModuleInit {
             message: `A ${letterLabel} letter (${letterNo}) has been issued to you.`,
           },
         });
+
         await tx.auditLog.create({
           data: {
             userId: actingUserId,
@@ -1911,50 +1987,12 @@ export class LettersService implements OnModuleInit {
             changes: { letterNo, letterType: letter.letterType },
           },
         });
+
         await this.notifyInquiryResolvedOnFinalLetterSend(tx, current);
+
         return { alreadySent: false as const, letter: record };
-      }
-
-      const record = await tx.letter.update({
-        where: { id: letterId },
-        data: {
-          status: LetterStatus.SENT,
-          requiresAcknowledgement: requiresAck,
-          replyDeadline: replyDeadline ?? undefined,
-          ...appointmentPatch,
-        },
-        include: letterEmployeeInclude,
-      });
-
-      await applyDisciplineDeductionOnLetterSend(tx, {
-        employeeId: current.employeeId,
-        letterType: current.letterType,
-        variables: current.variables,
-        content: current.content,
-      });
-
-      await tx.notification.create({
-        data: {
-          employeeId: letter.employeeId,
-          type: 'LETTER_ISSUED',
-          message: `A ${letterLabel} letter (${letterNo}) has been issued to you.`,
-        },
-      });
-
-      await tx.auditLog.create({
-        data: {
-          userId: actingUserId,
-          action: 'LETTER_SENT',
-          entity: 'Letter',
-          entityId: letterId,
-          changes: { letterNo, letterType: letter.letterType },
-        },
-      });
-
-      await this.notifyInquiryResolvedOnFinalLetterSend(tx, current);
-
-      return { alreadySent: false as const, letter: record };
-    });
+      },
+    );
 
     if (txResult.alreadySent) {
       await this.deliverWhatsAppForPortalSentLetter({
@@ -2000,7 +2038,9 @@ export class LettersService implements OnModuleInit {
     fileUrl: string | null;
   }): Promise<void> {
     try {
-      const { buffer, filename, htmlContent } = await this.getPdf(opts.letterId);
+      const { buffer, filename, htmlContent } = await this.getPdf(
+        opts.letterId,
+      );
       await this.whatsappService.deliverAfterLetterGenerated({
         letterId: opts.letterId,
         employeeId: opts.employeeId,
@@ -2311,95 +2351,102 @@ export class LettersService implements OnModuleInit {
     let fineUndone = false;
     let fineSkippedReason: string | null = null;
 
-    const result = await withPayrollEmployeeTransaction(this.prisma, letter.employeeId, async (tx) => {
-      fineUndone = false;
-      fineSkippedReason = null;
-      const updated = await tx.letter.update({
-        where: { id: letterId },
-        data: {
-          status: LetterStatus.REVERSED,
-          requiresAcknowledgement: false,
-          reversedAt: new Date(),
-          reversedById: actingUserId,
-          reversalReason: dto.reason.trim(),
-          variables: {
-            ...vars,
-            reversed: true,
-            reversedAt: new Date().toISOString(),
+    const result = await withPayrollEmployeeTransaction(
+      this.prisma,
+      letter.employeeId,
+      async (tx) => {
+        fineUndone = false;
+        fineSkippedReason = null;
+        const updated = await tx.letter.update({
+          where: { id: letterId },
+          data: {
+            status: LetterStatus.REVERSED,
+            requiresAcknowledgement: false,
+            reversedAt: new Date(),
+            reversedById: actingUserId,
             reversalReason: dto.reason.trim(),
-          } as Prisma.InputJsonValue,
-        },
-        include: {
-          employee: { select: { fullName: true, employeeCode: true } },
-          acknowledgement: true,
-        },
-      });
+            variables: {
+              ...vars,
+              reversed: true,
+              reversedAt: new Date().toISOString(),
+              reversalReason: dto.reason.trim(),
+            } as Prisma.InputJsonValue,
+          },
+          include: {
+            employee: { select: { fullName: true, employeeCode: true } },
+            acknowledgement: true,
+          },
+        });
 
-      // Unwind pending fine deduction linked by incident date / occurrence
-      if (
-        letter.letterType === LetterType.FINE ||
-        letter.letterType === LetterType.EXPLANATION_FINE
-      ) {
-        const unwind = await this.tryUnwindFineDeduction(tx, letter);
-        fineUndone = unwind.undone;
-        fineSkippedReason = unwind.skippedReason;
-      }
+        // Unwind pending fine deduction linked by incident date / occurrence
+        if (
+          letter.letterType === LetterType.FINE ||
+          letter.letterType === LetterType.EXPLANATION_FINE
+        ) {
+          const unwind = await this.tryUnwindFineDeduction(tx, letter);
+          fineUndone = unwind.undone;
+          fineSkippedReason = unwind.skippedReason;
+        }
 
-      if (letter.letterType === LetterType.EXPLANATION) {
-        const incidentDateRaw =
-          (typeof vars.incidentDate === 'string' && vars.incidentDate) || null;
-        if (incidentDateRaw) {
-          const day = new Date(`${incidentDateRaw.slice(0, 10)}T00:00:00.000Z`);
-          if (!Number.isNaN(day.getTime())) {
-            const absenceUnwind = await reverseAbsenceDeductionForDate(
-              tx,
-              letter.employeeId,
-              day,
+        if (letter.letterType === LetterType.EXPLANATION) {
+          const incidentDateRaw =
+            (typeof vars.incidentDate === 'string' && vars.incidentDate) ||
+            null;
+          if (incidentDateRaw) {
+            const day = new Date(
+              `${incidentDateRaw.slice(0, 10)}T00:00:00.000Z`,
             );
-            if (absenceUnwind.deductionReversed) {
-              fineUndone = true;
-            } else if (absenceUnwind.blockedByPayrollStatus) {
-              fineSkippedReason =
-                'absence deduction not undone (payroll finalized)';
+            if (!Number.isNaN(day.getTime())) {
+              const absenceUnwind = await reverseAbsenceDeductionForDate(
+                tx,
+                letter.employeeId,
+                day,
+              );
+              if (absenceUnwind.deductionReversed) {
+                fineUndone = true;
+              } else if (absenceUnwind.blockedByPayrollStatus) {
+                fineSkippedReason =
+                  'absence deduction not undone (payroll finalized)';
+              }
             }
           }
         }
-      }
 
-      // Soft-mark linked DisciplineEvent for the incident date when present
-      const incidentDateRaw =
-        (typeof vars.incidentDate === 'string' && vars.incidentDate) ||
-        (typeof vars.suspensionStartDate === 'string' &&
-          vars.suspensionStartDate) ||
-        null;
-      if (incidentDateRaw) {
-        const day = new Date(`${incidentDateRaw.slice(0, 10)}T00:00:00.000Z`);
-        if (!Number.isNaN(day.getTime())) {
-          await tx.disciplineEvent.deleteMany({
-            where: {
-              employeeId: letter.employeeId,
-              incidentDate: day,
-            },
-          });
+        // Soft-mark linked DisciplineEvent for the incident date when present
+        const incidentDateRaw =
+          (typeof vars.incidentDate === 'string' && vars.incidentDate) ||
+          (typeof vars.suspensionStartDate === 'string' &&
+            vars.suspensionStartDate) ||
+          null;
+        if (incidentDateRaw) {
+          const day = new Date(`${incidentDateRaw.slice(0, 10)}T00:00:00.000Z`);
+          if (!Number.isNaN(day.getTime())) {
+            await tx.disciplineEvent.deleteMany({
+              where: {
+                employeeId: letter.employeeId,
+                incidentDate: day,
+              },
+            });
+          }
         }
-      }
 
-      await tx.auditLog.create({
-        data: {
-          userId: actingUserId,
-          action: 'LETTER_REVERSED',
-          entity: 'Letter',
-          entityId: letterId,
-          changes: {
-            reason: dto.reason.trim(),
-            fineUndone,
-            fineSkippedReason,
+        await tx.auditLog.create({
+          data: {
+            userId: actingUserId,
+            action: 'LETTER_REVERSED',
+            entity: 'Letter',
+            entityId: letterId,
+            changes: {
+              reason: dto.reason.trim(),
+              fineUndone,
+              fineSkippedReason,
+            },
           },
-        },
-      });
+        });
 
-      return updated;
-    });
+        return updated;
+      },
+    );
 
     return {
       letter: result,
@@ -2467,9 +2514,14 @@ export class LettersService implements OnModuleInit {
         ? await tx.payrollDeduction.findMany({
             where: {
               ...base,
-              OR: [{ description: null }, { NOT: { description: { startsWith: 'Attendance Card:' } } }],
+              OR: [
+                { description: null },
+                { NOT: { description: { startsWith: 'Attendance Card:' } } },
+              ],
               description: { contains: incidentDate },
-              AND: [{ NOT: { description: { startsWith: LETTER_FINE_PREFIX } } }],
+              AND: [
+                { NOT: { description: { startsWith: LETTER_FINE_PREFIX } } },
+              ],
             },
             include,
             take: 10,
@@ -2697,8 +2749,7 @@ export class LettersService implements OnModuleInit {
     const phoneE164 = normalizePakistanPhone(letter.employee.phone);
     const letterTypeLabel = letter.letterType.replace(/_/g, ' ');
     const ref = letter.letterNo ?? letter.id.slice(0, 8);
-    const portalBase =
-      process.env.PUBLIC_PORTAL_URL?.replace(/\/$/, '') || '';
+    const portalBase = process.env.PUBLIC_PORTAL_URL?.replace(/\/$/, '') || '';
     const portalHint = portalBase
       ? `\n\nYou can also view this letter in the employee portal: ${portalBase}`
       : '\n\nYou can also view this letter in the employee portal.';
@@ -2879,7 +2930,11 @@ export class LettersService implements OnModuleInit {
     letterNo: string | null;
     variables: Prisma.JsonValue | null;
     content: Prisma.JsonValue;
-  }): Promise<{ buffer: Buffer; filename: string; htmlContent?: string } | null> {
+  }): Promise<{
+    buffer: Buffer;
+    filename: string;
+    htmlContent?: string;
+  } | null> {
     try {
       const htmlContent = await rebuildStoredLetterHtml(this.prisma, letter);
       if (!htmlContent) return null;
@@ -3019,13 +3074,16 @@ export class LettersService implements OnModuleInit {
  * `variables` (the PDF is rebuilt from the database); dropping them cut the
  * letters list from ~38 MB to a fraction.
  */
-function slimLetterForList<T extends { variables: Prisma.JsonValue | null }>(letter: T): T {
+function slimLetterForList<T extends { variables: Prisma.JsonValue | null }>(
+  letter: T,
+): T {
   const vars = letter.variables;
   if (!vars || typeof vars !== 'object' || Array.isArray(vars)) return letter;
   const slim: Record<string, Prisma.JsonValue> = {};
   for (const [k, v] of Object.entries(vars)) {
     if (k === 'letterheadLogoUrl') continue;
-    if (typeof v === 'string' && v.length > 4000 && v.startsWith('data:')) continue;
+    if (typeof v === 'string' && v.length > 4000 && v.startsWith('data:'))
+      continue;
     slim[k] = v as Prisma.JsonValue;
   }
   return { ...letter, variables: slim };

@@ -30,7 +30,14 @@ export class DesignationsService {
     const where: Prisma.DesignationWhereInput = {
       isActive: true,
       isDeleted: false,
-      ...(query?.search?.trim() ? { title: { contains: query.search.trim(), mode: 'insensitive' as const } } : {}),
+      ...(query?.search?.trim()
+        ? {
+            title: {
+              contains: query.search.trim(),
+              mode: 'insensitive' as const,
+            },
+          }
+        : {}),
     };
 
     if (query?.department) {
@@ -97,15 +104,25 @@ export class DesignationsService {
     }
     const category = (await this.resolveDepartment(dto.category)).name;
 
-    const existing = await this.prisma.designation.findFirst({ where: { title: { equals: title, mode: 'insensitive' } } });
-    if (existing?.isActive && !existing.isDeleted && normalizeOrgName(existing.category) !== category) {
-      throw new ConflictException('This designation already belongs to another department. Edit it instead of creating a duplicate.');
+    const existing = await this.prisma.designation.findFirst({
+      where: { title: { equals: title, mode: 'insensitive' } },
+    });
+    if (
+      existing?.isActive &&
+      !existing.isDeleted &&
+      normalizeOrgName(existing.category) !== category
+    ) {
+      throw new ConflictException(
+        'This designation already belongs to another department. Edit it instead of creating a duplicate.',
+      );
     }
-    return this.prisma.designation.upsert({
-      where: { title: existing?.title ?? title },
-      update: { category, isActive: true, isDeleted: false },
-      create: { title, category },
-    }).catch(orgWriteError);
+    return this.prisma.designation
+      .upsert({
+        where: { title: existing?.title ?? title },
+        update: { category, isActive: true, isDeleted: false },
+        create: { title, category },
+      })
+      .catch(orgWriteError);
   }
 
   async update(id: string, dto: UpdateDesignationDto) {
@@ -158,13 +175,23 @@ export class DesignationsService {
 
     if (!renamedTo) {
       if (!movedToDepartment) {
-        return this.prisma.designation.update({ where: { id }, data }).catch(orgWriteError);
+        return this.prisma.designation
+          .update({ where: { id }, data })
+          .catch(orgWriteError);
       }
-      return this.prisma.$transaction(async (tx) => {
-        const updated = await tx.designation.update({ where: { id }, data });
-        await moveStaff(tx, existing.title);
-        return updated;
-      }, { timeout: 30_000, maxWait: 20_000 }).catch(orgWriteError);
+      return this.prisma
+        .$transaction(
+          async (tx) => {
+            const updated = await tx.designation.update({
+              where: { id },
+              data,
+            });
+            await moveStaff(tx, existing.title);
+            return updated;
+          },
+          { timeout: 30_000, maxWait: 20_000 },
+        )
+        .catch(orgWriteError);
     }
 
     const newTitle = renamedTo;
@@ -174,27 +201,30 @@ export class DesignationsService {
       where: { title: newTitle },
     });
     if (clash && clash.isActive && !clash.isDeleted) {
-      throw new ConflictException(
-        `Designation "${newTitle}" already exists`,
-      );
+      throw new ConflictException(`Designation "${newTitle}" already exists`);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      if (clash) {
-        await tx.designation.update({
-          where: { id: clash.id },
-          data: { title: `${newTitle} (ARCHIVED ${clash.id.slice(0, 8)})` },
-        });
-      }
-      const updated = await tx.designation.update({ where: { id }, data });
-      // Employees store the designation as free text; keep them attached.
-      await tx.employee.updateMany({
-        where: { currentDesignation: existing.title },
-        data: { currentDesignation: newTitle },
-      });
-      await moveStaff(tx, newTitle);
-      return updated;
-    }, { timeout: 30_000, maxWait: 20_000 }).catch(orgWriteError);
+    return this.prisma
+      .$transaction(
+        async (tx) => {
+          if (clash) {
+            await tx.designation.update({
+              where: { id: clash.id },
+              data: { title: `${newTitle} (ARCHIVED ${clash.id.slice(0, 8)})` },
+            });
+          }
+          const updated = await tx.designation.update({ where: { id }, data });
+          // Employees store the designation as free text; keep them attached.
+          await tx.employee.updateMany({
+            where: { currentDesignation: existing.title },
+            data: { currentDesignation: newTitle },
+          });
+          await moveStaff(tx, newTitle);
+          return updated;
+        },
+        { timeout: 30_000, maxWait: 20_000 },
+      )
+      .catch(orgWriteError);
   }
 
   async deactivate(id: string) {

@@ -68,11 +68,7 @@ export function evaluateMissingCheckoutEligibility(
   }
 
   const crossesMidnight = isOvernightShift(dutyStart, dutyEnd);
-  const shiftEnd = computeShiftEndDateTime(
-    logDate,
-    dutyEnd,
-    crossesMidnight,
-  );
+  const shiftEnd = computeShiftEndDateTime(logDate, dutyEnd, crossesMidnight);
   const minutesPastEnd = (now.getTime() - shiftEnd.getTime()) / 60000;
 
   // The whole last minute of the window still counts (a 10:00:40 PM punch
@@ -98,29 +94,61 @@ export class ShiftMissingCheckoutScheduler {
   async flagMissingCheckouts() {
     const now = new Date();
     const today = toPakistanDateOnly(now);
-    const yesterday = new Date(today); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const yesterday = new Date(today);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
     const openLogs = await this.prisma.attendanceLog.findMany({
-      where: { type: AttendanceLogType.REGULAR, date: { in: [today, yesterday] },
-        checkIn: { not: null }, checkOut: null, sessionClosedAt: null },
-      include: { employee: { select: { id: true, status: true, dutyStartTime: true, dutyEndTime: true,
-        dutyTotalHours: true, shift: { select: { name: true, startTime: true, endTime: true } } } } },
+      where: {
+        type: AttendanceLogType.REGULAR,
+        date: { in: [today, yesterday] },
+        checkIn: { not: null },
+        checkOut: null,
+        sessionClosedAt: null,
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            status: true,
+            dutyStartTime: true,
+            dutyEndTime: true,
+            dutyTotalHours: true,
+            shift: { select: { name: true, startTime: true, endTime: true } },
+          },
+        },
+      },
     });
     for (const log of openLogs) {
       if (!isEmployeeEligibleForAttendance(log.employee.status)) continue;
       const duty = resolveAttendanceDutyTimes(log, log.employee);
-      const evaluation = evaluateMissingCheckoutEligibility(log.employee, log.date, now, duty);
+      const evaluation = evaluateMissingCheckoutEligibility(
+        log.employee,
+        log.date,
+        now,
+        duty,
+      );
       if (!evaluation.eligible || evaluation.shiftEnd <= log.checkIn!) continue;
-      await this.prisma.$transaction(async tx => {
+      await this.prisma.$transaction(async (tx) => {
         const changed = await tx.attendanceLog.updateMany({
-          where: { id: log.id, checkOut: null, sessionClosedAt: null, checkIn: log.checkIn },
-          data: { checkOut: evaluation.shiftEnd, sessionClosedAt: now,
-            note: [log.note?.trim(), MISSING_CHECKOUT_AUTO_NOTE].filter(Boolean).join(' | ') },
+          where: {
+            id: log.id,
+            checkOut: null,
+            sessionClosedAt: null,
+            checkIn: log.checkIn,
+          },
+          data: {
+            checkOut: evaluation.shiftEnd,
+            sessionClosedAt: now,
+            note: [log.note?.trim(), MISSING_CHECKOUT_AUTO_NOTE]
+              .filter(Boolean)
+              .join(' | '),
+          },
         });
         if (!changed.count) return;
         // Same monthly cycle as late / early checkout: Advice, Warning, Fine
         // (every 3 missed checkouts = 1 day in payroll), suspension draft at the 9th.
         await applyMissingCheckoutDiscipline(tx, log.employeeId, log.date, {
-          checkIn: log.checkIn!, dutyEndTime: duty.dutyEndTime,
+          checkIn: log.checkIn!,
+          dutyEndTime: duty.dutyEndTime,
         });
       });
     }

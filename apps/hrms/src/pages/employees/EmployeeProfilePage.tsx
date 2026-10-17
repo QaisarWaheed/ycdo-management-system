@@ -796,8 +796,10 @@ export function EmployeeProfilePage() {
   }, [attendanceLogs, attendanceSummary?.missingDates])
 
   // HR fixed a wrong duty: re-apply this month's machine punches by the rules.
+  // HR_EXECUTIVE is the senior HR role (the API RolesGuard lets it through).
   const canRecalculateMonth = hasRole([
     'SUPER_ADMIN',
+    'HR_EXECUTIVE',
     'HR_MANAGER',
     'HR_ADMIN_MANAGER',
     'HR_OPERATIONS_MANAGER',
@@ -1264,6 +1266,7 @@ export function EmployeeProfilePage() {
   // Mirrors the API roles on POST :id/transfer and PATCH :id/branch-duty.
   const canTransfer = hasRole([
     'SUPER_ADMIN',
+    'HR_EXECUTIVE',
     'HR_MANAGER',
     'HR_ADMIN_MANAGER',
     'HR_OPERATIONS_MANAGER',

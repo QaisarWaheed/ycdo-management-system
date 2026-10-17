@@ -19,7 +19,9 @@ jest.mock('../../config/cloudinary.config', () => ({
   uploadPdfToCloudinary: jest.fn(),
 }));
 
-const applyDisciplineDeductionOnLetterSend = jest.fn().mockResolvedValue(undefined);
+const applyDisciplineDeductionOnLetterSend = jest
+  .fn()
+  .mockResolvedValue(undefined);
 jest.mock('../attendance/discipline.helper', () => ({
   applyDisciplineDeductionOnLetterSend: (...args: unknown[]) =>
     applyDisciplineDeductionOnLetterSend(...args),
@@ -60,7 +62,10 @@ describe('LettersService.sendLetter', () => {
       fileUrl: '/uploads/letters/x.pdf',
       replyDeadline: null,
       generatedAt: new Date('2026-10-15T10:00:00Z'),
-      variables: letterType === LetterType.FINE ? {fineAmount: '200', payrollFineMonth: '2026-10'} : {},
+      variables:
+        letterType === LetterType.FINE
+          ? { fineAmount: '200', payrollFineMonth: '2026-10' }
+          : {},
       content,
       employee: employeeEmbed,
       acknowledgement: null,
@@ -113,8 +118,14 @@ describe('LettersService.sendLetter', () => {
 
     const tx = {
       $queryRaw: jest.fn(),
-      payrollDeduction: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn() },
-      payrollEntry: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+      payrollDeduction: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+      payrollEntry: {
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn(),
+      },
       letter: {
         findUnique: jest.fn().mockImplementation(async () => letterRow),
         update: jest.fn().mockImplementation(async () => {
@@ -188,7 +199,10 @@ describe('LettersService.sendLetter', () => {
     );
     jest
       .spyOn(service, 'getPdf')
-      .mockResolvedValue({ buffer: Buffer.from('pdf'), filename: 'letter.pdf' });
+      .mockResolvedValue({
+        buffer: Buffer.from('pdf'),
+        filename: 'letter.pdf',
+      });
 
     return {
       service,
@@ -460,26 +474,23 @@ describe('LettersService.sendLetter', () => {
     EmployeeStatus.TERMINATED,
     EmployeeStatus.DISMISSED,
     EmployeeStatus.RESIGNED,
-  ])(
-    'does not convert a %s employee to SUSPENDED',
-    async (employeeStatus) => {
-      const { service, tx } = build({
-        letterType: LetterType.SUSPENSION,
-        employeeStatus,
-        request: approvedRequest(),
-      });
+  ])('does not convert a %s employee to SUSPENDED', async (employeeStatus) => {
+    const { service, tx } = build({
+      letterType: LetterType.SUSPENSION,
+      employeeStatus,
+      request: approvedRequest(),
+    });
 
-      await expect(
-        service.sendLetter(letterId, actingUserId, UserRole.HR_MANAGER),
-      ).rejects.toThrow(new RegExp(employeeStatus));
+    await expect(
+      service.sendLetter(letterId, actingUserId, UserRole.HR_MANAGER),
+    ).rejects.toThrow(new RegExp(employeeStatus));
 
-      expect(tx.letter.updateMany).not.toHaveBeenCalled();
-      expect(tx.employee.update).not.toHaveBeenCalled();
-      expect(tx.inquiry.create).not.toHaveBeenCalled();
-      expect(tx.suspensionRequest.updateMany).not.toHaveBeenCalled();
-      expect(tx.notification.create).not.toHaveBeenCalled();
-    },
-  );
+    expect(tx.letter.updateMany).not.toHaveBeenCalled();
+    expect(tx.employee.update).not.toHaveBeenCalled();
+    expect(tx.inquiry.create).not.toHaveBeenCalled();
+    expect(tx.suspensionRequest.updateMany).not.toHaveBeenCalled();
+    expect(tx.notification.create).not.toHaveBeenCalled();
+  });
 
   it('reuses an existing open Inquiry instead of creating a duplicate', async () => {
     const { service, tx } = build({
@@ -586,7 +597,9 @@ describe('LettersService.sendLetter', () => {
     expect(tx.suspensionRequest.updateMany).not.toHaveBeenCalled();
     expect(tx.notification.create).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
   it('returns alreadySent for a raced SENT fine letter without touching finalized payroll', async () => {
@@ -594,10 +607,16 @@ describe('LettersService.sendLetter', () => {
       letterType: LetterType.FINE,
       employeeStatus: EmployeeStatus.ACTIVE,
     });
-    tx.letter.findUnique.mockResolvedValueOnce(draftLetter(LetterType.FINE, LetterStatus.SENT));
+    tx.letter.findUnique.mockResolvedValueOnce(
+      draftLetter(LetterType.FINE, LetterStatus.SENT),
+    );
     tx.payrollEntry.findMany.mockResolvedValue([{ id: 'p', status: 'PAID' }]);
 
-    const result = await service.sendLetter(letterId, actingUserId, UserRole.HR_MANAGER);
+    const result = await service.sendLetter(
+      letterId,
+      actingUserId,
+      UserRole.HR_MANAGER,
+    );
 
     expect(result.alreadySent).toBe(true);
     expect(tx.payrollDeduction.findFirst).not.toHaveBeenCalled();
@@ -707,6 +726,8 @@ describe('LettersService.sendLetter', () => {
 
     expect(result.alreadySent).toBe(true);
     expect(tx.notification.create).not.toHaveBeenCalled();
-    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(1);
+    expect(whatsappService.deliverAfterLetterGenerated).toHaveBeenCalledTimes(
+      1,
+    );
   });
 });

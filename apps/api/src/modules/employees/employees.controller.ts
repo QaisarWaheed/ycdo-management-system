@@ -74,7 +74,8 @@ export class EmployeesController {
   )
   async create(
     @Body() dto: CreateEmployeeDto,
-    @CurrentUser() user: { id: string; role: UserRole; branchId?: string | null },
+    @CurrentUser()
+    user: { id: string; role: UserRole; branchId?: string | null },
   ) {
     const canCreate = await this.permissionsService.userHasPermission(
       user.id,
@@ -204,9 +205,7 @@ export class EmployeesController {
 
   @Get('biometric-ids')
   @Roles(...BIOMETRIC_REFERENCE_ROLES)
-  getBiometricIdReference(
-    @CurrentUser() user: { id: string; role: UserRole },
-  ) {
+  getBiometricIdReference(@CurrentUser() user: { id: string; role: UserRole }) {
     return this.employeesService.getBiometricIdReference(user);
   }
 
@@ -251,8 +250,7 @@ export class EmployeesController {
     },
   ) {
     const roles = user.roles?.length ? user.roles : [user.role];
-    const portalOnly =
-      roles.length === 1 && roles[0] === UserRole.EMPLOYEE;
+    const portalOnly = roles.length === 1 && roles[0] === UserRole.EMPLOYEE;
     if (portalOnly && user.employeeId !== id) {
       throw new ForbiddenException('Access denied');
     }
@@ -334,17 +332,34 @@ export class EmployeesController {
   }
 
   @Post(':id/transfer')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_ADMIN_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+  )
   transfer(@Param('id') id: string, @Body() dto: TransferDto) {
     return this.employeesService.transfer(id, dto);
   }
 
   @Post(':id/status-communication')
   @RoutePermission(Permission.LETTERS_GENERATE)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_ADMIN_MANAGER, UserRole.HR_OPERATIONS_MANAGER)
-  generateStatusCommunication(@Param('id') id: string, @Body() dto: StatusCommunicationDto,
-    @CurrentUser() user: {id: string; role: UserRole}) {
-    return this.employeesService.generateStatusCommunication(id, dto.reason, user);
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+  )
+  generateStatusCommunication(
+    @Param('id') id: string,
+    @Body() dto: StatusCommunicationDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.employeesService.generateStatusCommunication(
+      id,
+      dto.reason,
+      user,
+    );
   }
 
   @Patch(':id/status')
@@ -428,11 +443,7 @@ export class EmployeesController {
     @Body() dto: ToggleHideProfilePhotoDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.employeesService.toggleHideProfilePhoto(
-      id,
-      dto.hide,
-      user.id,
-    );
+    return this.employeesService.toggleHideProfilePhoto(id, dto.hide, user.id);
   }
 
   @Delete(':id')

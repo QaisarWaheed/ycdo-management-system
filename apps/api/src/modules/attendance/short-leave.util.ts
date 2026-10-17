@@ -143,7 +143,7 @@ export function evaluateShortLeaveDeviation(
     return {
       valid: false,
       reason:
-        'Short Leave allowance is 2 hours for duty up to 9 hours and 3 hours for 10–12 hour duty; this employee\'s configured duty is longer than 12 hours — update duty start/end times on the employee profile',
+        "Short Leave allowance is 2 hours for duty up to 9 hours and 3 hours for 10–12 hour duty; this employee's configured duty is longer than 12 hours — update duty start/end times on the employee profile",
     };
   }
 

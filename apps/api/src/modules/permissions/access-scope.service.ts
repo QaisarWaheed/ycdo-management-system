@@ -7,10 +7,7 @@ import { Permission, Prisma, ProjectType, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { isHospitalAssignableDepartment } from '../../common/org-structure';
 import { buildEffectiveRoles } from '../../common/user-roles.util';
-import {
-  roleDefaultAllows,
-  rolesDefaultAllow,
-} from './permissions.constants';
+import { roleDefaultAllows, rolesDefaultAllow } from './permissions.constants';
 
 export type ManagerScopeDto = {
   projectId: string;
@@ -242,9 +239,11 @@ export class AccessScopeService {
       return { id: { in: [] } };
     }
 
-    return this.employeeWhereForScopes(context.managerScopes) ?? {
-      id: { in: [] },
-    };
+    return (
+      this.employeeWhereForScopes(context.managerScopes) ?? {
+        id: { in: [] },
+      }
+    );
   }
 
   /**
@@ -261,9 +260,7 @@ export class AccessScopeService {
     if (context.isGlobal) return existingWhere;
 
     const roles = context.roles.length ? context.roles : [role];
-    const hasOrgWideStaffRole = roles.some(
-      (r) => r !== UserRole.EMPLOYEE,
-    );
+    const hasOrgWideStaffRole = roles.some((r) => r !== UserRole.EMPLOYEE);
 
     if (hasOrgWideStaffRole) {
       return existingWhere;
@@ -537,7 +534,11 @@ export class AccessScopeService {
         where: { id: scope.projectId },
         select: { id: true, type: true, isActive: true },
       });
-      if (!project || !project.isActive || project.type !== ProjectType.HOSPITAL) {
+      if (
+        !project ||
+        !project.isActive ||
+        project.type !== ProjectType.HOSPITAL
+      ) {
         throw new BadRequestException(
           `Invalid hospital project for scope: ${scope.projectId}`,
         );
@@ -550,7 +551,11 @@ export class AccessScopeService {
             departmentId: scope.departmentId,
           },
         },
-        include: { department: { select: { name: true, isActive: true, isDeleted: true } } },
+        include: {
+          department: {
+            select: { name: true, isActive: true, isDeleted: true },
+          },
+        },
       });
       if (
         !mapping ||

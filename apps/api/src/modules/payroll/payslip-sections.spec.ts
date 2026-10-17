@@ -163,16 +163,35 @@ describe('buildPayslipSections', () => {
       earnings,
       deductions: { ...deductions, fine: 600 },
       deductionRows: [
-        { reason: 'DISCIPLINARY_FINE', amount: 200, fineReason: 'NO_UNIFORM', description: 'Letter fine [l1] 12/YCDO/2026 — UNIFORM' },
-        { reason: 'FINE', amount: 200, fineReason: 'MOBILE_ON_DUTY', description: null },
-        { reason: 'FINE', amount: 200, fineReason: 'MOBILE_ON_DUTY', description: null },
+        {
+          reason: 'DISCIPLINARY_FINE',
+          amount: 200,
+          fineReason: 'NO_UNIFORM',
+          description: 'Letter fine [l1] 12/YCDO/2026 — UNIFORM',
+        },
+        {
+          reason: 'FINE',
+          amount: 200,
+          fineReason: 'MOBILE_ON_DUTY',
+          description: null,
+        },
+        {
+          reason: 'FINE',
+          amount: 200,
+          fineReason: 'MOBILE_ON_DUTY',
+          description: null,
+        },
       ],
       allowanceRows: [],
       pkg: { allowances: 0, fineDeduction: 0 },
       totalDays: 30,
     }).find((s) => s.key === 'discipline')!.lines;
     expect(discipline).toEqual([
-      { label: 'Fine: No uniform', amount: 200, note: 'Letter fine 12/YCDO/2026 — UNIFORM' },
+      {
+        label: 'Fine: No uniform',
+        amount: 200,
+        note: 'Letter fine 12/YCDO/2026 — UNIFORM',
+      },
       { label: 'Fine: Mobile on duty', amount: 200 },
       { label: 'Fine: Mobile on duty', amount: 200 },
     ]);

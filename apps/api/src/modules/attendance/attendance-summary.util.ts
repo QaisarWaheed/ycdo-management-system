@@ -59,7 +59,8 @@ export function summarizeAttendanceLogs(
     // Approved short leave is not an early checkout (older rows may still carry minutes).
     earlyCheckout: logs.filter(
       (log) =>
-        (log.earlyOutMinutes ?? 0) > 0 && log.status !== AttendanceStatus.SHORT_LEAVE,
+        (log.earlyOutMinutes ?? 0) > 0 &&
+        log.status !== AttendanceStatus.SHORT_LEAVE,
     ).length,
     totalEarlyOutMinutes: logs.reduce(
       (sum, log) => sum + (log.earlyOutMinutes ?? 0),
