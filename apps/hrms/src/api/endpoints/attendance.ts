@@ -198,4 +198,36 @@ export const attendanceApi = {
       `/attendance/reliever-sessions/${sessionId}`,
       data,
     ),
+  /** Device punches HR must confirm (device clock changed or unknown). */
+  punchReviews: () =>
+    api.get<unknown, PunchReview[]>('/attendance/punch-reviews', {
+      params: { status: 'PENDING' },
+    }),
+  applyPunchReview: (id: string, data: { time?: string; punchType?: PunchType }) =>
+    api.post(`/attendance/punch-reviews/${id}/apply`, data),
+  dismissPunchReview: (id: string, note?: string) =>
+    api.post(`/attendance/punch-reviews/${id}/dismiss`, { note }),
+}
+
+export type PunchType =
+  | 'CHECKIN'
+  | 'CHECKOUT'
+  | 'OVERTIME_CHECKIN'
+  | 'OVERTIME_CHECKOUT'
+
+type BranchLabel = { name: string; abbreviation?: string | null } | null
+
+export interface PunchReview {
+  id: string
+  deviceId: string
+  punchType: string | null
+  deviceTime: string | null
+  receivedAt: string
+  reason: string
+  employee: {
+    fullName: string
+    employeeCode: string
+    currentBranch: BranchLabel
+  } | null
+  device: { label: string | null; branch: BranchLabel } | null
 }

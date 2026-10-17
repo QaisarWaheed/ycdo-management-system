@@ -1,7 +1,7 @@
 import {
   CHECKOUT_TOO_SOON_REASON,
   DeviceClockState,
-  STALE_DEVICE_EVENT_REASON,
+  PUNCH_REVIEW_REASON,
   devicePunchRejectReason,
   isCheckoutTooSoon,
   resolveDevicePunch,
@@ -12,6 +12,12 @@ const HOUR = 60 * 60;
 
 const slowClock: DeviceClockState = {
   clockOffsetSec: 2.5 * HOUR,
+  clockCandidateSec: null,
+  clockCandidateAt: null,
+};
+
+const correctClock: DeviceClockState = {
+  clockOffsetSec: 3,
   clockCandidateSec: null,
   clockCandidateAt: null,
 };
@@ -53,26 +59,72 @@ describe('device-punch-time.util', () => {
     expect(result.verdict).toBe('ok');
   });
 
-  it('rejects an offline dump from a correct-clock device', () => {
+  it('sends an isolated old punch from a correct-clock device to HR review', () => {
     const result = resolveDevicePunch({
       eventTime: '2026-08-30T05:00:00+05:00',
       now,
       clock: { clockOffsetSec: 3, clockCandidateSec: null, clockCandidateAt: null },
     });
-    expect(result.verdict).toBe('stale');
-    expect(devicePunchRejectReason(result.verdict)).toBe(
-      STALE_DEVICE_EVENT_REASON,
-    );
+    expect(result.verdict).toBe('review');
+    expect(devicePunchRejectReason(result.verdict)).toBe(PUNCH_REVIEW_REASON);
+    expect(result.deviceTime).toEqual(new Date('2026-08-30T05:00:00+05:00'));
   });
 
-  it('rejects an offline dump from a slow-clock device', () => {
+  it('sends an isolated old punch from a slow-clock device to HR review', () => {
     // Device 2.5h slow; punch was really at 06:00 PKT, uploaded at 08:00.
     const result = resolveDevicePunch({
       eventTime: '2026-08-30T03:30:00',
       now,
       clock: slowClock,
     });
-    expect(result.verdict).toBe('stale');
+    expect(result.verdict).toBe('review');
+  });
+
+  it('saves an offline dump on a known slow clock at its real time', () => {
+    // Device 2.5h slow; punch really at 06:00 PKT, replayed at 08:00 in a burst.
+    const result = resolveDevicePunch({
+      eventTime: '2026-08-30T03:30:00',
+      now,
+      clock: slowClock,
+      recentDeviceEvents: 5,
+    });
+    expect(result.verdict).toBe('delayed');
+    expect(result.checkTime).toEqual(new Date('2026-08-30T06:00:00+05:00'));
+    expect(result.nextClock).toBeNull();
+    expect(devicePunchRejectReason(result.verdict)).toBeNull();
+  });
+
+  it('saves a dump from last night on a correct clock at its real time', () => {
+    const punched = new Date('2026-08-29T21:15:00+05:00');
+    const result = resolveDevicePunch({
+      eventTime: '2026-08-29T21:15:00+05:00',
+      now,
+      clock: correctClock,
+      recentDeviceEvents: 3,
+    });
+    expect(result.verdict).toBe('delayed');
+    expect(result.checkTime).toEqual(new Date(punched.getTime() + 3000));
+  });
+
+  it('sends a dump older than 7 days to HR review', () => {
+    const result = resolveDevicePunch({
+      eventTime: '2026-08-20T09:00:00+05:00',
+      now,
+      clock: correctClock,
+      recentDeviceEvents: 10,
+    });
+    expect(result.verdict).toBe('review');
+  });
+
+  it('sends a clock set forward to HR review even in a burst', () => {
+    const result = resolveDevicePunch({
+      eventTime: '2026-08-30T12:00:00+05:00',
+      now,
+      clock: correctClock,
+      recentDeviceEvents: 10,
+    });
+    expect(result.verdict).toBe('review');
+    expect(result.nextClock?.clockCandidateSec).toBe(-4 * HOUR);
   });
 
   it('accepts immediately once a slow clock is corrected', () => {
@@ -91,14 +143,14 @@ describe('device-punch-time.util', () => {
       now,
       clock: slowClock,
     });
-    expect(first.verdict).toBe('stale');
+    expect(first.verdict).toBe('review');
 
     const soon = resolveDevicePunch({
       eventTime: '2026-08-30T04:05:00',
       now: new Date(now.getTime() + 5 * 60 * 1000),
       clock: first.nextClock,
     });
-    expect(soon.verdict).toBe('stale');
+    expect(soon.verdict).toBe('review');
 
     const later = resolveDevicePunch({
       eventTime: '2026-08-30T04:15:00',

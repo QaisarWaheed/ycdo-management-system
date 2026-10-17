@@ -430,3 +430,32 @@ export class RecalculateMonthDto {
   @Max(12)
   month: number;
 }
+
+export class PunchReviewQueryDto {
+  @IsOptional()
+  @IsIn(['PENDING', 'APPLIED', 'DISMISSED'])
+  status?: 'PENDING' | 'APPLIED' | 'DISMISSED';
+}
+
+export class ApplyPunchReviewDto {
+  /** Real punch time (ISO); defaults to the device time. */
+  @IsOptional()
+  @IsDateString()
+  time?: string;
+
+  @IsOptional()
+  @IsIn(['CHECKIN', 'CHECKOUT', 'OVERTIME_CHECKIN', 'OVERTIME_CHECKOUT', 'AUTO'])
+  punchType?:
+    | 'CHECKIN'
+    | 'CHECKOUT'
+    | 'OVERTIME_CHECKIN'
+    | 'OVERTIME_CHECKOUT'
+    | 'AUTO';
+}
+
+export class DismissPunchReviewDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}

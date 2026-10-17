@@ -18,15 +18,18 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles, AlsoAllowPermission } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
+  ApplyPunchReviewDto,
   ApproveOvertimeDto,
   AttendanceQueryDto,
   BackfillAbsentDto,
   BiometricPushDto,
+  DismissPunchReviewDto,
   ImportAttendanceDto,
   ManualAttendanceDto,
   MarkAbsenteesDto,
   OvertimePunchDto,
   PortalCheckDto,
+  PunchReviewQueryDto,
   RawScanDto,
   RecalculateMonthDto,
   RelieverCheckInDto,
@@ -186,6 +189,54 @@ export class AttendanceController {
       throw new ForbiddenException('Access denied');
     }
     return this.attendanceService.getActiveTimer(employeeId);
+  }
+
+  /** Device punches not saved because the device clock changed or is unknown. */
+  @Get('punch-reviews')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+  )
+  listPunchReviews(@Query() query: PunchReviewQueryDto) {
+    return this.attendanceService.listPunchReviews(query.status);
+  }
+
+  @Post('punch-reviews/:id/apply')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+  )
+  applyPunchReview(
+    @Param('id') id: string,
+    @Body() dto: ApplyPunchReviewDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.attendanceService.applyPunchReview(id, dto, user.id);
+  }
+
+  @Post('punch-reviews/:id/dismiss')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.HR_EXECUTIVE,
+  )
+  dismissPunchReview(
+    @Param('id') id: string,
+    @Body() dto: DismissPunchReviewDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.attendanceService.dismissPunchReview(id, dto.note, user.id);
   }
 
   @Get('reliever-sessions')

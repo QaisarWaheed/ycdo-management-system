@@ -44,6 +44,7 @@ import {
   Permission,
   Prisma,
   ProjectType,
+  PunchReviewStatus,
   RelieverRequestStatus,
   UserRole,
 } from '@prisma/client';
@@ -62,6 +63,7 @@ import {
   AttendanceQueryDto,
   BiometricPushDto,
   ImportAttendanceDto,
+  ApplyPunchReviewDto,
   ManualAttendanceDto,
   MarkAbsenteesDto,
   PortalCheckDto,
@@ -82,10 +84,13 @@ import {
 import { mapDeviceStatusToPunchType } from './device-status.util';
 import {
   CHECKOUT_TOO_SOON_REASON,
+  DUMP_BURST_WINDOW_MS,
+  PUNCH_REVIEW_REASON,
   devicePunchRejectReason,
   isCheckoutTooSoon,
   resolveDevicePunch,
 } from './device-punch-time.util';
+import { BranchRef, branchLockRejectReason } from './branch-lock.util';
 import {
   applyDisciplineRules,
   applyMissingCheckoutDiscipline,
@@ -322,10 +327,6 @@ export class AttendanceService {
     const punchClock = await this.resolveDevicePunchClock(device, {
       timestamp: dto.timestamp,
     });
-    const dumpReason = devicePunchRejectReason(punchClock.verdict);
-    if (dumpReason) {
-      throw new BadRequestException(dumpReason);
-    }
     const checkTime = punchClock.checkTime;
     const twentyFourHour = is24HourShift(employee);
     // Night shifts: a punch after midnight still belongs to yesterday's
@@ -335,6 +336,30 @@ export class AttendanceService {
       employee,
       twentyFourHour,
     );
+    const branchReason = await this.punchBranchLockReason(
+      employee,
+      device,
+      dateOnly,
+      twentyFourHour,
+    );
+    if (branchReason) {
+      throw new BadRequestException(branchReason);
+    }
+    const reviewReason = devicePunchRejectReason(punchClock.verdict);
+    if (reviewReason && device) {
+      // Old agent has no serial number; the device time identifies the punch.
+      await this.recordPunchReview(this.prisma, {
+        deviceId: device.deviceId,
+        serialNo: `push:${dto.biometricId}:${dto.timestamp ?? ''}`,
+        biometricId: dto.biometricId,
+        employeeId: employee.id,
+        punchType: dto.punchType,
+        rawStatus: dto.punchType,
+        deviceTime: punchClock.deviceTime,
+        reason: reviewReason,
+      });
+      throw new BadRequestException(reviewReason);
+    }
 
     const result = await this.processResolvedPunch(
       employee,
@@ -410,10 +435,8 @@ export class AttendanceService {
       timestamp: dto.timestamp,
       receivedTime: dto.receivedTime,
     });
-    const staleReason = devicePunchRejectReason(punchClock.verdict);
-    if (staleReason) {
-      return this.claimRawScanAndReject(dto, staleReason, employee.id);
-    }
+    // 'delayed' (offline dump on a known clock): checkTime is already the
+    // real punch moment, so the attendance date below follows it.
     const checkTime = punchClock.checkTime;
     const twentyFourHour = is24HourShift(employee);
     const dateOnly = this.resolvePunchAttendanceDate(
@@ -421,6 +444,29 @@ export class AttendanceService {
       employee,
       twentyFourHour,
     );
+    const branchReason = await this.punchBranchLockReason(
+      employee,
+      device,
+      dateOnly,
+      twentyFourHour,
+    );
+    if (branchReason) {
+      return this.claimRawScanAndReject(
+        dto,
+        branchReason,
+        employee.id,
+        punchClock.deviceTime,
+      );
+    }
+    if (punchClock.verdict === 'review') {
+      return this.claimRawScanAndReject(
+        dto,
+        PUNCH_REVIEW_REASON,
+        employee.id,
+        punchClock.deviceTime,
+        true,
+      );
+    }
 
     // Devices are in T&A Manual mode and already report CHECKIN/CHECKOUT —
     // use that. AUTO is only a fallback for a status we can't map.
@@ -445,6 +491,7 @@ export class AttendanceService {
             employeeId: employee.id,
             punchType,
             rawStatus: dto.deviceStatus,
+            deviceTime: punchClock.deviceTime,
           },
         });
       } catch (err: unknown) {
@@ -504,6 +551,16 @@ export class AttendanceService {
                       err.message ??
                       'HRMS_REJECTED',
                   );
+          // Kept on the event so "my punch didn't count" can be answered.
+          await tx.processedDeviceEvent.update({
+            where: {
+              deviceId_serialNo: {
+                deviceId: dto.deviceId,
+                serialNo: dto.serialNo,
+              },
+            },
+            data: { rejectReason: message },
+          });
           return {
             ok: true as const,
             accepted: false as const,
@@ -541,6 +598,7 @@ export class AttendanceService {
   private async resolveDevicePunchClock(
     device: {
       id: string;
+      deviceId: string;
       clockOffsetSec: number | null;
       clockCandidateSec: number | null;
       clockCandidateAt: Date | null;
@@ -551,7 +609,21 @@ export class AttendanceService {
       receivedTime?: string;
     },
   ) {
-    const resolved = resolveDevicePunch({ ...times, clock: device });
+    // Only a known clock can place a delayed punch; count the burst then.
+    const recentDeviceEvents =
+      device?.clockOffsetSec != null
+        ? await this.prisma.processedDeviceEvent.count({
+            where: {
+              deviceId: device.deviceId,
+              processedAt: { gte: new Date(Date.now() - DUMP_BURST_WINDOW_MS) },
+            },
+          })
+        : 0;
+    const resolved = resolveDevicePunch({
+      ...times,
+      clock: device,
+      recentDeviceEvents,
+    });
     if (device && resolved.nextClock) {
       await this.prisma.biometricDevice.update({
         where: { id: device.id },
@@ -562,24 +634,44 @@ export class AttendanceService {
   }
 
   /**
-   * Consume a device event we will not apply (stale reconnect dump, etc.)
-   * so the gateway marks it REJECTED and does not retry it into attendance.
+   * Consume a device event we will not apply (other-branch device, clock
+   * needing HR review, etc.) so the gateway marks it REJECTED and does not
+   * retry it into attendance. `review` also puts it on HR's review list.
    */
   private async claimRawScanAndReject(
     dto: RawScanDto,
     reason: string,
     employeeId?: string | null,
+    deviceTime?: Date | null,
+    review = false,
   ) {
+    const punchType = mapDeviceStatusToPunchType(dto.deviceStatus);
     try {
-      await this.prisma.processedDeviceEvent.create({
-        data: {
-          deviceId: dto.deviceId,
-          serialNo: dto.serialNo,
-          biometricId: dto.biometricId,
-          employeeId: employeeId ?? null,
-          punchType: mapDeviceStatusToPunchType(dto.deviceStatus),
-          rawStatus: dto.deviceStatus,
-        },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.processedDeviceEvent.create({
+          data: {
+            deviceId: dto.deviceId,
+            serialNo: dto.serialNo,
+            biometricId: dto.biometricId,
+            employeeId: employeeId ?? null,
+            punchType,
+            rawStatus: dto.deviceStatus,
+            deviceTime: deviceTime ?? null,
+            rejectReason: reason,
+          },
+        });
+        if (review) {
+          await this.recordPunchReview(tx, {
+            deviceId: dto.deviceId,
+            serialNo: dto.serialNo,
+            biometricId: dto.biometricId,
+            employeeId: employeeId ?? null,
+            punchType,
+            rawStatus: dto.deviceStatus,
+            deviceTime: deviceTime ?? null,
+            reason,
+          });
+        }
       });
     } catch (err: unknown) {
       if (
@@ -604,6 +696,261 @@ export class AttendanceService {
       idempotent: false as const,
       reason,
     };
+  }
+
+  /** Adds a punch to HR's review list; a re-sent punch is not listed twice. */
+  private async recordPunchReview(
+    db: PrismaService | Prisma.TransactionClient,
+    data: Prisma.PunchReviewUncheckedCreateInput,
+  ) {
+    const existing = await db.punchReview.findUnique({
+      where: {
+        deviceId_serialNo: { deviceId: data.deviceId, serialNo: data.serialNo },
+      },
+      select: { id: true },
+    });
+    if (!existing) await db.punchReview.create({ data });
+  }
+
+  /**
+   * Branch lock: a registered device only takes punches from staff on duty
+   * at its branch (or a branch at the same address). Head Office and 24-hour
+   * staff punch anywhere; relievers and swap covers at the branch they cover.
+   * Unregistered devices cannot be checked and are allowed.
+   */
+  private async punchBranchLockReason(
+    employee: { id: string; currentBranchId: string },
+    device: { branchId: string } | null,
+    dateOnly: Date,
+    twentyFourHour: boolean,
+  ): Promise<string | null> {
+    if (!device || twentyFourHour) return null;
+    if (device.branchId === employee.currentBranchId) return null;
+    const select = { id: true, name: true, address: true } as const;
+    const [employeeBranch, deviceBranch] = await Promise.all([
+      this.prisma.branch.findUnique({
+        where: { id: employee.currentBranchId },
+        select,
+      }),
+      this.prisma.branch.findUnique({ where: { id: device.branchId }, select }),
+    ]);
+    if (!deviceBranch) return null;
+    const base = { employeeBranch, deviceBranch, twentyFourHour };
+    if (!branchLockRejectReason(base)) return null;
+
+    // Overnight duty: a punch after midnight may belong to yesterday's cover.
+    const dates = [dateOnly, this.pakistanYesterday(dateOnly)];
+    const [relieverRequests, relieverSessions, swaps] = await Promise.all([
+      this.prisma.relieverRequest.findMany({
+        where: {
+          relieverId: employee.id,
+          status: {
+            in: [
+              RelieverRequestStatus.ACCEPTED,
+              RelieverRequestStatus.HR_ASSIGNED,
+            ],
+          },
+          leaveRecord: {
+            status: LeaveStatus.APPROVED,
+            startDate: { lte: dateOnly },
+            endDate: { gte: dates[1] },
+          },
+        },
+        select: {
+          leaveRecord: {
+            select: { employee: { select: { currentBranch: { select } } } },
+          },
+        },
+      }),
+      this.prisma.relieverSession.findMany({
+        where: { employeeId: employee.id, date: { in: dates } },
+        select: { branch: { select } },
+      }),
+      this.prisma.mutualSwap.findMany({
+        where: {
+          coveringEmployeeId: employee.id,
+          status: 'ACTIVE',
+          date: { in: dates },
+        },
+        select: {
+          branch: { select },
+          coveredEmployee: { select: { currentBranch: { select } } },
+        },
+      }),
+    ]);
+    const dutyBranches: BranchRef[] = [
+      ...relieverRequests.map((r) => r.leaveRecord.employee.currentBranch),
+      ...relieverSessions.map((r) => r.branch),
+      ...swaps.flatMap((sw) => [sw.branch, sw.coveredEmployee.currentBranch]),
+    ];
+    return branchLockRejectReason({ ...base, dutyBranches });
+  }
+
+  /** GET /attendance/punch-reviews — punches whose device clock HR must confirm. */
+  async listPunchReviews(
+    status: PunchReviewStatus = PunchReviewStatus.PENDING,
+  ) {
+    const reviews = await this.prisma.punchReview.findMany({
+      where: { status },
+      orderBy: { receivedAt: 'desc' },
+      take: 500,
+    });
+    const employeeIds = [
+      ...new Set(
+        reviews.map((r) => r.employeeId).filter((id): id is string => !!id),
+      ),
+    ];
+    const deviceIds = [...new Set(reviews.map((r) => r.deviceId))];
+    const [employees, devices] = await Promise.all([
+      this.prisma.employee.findMany({
+        where: { id: { in: employeeIds } },
+        select: {
+          id: true,
+          fullName: true,
+          employeeCode: true,
+          currentBranch: { select: BRANCH_LABEL_SELECT },
+        },
+      }),
+      this.prisma.biometricDevice.findMany({
+        where: { deviceId: { in: deviceIds } },
+        select: {
+          deviceId: true,
+          label: true,
+          branch: { select: BRANCH_LABEL_SELECT },
+        },
+      }),
+    ]);
+    const employeeById = new Map(employees.map((e) => [e.id, e]));
+    const deviceById = new Map(devices.map((d) => [d.deviceId, d]));
+    return reviews.map((r) => ({
+      ...r,
+      employee: r.employeeId ? (employeeById.get(r.employeeId) ?? null) : null,
+      device: deviceById.get(r.deviceId) ?? null,
+    }));
+  }
+
+  /**
+   * HR accepts a review punch at the time it enters (default: device time).
+   * Runs the same processing as an accepted device punch; branch lock is not
+   * re-applied because HR decided.
+   */
+  async applyPunchReview(id: string, dto: ApplyPunchReviewDto, userId: string) {
+    const review = await this.prisma.punchReview.findUnique({ where: { id } });
+    if (!review) throw new NotFoundException('Punch review not found');
+    if (review.status !== PunchReviewStatus.PENDING) {
+      throw new ConflictException('Punch review is already resolved');
+    }
+    if (!review.employeeId) {
+      throw new BadRequestException('This punch has no employee');
+    }
+    const checkTime = dto.time
+      ? parseAttendanceDateTime(dto.time)
+      : review.deviceTime;
+    if (!checkTime || Number.isNaN(checkTime.getTime())) {
+      throw new BadRequestException('Punch time is required');
+    }
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: review.employeeId },
+      include: { shift: true },
+    });
+    if (!employee) throw new NotFoundException('Employee not found');
+    assertEmployeeEligibleForBiometricAttendance(
+      employee.status,
+      this.employeeAttendanceContext(employee),
+    );
+    const punchType =
+      dto.punchType ??
+      mapDeviceStatusToPunchType(review.punchType ?? '') ??
+      'AUTO';
+    const twentyFourHour = is24HourShift(employee);
+    const dateOnly = this.resolvePunchAttendanceDate(
+      checkTime,
+      employee,
+      twentyFourHour,
+    );
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.punchReview.updateMany({
+        where: { id, status: PunchReviewStatus.PENDING },
+        data: {
+          status: PunchReviewStatus.APPLIED,
+          appliedTime: checkTime,
+          resolvedById: userId,
+          resolvedAt: new Date(),
+        },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictException('Punch review is already resolved');
+      }
+      const punch = await this.processResolvedPunch(
+        employee,
+        employee.currentBranchId,
+        punchType,
+        checkTime,
+        dateOnly,
+        twentyFourHour,
+        tx,
+      );
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'PUNCH_REVIEW_APPLIED',
+          entity: 'PunchReview',
+          entityId: id,
+          changes: {
+            employeeId: employee.id,
+            punchType,
+            deviceTime: review.deviceTime?.toISOString() ?? null,
+            appliedTime: checkTime.toISOString(),
+          },
+        },
+      });
+      return punch;
+    });
+
+    await this.maybeReconcilePunchConsequences(
+      employee.id,
+      dateOnly,
+      result,
+      employee.dutyStartTime,
+    );
+    await this.maybeRecomputePayrollForPunchResult(
+      employee.id,
+      dateOnly,
+      result,
+    );
+    return result;
+  }
+
+  async dismissPunchReview(
+    id: string,
+    note: string | undefined,
+    userId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.punchReview.updateMany({
+        where: { id, status: PunchReviewStatus.PENDING },
+        data: {
+          status: PunchReviewStatus.DISMISSED,
+          note: note?.trim() || null,
+          resolvedById: userId,
+          resolvedAt: new Date(),
+        },
+      });
+      if (claimed.count === 0) {
+        throw new NotFoundException('Pending punch review not found');
+      }
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'PUNCH_REVIEW_DISMISSED',
+          entity: 'PunchReview',
+          entityId: id,
+          changes: { note: note ?? null },
+        },
+      });
+      return { id, status: PunchReviewStatus.DISMISSED };
+    });
   }
 
   /**

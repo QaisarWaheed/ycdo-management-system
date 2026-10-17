@@ -15,6 +15,7 @@ import {
   FileText,
   Fingerprint,
   Gift,
+  ClockAlert,
   History,
   LayoutDashboard,
   LogOut,
@@ -75,6 +76,13 @@ const extraTimeApprovalsNavItem = {
   icon: CalendarCheck,
 }
 
+/** Device punches with an uncertain clock; HR enters the real time. */
+const punchReviewsNavItem = {
+  to: '/punch-reviews',
+  label: 'Punches to Review',
+  icon: ClockAlert,
+}
+
 /** Finance enters doctors' monthly figures; executives compare and set incentives. */
 const doctorPerformanceNavItem = {
   to: '/doctor-performance',
@@ -126,6 +134,7 @@ function navItemsForRole(role?: string) {
     const withActivity = [
       ...items,
       payApprovalsNavItem,
+      punchReviewsNavItem,
       ...(role === 'SUPER_ADMIN'
         ? [extraTimeApprovalsNavItem, doctorPerformanceNavItem, activityTrailNavItem, shiftsNavItem]
         : []),
@@ -166,6 +175,7 @@ function navItemsForRole(role?: string) {
         ].includes(item.to),
       ),
       extraTimeApprovalsNavItem,
+      punchReviewsNavItem,
     ]
   }
 
@@ -287,6 +297,9 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
   '/admin/login-access': { roles: ['IT_ADMIN'] },
   '/admin/pending-approvals': { roles: ['IT_ADMIN', 'SUPER_ADMIN'] },
   '/extra-time-approvals': { roles: ['HR_OPERATIONS_MANAGER', 'CHAIRMAN', 'SUPER_ADMIN'] },
+  '/punch-reviews': {
+    roles: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_OPERATIONS_MANAGER', 'HR_EXECUTIVE'],
+  },
   '/pay-approvals': {
     roles: [
       'PRESIDENT',

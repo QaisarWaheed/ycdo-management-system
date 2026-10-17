@@ -499,17 +499,50 @@ enum AttendanceSource {
 /// answer "have I already handled this exact device event", not join to
 /// other data.
 model ProcessedDeviceEvent {
-  id          String   @id @default(uuid())
-  deviceId    String
-  serialNo    String
-  biometricId String?
-  employeeId  String?
-  punchType   String?
-  rawStatus   String?
-  processedAt DateTime @default(now())
+  id           String    @id @default(uuid())
+  deviceId     String
+  serialNo     String
+  biometricId  String?
+  employeeId   String?
+  punchType    String?
+  rawStatus    String?
+  processedAt  DateTime  @default(now())
+  /// Device clock reading as sent (may be wrong); punch time is decided server-side.
+  deviceTime   DateTime?
+  /// Why the event was not applied (soft reject); null when accepted.
+  rejectReason String?
 
   @@unique([deviceId, serialNo])
   @@index([deviceId])
+}
+
+enum PunchReviewStatus {
+  PENDING
+  APPLIED
+  DISMISSED
+}
+
+/// Device punch not saved because the device clock changed or is unknown;
+/// HR enters the real time (or dismisses it).
+model PunchReview {
+  id           String            @id @default(uuid())
+  deviceId     String
+  serialNo     String
+  biometricId  String
+  employeeId   String?
+  punchType    String?
+  rawStatus    String?
+  deviceTime   DateTime?
+  receivedAt   DateTime          @default(now())
+  reason       String
+  status       PunchReviewStatus @default(PENDING)
+  appliedTime  DateTime?
+  resolvedById String?
+  resolvedAt   DateTime?
+  note         String?
+
+  @@unique([deviceId, serialNo])
+  @@index([status])
 }
 
 enum DisciplineCategory {

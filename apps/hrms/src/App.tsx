@@ -31,6 +31,7 @@ import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
 import { PendingApprovalsPage } from '@/pages/admin/PendingApprovalsPage'
 import { PayApprovalsPage } from '@/pages/payroll/PayApprovalsPage'
 import { ExtraTimeApprovalsPage } from '@/pages/attendance/ExtraTimeApprovalsPage'
+import { PunchReviewsPage } from '@/pages/attendance/PunchReviewsPage'
 import { DoctorPerformancePage } from '@/pages/payroll/DoctorPerformancePage'
 import { MasterDataPage } from '@/pages/admin/MasterDataPage'
 import { LetterTemplatesPage } from '@/pages/admin/LetterTemplatesPage'
@@ -270,6 +271,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ExtraTimeApprovalsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/punch-reviews"
+        element={
+          <ProtectedRoute>
+            <PunchReviewsPage />
           </ProtectedRoute>
         }
       />
