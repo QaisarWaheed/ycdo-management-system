@@ -7,6 +7,7 @@ import {
   isPendingApproval,
   payApprovalsApi,
   type EmployeeAllowance,
+  type PendingApprovalResponse,
 } from '@/api/endpoints/payApprovals'
 import { PKRInput } from '@/components/common/PKRInput'
 import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
@@ -223,14 +224,22 @@ export function EmployeeAllowancesPanel({
   )
 }
 
-function AssignAllowanceDialog({
+export function AssignAllowanceDialog({
   employeeId,
   current,
   onClose,
+  defaultStartMonth,
+  defaultNote = '',
+  onSaved,
 }: {
   employeeId: string
   current: EmployeeAllowance | null
   onClose: () => void
+  /** Prefill (e.g. from the payroll duty reminder). */
+  defaultStartMonth?: string
+  defaultNote?: string
+  /** Called with the saved allowance, or the pending-approval response. */
+  onSaved?: (res: EmployeeAllowance | PendingApprovalResponse) => void
 }) {
   const queryClient = useQueryClient()
   const needsApproval = useNeedsPayApproval()
@@ -240,9 +249,9 @@ function AssignAllowanceDialog({
   })
   const [typeId, setTypeId] = useState(current?.typeId ?? '')
   const [amount, setAmount] = useState(current ? Number(current.amount) : 0)
-  const [startMonth, setStartMonth] = useState(thisMonth())
+  const [startMonth, setStartMonth] = useState(defaultStartMonth ?? thisMonth())
   const [endMonth, setEndMonth] = useState('')
-  const [note, setNote] = useState('')
+  const [note, setNote] = useState(defaultNote)
   const [approver, setApprover] = useState<EmployeeApproverTarget>()
 
   const mutation = useMutation({
@@ -268,6 +277,7 @@ function AssignAllowanceDialog({
       queryClient.invalidateQueries({ queryKey: ['employee', employeeId] })
       queryClient.invalidateQueries({ queryKey: ['payroll'] })
       queryClient.invalidateQueries({ queryKey: ['payroll-history', employeeId] })
+      onSaved?.(res)
       onClose()
     },
     onError: (err: ApiError) =>

@@ -344,7 +344,7 @@ type ReportTotals = {
 }
 
 /** Signature boxes printed at the end of every payroll report, whatever the filters. */
-const PAYROLL_REPORT_SIGNATORIES = [
+export const PAYROLL_REPORT_SIGNATORIES = [
   'Prepared by',
   'Chairman Finance',
   'General Secretary',

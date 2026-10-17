@@ -44,6 +44,7 @@ import { incentivesApi } from '@/api/endpoints/incentives'
 import { AdditionalWorkingDaysTab } from '@/components/employees/AdditionalWorkingDaysTab'
 import { EmployeePayrollTab } from '@/components/employees/EmployeePayrollTab'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
+import { RecurringIncentivePlans } from '@/components/payroll/RecurringIncentivePlans'
 import { ChangeStatusDialog } from '@/components/employees/ChangeStatusDialog'
 import { EditEmployeeDialog } from '@/components/employees/EditEmployeeDialog'
 import { EmployeeAvatar } from '@/components/employees/EmployeeAvatar'
@@ -3088,6 +3089,7 @@ export function EmployeeProfilePage() {
               Add Incentive
             </Button>
           )}
+          <RecurringIncentivePlans employeeId={id} />
           <Card>
             <CardContent className="p-0">
               {loadingIncentives ? (

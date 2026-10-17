@@ -11,8 +11,9 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
-import { EmployeeApproverTarget } from '@prisma/client';
+import { EmployeeApproverTarget, IncentiveDuration } from '@prisma/client';
 
 export class CreateIncentiveDto {
   @IsUUID()
@@ -54,6 +55,56 @@ export class CreateIncentiveDto {
   @IsOptional()
   @IsEnum(EmployeeApproverTarget)
   approverTarget?: EmployeeApproverTarget;
+
+  /** Point 21: this month only (default), N months, or every month until stopped. Never printed on the slip. */
+  @IsOptional()
+  @IsEnum(IncentiveDuration)
+  duration?: IncentiveDuration;
+
+  /** How many months (2–24) when duration is MONTHS; counts the start month. */
+  @ValidateIf((o) => o.duration === IncentiveDuration.MONTHS)
+  @Type(() => Number)
+  @IsInt()
+  @Min(2)
+  @Max(24)
+  months?: number;
+}
+
+/** Point 21: change a recurring incentive for the months not yet in payroll. */
+export class UpdateIncentivePlanDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  amount?: number;
+
+  /** New last month (inclusive); send with endYear. */
+  @ValidateIf((o) => o.endYear !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  endMonth?: number;
+
+  @ValidateIf((o) => o.endMonth !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  endYear?: number;
+}
+
+/** Point 21: stop a recurring incentive after this month (inclusive). */
+export class StopIncentivePlanDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  lastMonth: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  lastYear: number;
 }
 
 /** Corrected values for an incentive (employee stays the same). */

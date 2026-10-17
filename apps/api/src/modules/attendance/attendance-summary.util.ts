@@ -1,8 +1,10 @@
-import { AttendanceStatus } from '@prisma/client';
+import { AttendanceStatus, ExtraTimeStatus } from '@prisma/client';
 
 export type AttendanceLogSummaryInput = {
   status: AttendanceStatus;
   overtimeMinutes: number;
+  /** Point 20: null/undefined = legacy or biometric OT (counted); otherwise only APPROVED counts. */
+  overtimeStatus?: ExtraTimeStatus | null;
   lateMinutes: number;
   earlyOutMinutes?: number | null;
 };
@@ -34,6 +36,11 @@ export type AttendanceMonthSummary = {
   totalEarlyOutMinutes: number;
 };
 
+/** Overtime is paid only when approved; null keeps legacy/biometric rows counted. */
+export const isPayableOvertime = (log: {
+  overtimeStatus?: ExtraTimeStatus | null;
+}) => log.overtimeStatus == null || log.overtimeStatus === ExtraTimeStatus.APPROVED;
+
 export function summarizeAttendanceLogs(
   logs: AttendanceLogSummaryInput[],
   weeklyOff = 0,
@@ -54,7 +61,10 @@ export function summarizeAttendanceLogs(
     swapCovered: countByStatus(AttendanceStatus.SWAP_COVERED),
     unmarked: countByStatus(AttendanceStatus.UNMARKED),
     weeklyOff,
-    overtimeMinutes: logs.reduce((sum, log) => sum + log.overtimeMinutes, 0),
+    overtimeMinutes: logs.reduce(
+      (sum, log) => sum + (isPayableOvertime(log) ? log.overtimeMinutes : 0),
+      0,
+    ),
     totalLateMinutes: logs.reduce((sum, log) => sum + log.lateMinutes, 0),
     // Approved short leave is not an early checkout (older rows may still carry minutes).
     earlyCheckout: logs.filter(

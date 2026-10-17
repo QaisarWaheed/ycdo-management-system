@@ -69,7 +69,49 @@ function mapPayrollSummary(data: PayrollSummaryResponse): PayrollSummary {
   }
 }
 
+export interface OvertimeMoney {
+  otHours: number
+  otAmount: number
+  extraDutyDays: number
+  extraDutyAmount: number
+  attendanceDeductions: number
+  fines: number
+  otherDeductions: number
+  totalDeductions: number
+  net: number
+}
+export interface OvertimeReportRow extends OvertimeMoney {
+  employeeId: string
+  code: string
+  name: string
+  branchId: string | null
+  branch: string
+  departmentId: string | null
+  department: string
+}
+export interface OvertimeGroupTotal extends OvertimeMoney {
+  id: string | null
+  name: string
+  employees: number
+}
+export interface OvertimeReport {
+  month: number
+  year: number
+  rows: OvertimeReportRow[]
+  byBranch: OvertimeGroupTotal[]
+  byDepartment: OvertimeGroupTotal[]
+  totals: OvertimeMoney & { employees: number }
+  trend: Array<{ month: number; year: number; otAmount: number }>
+}
+
 export const payrollApi = {
+  /** Month-end overtime report (OT, extra duty, deductions; branch / department totals; 6-month trend). */
+  overtimeReport: (params: {
+    month: number
+    year: number
+    branchId?: string
+    departmentId?: string
+  }) => api.get<unknown, OvertimeReport>('/payroll/reports/overtime', { params }),
   getEntries: (params?: Record<string, unknown>) =>
     api.get<unknown, PayrollEntry[]>('/payroll/entries', { params }),
   getEntry: (id: string) =>

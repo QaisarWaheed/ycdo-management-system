@@ -59,11 +59,11 @@ model Branch {
 }
 
 model BiometricDevice {
-  id        String   @id @default(uuid())
-  deviceId  String   @unique
-  branchId  String
-  label     String?
-  createdAt DateTime @default(now())
+  id                String    @id @default(uuid())
+  deviceId          String    @unique
+  branchId          String
+  label             String?
+  createdAt         DateTime  @default(now())
   /// Learned clock error (receive time − device time); used only to spot offline dumps.
   clockOffsetSec    Int?
   /// Unconfirmed new clock error after a possible clock re-set.
@@ -217,6 +217,8 @@ model Employee {
   payChangeRequests          PayChangeRequest[]
   doctorPerformance          DoctorMonthlyPerformance[]
   additionalWorkingDays      AdditionalWorkingDay[]
+  incentivePlans             IncentivePlan[]
+  additionalDuties           EmployeeAdditionalDuty[]
   portalAttendances          PortalAttendance[]
   advanceLoanRequests        AdvanceLoanRequest[]
   faceSyncJobs               FaceSyncJob[]
@@ -429,6 +431,11 @@ model AttendanceLog {
   overtimePending       Boolean           @default(false)
   overtimeApprovedBy    String?
   overtimeApprovedAt    DateTime?
+  /// Point 20: HR-entered overtime waits for HR Operations approval; null = legacy (counted).
+  overtimeStatus        ExtraTimeStatus?
+  overtimeRequestedById String?
+  overtimeReviewNote    String?
+  overtimeEscalatedAt   DateTime?
   source                AttendanceSource  @default(BIOMETRIC)
   /// Null until a write under the punch-source model sets it (no backfill).
   checkInSource         AttendanceSource?
@@ -800,6 +807,8 @@ model SuspensionRequest {
   reason                 String
   periodStart            DateTime
   periodEnd              DateTime
+  /// Point 25: HR was alerted that the suspension period ended (reinstate or extend).
+  periodEndAlertedAt     DateTime?
   inquiryOfficerUserId   String
   inquiryDeadlineAt      DateTime
   selectedApproverUserId String
@@ -1125,11 +1134,16 @@ model Incentive {
   addedBy    String
   month      Int
   year       Int
+  /// Point 21: the recurring plan this month's incentive was created from (null = one-time).
+  planId     String?
   createdAt  DateTime @default(now())
 
   employee    Employee       @relation(fields: [employeeId], references: [id])
   addedByUser User           @relation(fields: [addedBy], references: [id])
   type        IncentiveType? @relation(fields: [typeId], references: [id])
+  plan        IncentivePlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@unique([planId, month, year])
 }
 
 /// Incentive categories chosen from a list instead of free text.
@@ -1140,6 +1154,7 @@ model IncentiveType {
   createdAt DateTime @default(now())
 
   incentives Incentive[]
+  plans      IncentivePlan[]
 }
 
 /// How a package allowance is paid in a month.
@@ -1232,15 +1247,21 @@ model PayChangeRequest {
 /// Extra full duty-days credited by HR (e.g. covering double duty).
 /// Payroll: days in month × dailyDutyHours × hourlyRate as separate slip line.
 model AdditionalWorkingDay {
-  id                String   @id @default(uuid())
+  id                String          @id @default(uuid())
   employeeId        String
-  date              DateTime @db.Date
+  date              DateTime        @db.Date
   note              String?
   addedById         String
   /// Set when auto-created from a completed RelieverSession (profile only; pay via RELIEVER).
-  relieverSessionId String?  @unique
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  relieverSessionId String?         @unique
+  /// Point 20: HR enters (PENDING) -> HR Operations / Super Admin approves; rejection escalates to Chairman.
+  status            ExtraTimeStatus @default(PENDING)
+  reviewedById      String?
+  reviewedAt        DateTime?
+  reviewNote        String?
+  escalatedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   addedBy         User             @relation(fields: [addedById], references: [id])
@@ -1835,4 +1856,64 @@ model BranchProgressReport {
   branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   @@unique([branchId, year, month])
+}
+
+/// Point 20: extra working days / HR-entered overtime approval.
+enum ExtraTimeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  /// Rejected by HR Operations; waiting for Chairman's final decision.
+  ESCALATED
+}
+
+/// Point 21: how long an incentive repeats. The slip only shows the month's amount.
+enum IncentiveDuration {
+  ONE_TIME
+  MONTHS
+  PERMANENT
+}
+
+/// Point 21: a recurring incentive; each payroll month gets its own Incentive row.
+model IncentivePlan {
+  id         String            @id @default(uuid())
+  employeeId String
+  typeId     String?
+  amount     Decimal           @db.Decimal(10, 2)
+  reason     String            @db.Text
+  duration   IncentiveDuration
+  startMonth Int
+  startYear  Int
+  /// Last month (inclusive). MONTHS: computed; PERMANENT: null until stopped.
+  endMonth   Int?
+  endYear    Int?
+  stoppedAt  DateTime?
+  addedBy    String
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  employee   Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type       IncentiveType? @relation(fields: [typeId], references: [id])
+  incentives Incentive[]
+
+  @@index([employeeId])
+}
+
+/// Point 22: an extra duty on top of the employee's own designation (e.g. Ward In-charge).
+model EmployeeAdditionalDuty {
+  id          String    @id @default(uuid())
+  employeeId  String
+  title       String
+  startDate   DateTime  @db.Date
+  endDate     DateTime? @db.Date
+  /// The EmployeeAllowance paid for this duty, once added.
+  allowanceId String?
+  note        String?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
 }

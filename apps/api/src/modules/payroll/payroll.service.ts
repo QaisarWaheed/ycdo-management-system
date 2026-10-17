@@ -144,6 +144,7 @@ import {
 } from '../attendance-lock/attendance-month-lock.util';
 import { FINE_REASON_LABELS } from './payslip-slip.util';
 import { itemizePayrollEntries } from './payroll-itemize.util';
+import { materializeIncentivePlans } from '../incentives/incentives.service';
 import {
   computePackageAllowanceLines,
   isActiveInMonth,
@@ -355,6 +356,21 @@ export class PayrollService {
         `Failed to create payroll entry for ${employee.fullName} (${employee.employeeCode})`,
       );
     }
+    // Point 21: this month's share of recurring incentives (idempotent).
+    if (
+      await materializeIncentivePlans(
+        this.prisma,
+        dto.employeeId,
+        dto.month,
+        dto.year,
+      )
+    ) {
+      primaryResult =
+        (await this.prisma.payrollEntry.findUnique({
+          where: { id: primaryResult.id },
+          include: { deductions: true, allowances: true },
+        })) ?? primaryResult;
+    }
     return primaryResult;
   }
 
@@ -416,6 +432,15 @@ export class PayrollService {
     const packageBearingId =
       overlappingStipendRecords.find((r) => r.effectiveTo === null)?.id ??
       overlappingStipendRecords[overlappingStipendRecords.length - 1]?.id;
+
+    // Point 21: a recurring incentive started after this entry was made.
+    // Added before the refresh below, which recomputes totals from the rows.
+    await materializeIncentivePlans(
+      this.prisma,
+      dto.employeeId,
+      dto.month,
+      dto.year,
+    );
 
     const unpaidLeaveDatesForMonth = await this.computeMonthlyUnpaidLeaveDates(
       dto.employeeId,
@@ -3316,9 +3341,11 @@ export class PayrollService {
         employmentStart: context.backfillFromAttendance
           ? null
           : context.employee.joiningDate,
+        // Point 25: a suspension stops pay from its start like an exit.
         employmentEndExclusive:
           context.employee.status &&
-          isExitEmployeeStatus(context.employee.status)
+          (isExitEmployeeStatus(context.employee.status) ||
+            context.employee.status === EmployeeStatus.SUSPENDED)
             ? context.employee.statusEffectiveFrom
             : null,
       });

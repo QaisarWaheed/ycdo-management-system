@@ -18,6 +18,23 @@ export function isExitEmployeeStatus(status: EmployeeStatus): boolean {
   return EXIT_EMPLOYEE_STATUSES.includes(status);
 }
 
+/**
+ * First unpaid day: the exit/rest/dismiss effective date, or (Point 25) the
+ * suspension start while SUSPENDED. Days before it are paid as worked.
+ */
+export function payCutoffDate(employee: {
+  status: EmployeeStatus;
+  statusEffectiveFrom?: Date | null;
+}): Date | null {
+  if (
+    !employee.statusEffectiveFrom ||
+    (!isExitEmployeeStatus(employee.status) &&
+      employee.status !== EmployeeStatus.SUSPENDED)
+  )
+    return null;
+  return toPakistanDateOnly(employee.statusEffectiveFrom);
+}
+
 export function isPortalBlockedEmployeeStatus(status: EmployeeStatus): boolean {
   return PORTAL_BLOCKED_EMPLOYEE_STATUSES.includes(status);
 }

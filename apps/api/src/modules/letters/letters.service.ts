@@ -42,6 +42,7 @@ import {
 } from '../../config/cloudinary.config';
 import { hasAnyRole } from '../../common/user-roles.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toPakistanDateOnly } from '../attendance/attendance-late.util';
 import {
   transliterateName,
   translateBranch,
@@ -2228,7 +2229,11 @@ export class LettersService implements OnModuleInit {
     if (employee.status !== EmployeeStatus.SUSPENDED) {
       await tx.employee.update({
         where: { id: opts.letter.employeeId },
-        data: { status: EmployeeStatus.SUSPENDED },
+        // Point 25: pay stops from the suspension start (force-generated payroll).
+        data: {
+          status: EmployeeStatus.SUSPENDED,
+          statusEffectiveFrom: toPakistanDateOnly(request.periodStart),
+        },
       });
     }
 

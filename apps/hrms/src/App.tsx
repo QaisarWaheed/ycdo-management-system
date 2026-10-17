@@ -30,6 +30,7 @@ import { ProfilePage } from '@/pages/settings/ProfilePage'
 import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
 import { PendingApprovalsPage } from '@/pages/admin/PendingApprovalsPage'
 import { PayApprovalsPage } from '@/pages/payroll/PayApprovalsPage'
+import { ExtraTimeApprovalsPage } from '@/pages/attendance/ExtraTimeApprovalsPage'
 import { DoctorPerformancePage } from '@/pages/payroll/DoctorPerformancePage'
 import { MasterDataPage } from '@/pages/admin/MasterDataPage'
 import { LetterTemplatesPage } from '@/pages/admin/LetterTemplatesPage'
@@ -261,6 +262,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <PayApprovalsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/extra-time-approvals"
+        element={
+          <ProtectedRoute>
+            <ExtraTimeApprovalsPage />
           </ProtectedRoute>
         }
       />

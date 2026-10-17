@@ -35,6 +35,7 @@ import {
   DisciplinaryStatus,
   DisciplinaryType,
   EmployeeStatus,
+  ExtraTimeStatus,
   Gender,
   LeaveStatus,
   LeaveType,
@@ -213,6 +214,20 @@ export function pickDutyCheckout(
     .filter((c) => c.getTime() > checkIn.getTime() && c.getTime() < limit)
     .sort((a, b) => a.getTime() - b.getTime())
     .pop();
+}
+
+/** HR-entered overtime (Point 20): >0 goes PENDING for HR Operations; 0 clears the review. */
+export function hrEnteredOvertimeFields(minutes: number, requestedById: string) {
+  const pending = minutes > 0;
+  return {
+    overtimePending: pending,
+    overtimeStatus: pending ? ExtraTimeStatus.PENDING : null,
+    overtimeRequestedById: pending ? requestedById : null,
+    overtimeApprovedBy: null,
+    overtimeApprovedAt: null,
+    overtimeReviewNote: null,
+    overtimeEscalatedAt: null,
+  };
 }
 
 @Injectable()
@@ -1445,10 +1460,11 @@ export class AttendanceService {
     }
     const overtimeMinutes =
       dto.overtimeMinutes ?? existing?.overtimeMinutes ?? 0;
-    const overtimePending =
+    // Point 20: HR-entered overtime waits for HR Operations approval (unpaid until then).
+    const hrOvertime =
       dto.overtimeMinutes !== undefined
-        ? false
-        : (existing?.overtimePending ?? false);
+        ? hrEnteredOvertimeFields(dto.overtimeMinutes, actingUser.id)
+        : { overtimePending: existing?.overtimePending ?? false };
 
     const result = await this.prisma.$transaction(async (tx) => {
       let effectiveStatus = status;
@@ -1513,7 +1529,7 @@ export class AttendanceService {
           lateMinutes,
           earlyOutMinutes,
           overtimeMinutes,
-          overtimePending,
+          ...hrOvertime,
           ...(checkIn
             ? punchSourcesForManualCheckIn(Boolean(checkOut))
             : { source: AttendanceSource.MANUAL }),
@@ -1528,7 +1544,7 @@ export class AttendanceService {
           lateMinutes,
           earlyOutMinutes,
           overtimeMinutes,
-          overtimePending,
+          ...hrOvertime,
           ...(checkIn
             ? punchSourcesForManualCheckIn(Boolean(checkOut))
             : { source: AttendanceSource.MANUAL }),
@@ -2029,7 +2045,11 @@ export class AttendanceService {
       FULL_ATTENDANCE_EDIT_ROLES.includes(actingUser.role)
     ) {
       data.overtimeMinutes = dto.overtimeMinutes;
-      data.overtimePending = false;
+      // Point 20: HR-entered overtime waits for HR Operations approval (unpaid until then).
+      Object.assign(
+        data,
+        hrEnteredOvertimeFields(dto.overtimeMinutes, actingUser.id),
+      );
     }
 
     // HR status override can leave status=LATE while lateMinutes > 120;

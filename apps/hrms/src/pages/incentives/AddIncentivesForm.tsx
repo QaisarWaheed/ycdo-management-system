@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { incentivesApi } from '@/api/endpoints/incentives'
+import { incentivesApi, type IncentiveDuration } from '@/api/endpoints/incentives'
 import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
 import { allowancesApi, isPendingApproval } from '@/api/endpoints/payApprovals'
 import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
@@ -61,6 +61,10 @@ export function AddIncentivesForm({
   const [year, setYear] = useState(defaultYear)
   const [amounts, setAmounts] = useState<Record<string, number>>({})
   const [note, setNote] = useState('')
+  // Point 21: how long it repeats; the payslip only ever shows the month's amount.
+  const [duration, setDuration] = useState<IncentiveDuration>('ONE_TIME')
+  const [months, setMonths] = useState(3)
+  const monthsValid = duration !== 'MONTHS' || (months >= 2 && months <= 24)
   const [newType, setNewType] = useState('')
   const needsApproval = useNeedsPayApproval()
   const [approver, setApprover] = useState<EmployeeApproverTarget>()
@@ -115,6 +119,8 @@ export function AddIncentivesForm({
           amount: amounts[t.id],
           reason: note.trim() || undefined,
           approverTarget: approver,
+          duration,
+          months: duration === 'MONTHS' ? months : undefined,
         })
         if (isPendingApproval(res)) {
           pending++
@@ -131,6 +137,7 @@ export function AddIncentivesForm({
       })
       setAmounts({})
       setNote('')
+      setDuration('ONE_TIME')
       queryClient.invalidateQueries({ queryKey: ['incentives'] })
       queryClient.invalidateQueries({ queryKey: ['pay-approvals'] })
       queryClient.invalidateQueries({ queryKey: ['payroll'] })
@@ -188,6 +195,41 @@ export function AddIncentivesForm({
           </Select>
         </div>
       </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>Duration</Label>
+          <Select value={duration} onValueChange={(v) => setDuration(v as IncentiveDuration)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ONE_TIME">One-time (this month only)</SelectItem>
+              <SelectItem value="MONTHS">For N months</SelectItem>
+              <SelectItem value="PERMANENT">Permanent (until stopped)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {duration === 'MONTHS' ? (
+          <div className="space-y-1">
+            <Label htmlFor="incentive-months">Number of months (2–24)</Label>
+            <Input
+              id="incentive-months"
+              type="number"
+              min={2}
+              max={24}
+              value={months}
+              onChange={(e) => setMonths(Number(e.target.value))}
+            />
+          </div>
+        ) : null}
+      </div>
+      {duration !== 'ONE_TIME' ? (
+        <p className="text-xs text-text-secondary">
+          Repeats from the selected month. The payslip shows only the incentive and amount, never
+          the duration.
+        </p>
+      ) : null}
 
       {employeeId && existing.length > 0 ? (
         <div className="space-y-2 rounded-lg border border-border p-3">
@@ -304,7 +346,11 @@ export function AddIncentivesForm({
           <Button
             type="submit"
             disabled={
-              save.isPending || !items.length || !employeeId || (needsApproval && !approver)
+              save.isPending ||
+              !items.length ||
+              !employeeId ||
+              !monthsValid ||
+              (needsApproval && !approver)
             }
           >
             {save.isPending ? 'Saving...' : needsApproval ? 'Send for approval' : 'Add Incentive'}

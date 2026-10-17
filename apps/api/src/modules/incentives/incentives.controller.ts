@@ -19,7 +19,9 @@ import { RolesGuard } from '../auth/roles.guard';
 import {
   CreateIncentiveDto,
   IncentiveQueryDto,
+  StopIncentivePlanDto,
   UpdateIncentiveDto,
+  UpdateIncentivePlanDto,
 } from './incentives.dto';
 import { PayChangeKind } from '@prisma/client';
 import {
@@ -103,6 +105,62 @@ export class IncentivesController {
     @Query('month', ParseIntPipe) month: number,
   ) {
     return this.incentivesService.stats(year, month);
+  }
+
+  /** Point 21: recurring incentives (one employee, or all in scope). */
+  @Get('plans')
+  @RoutePermission(Permission.INCENTIVES_VIEW)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+    UserRole.PRESIDENT,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.PAYROLL_OFFICER,
+  )
+  findPlans(
+    @Query('employeeId') employeeId: string | undefined,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.incentivesService.findPlans(employeeId || undefined, user);
+  }
+
+  /** Point 21: change amount / last month for the months not yet in payroll. */
+  @Patch('plans/:id')
+  @StrictRoles()
+  @Roles(
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+    UserRole.SUPER_ADMIN,
+  )
+  updatePlan(
+    @Param('id') id: string,
+    @Body() dto: UpdateIncentivePlanDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.incentivesService.updatePlan(id, dto, user.id);
+  }
+
+  /** Point 21: stop a recurring incentive after lastMonth/lastYear. */
+  @Post('plans/:id/stop')
+  @StrictRoles()
+  @Roles(
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+    UserRole.SUPER_ADMIN,
+  )
+  stopPlan(
+    @Param('id') id: string,
+    @Body() dto: StopIncentivePlanDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.incentivesService.stopPlan(id, dto, user.id);
   }
 
   @Get('employee/:employeeId')

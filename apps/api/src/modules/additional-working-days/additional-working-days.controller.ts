@@ -5,15 +5,19 @@ import {
   ForbiddenException,
   Get,
   Param,
+  ParseEnumPipe,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, StrictRoles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { CreateAdditionalWorkingDayDto } from './additional-working-days.dto';
+import {
+  CreateAdditionalWorkingDayDto,
+  ReviewExtraTimeDto,
+} from './additional-working-days.dto';
 import { AdditionalWorkingDaysService } from './additional-working-days.service';
 
 @Controller('additional-working-days')
@@ -77,5 +81,46 @@ export class AdditionalWorkingDaysController {
   )
   delete(@Param('id') id: string) {
     return this.service.delete(id);
+  }
+}
+
+const EXTRA_TIME_KINDS = { day: 'day', overtime: 'overtime' } as const;
+type ExtraTimeKind = keyof typeof EXTRA_TIME_KINDS;
+const reviewer = (user: { id: string; role: UserRole; roles?: UserRole[] }) => ({
+  id: user.id,
+  roles: user.roles?.length ? user.roles : [user.role],
+});
+
+/** Point 20: HR enters extra days / overtime; HR Operations approves, rejections go to the Chairman. */
+@Controller('extra-time')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.SUPER_ADMIN, UserRole.HR_OPERATIONS_MANAGER, UserRole.CHAIRMAN)
+@StrictRoles()
+export class ExtraTimeController {
+  constructor(private service: AdditionalWorkingDaysService) {}
+
+  @Get('pending')
+  findPending() {
+    return this.service.findPendingExtraTime();
+  }
+
+  @Post(':kind/:id/approve')
+  approve(
+    @Param('kind', new ParseEnumPipe(EXTRA_TIME_KINDS)) kind: ExtraTimeKind,
+    @Param('id') id: string,
+    @Body() dto: ReviewExtraTimeDto,
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
+  ) {
+    return this.service.reviewExtraTime(kind, id, true, reviewer(user), dto.note);
+  }
+
+  @Post(':kind/:id/reject')
+  reject(
+    @Param('kind', new ParseEnumPipe(EXTRA_TIME_KINDS)) kind: ExtraTimeKind,
+    @Param('id') id: string,
+    @Body() dto: ReviewExtraTimeDto,
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
+  ) {
+    return this.service.reviewExtraTime(kind, id, false, reviewer(user), dto.note);
   }
 }

@@ -427,7 +427,8 @@ export function UpdateAttendanceDialog({
               {typeof overtimeMinutes === 'number' && overtimeMinutes > 0 ? (
                 <p className="text-xs text-text-secondary">
                   {Math.round((overtimeMinutes / 60) * 100) / 100} extra hours —
-                  paid on pending payroll at the hourly rate
+                  goes to HR Operations for approval; paid on pending payroll at
+                  the hourly rate only once approved
                 </p>
               ) : null}
               {!canEditOvertime && (

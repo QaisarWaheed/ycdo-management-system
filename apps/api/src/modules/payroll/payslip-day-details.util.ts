@@ -3,8 +3,10 @@ import {
   AttendanceStatus,
   DisciplineCategory,
   EmployeeStatus,
+  ExtraTimeStatus,
   Prisma,
 } from '@prisma/client';
+import { isPayableOvertime } from '../attendance/attendance-summary.util';
 import { pakistanMonthDateRange } from '../attendance/attendance-calendar.util';
 import { toPakistanDateOnly } from '../attendance/attendance-late.util';
 import { MISSING_CHECKOUT_CYCLE_FROM } from '../attendance/missing-checkout-policy';
@@ -66,6 +68,7 @@ export interface SlipDayFacts {
     status: AttendanceStatus;
     overtimeMinutes: number;
     earlyOutMinutes: number | null;
+    overtimeStatus?: ExtraTimeStatus | null;
   }>;
   extraDays: Array<{ date: Date; note: string | null; branch?: string | null }>;
   missedCheckouts: Date[];
@@ -96,10 +99,16 @@ export async function loadSlipDayFacts(
         status: true,
         overtimeMinutes: true,
         earlyOutMinutes: true,
+        overtimeStatus: true,
       },
     }),
     db.additionalWorkingDay.findMany({
-      where: { employeeId, date: { gte: start, lte: end } },
+      // Same as the Card: only approved extra days are paid / listed.
+      where: {
+        employeeId,
+        date: { gte: start, lte: end },
+        status: ExtraTimeStatus.APPROVED,
+      },
       orderBy: { date: 'asc' },
       select: {
         date: true,
@@ -254,7 +263,7 @@ export function buildPayslipDayDetails(input: {
     const k = key(d);
     const label = dayLabel(d);
     const log = byDate.get(k);
-    if (log && log.overtimeMinutes > 0)
+    if (log && log.overtimeMinutes > 0 && isPayableOvertime(log))
       dates.overtime.push({
         date: label,
         hours: Math.round((log.overtimeMinutes / 60) * 10) / 10,

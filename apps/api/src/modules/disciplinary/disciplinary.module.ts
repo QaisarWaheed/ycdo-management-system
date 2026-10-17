@@ -9,6 +9,7 @@ import { InquiryDeadlineScheduler } from './inquiry-deadline.scheduler';
 import { InquiryDecisionService } from './inquiry-decision.service';
 import { InquiryOpeningService } from './inquiry-opening.service';
 import { SuspensionRequestService } from './suspension-request.service';
+import { SuspensionPeriodEndScheduler } from './suspension-period-end.scheduler';
 
 @Module({
   imports: [AuthModule, LettersModule, EmployeesModule, WhatsAppModule],
@@ -19,6 +20,7 @@ import { SuspensionRequestService } from './suspension-request.service';
     InquiryDecisionService,
     InquiryOpeningService,
     InquiryDeadlineScheduler,
+    SuspensionPeriodEndScheduler,
   ],
   exports: [
     DisciplinaryService,

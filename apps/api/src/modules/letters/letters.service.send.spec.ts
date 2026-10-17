@@ -305,7 +305,11 @@ describe('LettersService.sendLetter', () => {
     expect(issuedData.issuedAt).toBeInstanceOf(Date);
     expect(tx.employee.update).toHaveBeenCalledWith({
       where: { id: employeeId },
-      data: { status: EmployeeStatus.SUSPENDED },
+      // Point 25: unpaid from the suspension start.
+      data: {
+        status: EmployeeStatus.SUSPENDED,
+        statusEffectiveFrom: new Date('2026-08-01T00:00:00.000Z'),
+      },
     });
     expect(tx.disciplinaryAction.update).toHaveBeenCalledWith({
       where: { id: actionId },

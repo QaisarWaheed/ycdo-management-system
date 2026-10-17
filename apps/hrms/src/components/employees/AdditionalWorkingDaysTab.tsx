@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { Plus, Trash2 } from 'lucide-react'
 import {
   additionalWorkingDaysApi,
+  EXTRA_TIME_STATUS_LABELS,
   type AdditionalWorkingDay,
 } from '@/api/endpoints/additionalWorkingDays'
 import { Badge } from '@/components/ui/badge'
@@ -49,9 +50,8 @@ export function AdditionalWorkingDaysTab({
 
   const hoursPerDay = dailyDutyHours && dailyDutyHours > 0 ? dailyDutyHours : 8
 
-  const payableManualDays = data.filter((row) => !isRelieverRow(row)).length
-  const relieverDays = data.filter((row) => isRelieverRow(row)).length
-  const payableDays = payableManualDays + relieverDays
+  // Only approved days are paid (reliever days are created approved).
+  const payableDays = data.filter((row) => row.status === 'APPROVED').length
   const payableHours = useMemo(
     () => payableDays * hoursPerDay,
     [payableDays, hoursPerDay],
@@ -65,7 +65,10 @@ export function AdditionalWorkingDaysTab({
         note: note.trim() || undefined,
       }),
     onSuccess: () => {
-      toast({ title: 'Additional working day added' })
+      toast({
+        title: 'Additional working day added',
+        description: 'Sent to HR Operations for approval — not paid until approved.',
+      })
       setDate('')
       setNote('')
       queryClient.invalidateQueries({
@@ -107,10 +110,11 @@ export function AdditionalWorkingDaysTab({
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">
-        HR can add extra duty days here. They are already approved — no second
-        approval. Each day pays {hoursPerDay} duty hours on salary Extra Day.
-        Completed reliever duty is listed automatically and paid the same way
-        (one extra full duty day).
+        HR can add extra duty days here. Each new day goes to HR Operations for
+        approval and is not paid until approved (a rejection goes to the
+        Chairman). An approved day pays {hoursPerDay} duty hours on salary Extra
+        Day. Completed reliever duty is listed automatically, already approved,
+        and paid the same way (one extra full duty day).
       </p>
 
       {canEdit && (
@@ -164,6 +168,7 @@ export function AdditionalWorkingDaysTab({
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Payroll</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Note</TableHead>
                   <TableHead>Added by</TableHead>
                   {canEdit && <TableHead />}
@@ -173,7 +178,7 @@ export function AdditionalWorkingDaysTab({
                 {data.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={canEdit ? 5 : 4}
+                      colSpan={canEdit ? 6 : 5}
                       className="text-text-secondary"
                     >
                       No additional working days recorded
@@ -196,6 +201,20 @@ export function AdditionalWorkingDaysTab({
                             ) : (
                               `${hoursPerDay}h extra duty`
                             )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                row.status === 'APPROVED'
+                                  ? 'default'
+                                  : row.status === 'REJECTED'
+                                    ? 'destructive'
+                                    : 'secondary'
+                              }
+                              title={row.reviewNote ?? undefined}
+                            >
+                              {EXTRA_TIME_STATUS_LABELS[row.status] ?? row.status}
+                            </Badge>
                           </TableCell>
                           <TableCell className="max-w-[280px]">
                             <div className="flex flex-wrap items-center gap-2">
@@ -232,9 +251,9 @@ export function AdditionalWorkingDaysTab({
                       <TableCell>
                         {payableDays} day(s) · {payableHours}h
                       </TableCell>
-                      <TableCell colSpan={canEdit ? 3 : 2} className="font-normal text-text-secondary">
-                        Already approved. Paid on Extra Day when payroll is
-                        pending.
+                      <TableCell colSpan={canEdit ? 4 : 3} className="font-normal text-text-secondary">
+                        Approved days only. Pending days are not paid yet.
+                        Paid on Extra Day when payroll is pending.
                       </TableCell>
                     </TableRow>
                   </>

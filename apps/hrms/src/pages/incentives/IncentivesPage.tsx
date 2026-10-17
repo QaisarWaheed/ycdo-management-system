@@ -1,5 +1,6 @@
 import { useCanSetIncentive } from '@/components/payroll/ApproverSelect'
 import { IncentiveCharts } from '@/components/payroll/IncentiveCharts'
+import { RecurringIncentivePlans } from '@/components/payroll/RecurringIncentivePlans'
 import { useAuth } from '@/hooks/useAuth'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -130,6 +131,8 @@ export function IncentivesPage() {
       </div>
 
       {canSeeCharts ? <IncentiveCharts year={monthYear.year} month={monthYear.month} /> : null}
+
+      <RecurringIncentivePlans employeeId={employeeId || undefined} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {[

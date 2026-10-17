@@ -16,11 +16,15 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatPKR } from '@/lib/stipendUtils'
 import {
+  PAYROLL_REPORT_SIGNATORIES,
   payrollReportSignOffHtml,
   type PayrollReportSummary,
 } from '@/components/payroll/PayrollReportPrint'
+import { Bars } from '@/components/payroll/IncentiveCharts'
+import { payrollApi, type OvertimeMoney } from '@/api/endpoints/payroll'
 
 type Bucket = 'allowances' | 'incentives' | 'deductions'
+type View = Bucket | 'compare' | 'overtime'
 export interface ItemizedRow {
   employeeId: string
   name: string
@@ -86,23 +90,14 @@ function summaryOf(rows: ItemizedRow[]): PayrollReportSummary {
   )
 }
 
-/**
- * Print a plain table in its own window (A4 landscape). Last row is the total row;
- * the report totals and signature boxes follow the table.
- */
-function printTable(
-  title: string,
-  header: string[],
-  rows: unknown[][],
-  totals: PayrollReportSummary,
-) {
-  const esc = (v: unknown) =>
-    String(v ?? '').replace(
-      /[&<>]/g,
-      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c] ?? c,
-    )
-  const w = window.open('', '_blank')
-  if (!w) return
+const esc = (v: unknown) =>
+  String(v ?? '').replace(
+    /[&<>]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c] ?? c,
+  )
+
+/** Plain HTML table for printing; the last row is the total row. */
+function htmlTable(header: string[], rows: unknown[][]) {
   const body = rows
     .map(
       (r, i) =>
@@ -116,16 +111,24 @@ function printTable(
           .join('')}</tr>`,
     )
     .join('')
+  return `<table><thead><tr>${header
+    .map((h) => `<th>${esc(h)}</th>`)
+    .join('')}</tr></thead><tbody>${body}</tbody></table>`
+}
+
+/**
+ * Print a plain table in its own window (A4 landscape). Last row is the total row;
+ * `footerHtml` (report totals and signature boxes) follows the table.
+ */
+function printTable(title: string, header: string[], rows: unknown[][], footerHtml: string) {
+  const w = window.open('', '_blank')
+  if (!w) return
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>@page{size:A4 landscape;margin:10mm}body{font-family:Arial,sans-serif;font-size:10px}
-h2{font-size:14px;margin:0 0 8px}table{border-collapse:collapse;width:100%}
+h2{font-size:14px;margin:0 0 8px}h3{font-size:12px;margin:14px 0 6px}table{border-collapse:collapse;width:100%}
 th,td{border:1px solid #999;padding:3px 5px}th{background:#eee}td.n{text-align:right}
 tr.t td{font-weight:bold;background:#f5f5f5}</style></head><body>
-<h2>YCDO — ${esc(title)}</h2><table><thead><tr>${header
-    .map((h) => `<th>${esc(h)}</th>`)
-    .join('')}</tr></thead><tbody>${body}</tbody></table>${payrollReportSignOffHtml(
-    totals,
-  )}</body></html>`)
+<h2>YCDO — ${esc(title)}</h2>${htmlTable(header, rows)}${footerHtml}</body></html>`)
   w.document.close()
   w.focus()
   w.print()
@@ -134,7 +137,7 @@ tr.t td{font-weight:bold;background:#f5f5f5}</style></head><body>
 /** Payroll → Reports: itemised allowances / incentives / deductions and month comparison. */
 export function PayrollReportsTab() {
   const [monthValue, setMonthValue] = useState(thisMonth())
-  const [view, setView] = useState<Bucket | 'compare'>('allowances')
+  const [view, setView] = useState<View>('allowances')
   const [branch, setBranch] = useState(ALL)
   const [department, setDepartment] = useState(ALL)
   const [designation, setDesignation] = useState(ALL)
@@ -241,16 +244,29 @@ export function PayrollReportsTab() {
         </div>
       </div>
 
-      <Tabs value={view} onValueChange={(v) => setView(v as Bucket | 'compare')}>
+      <Tabs value={view} onValueChange={(v) => setView(v as View)}>
         <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
           <TabsTrigger value="allowances">Allowances</TabsTrigger>
           <TabsTrigger value="incentives">Incentives &amp; Rewards</TabsTrigger>
           <TabsTrigger value="deductions">Deductions</TabsTrigger>
           <TabsTrigger value="compare">Month comparison</TabsTrigger>
+          <TabsTrigger value="overtime">Overtime</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {current.isLoading ? (
+      {view === 'overtime' ? (
+        <OvertimeReportView
+          year={y}
+          month={m}
+          branch={branch}
+          department={department}
+          title={`Overtime — ${monthText(monthValue)}${[branch, department]
+            .filter((v) => v !== ALL)
+            .map((v) => ` — ${v}`)
+            .join('')}`}
+          fileName={`payroll-overtime-${monthValue}`}
+        />
+      ) : current.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : view === 'compare' ? (
         <ComparisonReport
@@ -334,7 +350,9 @@ function ItemizedReport({
           <Button
             variant="outline"
             disabled={!withAmounts.length}
-            onClick={() => printTable(title, header, table, summaryOf(withAmounts))}
+            onClick={() =>
+              printTable(title, header, table, payrollReportSignOffHtml(summaryOf(withAmounts)))
+            }
           >
             Print
           </Button>
@@ -519,7 +537,7 @@ function ComparisonReport({
                   [`Total (${rows.length})`, '', netPrev, netNow, r2(netNow - netPrev), ''],
                 ],
                 // Totals of the current month for the employees listed.
-                summaryOf(rows.flatMap((r) => (r.c ? [r.c] : []))),
+                payrollReportSignOffHtml(summaryOf(rows.flatMap((r) => (r.c ? [r.c] : [])))),
               )
             }
           >
@@ -591,6 +609,210 @@ function ComparisonReport({
           </table>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+/** Number columns of the overtime tables, in display order (hours/days are plain numbers). */
+const OT_COLUMNS: Array<{ key: keyof OvertimeMoney; label: string; money: boolean }> = [
+  { key: 'otHours', label: 'OT hours', money: false },
+  { key: 'otAmount', label: 'OT amount', money: true },
+  { key: 'extraDutyDays', label: 'Extra-duty days', money: false },
+  { key: 'extraDutyAmount', label: 'Extra-duty amount', money: true },
+  { key: 'attendanceDeductions', label: 'Attendance deductions', money: true },
+  { key: 'fines', label: 'Fines', money: true },
+  { key: 'otherDeductions', label: 'Other deductions', money: true },
+  { key: 'net', label: 'Net', money: true },
+]
+const otCells = (t: OvertimeMoney) => OT_COLUMNS.map((c) => t[c.key])
+
+/** Read-only table; the last row is the total row; the trailing columns are OT_COLUMNS. */
+function OtTable({ header, rows }: { header: string[]; rows: unknown[][] }) {
+  const firstNum = header.length - OT_COLUMNS.length
+  return (
+    <Card>
+      <CardContent className="overflow-x-auto p-0">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              {header.map((h, i) => (
+                <th
+                  key={h}
+                  className={`whitespace-nowrap px-3 py-2 ${i >= firstNum ? 'text-right' : 'text-left'}`}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr
+                key={i}
+                className={i === rows.length - 1 ? 'border-t-2 bg-muted/40 font-semibold' : 'border-t'}
+              >
+                {r.map((c, j) => (
+                  <td
+                    key={j}
+                    className={`whitespace-nowrap px-3 py-1.5 ${j >= firstNum ? 'text-right tabular-nums' : ''}`}
+                  >
+                    {j < firstNum || typeof c !== 'number'
+                      ? String(c)
+                      : !c
+                        ? '—'
+                        : OT_COLUMNS[j - firstNum].money
+                          ? formatPKR(c)
+                          : c.toLocaleString('en-PK')}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Month-end overtime: OT hours/amount, extra (double) duty, deductions against
+ * them, branch & department totals and charts. Every total and chart value is
+ * the API's own figure. Branch/department filters are sent to the API by id.
+ */
+function OvertimeReportView({
+  year,
+  month,
+  branch,
+  department,
+  title,
+  fileName,
+}: {
+  year: number
+  month: number
+  branch: string
+  department: string
+  title: string
+  fileName: string
+}) {
+  const base = useQuery({
+    queryKey: ['payroll', 'overtime', year, month],
+    queryFn: () => payrollApi.overtimeReport({ month, year }),
+    enabled: !!year && !!month,
+  })
+  // Filters hold names; the unfiltered report maps them to ids. A name with no
+  // overtime this month (absent from the unfiltered totals) means nothing to show.
+  const idOf = (name: string, groups?: Array<{ id: string | null; name: string }>) =>
+    name === ALL ? undefined : (groups?.find((g) => g.name === name)?.id ?? null)
+  const branchId = idOf(branch, base.data?.byBranch)
+  const departmentId = idOf(department, base.data?.byDepartment)
+  const filtered = branchId !== undefined || departmentId !== undefined
+  const noMatch = branchId === null || departmentId === null
+  const sub = useQuery({
+    queryKey: ['payroll', 'overtime', year, month, branchId, departmentId],
+    queryFn: () =>
+      payrollApi.overtimeReport({
+        month,
+        year,
+        branchId: branchId ?? undefined,
+        departmentId: departmentId ?? undefined,
+      }),
+    enabled: !!base.data && filtered && !noMatch,
+  })
+  const data = filtered ? sub.data : base.data
+
+  if (base.isLoading || (filtered && !noMatch && sub.isLoading))
+    return <p className="text-sm text-muted-foreground">Loading…</p>
+  if (base.isError || sub.isError)
+    return <p className="text-sm text-destructive">Could not load the overtime report.</p>
+  if (noMatch || !data || data.rows.length === 0)
+    return <p className="text-sm text-muted-foreground">No overtime or extra duty for this month.</p>
+
+  const labels = OT_COLUMNS.map((c) => c.label)
+  const header = ['Code', 'Employee', 'Branch', 'Department', ...labels]
+  const table: unknown[][] = [
+    ...data.rows.map((r) => [r.code, r.name, r.branch, r.department, ...otCells(r)]),
+    [`Total (${data.totals.employees})`, '', '', '', ...otCells(data.totals)],
+  ]
+  const groupTable = (groups: typeof data.byBranch): unknown[][] => [
+    ...groups.map((g) => [g.name, String(g.employees), ...otCells(g)]),
+    ['Total', String(data.totals.employees), ...otCells(data.totals)],
+  ]
+  const branchHeader = ['Branch', 'Employees', ...labels]
+  const deptHeader = ['Department', 'Employees', ...labels]
+  const branchRows = groupTable(data.byBranch)
+  const deptRows = groupTable(data.byDepartment)
+
+  const signatures = PAYROLL_REPORT_SIGNATORIES.map(
+    (s) =>
+      `<div style="border-top:1px solid #000;padding-top:4px;text-align:center;font-weight:bold">${s}</div>`,
+  ).join('')
+  const printFooter = `<h3>Branch totals</h3>${htmlTable(branchHeader, branchRows)}
+<h3>Department totals</h3>${htmlTable(deptHeader, deptRows)}
+<div style="display:grid;grid-template-columns:repeat(${PAYROLL_REPORT_SIGNATORIES.length},1fr);gap:24px;margin-top:56px;break-inside:avoid">${signatures}</div>`
+
+  const charts = [
+    {
+      title: 'OT amount by branch (PKR)',
+      rows: data.byBranch.map((g) => ({ label: g.name, value: g.otAmount })),
+    },
+    {
+      title: 'OT amount by department (PKR)',
+      rows: data.byDepartment.map((g) => ({ label: g.name, value: g.otAmount })),
+    },
+    {
+      title: 'OT amount, last 6 months (PKR)',
+      rows: data.trend.map((t) => ({ label: `${MONTHS[t.month - 1]} ${t.year}`, value: t.otAmount })),
+    },
+  ]
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">{title}</p>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              downloadCsv(fileName, header, [
+                ...table,
+                [],
+                branchHeader,
+                ...branchRows,
+                [],
+                deptHeader,
+                ...deptRows,
+              ])
+            }
+          >
+            Export Excel
+          </Button>
+          <Button variant="outline" onClick={() => printTable(title, header, table, printFooter)}>
+            Print
+          </Button>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Staff, designation and search filters do not apply here. Net = OT amount + extra-duty
+        amount − all deductions on the month&apos;s payroll.
+      </p>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {charts.map((c) => (
+          <Card key={c.title}>
+            <CardContent className="space-y-2 p-4">
+              <div className="text-sm font-semibold">{c.title}</div>
+              <Bars rows={c.rows} />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <OtTable header={header} rows={table} />
+      <p className="text-sm font-medium">Branch totals</p>
+      <OtTable header={branchHeader} rows={branchRows} />
+      <p className="text-sm font-medium">Department totals</p>
+      <OtTable header={deptHeader} rows={deptRows} />
     </div>
   )
 }

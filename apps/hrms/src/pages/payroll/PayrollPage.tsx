@@ -13,6 +13,8 @@ import { attendanceApi } from '@/api/endpoints/attendance'
 import { employeesApi } from '@/api/endpoints/employees'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { payrollApi } from '@/api/endpoints/payroll'
+import { additionalDutiesApi, type DutyMissingAllowance } from '@/api/endpoints/additionalDuties'
+import { DutyAllowanceReminderDialog } from '@/components/payroll/DutyAllowanceReminderDialog'
 import { stipendReceiptsApi } from '@/api/endpoints/stipendReceipts'
 import { TablePagination } from '@/components/common/TablePagination'
 import { TableRecordCount } from '@/components/common/TableRecordCount'
@@ -951,6 +953,17 @@ function MonthlyPayrollTab() {
   )
   const canAddIncentive = useCanSetIncentive()
   const [confirmGenerate, setConfirmGenerate] = useState(false)
+  // Reminder before generating: additional duties with no allowance this month.
+  const [dutyReminder, setDutyReminder] = useState<DutyMissingAllowance[] | null>(null)
+  const startGenerate = async () => {
+    try {
+      const rows = await additionalDutiesApi.missingAllowance(monthYear.month, monthYear.year)
+      if (rows.length) return setDutyReminder(rows)
+    } catch {
+      // Only a reminder: never block generating.
+    }
+    setConfirmGenerate(true)
+  }
   const [confirmReset, setConfirmReset] = useState(false)
   const [resetAllUnpaidMonths, setResetAllUnpaidMonths] = useState(false)
   const [createSingleOpen, setCreateSingleOpen] = useState(false)
@@ -1497,7 +1510,7 @@ function MonthlyPayrollTab() {
           )}
           <Button
             className="bg-primary hover:bg-primary-dark"
-            onClick={() => setConfirmGenerate(true)}
+            onClick={() => void startGenerate()}
           >
             Generate Entries
           </Button>
@@ -1852,6 +1865,19 @@ function MonthlyPayrollTab() {
             <EmployeeAllowancesPanel employeeId={allowancesFor.id} />
           </DialogContent>
         </Dialog>
+      ) : null}
+
+      {dutyReminder ? (
+        <DutyAllowanceReminderDialog
+          rows={dutyReminder}
+          month={monthYear.month}
+          year={monthYear.year}
+          onCancel={() => setDutyReminder(null)}
+          onContinue={() => {
+            setDutyReminder(null)
+            setConfirmGenerate(true)
+          }}
+        />
       ) : null}
 
       <ConfirmDialog

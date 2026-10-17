@@ -2,6 +2,7 @@ import { printPayFixation } from '@/components/payroll/printPayFixation'
 import { allowancesApi } from '@/api/endpoints/payApprovals'
 import { useCanEditPay } from '@/components/payroll/ApproverSelect'
 import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
+import { AdditionalDutiesCard } from '@/components/employees/AdditionalDutiesCard'
 import { selectCurrentStipend } from '@/lib/stipendUtils'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -473,6 +474,8 @@ export function EmployeePayrollTab({
           />
         </CardContent>
       </Card>
+
+      <AdditionalDutiesCard employeeId={employeeId} />
 
       <Card>
         <CardHeader>

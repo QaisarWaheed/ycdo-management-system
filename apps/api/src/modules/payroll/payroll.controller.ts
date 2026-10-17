@@ -42,6 +42,7 @@ import {
   UpdatePayrollStatusDto,
 } from './payroll.dto';
 import { PayrollService } from './payroll.service';
+import { OvertimeReportService } from './overtime-report.service';
 import { PayChangeKind } from '@prisma/client';
 import {
   isPayExecutive,
@@ -139,6 +140,7 @@ export class PayrollController {
   constructor(
     private payrollService: PayrollService,
     private payChangeRequests: PayChangeRequestsService,
+    private overtimeReportService: OvertimeReportService,
   ) {}
   @Post('entries')
   @Roles(...PAYROLL_WRITE_ROLES)
@@ -309,6 +311,17 @@ export class PayrollController {
   @RoutePermission(Permission.PAYROLL_VIEW)
   itemizedReport(@Query() q: ItemizedReportQueryDto) {
     return this.payrollService.itemizedReport(q);
+  }
+
+  /** Month-end overtime: OT hours/amount, extra duty, deductions; branch & department totals. */
+  @Get('reports/overtime')
+  @Roles(...PAYROLL_READ_ROLES, UserRole.PAYROLL_OFFICER)
+  @RoutePermission(Permission.PAYROLL_VIEW)
+  overtimeReport(
+    @Query() q: ItemizedReportQueryDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.overtimeReportService.report(q, user);
   }
 
   @Get('entries/:id/changes')

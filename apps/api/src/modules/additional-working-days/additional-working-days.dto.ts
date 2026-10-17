@@ -12,3 +12,10 @@ export class CreateAdditionalWorkingDayDto {
   @MaxLength(500)
   note?: string;
 }
+
+export class ReviewExtraTimeDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}

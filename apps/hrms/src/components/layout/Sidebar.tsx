@@ -7,6 +7,7 @@ import {
   BookOpen,
   BadgeCheck,
   Briefcase,
+  CalendarCheck,
   Building2,
   Calendar,
   Clock,
@@ -67,6 +68,13 @@ const payApprovalsNavItem = {
   icon: BadgeCheck,
 }
 
+/** Point 20: HR-entered extra days / overtime awaiting HR Operations or Chairman. */
+const extraTimeApprovalsNavItem = {
+  to: '/extra-time-approvals',
+  label: 'Extra Time Approvals',
+  icon: CalendarCheck,
+}
+
 /** Finance enters doctors' monthly figures; executives compare and set incentives. */
 const doctorPerformanceNavItem = {
   to: '/doctor-performance',
@@ -118,7 +126,9 @@ function navItemsForRole(role?: string) {
     const withActivity = [
       ...items,
       payApprovalsNavItem,
-      ...(role === 'SUPER_ADMIN' ? [doctorPerformanceNavItem, activityTrailNavItem, shiftsNavItem] : []),
+      ...(role === 'SUPER_ADMIN'
+        ? [extraTimeApprovalsNavItem, doctorPerformanceNavItem, activityTrailNavItem, shiftsNavItem]
+        : []),
     ]
     if (role === 'SUPER_ADMIN') {
       return [...withActivity, appointmentLettersNavItem, ...itTeamNavItems]
@@ -143,17 +153,20 @@ function navItemsForRole(role?: string) {
   }
 
   if (role === 'HR_OPERATIONS_MANAGER') {
-    return allNavItems.filter((item) =>
-      [
-        '/dashboard',
-        '/employees',
-        '/portal-login',
-        '/attendance',
-        '/leave',
-        '/branch-contacts',
-        '/letters',
-      ].includes(item.to),
-    )
+    return [
+      ...allNavItems.filter((item) =>
+        [
+          '/dashboard',
+          '/employees',
+          '/portal-login',
+          '/attendance',
+          '/leave',
+          '/branch-contacts',
+          '/letters',
+        ].includes(item.to),
+      ),
+      extraTimeApprovalsNavItem,
+    ]
   }
 
   if (role === 'CHAIRMAN' || role === 'FOUNDER' || role === 'PRESIDENT') {
@@ -164,6 +177,7 @@ function navItemsForRole(role?: string) {
         ),
       ),
       payApprovalsNavItem,
+      ...(role === 'CHAIRMAN' ? [extraTimeApprovalsNavItem] : []),
       doctorPerformanceNavItem,
     ]
   }
@@ -272,6 +286,7 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
   '/admin/roles': { roles: ['IT_ADMIN'] },
   '/admin/login-access': { roles: ['IT_ADMIN'] },
   '/admin/pending-approvals': { roles: ['IT_ADMIN', 'SUPER_ADMIN'] },
+  '/extra-time-approvals': { roles: ['HR_OPERATIONS_MANAGER', 'CHAIRMAN', 'SUPER_ADMIN'] },
   '/pay-approvals': {
     roles: [
       'PRESIDENT',

@@ -13,6 +13,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toPakistanDateOnly } from '../attendance/attendance-late.util';
 import { hasAnyRole } from '../../common/user-roles.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -289,7 +290,13 @@ export class InquiryOpeningService {
 
       await tx.employee.update({
         where: { id: employee.id },
-        data: { status: EmployeeStatus.SUSPENDED },
+        // Point 25: suspended (and unpaid) from today, unless already suspended.
+        data: {
+          status: EmployeeStatus.SUSPENDED,
+          ...(employee.status !== EmployeeStatus.SUSPENDED
+            ? { statusEffectiveFrom: toPakistanDateOnly(now) }
+            : {}),
+        },
       });
 
       await tx.notification.create({

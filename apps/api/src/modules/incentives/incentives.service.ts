@@ -8,6 +8,7 @@ import {
 import {
   AllowanceType,
   EmployeeStatus,
+  IncentiveDuration,
   Permission,
   PayrollStatus,
   Prisma,
@@ -20,7 +21,9 @@ import {
   incentiveAllowanceDescription,
   IncentiveQueryDto,
   isIncentiveAllowance,
+  StopIncentivePlanDto,
   UpdateIncentiveDto,
+  UpdateIncentivePlanDto,
 } from './incentives.dto';
 
 @Injectable()
@@ -44,105 +47,243 @@ export class IncentivesService {
       dto.employeeId,
     );
 
+    const duration = dto.duration ?? IncentiveDuration.ONE_TIME;
+    if (duration === IncentiveDuration.MONTHS && !dto.months) {
+      throw new BadRequestException('Enter for how many months (2–24)');
+    }
+
     return withPayrollEmployeeTransaction(
       this.prisma,
       dto.employeeId,
       async (tx) => {
-        const employee = await tx.employee.findUnique({
-          where: { id: dto.employeeId },
-        });
-
-        if (!employee) {
-          throw new NotFoundException(
-            `Employee with id ${dto.employeeId} not found`,
-          );
+        let planId: string | undefined;
+        if (duration !== IncentiveDuration.ONE_TIME) {
+          // Point 21: later months are added when their payroll is generated.
+          const end =
+            duration === IncentiveDuration.MONTHS
+              ? fromMonthIndex(monthIndex(dto.year, dto.month) + dto.months! - 1)
+              : null;
+          const plan = await tx.incentivePlan.create({
+            data: {
+              employeeId: dto.employeeId,
+              typeId: dto.typeId ?? null,
+              amount: dto.amount,
+              reason,
+              duration,
+              startMonth: dto.month,
+              startYear: dto.year,
+              endMonth: end?.month ?? null,
+              endYear: end?.year ?? null,
+              addedBy: addedById,
+            },
+          });
+          planId = plan.id;
+          await tx.auditLog.create({
+            data: {
+              userId: addedById,
+              action: 'INCENTIVE_PLAN_CREATED',
+              entity: 'IncentivePlan',
+              entityId: plan.id,
+              changes: {
+                employeeId: dto.employeeId,
+                amount: dto.amount,
+                reason,
+                duration,
+                start: `${dto.month}/${dto.year}`,
+                end: end ? `${end.month}/${end.year}` : null,
+              },
+            },
+          });
         }
-
-        if (
-          employee.status !== EmployeeStatus.ACTIVE &&
-          employee.status !== EmployeeStatus.APPOINTED
-        ) {
-          throw new BadRequestException(
-            'Incentives can only be added for active or appointed employees',
-          );
-        }
-
-        const incentive = await tx.incentive.create({
-          data: {
-            employeeId: dto.employeeId,
-            amount: dto.amount,
-            reason: reason,
-            typeId: dto.typeId ?? null,
-            addedBy: addedById,
-            month: dto.month,
-            year: dto.year,
-          },
-        });
-
-        const payrollEntry = await this.getOrCreatePayrollEntry(
+        return addIncentiveRow(
           tx,
-          dto.employeeId,
-          dto.month,
-          dto.year,
+          { ...dto, reason, typeId: dto.typeId ?? null, planId },
+          addedById,
         );
-        if (payrollEntry.status !== PayrollStatus.PENDING) {
-          throw new BadRequestException(
-            `Payroll for ${dto.month}/${dto.year} is already ${payrollEntry.status}; incentives can only be added while it is PENDING`,
-          );
+      },
+    );
+  }
+
+  /** Point 21: recurring incentives (newest first). */
+  async findPlans(
+    employeeId: string | undefined,
+    actingUser?: { id: string; role: UserRole },
+  ) {
+    let employeeWhere: Prisma.EmployeeWhereInput = employeeId
+      ? { id: employeeId }
+      : {};
+    if (actingUser?.id) {
+      employeeWhere = await this.accessScopeService.narrowEmployeeWhereForActor(
+        actingUser.id,
+        actingUser.role,
+        employeeWhere,
+      );
+    }
+    return this.prisma.incentivePlan.findMany({
+      where: { employee: employeeWhere },
+      include: {
+        type: { select: { id: true, name: true } },
+        employee: { select: { fullName: true, employeeCode: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Point 21: new amount and/or last month for the months not yet in payroll.
+   * The current month's incentive is edited like any other incentive.
+   */
+  async updatePlan(
+    id: string,
+    dto: UpdateIncentivePlanDto,
+    actingUserId: string,
+  ) {
+    const existing = await this.prisma.incentivePlan.findUnique({
+      where: { id },
+    });
+    if (!existing) throw new NotFoundException('Recurring incentive not found');
+    return withPayrollEmployeeTransaction(
+      this.prisma,
+      existing.employeeId,
+      async (tx) => {
+        const plan = await tx.incentivePlan.findUnique({ where: { id } });
+        if (!plan) throw new NotFoundException('Recurring incentive not found');
+        if (plan.stoppedAt)
+          throw new BadRequestException('This recurring incentive is stopped');
+        const data: Prisma.IncentivePlanUpdateInput = {};
+        if (dto.amount !== undefined) data.amount = dto.amount;
+        if (dto.endMonth !== undefined && dto.endYear !== undefined) {
+          const last = monthIndex(dto.endYear, dto.endMonth);
+          if (last < monthIndex(plan.startYear, plan.startMonth)) {
+            throw new BadRequestException(
+              'The last month cannot be before the first month',
+            );
+          }
+          data.endMonth = dto.endMonth;
+          data.endYear = dto.endYear;
+          await this.removePlanIncentivesAfter(tx, plan.id, last, actingUserId);
         }
-
-        await tx.allowance.create({
-          data: {
-            payrollEntryId: payrollEntry.id,
-            type: AllowanceType.CUSTOM,
-            description: incentiveAllowanceDescription(reason),
-            amount: dto.amount,
-          },
-        });
-
-        const after = await tx.payrollEntry.update({
-          where: { id: payrollEntry.id },
-          data: {
-            totalAllowances: { increment: dto.amount },
-            netStipend: { increment: dto.amount },
-          },
-        });
-        await logIncentiveChange(tx, {
-          payrollEntryId: payrollEntry.id,
-          userId: addedById,
-          action: 'INCENTIVE_ADDED',
-          summary: `Incentive added: ${reason} PKR ${Math.round(dto.amount).toLocaleString('en-PK')}`,
-          netAfter: Number(after.netStipend),
-          amount: dto.amount,
-        });
-
-        await tx.notification.create({
-          data: {
-            employeeId: dto.employeeId,
-            type: 'INCENTIVE_ADDED',
-            message: `You have received an incentive of PKR ${dto.amount} for ${dto.month}/${dto.year}. Reason: ${reason}`,
-          },
-        });
-
+        const updated = await tx.incentivePlan.update({ where: { id }, data });
         await tx.auditLog.create({
           data: {
-            userId: addedById,
-            action: 'INCENTIVE_CREATED',
-            entity: 'Incentive',
-            entityId: incentive.id,
+            userId: actingUserId,
+            action: 'INCENTIVE_PLAN_UPDATED',
+            entity: 'IncentivePlan',
+            entityId: id,
             changes: {
-              employeeId: dto.employeeId,
-              amount: dto.amount,
-              reason: reason,
-              month: dto.month,
-              year: dto.year,
+              employeeId: plan.employeeId,
+              before: {
+                amount: Number(plan.amount),
+                endMonth: plan.endMonth,
+                endYear: plan.endYear,
+              },
+              after: {
+                amount: Number(updated.amount),
+                endMonth: updated.endMonth,
+                endYear: updated.endYear,
+              },
             },
           },
         });
-
-        return incentive;
+        return updated;
       },
     );
+  }
+
+  /**
+   * Point 21: the last month paid is lastMonth/lastYear. Paid months stay;
+   * an incentive already put on a later PENDING month is removed.
+   */
+  async stopPlan(id: string, dto: StopIncentivePlanDto, actingUserId: string) {
+    const existing = await this.prisma.incentivePlan.findUnique({
+      where: { id },
+    });
+    if (!existing) throw new NotFoundException('Recurring incentive not found');
+    return withPayrollEmployeeTransaction(
+      this.prisma,
+      existing.employeeId,
+      async (tx) => {
+        const plan = await tx.incentivePlan.findUnique({ where: { id } });
+        if (!plan) throw new NotFoundException('Recurring incentive not found');
+        if (plan.stoppedAt)
+          throw new BadRequestException(
+            'This recurring incentive is already stopped',
+          );
+        const last = monthIndex(dto.lastYear, dto.lastMonth);
+        if (last < monthIndex(plan.startYear, plan.startMonth)) {
+          throw new BadRequestException(
+            "The last month cannot be before the first month; delete that month's incentive instead",
+          );
+        }
+        if (
+          plan.endYear != null &&
+          plan.endMonth != null &&
+          last > monthIndex(plan.endYear, plan.endMonth)
+        ) {
+          throw new BadRequestException(
+            'This incentive already ends before that month',
+          );
+        }
+        const removed = await this.removePlanIncentivesAfter(
+          tx,
+          plan.id,
+          last,
+          actingUserId,
+        );
+        const updated = await tx.incentivePlan.update({
+          where: { id },
+          data: {
+            endMonth: dto.lastMonth,
+            endYear: dto.lastYear,
+            stoppedAt: new Date(),
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: actingUserId,
+            action: 'INCENTIVE_PLAN_STOPPED',
+            entity: 'IncentivePlan',
+            entityId: id,
+            changes: {
+              employeeId: plan.employeeId,
+              lastMonth: dto.lastMonth,
+              lastYear: dto.lastYear,
+              removedIncentives: removed,
+            },
+          },
+        });
+        return updated;
+      },
+    );
+  }
+
+  /** Removes the plan's incentives after `lastIndex` that are still on a PENDING month. */
+  private async removePlanIncentivesAfter(
+    tx: Prisma.TransactionClient,
+    planId: string,
+    lastIndex: number,
+    actingUserId: string,
+  ) {
+    const rows = await tx.incentive.findMany({ where: { planId } });
+    let removed = 0;
+    for (const row of rows.filter(
+      (r) => monthIndex(r.year, r.month) > lastIndex,
+    )) {
+      try {
+        await this.removeIncentiveInTx(tx, row, actingUserId);
+        removed++;
+      } catch (err) {
+        // Processed / paid months keep their incentive.
+        if (
+          !(
+            err instanceof BadRequestException ||
+            err instanceof NotFoundException
+          )
+        )
+          throw err;
+      }
+    }
+    return removed;
   }
 
   /** "Type: note", the type alone, or the note alone (old free-text incentives). */
@@ -285,51 +426,73 @@ export class IncentivesService {
         if (!incentive) {
           throw new NotFoundException(`Incentive with id ${id} not found`);
         }
-        const { payrollEntry, allowance } = await this.pendingIncentiveRow(
+        await this.removeIncentiveInTx(
           tx,
           incentive,
+          actingUserId,
           allowLocked,
         );
-
-        const amount = Number(incentive.amount);
-
-        await tx.allowance.delete({ where: { id: allowance.id } });
-
-        const after = await tx.payrollEntry.update({
-          where: { id: payrollEntry.id },
-          data: {
-            totalAllowances: { decrement: amount },
-            netStipend: { decrement: amount },
-          },
-        });
-        await logIncentiveChange(tx, {
-          payrollEntryId: payrollEntry.id,
-          userId: actingUserId,
-          action: 'INCENTIVE_REMOVED',
-          summary: `Incentive removed: ${incentive.reason} PKR ${Math.round(amount).toLocaleString('en-PK')}`,
-          netAfter: Number(after.netStipend),
-          amount: -amount,
-        });
-
-        await tx.incentive.delete({ where: { id } });
-
-        await tx.auditLog.create({
-          data: {
-            userId: actingUserId,
-            action: 'INCENTIVE_DELETED',
-            entity: 'Incentive',
-            entityId: id,
-            changes: {
-              employeeId: incentive.employeeId,
-              amount,
-              reason: incentive.reason,
-            },
-          },
-        });
       },
     );
 
     return { message: 'Incentive deleted' };
+  }
+
+  /** Takes an incentive off its PENDING month (allowance row, totals, history) and deletes it. */
+  private async removeIncentiveInTx(
+    tx: Prisma.TransactionClient,
+    incentive: {
+      id: string;
+      employeeId: string;
+      month: number;
+      year: number;
+      reason: string;
+      amount: Prisma.Decimal | number;
+    },
+    actingUserId: string,
+    allowLocked = false,
+  ) {
+    const { payrollEntry, allowance } = await this.pendingIncentiveRow(
+      tx,
+      incentive,
+      allowLocked,
+    );
+
+    const amount = Number(incentive.amount);
+
+    await tx.allowance.delete({ where: { id: allowance.id } });
+
+    const after = await tx.payrollEntry.update({
+      where: { id: payrollEntry.id },
+      data: {
+        totalAllowances: { decrement: amount },
+        netStipend: { decrement: amount },
+      },
+    });
+    await logIncentiveChange(tx, {
+      payrollEntryId: payrollEntry.id,
+      userId: actingUserId,
+      action: 'INCENTIVE_REMOVED',
+      summary: `Incentive removed: ${incentive.reason} PKR ${Math.round(amount).toLocaleString('en-PK')}`,
+      netAfter: Number(after.netStipend),
+      amount: -amount,
+    });
+
+    await tx.incentive.delete({ where: { id: incentive.id } });
+
+    await tx.auditLog.create({
+      data: {
+        userId: actingUserId,
+        action: 'INCENTIVE_DELETED',
+        entity: 'Incentive',
+        entityId: incentive.id,
+        changes: {
+          employeeId: incentive.employeeId,
+          amount,
+          reason: incentive.reason,
+        },
+      },
+    });
   }
 
   /**
@@ -371,7 +534,7 @@ export class IncentivesService {
         });
 
         const newEntry = moved
-          ? await this.getOrCreatePayrollEntry(
+          ? await getOrCreatePayrollEntry(
               tx,
               incentive.employeeId,
               dto.month,
@@ -506,42 +669,243 @@ export class IncentivesService {
     }
     return { payrollEntry, allowance };
   }
+}
 
-  /**
-   * The month's own payroll entry: the one whose package covers the month
-   * (the open package first). An incentive never creates an entry — a new
-   * one would carry the full package basic and double the month (e.g. after
-   * an increment that starts next month).
-   */
-  private async getOrCreatePayrollEntry(
-    tx: Prisma.TransactionClient,
-    employeeId: string,
-    month: number,
-    year: number,
-  ) {
-    const entries = await tx.payrollEntry.findMany({
-      where: { month, year, stipendRecord: { employeeId } },
-      include: {
-        stipendRecord: { select: { effectiveFrom: true, effectiveTo: true } },
-      },
-    });
-    const covering = entries
-      .filter((e) => packageCoversEntryMonth(e))
-      .sort(
-        (a, b) =>
-          Number(a.stipendRecord.effectiveTo != null) -
-            Number(b.stipendRecord.effectiveTo != null) ||
-          b.stipendRecord.effectiveFrom.getTime() -
-            a.stipendRecord.effectiveFrom.getTime(),
-      );
-    const entry = covering[0];
-    if (!entry) {
-      throw new BadRequestException(
-        `There is no payroll for ${month}/${year} for this employee yet. Generate that month's payroll first, then add the incentive.`,
-      );
-    }
-    return entry;
+/** Months as one number so ranges compare simply (year * 12 + month). */
+export const monthIndex = (year: number, month: number) => year * 12 + month;
+
+export function fromMonthIndex(index: number) {
+  return { year: Math.floor((index - 1) / 12), month: ((index - 1) % 12) + 1 };
+}
+
+/** Point 21: the plan pays this month (end is inclusive; open-ended = permanent). */
+export function planCoversMonth(
+  plan: {
+    startMonth: number;
+    startYear: number;
+    endMonth: number | null;
+    endYear: number | null;
+  },
+  month: number,
+  year: number,
+) {
+  const m = monthIndex(year, month);
+  if (m < monthIndex(plan.startYear, plan.startMonth)) return false;
+  return (
+    plan.endYear == null ||
+    plan.endMonth == null ||
+    m <= monthIndex(plan.endYear, plan.endMonth)
+  );
+}
+
+/**
+ * The month's own payroll entry: the one whose package covers the month
+ * (the open package first). An incentive never creates an entry — a new
+ * one would carry the full package basic and double the month (e.g. after
+ * an increment that starts next month).
+ */
+async function findIncentivePayrollEntry(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  month: number,
+  year: number,
+) {
+  const entries = await tx.payrollEntry.findMany({
+    where: { month, year, stipendRecord: { employeeId } },
+    include: {
+      stipendRecord: { select: { effectiveFrom: true, effectiveTo: true } },
+    },
+  });
+  return entries
+    .filter((e) => packageCoversEntryMonth(e))
+    .sort(
+      (a, b) =>
+        Number(a.stipendRecord.effectiveTo != null) -
+          Number(b.stipendRecord.effectiveTo != null) ||
+        b.stipendRecord.effectiveFrom.getTime() -
+          a.stipendRecord.effectiveFrom.getTime(),
+    )[0];
+}
+
+async function getOrCreatePayrollEntry(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  month: number,
+  year: number,
+) {
+  const entry = await findIncentivePayrollEntry(tx, employeeId, month, year);
+  if (!entry) {
+    throw new BadRequestException(
+      `There is no payroll for ${month}/${year} for this employee yet. Generate that month's payroll first, then add the incentive.`,
+    );
   }
+  return entry;
+}
+
+/**
+ * One month's incentive: the Incentive row, its "Incentive: …" allowance on
+ * the month's PENDING payroll entry, totals, history, notice and audit.
+ * Shared by a new incentive and each month of a recurring plan.
+ */
+async function addIncentiveRow(
+  tx: Prisma.TransactionClient,
+  dto: {
+    employeeId: string;
+    amount: number;
+    reason: string;
+    typeId: string | null;
+    month: number;
+    year: number;
+    planId?: string;
+  },
+  addedById: string,
+) {
+  const { reason } = dto;
+  const employee = await tx.employee.findUnique({
+    where: { id: dto.employeeId },
+  });
+
+  if (!employee) {
+    throw new NotFoundException(`Employee with id ${dto.employeeId} not found`);
+  }
+
+  if (
+    employee.status !== EmployeeStatus.ACTIVE &&
+    employee.status !== EmployeeStatus.APPOINTED
+  ) {
+    throw new BadRequestException(
+      'Incentives can only be added for active or appointed employees',
+    );
+  }
+
+  const incentive = await tx.incentive.create({
+    data: {
+      employeeId: dto.employeeId,
+      amount: dto.amount,
+      reason: reason,
+      typeId: dto.typeId,
+      addedBy: addedById,
+      month: dto.month,
+      year: dto.year,
+      ...(dto.planId ? { planId: dto.planId } : {}),
+    },
+  });
+
+  const payrollEntry = await getOrCreatePayrollEntry(
+    tx,
+    dto.employeeId,
+    dto.month,
+    dto.year,
+  );
+  if (payrollEntry.status !== PayrollStatus.PENDING) {
+    throw new BadRequestException(
+      `Payroll for ${dto.month}/${dto.year} is already ${payrollEntry.status}; incentives can only be added while it is PENDING`,
+    );
+  }
+
+  // The slip line is only "Incentive: <type/note>" — never how long it repeats.
+  await tx.allowance.create({
+    data: {
+      payrollEntryId: payrollEntry.id,
+      type: AllowanceType.CUSTOM,
+      description: incentiveAllowanceDescription(reason),
+      amount: dto.amount,
+    },
+  });
+
+  const after = await tx.payrollEntry.update({
+    where: { id: payrollEntry.id },
+    data: {
+      totalAllowances: { increment: dto.amount },
+      netStipend: { increment: dto.amount },
+    },
+  });
+  await logIncentiveChange(tx, {
+    payrollEntryId: payrollEntry.id,
+    userId: addedById,
+    action: 'INCENTIVE_ADDED',
+    summary: `Incentive added: ${reason} PKR ${Math.round(dto.amount).toLocaleString('en-PK')}`,
+    netAfter: Number(after.netStipend),
+    amount: dto.amount,
+  });
+
+  await tx.notification.create({
+    data: {
+      employeeId: dto.employeeId,
+      type: 'INCENTIVE_ADDED',
+      message: `You have received an incentive of PKR ${dto.amount} for ${dto.month}/${dto.year}. Reason: ${reason}`,
+    },
+  });
+
+  await tx.auditLog.create({
+    data: {
+      userId: addedById,
+      action: 'INCENTIVE_CREATED',
+      entity: 'Incentive',
+      entityId: incentive.id,
+      changes: {
+        employeeId: dto.employeeId,
+        amount: dto.amount,
+        reason: reason,
+        month: dto.month,
+        year: dto.year,
+        ...(dto.planId ? { planId: dto.planId } : {}),
+      },
+    },
+  });
+
+  return incentive;
+}
+
+/**
+ * Point 21: adds this month's incentive for every recurring plan covering
+ * it that has none yet. Called by payroll once the month's entry exists.
+ * Idempotent (one incentive per plan/month, also a unique index); skipped
+ * when the employee is not Active/Appointed or the month is not PENDING.
+ * The allowance row is a CUSTOM row, so a payroll recompute keeps it.
+ */
+export async function materializeIncentivePlans(
+  tx: Prisma.TransactionClient,
+  employeeId: string,
+  month: number,
+  year: number,
+): Promise<number> {
+  // Unit-test doubles of Prisma often omit this model; real clients always have it.
+  if (!(tx as { incentivePlan?: unknown }).incentivePlan) return 0;
+  const plans = (
+    await tx.incentivePlan.findMany({
+      where: { employeeId, incentives: { none: { month, year } } },
+      orderBy: { createdAt: 'asc' },
+    })
+  ).filter((plan) => planCoversMonth(plan, month, year));
+  if (!plans.length) return 0;
+  const employee = await tx.employee.findUnique({
+    where: { id: employeeId },
+    select: { status: true },
+  });
+  if (
+    employee?.status !== EmployeeStatus.ACTIVE &&
+    employee?.status !== EmployeeStatus.APPOINTED
+  )
+    return 0;
+  const entry = await findIncentivePayrollEntry(tx, employeeId, month, year);
+  if (!entry || entry.status !== PayrollStatus.PENDING) return 0;
+  for (const plan of plans) {
+    await addIncentiveRow(
+      tx,
+      {
+        employeeId,
+        amount: Number(plan.amount),
+        reason: plan.reason,
+        typeId: plan.typeId,
+        month,
+        year,
+        planId: plan.id,
+      },
+      plan.addedBy,
+    );
+  }
+  return plans.length;
 }
 
 const pkr = (n: number) => Math.round(n).toLocaleString('en-PK');

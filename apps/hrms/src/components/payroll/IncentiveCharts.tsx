@@ -7,7 +7,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const num = (n: number) => Math.round(n).toLocaleString('en-PK')
 
 /** One horizontal bar per row, scaled to the largest value. */
-function Bars({ rows }: { rows: Array<{ label: string; value: number; note?: string }> }) {
+export function Bars({ rows }: { rows: Array<{ label: string; value: number; note?: string }> }) {
   const max = Math.max(1, ...rows.map((r) => r.value))
   if (!rows.length) return <p className="text-xs text-muted-foreground">No data</p>
   return (

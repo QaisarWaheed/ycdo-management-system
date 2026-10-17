@@ -7,9 +7,14 @@ import {
   AttendanceLogType,
   AttendanceStatus,
   DisciplineCategory,
+  EmployeeStatus,
+  ExtraTimeStatus,
   Prisma,
 } from '@prisma/client';
-import { isExitEmployeeStatus } from '../employees/status-effective.util';
+import {
+  isExitEmployeeStatus,
+  payCutoffDate,
+} from '../employees/status-effective.util';
 import { dateKey, splitPaidUnpaidLeaveDays } from '../payroll/payroll-hours.util';
 import {
   calendarDatesForAttendanceMonth,
@@ -66,18 +71,29 @@ export async function loadAttendanceCard(
         earlyOutMinutes: true,
         overtimePending: true,
         overtimeApprovedAt: true,
+        overtimeStatus: true,
         payPercent: true,
       },
     }),
     prisma.additionalWorkingDay.findMany({
-      where: { employeeId, date: { gte: start, lte: end } },
+      // Point 20: only approved extra days are paid.
+      where: {
+        employeeId,
+        date: { gte: start, lte: end },
+        status: ExtraTimeStatus.APPROVED,
+      },
       orderBy: { date: 'asc' },
       select: { date: true, relieverSessionId: true },
     }),
   ]);
   if (!employee)
     throw new NotFoundException(`Employee with id ${employeeId} not found`);
-  const logs = [...storedLogs].sort(
+  const exitDate = payCutoffDate(employee);
+  // Point 25: suspension days are unpaid whatever is stored for them.
+  const suspendedFrom =
+    employee.status === EmployeeStatus.SUSPENDED ? exitDate : null;
+  const beforeSuspension = (d: Date) => !suspendedFrom || d < suspendedFrom;
+  const logs = storedLogs.filter((log) => beforeSuspension(log.date)).sort(
     (a, b) => a.date.getTime() - b.date.getTime(),
   );
   const loggedDates = new Set<string>();
@@ -124,10 +140,6 @@ export async function loadAttendanceCard(
   const joiningDate = employee.joiningDate
     ? toPakistanDateOnly(employee.joiningDate)
     : null;
-  const exitDate =
-    isExitEmployeeStatus(employee.status) && employee.statusEffectiveFrom
-      ? toPakistanDateOnly(employee.statusEffectiveFrom)
-      : null;
   const missingDates = calendarDatesForAttendanceMonth(year, month)
     .filter(
       (date) =>
@@ -191,7 +203,7 @@ export async function loadAttendanceCard(
     /** Leave days at 50% pay (part of onLeave). */
     halfPaidLeaveDays: leave.halfPaidLeaveDays,
     halfPaidLeaveDateKeys: leave.halfPaidLeaveDateKeys,
-    additionalWorkingDays: extraDays.length,
+    additionalWorkingDays: extraDays.filter((d) => beforeSuspension(d.date)).length,
     overtimeHours: Math.round((summary.overtimeMinutes / 60) * 100) / 100,
     pendingOvertimeMinutes: logs.reduce((sum, log) => sum + (log.overtimePending ? log.overtimeMinutes : 0), 0),
     missingDates,
