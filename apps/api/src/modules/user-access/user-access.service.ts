@@ -90,8 +90,6 @@ export class UserAccessService {
         email: true,
         role: true,
         isActive: true,
-        accessFrom: true,
-        accessUntil: true,
         branchId: true,
         employeeId: true,
         createdAt: true,
@@ -272,8 +270,6 @@ export class UserAccessService {
         email: true,
         role: true,
         isActive: true,
-        accessFrom: true,
-        accessUntil: true,
         branchId: true,
         employeeId: true,
         createdAt: true,
@@ -440,40 +436,6 @@ export class UserAccessService {
     });
 
     return this.findOne(userId, actingRole);
-  }
-
-  async setAccessWindow(
-    userId: string,
-    dto: { accessFrom?: string | null; accessUntil?: string | null },
-    actingUserId: string,
-    actingRole: UserRole,
-  ) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException(`User with id ${userId} not found`);
-    if (user.role === UserRole.SUPER_ADMIN && actingRole !== UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException('Only Super Admin can modify Super Admin accounts');
-    }
-    const accessFrom = dto.accessFrom ? new Date(dto.accessFrom) : null;
-    const accessUntil = dto.accessUntil ? new Date(dto.accessUntil) : null;
-    if (accessFrom && accessUntil && accessUntil <= accessFrom) {
-      throw new BadRequestException('Access end must be after the start');
-    }
-    await this.prisma.$transaction([
-      this.prisma.user.update({ where: { id: userId }, data: { accessFrom, accessUntil } }),
-      this.prisma.auditLog.create({
-        data: {
-          userId: actingUserId,
-          action: 'SET_ACCESS_WINDOW',
-          entity: 'User',
-          entityId: userId,
-          changes: {
-            before: { accessFrom: user.accessFrom, accessUntil: user.accessUntil },
-            after: { accessFrom, accessUntil },
-          },
-        },
-      }),
-    ]);
-    return { id: userId, accessFrom, accessUntil };
   }
 
   async toggleActive(

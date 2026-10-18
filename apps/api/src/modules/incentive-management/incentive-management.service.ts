@@ -3,6 +3,7 @@ import {
   DeductionType,
   EmployeeStatus,
   LetterType,
+  PayrollActivity,
   PaySuggestionKind,
   PaySuggestionStatus,
   Prisma,
@@ -14,6 +15,11 @@ import { IncentivesService } from '../incentives/incentives.service';
 import { AllowancesService } from '../allowances/allowances.service';
 import { isActiveInMonth } from '../allowances/package-allowances.util';
 import { buildSuspensionWatchlist } from '../attendance/suspension-watchlist';
+import { ActivityWindowsService } from '../activity-windows/activity-windows';
+
+const IN_CHARGE_DEDUCTION = 'In-Charge loss / deduction';
+/** Req 20.4: the one "type" of In-Charge loss / deduction rows (kind DEDUCTION). */
+export const DEDUCTION_TYPE_ID = '00000000-0000-4000-8000-000000000000';
 
 export const SUGGEST_ROLES: UserRole[] = [
   UserRole.DEPARTMENT_HEAD,
@@ -56,6 +62,7 @@ export class IncentiveManagementService {
     private prisma: PrismaService,
     private incentives: IncentivesService,
     private allowances: AllowancesService,
+    private windows: ActivityWindowsService,
   ) {}
 
   /** Department Heads see only their own department. */
@@ -99,7 +106,7 @@ export class IncentiveManagementService {
       this.prisma.payAllowanceType.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } }),
     ]);
     const ids = employees.map((e) => e.id);
-    const [incentiveRows, allowanceRows, suggestions] = await Promise.all([
+    const [incentiveRows, allowanceRows, suggestions, deductionRows] = await Promise.all([
       this.prisma.incentive.findMany({
         where: {
           employeeId: { in: ids },
@@ -117,6 +124,22 @@ export class IncentiveManagementService {
       }),
       this.prisma.incentiveSuggestion.findMany({
         where: { employeeId: { in: ids }, month: q.month, year: q.year },
+      }),
+      this.prisma.payrollDeduction.findMany({
+        where: {
+          description: { startsWith: IN_CHARGE_DEDUCTION },
+          payrollEntry: {
+            stipendRecord: { employeeId: { in: ids } },
+            OR: [
+              { month: q.month, year: q.year },
+              { month: p.month, year: p.year },
+            ],
+          },
+        },
+        select: {
+          amount: true,
+          payrollEntry: { select: { month: true, year: true, stipendRecord: { select: { employeeId: true } } } },
+        },
       }),
     ]);
 
@@ -157,6 +180,11 @@ export class IncentiveManagementService {
       if (inPrev) r.previous += Number(a.amount);
       if (inCur) r.current += Number(a.amount);
     }
+    for (const d of deductionRows) {
+      const r = row(d.payrollEntry.stipendRecord.employeeId, PaySuggestionKind.DEDUCTION, DEDUCTION_TYPE_ID);
+      if (d.payrollEntry.month === q.month && d.payrollEntry.year === q.year) r.current += Number(d.amount);
+      else r.previous += Number(d.amount);
+    }
     for (const s of suggestions) {
       row(s.employeeId, s.kind, s.typeId).suggestion = {
         id: s.id,
@@ -171,6 +199,7 @@ export class IncentiveManagementService {
     const typeName = new Map<string, string>([
       ...incentiveTypes.map((t) => [`INCENTIVE|${t.id}`, t.name] as [string, string]),
       ...allowanceTypes.map((t) => [`ALLOWANCE|${t.id}`, t.name] as [string, string]),
+      [`DEDUCTION|${DEDUCTION_TYPE_ID}`, 'Loss / deduction'],
     ]);
     const empById = new Map(employees.map((e) => [e.id, e]));
     return {
@@ -236,6 +265,10 @@ export class IncentiveManagementService {
     dto: { employeeId: string; kind: PaySuggestionKind; typeId: string; month: number; year: number; amount: number; note?: string },
   ) {
     if (!hasAnyRole(actor.roles, SUGGEST_ROLES)) throw new ForbiddenException('You cannot suggest');
+    // Req 20.4: Department In-Charges suggest only 1st 00:00 → 5th 12:00 (or an IT extension).
+    if (actor.roles.includes(UserRole.DEPARTMENT_HEAD) && !hasAnyRole(actor.roles, [UserRole.PAYROLL_OFFICER])) {
+      await this.windows.assertOpen(PayrollActivity.DEPT_INCHARGE_SUGGESTIONS, actor);
+    }
     const scope = await this.scope(actor, {});
     const allowed = await this.prisma.employee.count({ where: { AND: [scope, { id: dto.employeeId }] } });
     if (!allowed) throw new ForbiddenException('This employee is not in your department');
@@ -299,6 +332,7 @@ export class IncentiveManagementService {
     for (const item of dto.items) {
       try {
         if (item.kind === PaySuggestionKind.INCENTIVE) await this.setIncentive(actor, dto, item);
+        else if (item.kind === PaySuggestionKind.DEDUCTION) await this.setDeduction(actor, dto, item);
         else await this.setAllowance(actor, dto, item);
         const s = await this.prisma.incentiveSuggestion.findUnique({
           where: {
@@ -392,6 +426,52 @@ export class IncentiveManagementService {
       { amount: latest, typeId: item.typeId, month: m.month, year: m.year } as never,
       actor.id,
     );
+  }
+
+  /** Req 20.4: the month's In-Charge loss / deduction becomes `amount` (0 removes it). */
+  private async setDeduction(
+    actor: Actor,
+    m: { month: number; year: number },
+    item: { employeeId: string; amount: number; note?: string },
+  ) {
+    const entry = await this.prisma.payrollEntry.findFirst({
+      where: { month: m.month, year: m.year, stipendRecord: { employeeId: item.employeeId } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!entry) throw new BadRequestException('No salary for this month yet');
+    if (entry.status !== 'PENDING') throw new BadRequestException('Salary already verified; use an amendment');
+    const existing = await this.prisma.payrollDeduction.findFirst({
+      where: { payrollEntryId: entry.id, description: { startsWith: IN_CHARGE_DEDUCTION } },
+    });
+    const before = existing ? Number(existing.amount) : 0;
+    const diff = item.amount - before;
+    await this.prisma.$transaction(async (tx) => {
+      if (existing && item.amount <= 0) await tx.payrollDeduction.delete({ where: { id: existing.id } });
+      else if (existing) await tx.payrollDeduction.update({ where: { id: existing.id }, data: { amount: item.amount } });
+      else if (item.amount > 0) {
+        await tx.payrollDeduction.create({
+          data: {
+            payrollEntryId: entry.id,
+            reason: DeductionType.OTHER,
+            amount: item.amount,
+            description: `${IN_CHARGE_DEDUCTION}${item.note?.trim() ? `: ${item.note.trim()}` : ''}`,
+          },
+        });
+      }
+      await tx.payrollEntry.update({
+        where: { id: entry.id },
+        data: { totalDeductions: { increment: diff }, netStipend: { decrement: diff } },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'IN_CHARGE_DEDUCTION_SET',
+          entity: 'PayrollEntry',
+          entityId: entry.id,
+          changes: { employeeId: item.employeeId, before, after: item.amount },
+        },
+      });
+    });
   }
 
   /** The allowance of this type pays `amount` from this month (keeping its end month). */

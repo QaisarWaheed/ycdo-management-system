@@ -12,6 +12,15 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { RespondStipendDto } from './stipend-receipts.dto';
 
+const PKT_MS = 5 * 3600_000;
+/** Req 20.1: 3rd of the next month, 12:00 Pakistan time. */
+export function salaryReviewDeadline(month: number, year: number): Date {
+  const next = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
+  return new Date(Date.UTC(next.y, next.m - 1, 3, 12) - PKT_MS);
+}
+const deadlineLabel = (d: Date) =>
+  `${new Date(d.getTime() + PKT_MS).toISOString().slice(0, 10)} 12:00 PM`;
+
 @Injectable()
 export class StipendReceiptsService {
   constructor(private prisma: PrismaService) {}
@@ -50,7 +59,8 @@ export class StipendReceiptsService {
         continue;
       }
 
-      const deadlineAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+      // Req 20.1: review until the 3rd, 12:00 PKT of the month after the salary month.
+      const deadlineAt = salaryReviewDeadline(month, year);
       const amount = payrollEntry.netStipend;
 
       await this.prisma.$transaction(async (tx) => {
@@ -70,7 +80,7 @@ export class StipendReceiptsService {
           data: {
             employeeId: employee.id,
             type: 'STIPEND_RECEIPT',
-            message: `Your stipend receipt for ${month}/${year} is ready. Amount: PKR ${amount}. Please accept or reject within 48 hours.`,
+            message: `Your salary for ${month}/${year} is ready: PKR ${amount}. Review it in the portal and Accept, or send a correction request, before ${deadlineLabel(deadlineAt)}. Not answered by then = accepted automatically.`,
           },
         });
       });
@@ -114,7 +124,10 @@ export class StipendReceiptsService {
     }
 
     if (!dto.accept && !dto.rejectionReason?.trim()) {
-      throw new BadRequestException('Rejection reason is required');
+      throw new BadRequestException('Write the details of the correction you need');
+    }
+    if (!dto.accept && (dto.category === 'OVERTIME' || dto.category === 'EXTRA_DUTY') && !dto.claimItems?.length) {
+      throw new BadRequestException('Add the dates (and hours for overtime) you are claiming');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -133,11 +146,26 @@ export class StipendReceiptsService {
       });
 
       if (!dto.accept) {
+        // Req 20.1/20.2: the request goes straight to HR Operations' Suggestions tab.
+        await tx.salaryCorrectionRequest.create({
+          data: {
+            employeeId: receipt.employeeId,
+            payrollEntryId: receipt.payrollEntryId,
+            month: receipt.month,
+            year: receipt.year,
+            category: dto.category ?? 'OTHER',
+            details: dto.rejectionReason!.trim(),
+            claimItems: (dto.claimItems ?? undefined) as never,
+          },
+        });
         const hrUsers = await tx.user.findMany({
           where: {
-            role: UserRole.HR_MANAGER,
             isActive: true,
             employeeId: { not: null },
+            OR: [
+              { role: UserRole.HR_OPERATIONS_MANAGER },
+              { additionalRoles: { some: { role: UserRole.HR_OPERATIONS_MANAGER } } },
+            ],
           },
         });
 
@@ -145,8 +173,8 @@ export class StipendReceiptsService {
           await tx.notification.create({
             data: {
               employeeId: hr.employeeId!,
-              type: 'STIPEND_REJECTED',
-              message: `${receipt.employee.fullName} rejected stipend receipt for ${receipt.month}/${receipt.year}. Reason: ${dto.rejectionReason}`,
+              type: 'SALARY_SUGGESTION',
+              message: `${receipt.employee.fullName} sent a salary correction request for ${receipt.month}/${receipt.year}: ${dto.rejectionReason}`,
             },
           });
         }

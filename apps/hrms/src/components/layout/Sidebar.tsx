@@ -69,6 +69,13 @@ const payApprovalsNavItem = {
   icon: BadgeCheck,
 }
 
+/** Req 20: monthly salary workflow (every login: "My corrections" tab). */
+const payrollWorkflowNavItem = {
+  to: '/payroll-workflow',
+  label: 'Salary Workflow',
+  icon: Wallet,
+}
+
 /** Point 20: HR-entered extra days / overtime awaiting HR Operations or Chairman. */
 const extraTimeApprovalsNavItem = {
   to: '/extra-time-approvals',
@@ -238,6 +245,10 @@ function navItemsForRole(role?: string) {
     ]
   }
 
+  if (role === 'PROJECT_COORDINATOR') {
+    return allNavItems.filter((item) => item.to === '/dashboard')
+  }
+
   if (role === 'PROGRESS_OFFICER') {
     return allNavItems.filter((item) =>
       ['/dashboard', '/employees', '/letters', '/reports'].includes(item.to),
@@ -368,7 +379,7 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
 }
 
 /** Roles whose menu is exactly their curated list (no Biometric IDs / Rule Book). */
-const FIXED_MENU_ROLES = ['PAYROLL_OFFICER', 'PROGRESS_OFFICER']
+const FIXED_MENU_ROLES = ['PAYROLL_OFFICER', 'PROGRESS_OFFICER', 'PROJECT_COORDINATOR']
 
 function useSidebarNavItems() {
   const { user, hasRole, hasPermission } = useAuth()
@@ -386,7 +397,8 @@ function useSidebarNavItems() {
     return access.roles ? hasRole(access.roles) : true
   }
 
-  const roleNavItems = navItemsForRole(user?.role)
+  const role = user?.role
+  const roleNavItems = navItemsForRole(role)
   let items = roleNavItems
   if (!FIXED_MENU_ROLES.includes(user?.role ?? '')) {
     const employeeIndex = items.findIndex((item) => item.to === '/employees')
@@ -421,6 +433,7 @@ function useSidebarNavItems() {
     items = [...items, ...granted].sort((a, b) => rank(a.to) - rank(b.to))
   }
 
+  if (role !== 'EMPLOYEE') items = [...items, payrollWorkflowNavItem]
   return items.filter((item) => canOpen(item.to))
 }
 

@@ -2087,7 +2087,7 @@ export class PayrollService {
       dto.status === PayrollStatus.VERIFIED
         ? PayrollStatus.PENDING
         : dto.status === PayrollStatus.PROCESSED
-          ? PayrollStatus.VERIFIED
+          ? PayrollStatus.PC_VERIFIED
           : PayrollStatus.PROCESSED;
     const entries = await this.prisma.payrollEntry.findMany({
       where: {
@@ -3855,6 +3855,8 @@ export class PayrollService {
     const byStatus = {
       PENDING: 0,
       VERIFIED: 0,
+      FOUNDER_APPROVED: 0,
+      PC_VERIFIED: 0,
       PROCESSED: 0,
       PAID: 0,
     };
@@ -4356,8 +4358,26 @@ export class PayrollService {
       return;
     }
 
-    if (current === PayrollStatus.VERIFIED && next === PayrollStatus.PROCESSED) {
+    // Req 20: Verified → Founder Approved → PC Verified → Processed.
+    if (current === PayrollStatus.VERIFIED && next === PayrollStatus.FOUNDER_APPROVED) {
       return;
+    }
+
+    if (current === PayrollStatus.FOUNDER_APPROVED && next === PayrollStatus.PC_VERIFIED) {
+      return;
+    }
+
+    if (current === PayrollStatus.PC_VERIFIED && next === PayrollStatus.PROCESSED) {
+      return;
+    }
+
+    if (
+      next === PayrollStatus.PROCESSED &&
+      (current === PayrollStatus.VERIFIED || current === PayrollStatus.FOUNDER_APPROVED)
+    ) {
+      throw new BadRequestException(
+        'Founder approval and Project Coordinator proof-reading come before Processed',
+      );
     }
 
     if (current === PayrollStatus.PENDING && next === PayrollStatus.PROCESSED) {

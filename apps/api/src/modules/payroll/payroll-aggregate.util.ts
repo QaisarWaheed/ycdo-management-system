@@ -39,14 +39,17 @@ function employeeKey(entry: PayrollSegmentForAggregate): string {
   );
 }
 
+const STATUS_RANK: Record<PayrollStatus, number> = {
+  PENDING: 1,
+  VERIFIED: 2,
+  FOUNDER_APPROVED: 3,
+  PC_VERIFIED: 4,
+  PROCESSED: 5,
+  PAID: 6,
+};
+
 function statusRank(s: PayrollStatus): number {
-  return s === PayrollStatus.PAID
-    ? 4
-    : s === PayrollStatus.PROCESSED
-      ? 3
-      : s === PayrollStatus.VERIFIED
-        ? 2
-        : 1;
+  return STATUS_RANK[s] ?? 1;
 }
 
 /**

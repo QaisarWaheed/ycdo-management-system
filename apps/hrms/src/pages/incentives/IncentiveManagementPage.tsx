@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { incentiveManagementApi, type BoardRow, type PayKind } from '@/api/endpoints/incentiveManagement'
+import { DEDUCTION_TYPE_ID, incentiveManagementApi, type BoardRow, type PayKind } from '@/api/endpoints/incentiveManagement'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -206,7 +206,11 @@ export function IncentiveManagementPage() {
 
   const addRow = () => {
     const [kind, typeId] = adding.type.split('|') as [PayKind, string]
-    const t = [...(data?.incentiveTypes ?? []), ...(data?.allowanceTypes ?? [])].find((x) => x.id === typeId)
+    const t = [
+      ...(data?.incentiveTypes ?? []),
+      ...(data?.allowanceTypes ?? []),
+      { id: DEDUCTION_TYPE_ID, name: 'Loss / deduction' },
+    ].find((x) => x.id === typeId)
     if (!adding.employeeId || !t) return
     setExtraRows((rows) => [
       ...rows,
@@ -325,7 +329,7 @@ export function IncentiveManagementPage() {
                       </TableCell>
                       <TableCell>
                         {r.typeName}
-                        <div className="text-xs text-text-secondary">{r.kind === 'INCENTIVE' ? 'Incentive' : 'Allowance'}</div>
+                        <div className="text-xs text-text-secondary">{r.kind === 'INCENTIVE' ? 'Incentive' : r.kind === 'DEDUCTION' ? 'Deduction (cut from salary)' : 'Allowance'}</div>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{r.previous ? formatPKR(r.previous) : '—'}</TableCell>
                       <TableCell className="text-right tabular-nums">
@@ -399,6 +403,7 @@ export function IncentiveManagementPage() {
               </option>
             ))}
           </optgroup>
+          <option value={`DEDUCTION|${DEDUCTION_TYPE_ID}`}>Loss / deduction</option>
         </select>
         <Button variant="outline" disabled={!adding.employeeId || !adding.type} onClick={addRow}>
           Add row

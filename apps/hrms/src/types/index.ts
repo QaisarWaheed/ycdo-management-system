@@ -696,7 +696,7 @@ export type AttendanceStatus =
   | 'HOLIDAY'
 
 /** Req 12: VERIFIED = checked by Finance and locked. */
-export type PayrollStatus = 'PENDING' | 'VERIFIED' | 'PROCESSED' | 'PAID'
+export type PayrollStatus = 'PENDING' | 'VERIFIED' | 'FOUNDER_APPROVED' | 'PC_VERIFIED' | 'PROCESSED' | 'PAID'
 
 export type DeductionType =
   | 'LATE_ARRIVAL'
@@ -828,6 +828,8 @@ export interface PayrollSummary {
   byStatus: {
     PENDING: number
     VERIFIED?: number
+    FOUNDER_APPROVED?: number
+    PC_VERIFIED?: number
     PROCESSED: number
     PAID: number
   }

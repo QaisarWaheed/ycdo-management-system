@@ -5,6 +5,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import * as path from 'path';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AcknowledgementsModule } from './modules/acknowledgements/acknowledgements.module';
+import { ActivityWindowsModule } from './modules/activity-windows/activity-windows';
 import { IncentiveManagementModule } from './modules/incentive-management/incentive-management.module';
 import { AdditionalDutiesModule } from './modules/additional-duties/additional-duties.module';
 import { AdditionalWorkingDaysModule } from './modules/additional-working-days/additional-working-days.module';
@@ -89,6 +90,7 @@ import { CareersModule } from './modules/careers/careers.module';
     AcknowledgementsModule,
     AdditionalDutiesModule,
     IncentiveManagementModule,
+    ActivityWindowsModule,
     AdditionalWorkingDaysModule,
     StipendReceiptsModule,
     IncentivesModule,

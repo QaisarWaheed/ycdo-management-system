@@ -20,7 +20,8 @@ function setup() {
   };
   const incentives = { create: jest.fn(), update: jest.fn(), delete: jest.fn() };
   const allowances = { assign: jest.fn(), end: jest.fn() };
-  const service = new IncentiveManagementService(prisma as never, incentives as never, allowances as never);
+  const windows = { assertOpen: jest.fn().mockRejectedValue(new ForbiddenException('closed')) };
+  const service = new IncentiveManagementService(prisma as never, incentives as never, allowances as never, windows as never);
   return { service, prisma, incentives, allowances };
 }
 

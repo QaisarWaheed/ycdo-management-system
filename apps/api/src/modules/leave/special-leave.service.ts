@@ -34,7 +34,10 @@ export const SPECIAL_LEAVE_HR_ROLES: UserRole[] = [
   UserRole.HR_EXECUTIVE,
 ];
 
-const OPEN: LeaveStatus[] = [LeaveStatus.HR_PENDING, LeaveStatus.CHAIRMAN_PENDING];
+const OPEN: LeaveStatus[] = [
+  LeaveStatus.HR_PENDING,
+  LeaveStatus.CHAIRMAN_PENDING,
+];
 
 /**
  * Phase 2 Req 2. Employee (portal) or HR applies → HR Operations approves
@@ -56,7 +59,11 @@ export class SpecialLeaveService {
     });
   }
 
-  createType(dto: { name: string; payPercent: number; maxDays?: number | null }) {
+  createType(dto: {
+    name: string;
+    payPercent: number;
+    maxDays?: number | null;
+  }) {
     return this.prisma.specialLeaveType.create({
       data: {
         name: dto.name.trim(),
@@ -68,7 +75,12 @@ export class SpecialLeaveService {
 
   async updateType(
     id: string,
-    dto: { name?: string; payPercent?: number; maxDays?: number | null; isActive?: boolean },
+    dto: {
+      name?: string;
+      payPercent?: number;
+      maxDays?: number | null;
+      isActive?: boolean;
+    },
   ) {
     await this.prisma.specialLeaveType.findUniqueOrThrow({ where: { id } });
     // Changing the % only affects new requests; existing ones keep their snapshot.
@@ -90,36 +102,50 @@ export class SpecialLeaveService {
   ) {
     const isHr = hasAnyRole(user.roles, SPECIAL_LEAVE_HR_ROLES);
     if (!isHr && dto.employeeId !== user.employeeId) {
-      throw new ForbiddenException('You can only apply special leave for yourself');
+      throw new ForbiddenException(
+        'You can only apply special leave for yourself',
+      );
     }
     const [employee, type] = await Promise.all([
       this.prisma.employee.findUnique({ where: { id: dto.employeeId } }),
-      this.prisma.specialLeaveType.findUnique({ where: { id: dto.specialLeaveTypeId } }),
+      this.prisma.specialLeaveType.findUnique({
+        where: { id: dto.specialLeaveTypeId },
+      }),
     ]);
     if (!employee) throw new NotFoundException('Employee not found');
     if (employee.status !== EmployeeStatus.ACTIVE) {
       throw new BadRequestException('Employee is not active');
     }
-    if (!type?.isActive) throw new BadRequestException('Special leave type not available');
+    if (!type?.isActive)
+      throw new BadRequestException('Special leave type not available');
 
     const startDate = toPakistanDateOnly(new Date(dto.startDate));
     const endDate = toPakistanDateOnly(new Date(dto.endDate));
     if (startDate > endDate) {
-      throw new BadRequestException('Start date must be before or equal to end date');
+      throw new BadRequestException(
+        'Start date must be before or equal to end date',
+      );
     }
     // HR may enter a leave that already started (e.g. accident); employees apply ahead.
     if (!isHr && startDate < toPakistanDateOnly(new Date())) {
       throw new BadRequestException('Leave start date must be today or later');
     }
-    const totalDays = Math.round((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1;
+    const totalDays =
+      Math.round((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1;
     if (type.maxDays != null && totalDays > type.maxDays) {
-      throw new BadRequestException(`${type.name} can be at most ${type.maxDays} days`);
+      throw new BadRequestException(
+        `${type.name} can be at most ${type.maxDays} days`,
+      );
     }
     const overlapping = await this.prisma.leaveRecord.findFirst({
       where: {
         employeeId: dto.employeeId,
         status: {
-          notIn: [LeaveStatus.REJECTED, LeaveStatus.CANCELLED, LeaveStatus.RELIEVER_REJECTED],
+          notIn: [
+            LeaveStatus.REJECTED,
+            LeaveStatus.CANCELLED,
+            LeaveStatus.RELIEVER_REJECTED,
+          ],
         },
         startDate: { lte: endDate },
         endDate: { gte: startDate },
@@ -127,7 +153,9 @@ export class SpecialLeaveService {
       select: { id: true },
     });
     if (overlapping) {
-      throw new ConflictException('Leave dates overlap with an existing leave request');
+      throw new ConflictException(
+        'Leave dates overlap with an existing leave request',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -187,7 +215,12 @@ export class SpecialLeaveService {
     });
   }
 
-  async decide(id: string, approve: boolean, user: SpecialLeaveUser, notes?: string) {
+  async decide(
+    id: string,
+    approve: boolean,
+    user: SpecialLeaveUser,
+    notes?: string,
+  ) {
     const leave = await this.prisma.leaveRecord.findUnique({
       where: { id },
       include: { employee: true, specialLeaveType: true },
@@ -222,8 +255,12 @@ export class SpecialLeaveService {
       await tx.leaveApproval.create({
         data: {
           leaveId: id,
-          stage: atChairman ? LeaveApprovalStage.CHAIRMAN : LeaveApprovalStage.HR_OPERATIONS,
-          action: approve ? LeaveApprovalAction.APPROVED : LeaveApprovalAction.REJECTED,
+          stage: atChairman
+            ? LeaveApprovalStage.CHAIRMAN
+            : LeaveApprovalStage.HR_OPERATIONS,
+          action: approve
+            ? LeaveApprovalAction.APPROVED
+            : LeaveApprovalAction.REJECTED,
           actionBy: user.id,
           notes: note,
         },
@@ -252,7 +289,10 @@ export class SpecialLeaveService {
       await tx.notification.create({
         data: {
           employeeId: leave.employeeId,
-          type: status === LeaveStatus.REJECTED ? 'LEAVE_REJECTED' : 'LEAVE_APPROVED',
+          type:
+            status === LeaveStatus.REJECTED
+              ? 'LEAVE_REJECTED'
+              : 'LEAVE_APPROVED',
           message:
             status === LeaveStatus.REJECTED
               ? `Your ${typeName} was rejected.${note ? ` Reason: ${note}` : ''}`
@@ -267,7 +307,12 @@ export class SpecialLeaveService {
           action: `SPECIAL_LEAVE_${status}`,
           entity: 'LeaveRecord',
           entityId: id,
-          changes: { from: leave.status, to: status, note, payPercent: leave.payPercent },
+          changes: {
+            from: leave.status,
+            to: status,
+            note,
+            payPercent: leave.payPercent,
+          },
         },
       });
       return updated;
@@ -279,7 +324,11 @@ export class SpecialLeaveService {
     return result;
   }
 
-  private async notifyRole(tx: Prisma.TransactionClient, role: UserRole, message: string) {
+  private async notifyRole(
+    tx: Prisma.TransactionClient,
+    role: UserRole,
+    message: string,
+  ) {
     const users = await tx.user.findMany({
       where: {
         isActive: true,
@@ -290,7 +339,11 @@ export class SpecialLeaveService {
     });
     for (const u of users) {
       await tx.notification.create({
-        data: { employeeId: u.employeeId!, type: 'SPECIAL_LEAVE_PENDING', message },
+        data: {
+          employeeId: u.employeeId!,
+          type: 'SPECIAL_LEAVE_PENDING',
+          message,
+        },
       });
     }
   }

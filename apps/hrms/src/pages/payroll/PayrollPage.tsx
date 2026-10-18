@@ -1,4 +1,5 @@
 import { AmendmentNotifyDialog, AMENDMENT_HR_ROLES, PayrollAmendmentsCard } from '@/components/payroll/PayrollAmendments'
+import { FinanceCorrectionDialog } from '@/pages/payroll/PayrollWorkflowPage'
 import { useAuth } from '@/hooks/useAuth'
 import { useCallback, useMemo, useState, Fragment } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -136,16 +137,23 @@ function formatPKR(amount: number | string) {
   return `PKR ${Number(amount).toLocaleString('en-PK')}`
 }
 
+const PAYROLL_STATUS_LABELS: Record<string, string> = {
+  FOUNDER_APPROVED: 'FOUNDER APPROVED',
+  PC_VERIFIED: 'PC VERIFIED',
+}
+
 function PayrollStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
     VERIFIED: 'bg-violet-100 text-violet-800 border-violet-200',
+    FOUNDER_APPROVED: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    PC_VERIFIED: 'bg-cyan-100 text-cyan-800 border-cyan-200',
     PROCESSED: 'bg-blue-100 text-blue-800 border-blue-200',
     PAID: 'bg-green-100 text-green-800 border-green-200',
   }
   return (
     <Badge variant="outline" className={styles[status] ?? ''}>
-      {status}
+      {PAYROLL_STATUS_LABELS[status] ?? status}
     </Badge>
   )
 }
@@ -947,6 +955,9 @@ function MonthlyPayrollTab() {
   // Req 12: HR raises an amendment for a Finance-verified slip.
   const canNotifyAmendment = useAuth().hasRole([...AMENDMENT_HR_ROLES])
   const [amendFor, setAmendFor] = useState<{ id: string; name: string } | null>(null)
+  // Req 20.5: Finance sends a correction to whoever made an entry.
+  const canSendCorrection = useAuth().hasRole(['PAYROLL_OFFICER', 'SUPER_ADMIN'])
+  const [correctionFor, setCorrectionFor] = useState<{ id: string; name: string } | null>(null)
   // Super Admin reopens a Processed / Paid salary to correct a mistake.
   const canReopen = useAuth().hasRole(['SUPER_ADMIN'])
   const [finalizeOpen, setFinalizeOpen] = useState(false)
@@ -1330,6 +1341,9 @@ function MonthlyPayrollTab() {
   return (
     <div className="space-y-4">
       <PayrollAmendmentsCard />
+      {correctionFor ? (
+        <FinanceCorrectionDialog entryId={correctionFor.id} name={correctionFor.name} onClose={() => setCorrectionFor(null)} />
+      ) : null}
       {amendFor ? (
         <AmendmentNotifyDialog entryId={amendFor.id} employeeName={amendFor.name} onClose={() => setAmendFor(null)} />
       ) : null}
@@ -1370,6 +1384,8 @@ function MonthlyPayrollTab() {
                 <SelectItem value={ALL}>All</SelectItem>
                 <SelectItem value="PENDING">Pending</SelectItem>
                 <SelectItem value="VERIFIED">Verified by Finance</SelectItem>
+                <SelectItem value="FOUNDER_APPROVED">Founder approved</SelectItem>
+                <SelectItem value="PC_VERIFIED">Proof-read (PC verified)</SelectItem>
                 <SelectItem value="PROCESSED">Processed</SelectItem>
                 <SelectItem value="PAID">Paid</SelectItem>
               </SelectContent>
@@ -1737,7 +1753,7 @@ function MonthlyPayrollTab() {
                           >
                             Payroll Detail
                           </DropdownMenuItem>
-                          {entry.status === 'VERIFIED' && canFinalize ? (
+                          {entry.status === 'PC_VERIFIED' && canFinalize ? (
                             <DropdownMenuItem
                               onClick={() =>
                                 setConfirmStatus({
@@ -1780,6 +1796,18 @@ function MonthlyPayrollTab() {
                                   onClick={() => setAddDeductionEntry(entry)}
                                 >
                                   Add Deduction
+                                </DropdownMenuItem>
+                              ) : null}
+                              {canSendCorrection ? (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setCorrectionFor({
+                                      id: entry.id,
+                                      name: entry.stipendRecord?.employee?.fullName ?? 'employee',
+                                    })
+                                  }
+                                >
+                                  Send correction
                                 </DropdownMenuItem>
                               ) : null}
                             </>
@@ -2837,7 +2865,7 @@ function StipendReceiptStatusBadge({ status }: { status: StipendStatus }) {
       className: 'bg-green-100 text-green-800 border-green-200',
     },
     REJECTED: {
-      label: 'Rejected',
+      label: 'Correction requested',
       className: 'bg-red-100 text-red-800 border-red-200',
     },
     AUTO_ACCEPTED: {
@@ -2930,10 +2958,10 @@ function StipendReceiptsTab() {
             </Select>
           </div>
         </div>
-        <Button onClick={() => setGenerateOpen(true)}>Generate Receipts</Button>
+        <Button onClick={() => setGenerateOpen(true)}>Send salary reviews</Button>
       </div>
 
-      <TableRecordCount count={total} label="stipend receipt" />
+      <TableRecordCount count={total} label="salary review" />
 
       <div className="rounded-lg border border-border bg-white">
         <Table>
@@ -2963,7 +2991,7 @@ function StipendReceiptsTab() {
             ) : paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="h-32 text-center text-text-secondary">
-                  No stipend receipts found
+                  No salary reviews found
                 </TableCell>
               </TableRow>
             ) : (
@@ -3013,7 +3041,7 @@ function StipendReceiptsTab() {
                             )
                           }
                         >
-                          {expandedId === receipt.id ? 'Hide' : 'Reason'}
+                          {expandedId === receipt.id ? 'Hide' : 'Correction'}
                         </Button>
                       )}
                     </TableCell>
@@ -3021,7 +3049,7 @@ function StipendReceiptsTab() {
                   {expandedId === receipt.id && receipt.rejectionReason && (
                     <TableRow key={`${receipt.id}-reason`}>
                       <TableCell colSpan={8} className="bg-red-50 text-sm text-red-800">
-                        Rejection reason: {receipt.rejectionReason}
+                        Correction requested: {receipt.rejectionReason} (see Salary Workflow → Salary suggestions)
                       </TableCell>
                     </TableRow>
                   )}
@@ -3041,8 +3069,8 @@ function StipendReceiptsTab() {
 
       <ConfirmDialog
         open={generateOpen}
-        title="Generate Stipend Receipts"
-        description={`Generate stipend receipts for ${monthYear.month}/${monthYear.year} for all active employees?`}
+        title="Send salary reviews"
+        description={`Ask every active employee to review the ${monthYear.month}/${monthYear.year} salary (accept or request a correction until the 3rd, 12:00 PM)? The system also does this on the 1st automatically.`}
         confirmLabel="Generate"
         loading={generateMutation.isPending}
         onConfirm={() => generateMutation.mutate()}
@@ -3221,7 +3249,7 @@ export function PayrollPage() {
           <TabsTrigger value="monthly">Monthly Payroll</TabsTrigger>
           <TabsTrigger value="increment">Stipend Increment</TabsTrigger>
           <TabsTrigger value="summary">Summary</TabsTrigger>
-          <TabsTrigger value="receipts">Stipend Receipts</TabsTrigger>
+          <TabsTrigger value="receipts">Salary Reviews</TabsTrigger>
           <TabsTrigger value="non-active">Non-active Payslips</TabsTrigger>
           <TabsTrigger value="reports">Reports</TabsTrigger>
           <TabsTrigger value="types">Allowance &amp; Incentive Types</TabsTrigger>

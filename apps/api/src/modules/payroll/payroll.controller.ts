@@ -1,7 +1,9 @@
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
-import { PayrollStatus } from '@prisma/client';
+import { PayrollActivity, PayrollStatus } from '@prisma/client';
+import { ActivityWindowsService, actorOf } from '../activity-windows/activity-windows';
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -135,6 +137,15 @@ class FinalizeBranchMonthDto {
   status: PayrollStatus;
 }
 
+type WindowUser = { id: string; role: UserRole; roles?: UserRole[] };
+
+/** Req 20: Founder approval and PC verification have their own screens and roles. */
+function assertNotWorkflowStatus(status: PayrollStatus) {
+  if (status === PayrollStatus.FOUNDER_APPROVED || status === PayrollStatus.PC_VERIFIED) {
+    throw new BadRequestException('Use the Founder approval / proof-reading screens for this step');
+  }
+}
+
 @Controller('payroll')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PayrollController {
@@ -143,6 +154,7 @@ export class PayrollController {
     private payChangeRequests: PayChangeRequestsService,
     private overtimeReportService: OvertimeReportService,
     private employeeFinancial: EmployeeFinancialService,
+    private windows: ActivityWindowsService,
   ) {}
   @Post('entries')
   @Roles(...PAYROLL_WRITE_ROLES)
@@ -220,35 +232,39 @@ export class PayrollController {
   @Post('deductions')
   @Roles(...PAY_CHANGE_ROLES)
   @StrictRoles()
-  addDeduction(@Body() dto: AddDeductionDto, @CurrentUser() user: { id: string }) {
+  async addDeduction(@Body() dto: AddDeductionDto, @CurrentUser() user: WindowUser) {
+    await this.windows.assertFinanceEdit(actorOf(user), { entryId: dto.payrollEntryId });
     return this.payrollService.addDeduction(dto, user.id);
   }
 
   @Post('deductions/batch')
   @Roles(...PAY_CHANGE_ROLES)
   @StrictRoles()
-  addDeductions(@Body() dto: AddDeductionsDto, @CurrentUser() user: { id: string }) {
+  async addDeductions(@Body() dto: AddDeductionsDto, @CurrentUser() user: WindowUser) {
+    await this.windows.assertFinanceEdit(actorOf(user), { entryId: dto.payrollEntryId });
     return this.payrollService.addDeductions(dto, user.id);
   }
 
   @Patch('deductions/:id')
   @Roles(...PAY_CHANGE_ROLES)
   @StrictRoles()
-  updateDeduction(
+  async updateDeduction(
     @Param('id') id: string,
     @Body() dto: UpdateDeductionDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: WindowUser,
   ) {
+    await this.windows.assertFinanceEdit(actorOf(user), { deductionId: id });
     return this.payrollService.updateDeduction(id, dto, user.id);
   }
 
   @Delete('deductions/:id')
   @Roles(...PAY_CHANGE_ROLES)
   @StrictRoles()
-  removeDeduction(
+  async removeDeduction(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: WindowUser,
   ) {
+    await this.windows.assertFinanceEdit(actorOf(user), { deductionId: id });
     return this.payrollService.removeDeduction(id, user.id);
   }
 
@@ -256,6 +272,7 @@ export class PayrollController {
   @Roles(...PAY_CHANGE_ROLES)
   @StrictRoles()
   async addAllowance(@Body() dto: AddAllowanceDto, @CurrentUser() user: PayActor) {
+    await this.windows.assertFinanceEdit(actorOf(user as WindowUser), { entryId: dto.payrollEntryId });
     if (!isPayExecutive(user)) {
       const { employeeId, summary } =
         await this.payChangeRequests.describePayrollAddition(dto);
@@ -301,10 +318,14 @@ export class PayrollController {
   @Post('finalize')
   @Roles(UserRole.SUPER_ADMIN, UserRole.PAYROLL_OFFICER)
   @StrictRoles()
-  finalizeBranchMonth(
+  async finalizeBranchMonth(
     @Body() dto: FinalizeBranchMonthDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: WindowUser,
   ) {
+    assertNotWorkflowStatus(dto.status);
+    if (dto.status === PayrollStatus.VERIFIED) {
+      await this.windows.assertOpen(PayrollActivity.FINANCE_VERIFICATION, actorOf(user));
+    }
     return this.payrollService.finalizeBranchMonth(dto, user.id);
   }
 
@@ -336,11 +357,15 @@ export class PayrollController {
   @Patch('entries/:id/status')
   @Roles(UserRole.SUPER_ADMIN, UserRole.PAYROLL_OFFICER)
   @StrictRoles()
-  updateStatus(
+  async updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePayrollStatusDto,
     @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
   ) {
+    assertNotWorkflowStatus(dto.status);
+    if (dto.status === PayrollStatus.VERIFIED) {
+      await this.windows.assertOpen(PayrollActivity.FINANCE_VERIFICATION, actorOf(user));
+    }
     const roles = user.roles?.length ? user.roles : [user.role];
     return this.payrollService.updateStatus(
       id,

@@ -1,5 +1,4 @@
 import {
-  IsDateString,
   IsArray,
   IsBoolean,
   IsEmail,
@@ -123,15 +122,4 @@ export class ResetLoginPasswordDto {
   @IsString()
   @MinLength(6)
   newPassword: string;
-}
-
-/** Req 20: access window; empty = no limit. */
-export class AccessWindowDto {
-  @IsOptional()
-  @IsDateString()
-  accessFrom?: string | null;
-
-  @IsOptional()
-  @IsDateString()
-  accessUntil?: string | null;
 }

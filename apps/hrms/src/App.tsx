@@ -30,6 +30,7 @@ import { ProfilePage } from '@/pages/settings/ProfilePage'
 import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
 import { PendingApprovalsPage } from '@/pages/admin/PendingApprovalsPage'
 import { PayApprovalsPage } from '@/pages/payroll/PayApprovalsPage'
+import { PayrollWorkflowPage } from '@/pages/payroll/PayrollWorkflowPage'
 import { ExtraTimeApprovalsPage } from '@/pages/attendance/ExtraTimeApprovalsPage'
 import { SpecialLeavesPage } from '@/pages/leave/SpecialLeavesPage'
 import { IncentiveManagementPage } from '@/pages/incentives/IncentiveManagementPage'
@@ -266,6 +267,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <PayApprovalsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/payroll-workflow"
+        element={
+          <ProtectedRoute>
+            <PayrollWorkflowPage />
           </ProtectedRoute>
         }
       />

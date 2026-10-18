@@ -5,7 +5,7 @@ import { Printer } from 'lucide-react'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { employeesApi } from '@/api/endpoints/employees'
 import { payrollApi } from '@/api/endpoints/payroll'
-import { stipendReceiptsApi } from '@/api/endpoints/stipendReceipts'
+import { stipendReceiptsApi, type CorrectionCategory } from '@/api/endpoints/stipendReceipts'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { PayslipDocument } from '@/components/payroll/PayslipDocument'
 import {
@@ -100,7 +100,7 @@ function StipendReceiptStatusBadge({ status }: { status: StipendStatus }) {
       className: 'bg-green-100 text-green-800 border-green-200',
     },
     REJECTED: {
-      label: 'Rejected',
+      label: 'Correction requested',
       className: 'bg-red-100 text-red-800 border-red-200',
     },
     AUTO_ACCEPTED: {
@@ -185,12 +185,37 @@ function PayslipDialog({
   )
 }
 
+const CORRECTION_LABEL: Record<CorrectionCategory, string> = {
+  OVERTIME: 'Overtime',
+  EXTRA_DUTY: 'Extra duty',
+  DEDUCTION: 'Deduction',
+  OTHER: 'Other',
+}
+const CORRECTION_STATUS: Record<string, string> = {
+  SUBMITTED: 'With HR Operations',
+  HR_REJECTED: 'Not accepted by HR Operations',
+  FORWARDED: 'With the Chairman',
+  CHAIRMAN_REJECTED: 'Not approved',
+  APPLIED: 'Approved — added to salary',
+}
+
 function StipendReceiptSection() {
   const queryClient = useQueryClient()
   const [acceptReceipt, setAcceptReceipt] = useState<StipendReceipt | null>(null)
   const [rejectReceipt, setRejectReceipt] = useState<StipendReceipt | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
+  const [category, setCategory] = useState<CorrectionCategory>('OVERTIME')
+  const [claims, setClaims] = useState<Array<{ date: string; hours: string }>>([{ date: '', hours: '' }])
+  const needsDates = category === 'OVERTIME' || category === 'EXTRA_DUTY'
+  const claimItems = claims
+    .filter((c) => c.date)
+    .map((c) => ({ date: c.date, ...(category === 'OVERTIME' && c.hours ? { hours: Number(c.hours) } : {}) }))
   const [, setTick] = useState(0)
+
+  const { data: corrections = [] } = useQuery({
+    queryKey: ['salary-corrections-mine'],
+    queryFn: () => stipendReceiptsApi.myCorrections(),
+  })
 
   const { data: pendingList = [], isLoading: loadingPending } = useQuery({
     queryKey: ['stipend-receipt-pending'],
@@ -211,18 +236,16 @@ function StipendReceiptSection() {
   }, [pending])
 
   const respondMutation = useMutation({
-    mutationFn: (data: {
-      receiptId: string
-      accept: boolean
-      rejectionReason?: string
-    }) => stipendReceiptsApi.respond(data),
-    onSuccess: () => {
-      toast({ title: 'Stipend receipt updated' })
+    mutationFn: (data: Parameters<typeof stipendReceiptsApi.respond>[0]) => stipendReceiptsApi.respond(data),
+    onSuccess: (_r, v) => {
+      toast({ title: v.accept ? 'Salary accepted' : 'Correction request sent to HR Operations' })
+      queryClient.invalidateQueries({ queryKey: ['salary-corrections-mine'] })
       queryClient.invalidateQueries({ queryKey: ['stipend-receipt-pending'] })
       queryClient.invalidateQueries({ queryKey: ['stipend-receipt-my'] })
       setAcceptReceipt(null)
       setRejectReceipt(null)
       setRejectionReason('')
+      setClaims([{ date: '', hours: '' }])
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -242,7 +265,7 @@ function StipendReceiptSection() {
         <Card className="border-amber-200 bg-amber-50/50">
           <CardContent className="space-y-4 p-6">
             <p className="font-medium text-amber-800">
-              Your stipend receipt for {pending.month}/{pending.year} is ready
+              Please review your salary for {pending.month}/{pending.year}
             </p>
             <div>
               <p className="text-sm text-text-secondary">Amount</p>
@@ -256,7 +279,7 @@ function StipendReceiptSection() {
                 <p>{format(new Date(pending.generatedAt), 'dd MMM yyyy HH:mm')}</p>
               </div>
               <div>
-                <p className="text-text-secondary">Deadline</p>
+                <p className="text-text-secondary">Review until (then auto-accepted)</p>
                 <p>
                   {format(new Date(pending.deadlineAt), 'dd MMM yyyy HH:mm')}
                   <span className="ml-1 text-amber-700">
@@ -270,13 +293,13 @@ function StipendReceiptSection() {
                 className="bg-green-600 hover:bg-green-700"
                 onClick={() => setAcceptReceipt(pending)}
               >
-                Accept Stipend
+                Accept salary
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => setRejectReceipt(pending)}
               >
-                Reject Stipend
+                Request correction
               </Button>
             </div>
           </CardContent>
@@ -284,13 +307,13 @@ function StipendReceiptSection() {
       ) : (
         <Card className="border-border bg-surface">
           <CardContent className="p-6 text-center text-text-secondary">
-            No pending stipend receipts
+            No salary waiting for your review
           </CardContent>
         </Card>
       )}
 
       <div>
-        <h2 className="mb-3 text-lg font-semibold">Stipend Receipt History</h2>
+        <h2 className="mb-3 text-lg font-semibold">Salary Review History</h2>
         <div className="rounded-lg border border-border bg-white">
           <Table>
             <TableHeader>
@@ -315,7 +338,7 @@ function StipendReceiptSection() {
               ) : (history as StipendReceipt[]).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="py-6 text-center text-text-secondary">
-                    No stipend receipt history
+                    No salary review history
                   </TableCell>
                 </TableRow>
               ) : (
@@ -345,12 +368,34 @@ function StipendReceiptSection() {
         </div>
       </div>
 
+      {corrections.length ? (
+        <div>
+          <h2 className="mb-3 text-lg font-semibold">My correction requests</h2>
+          <div className="space-y-2">
+            {corrections.map((c) => (
+              <Card key={c.id}>
+                <CardContent className="space-y-1 p-4 text-sm">
+                  <p className="font-medium">
+                    {c.month}/{c.year} · {CORRECTION_LABEL[c.category]} ·{' '}
+                    <Badge variant="outline">{CORRECTION_STATUS[c.status]}</Badge>
+                    {c.impactAmount != null ? ` · ${formatPKR(Number(c.impactAmount))}` : ''}
+                  </p>
+                  <p className="whitespace-pre-wrap text-text-secondary">{c.details}</p>
+                  {c.hrNote ? <p>HR Operations: {c.hrNote}</p> : null}
+                  {c.decisionNote ? <p>Chairman: {c.decisionNote}</p> : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <ConfirmDialog
         open={!!acceptReceipt}
-        title="Accept Stipend"
+        title="Accept salary"
         description={
           acceptReceipt
-            ? `Confirm acceptance of ${formatPKR(acceptReceipt.amount)} stipend for ${acceptReceipt.month}/${acceptReceipt.year}`
+            ? `Confirm your salary of ${formatPKR(acceptReceipt.amount)} for ${acceptReceipt.month}/${acceptReceipt.year}. Later changes will only be notified to you.`
             : ''
         }
         confirmLabel="Accept"
@@ -368,28 +413,78 @@ function StipendReceiptSection() {
       <Dialog open={!!rejectReceipt} onOpenChange={(v) => !v && setRejectReceipt(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Stipend</DialogTitle>
+            <DialogTitle>Request a salary correction</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label>Rejection reason *</Label>
-            <Textarea
-              placeholder="I am rejecting this stipend because..."
-              rows={4}
-              value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-            />
-            <p className="text-xs text-text-secondary">
-              Minimum 10 characters required
-            </p>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>What is wrong?</Label>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as CorrectionCategory)}
+              >
+                <option value="OVERTIME">Overtime not added</option>
+                <option value="EXTRA_DUTY">Extra duty / off-day duty not added</option>
+                <option value="DEDUCTION">Wrong deduction</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+            {needsDates ? (
+              <div className="space-y-2">
+                <Label>{category === 'OVERTIME' ? 'Dates and hours *' : 'Dates *'}</Label>
+                {claims.map((c, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input
+                      type="date"
+                      className="h-9 flex-1 rounded-md border border-input bg-background px-2 text-sm"
+                      value={c.date}
+                      onChange={(e) => setClaims((cs) => cs.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))}
+                    />
+                    {category === 'OVERTIME' ? (
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.5"
+                        placeholder="Hours"
+                        className="h-9 w-24 rounded-md border border-input bg-background px-2 text-sm"
+                        value={c.hours}
+                        onChange={(e) => setClaims((cs) => cs.map((x, j) => (j === i ? { ...x, hours: e.target.value } : x)))}
+                      />
+                    ) : null}
+                    {claims.length > 1 ? (
+                      <Button variant="ghost" size="sm" onClick={() => setClaims((cs) => cs.filter((_x, j) => j !== i))}>
+                        ✕
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+                <Button variant="outline" size="sm" onClick={() => setClaims((cs) => [...cs, { date: '', hours: '' }])}>
+                  Add date
+                </Button>
+              </div>
+            ) : null}
+            <div className="space-y-1">
+              <Label>Details *</Label>
+              <Textarea
+                placeholder="Explain what should be corrected..."
+                rows={4}
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+              />
+              <p className="text-xs text-text-secondary">
+                Minimum 10 characters. HR Operations checks it, then the Chairman decides.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectReceipt(null)}>
               Cancel
             </Button>
             <Button
-              variant="destructive"
               disabled={
-                respondMutation.isPending || rejectionReason.trim().length < 10
+                respondMutation.isPending ||
+                rejectionReason.trim().length < 10 ||
+                (needsDates && !claimItems.length)
               }
               onClick={() =>
                 rejectReceipt &&
@@ -397,10 +492,12 @@ function StipendReceiptSection() {
                   receiptId: rejectReceipt.id,
                   accept: false,
                   rejectionReason: rejectionReason.trim(),
+                  category,
+                  claimItems: needsDates ? claimItems : undefined,
                 })
               }
             >
-              Reject Stipend
+              Send request
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,8 @@
 import api from '../axios'
 
-export type PayKind = 'INCENTIVE' | 'ALLOWANCE'
+export type PayKind = 'INCENTIVE' | 'ALLOWANCE' | 'DEDUCTION'
+/** Req 20.4: In-Charge loss / deduction rows all use this type id. */
+export const DEDUCTION_TYPE_ID = '00000000-0000-4000-8000-000000000000'
 
 export interface BoardRow {
   employeeId: string

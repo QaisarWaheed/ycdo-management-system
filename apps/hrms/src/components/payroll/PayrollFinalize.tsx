@@ -119,7 +119,7 @@ export function PayrollFinalizeDialog({
           <p className="text-muted-foreground">
             Verify by Finance locks every Pending slip of the branch (no more edits or automatic
             recalculation; changes then need a Founder-approved amendment). Processed moves every
-            Verified slip; Paid moves every Processed one.
+            slip the Founder approved and the Project Coordinator proof-read; Paid moves every Processed one.
           </p>
           {result ? (
             <div className="rounded-md border p-2">

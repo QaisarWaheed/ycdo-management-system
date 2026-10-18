@@ -9,7 +9,6 @@ import { JwtService } from '@nestjs/jwt';
 import { EmployeeStatus, User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
-import { accessWindowError } from '../../common/access-window.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { isPortalBlockedEmployeeStatus } from '../employees/status-effective.util';
 import {
@@ -251,17 +250,6 @@ export class AuthService {
 
   /** Suspended employees keep portal access; legacy rows may have isActive=false. */
   private async assertLoginAllowed(user: User, client?: string) {
-    const blocked = accessWindowError(
-      user,
-      buildEffectiveRoles(
-        user.role,
-        await this.prisma.userAdditionalRole.findMany({
-          where: { userId: user.id },
-          select: { role: true },
-        }),
-      ),
-    );
-    if (blocked) throw new UnauthorizedException(blocked);
     if (client === 'portal' && user.employeeId) {
       const employee = await this.prisma.employee.findUnique({
         where: { id: user.employeeId },

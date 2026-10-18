@@ -55,9 +55,6 @@ export interface UserAccessRecord {
   additionalRoles?: string[]
   managerScopes?: ManagerScopeView[]
   isActive: boolean
-  /** Req 20: access window (null = open). */
-  accessFrom?: string | null
-  accessUntil?: string | null
   branchId?: string | null
   employeeId?: string | null
   createdAt: string

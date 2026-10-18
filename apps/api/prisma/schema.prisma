@@ -237,7 +237,7 @@ model Employee {
   spouseContactNumber       String?
   photoUrl                  String?
   privatePhotoUrl           String?
-  hideProfilePhoto          Boolean                 @default(false)
+  hideProfilePhoto          Boolean                   @default(false)
   caste                     String?
   domicile                  String?
   currentAddress            String?
@@ -246,15 +246,15 @@ model Employee {
   tehsil                    String?
   policeStation             String?
   bloodGroup                String?
-  staffType                 StaffType               @default(NEW)
+  staffType                 StaffType                 @default(NEW)
   /// Reliever-only staff: no regular duty; skipped by auto-absent marking.
-  relieverOnly              Boolean                 @default(false)
+  relieverOnly              Boolean                   @default(false)
   dutyStartTime             String?
   dutyEndTime               String?
   /// Daily duty length in hours; half-hour steps (e.g. 6.5).
   dutyTotalHours            Float?
   /// Paid weekly rest: JS weekday 0=Sun … 6=Sat (Pakistan calendar). Empty = seven-day week.
-  weeklyOffWeekdays         Int[]                   @default([])
+  weeklyOffWeekdays         Int[]                     @default([])
   /// Monthly paid leave allowance. Null/omitted uses the runtime default of 2 days (not unlimited).
   monthlyAllowedLeaves      Int?
   /// Pakistan calendar date: LATE/UA on this day or later count toward the next Near/Due cycle after a closed suspension inquiry reinstatement. Null = full current month.
@@ -266,6 +266,7 @@ model Employee {
   maritalStatus             MaritalStatus?
   incentiveSuggestions      IncentiveSuggestion[]
   changeRequests            EmployeeChangeRequest[]
+  salaryCorrections         SalaryCorrectionRequest[]
 }
 
 enum MaritalStatus {
@@ -629,6 +630,7 @@ model PayrollEntry {
   allowances        Allowance[]
   stipendReceipt    StipendReceipt?
   amendmentRequests PayrollAmendmentRequest[]
+  reviewIssues      PayrollReviewIssue[]
 
   @@unique([stipendRecordId, month, year])
 }
@@ -705,6 +707,10 @@ enum PayrollStatus {
   PENDING
   /// Req 12: checked by Finance; locked (no edits, no automatic recalculation) until a Founder-approved amendment reopens it.
   VERIFIED
+  /// Req 20.6: final approval by the Founder / CEO.
+  FOUNDER_APPROVED
+  /// Req 20: proof-read and verified by the Project Coordinator.
+  PC_VERIFIED
   PROCESSED
   PAID
 }
@@ -1377,9 +1383,6 @@ model User {
   branchId        String?
   isActive        Boolean            @default(true)
   createdAt       DateTime           @default(now())
-  /// Req 20: access only from accessFrom to accessUntil (null = open). Executives are exempt.
-  accessFrom      DateTime?
-  accessUntil     DateTime?
   lastLogin       DateTime?
   /// Set only on successful Employee Portal login (not HRMS).
   lastPortalLogin DateTime?
@@ -1415,6 +1418,7 @@ model User {
   inquiriesAsOpenApprover      Inquiry[]                    @relation("InquiryOpenApprover")
   inquiryOpenSubmitted         Inquiry[]                    @relation("InquiryOpenSubmittedBy")
   inquiryOpenDecided           Inquiry[]                    @relation("InquiryOpenDecidedBy")
+  activityExtensions           ActivityExtension[]          @relation("ActivityExtensionUser")
 }
 
 model LoginOtpChallenge {
@@ -1574,6 +1578,8 @@ enum UserRole {
   PAYROLL_OFFICER
   PROGRESS_OFFICER
   EMPLOYEE
+  /// Req 20: proof-reads salaries after Founder approval.
+  PROJECT_COORDINATOR
 }
 
 // ─── NOTIFICATIONS ────────────────────────────────────────
@@ -2067,6 +2073,114 @@ enum EmployeeChangeStatus {
   REJECTED
 }
 
+/// Req 20.1–20.3: an employee's salary correction request.
+/// Employee → HR Operations (accept with corrections / reject) → Chairman (final) → applied.
+model SalaryCorrectionRequest {
+  id             String                 @id @default(uuid())
+  employeeId     String
+  payrollEntryId String
+  month          Int
+  year           Int
+  /// OVERTIME / EXTRA_DUTY / DEDUCTION / OTHER
+  category       String
+  details        String
+  /// Claimed dates: [{date, hours?, note?}]
+  claimItems     Json?
+  status         SalaryCorrectionStatus @default(SUBMITTED)
+  /// HR Operations corrections: [{kind: OVERTIME|EXTRA_DUTY|ADD|DEDUCT, hours?, days?, amount, note}]
+  hrLines        Json?
+  hrNote         String?
+  hrById         String?
+  hrAt           DateTime?
+  impactAmount   Decimal?               @db.Decimal(10, 2)
+  decisionNote   String?
+  decidedById    String?
+  decidedAt      DateTime?
+  appliedEntryId String?
+  createdAt      DateTime               @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([employeeId, year, month])
+}
+
+enum SalaryCorrectionStatus {
+  SUBMITTED
+  HR_REJECTED
+  /// Accepted by HR Operations and forwarded to the Chairman.
+  FORWARDED
+  CHAIRMAN_REJECTED
+  APPLIED
+}
+
+/// Req 20.5: Finance sends a correction to the person who made the entry; Req 20: PC proof-reading issues to the Founder.
+model PayrollReviewIssue {
+  id             String              @id @default(uuid())
+  payrollEntryId String
+  kind           PayrollReviewKind
+  raisedById     String
+  /// FINANCE_CORRECTION: who must correct it.
+  assignedToId   String?
+  /// INCENTIVE / ALLOWANCE / DEDUCTION line it is about (optional).
+  lineKind       String?
+  lineId         String?
+  note           String
+  status         PayrollReviewStatus @default(OPEN)
+  response       String?
+  respondedById  String?
+  respondedAt    DateTime?
+  createdAt      DateTime            @default(now())
+
+  payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+
+  @@index([status, kind])
+  @@index([assignedToId, status])
+}
+
+enum PayrollReviewKind {
+  FINANCE_CORRECTION
+  PC_PROOF_READING
+}
+
+enum PayrollReviewStatus {
+  OPEN
+  /// Corrected / reviewed, back with Finance (correction) or the PC (proof-reading).
+  RESPONDED
+  CLOSED
+}
+
+/// Req 20.7: payroll activities that are open only in a monthly time window (PKT).
+enum PayrollActivity {
+  /// Employee reviews last month's salary: 1st 00:00 → 3rd 12:00.
+  EMPLOYEE_SALARY_REVIEW
+  /// HR Operations processes salary suggestions: 3rd 12:00 → 5th 12:00.
+  HR_SALARY_CORRECTIONS
+  /// Department In-Charges suggest incentives / allowances / deductions: 1st 00:00 → 5th 12:00.
+  DEPT_INCHARGE_SUGGESTIONS
+  /// Finance verifies and amends salaries: 5th 12:00 → 7th end of day.
+  FINANCE_VERIFICATION
+  /// Project Coordinator proof-reads Founder-approved salaries: 7th 00:00 → 10th end of day.
+  PC_PROOF_READING
+}
+
+/// Req 20.7: IT gives one user extra time for one activity.
+model ActivityExtension {
+  id          String          @id @default(uuid())
+  userId      String
+  activity    PayrollActivity
+  startsAt    DateTime
+  endsAt      DateTime
+  reason      String
+  grantedById String
+  revokedAt   DateTime?
+  createdAt   DateTime        @default(now())
+
+  user User @relation("ActivityExtensionUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, activity])
+}
+
 /// Req 7: a suggested incentive / allowance amount for one employee, one type, one month.
 /// Department Heads / Accounts suggest; Chairman / President / Founder approve, amend or reject.
 model IncentiveSuggestion {
@@ -2097,6 +2211,8 @@ model IncentiveSuggestion {
 enum PaySuggestionKind {
   INCENTIVE
   ALLOWANCE
+  /// Req 20.4: a loss / deduction suggested by the Department In-Charge (typeId = 'DEDUCTION').
+  DEDUCTION
 }
 
 enum PaySuggestionStatus {

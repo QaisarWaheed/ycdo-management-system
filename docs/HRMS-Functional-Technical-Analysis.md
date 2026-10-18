@@ -86,7 +86,7 @@ Exactly five real scheduled jobs exist in the backend (confirmed by direct code 
 | `*/15 * * * *` (every 15 min) | `markShiftStartAbsent` | `attendance/shift-absent.scheduler.ts` | Creates `UNMARKED` attendance placeholders for employees whose shift just started and who have no punch yet (skips anyone on approved leave); `ABSENT` instead for 24-hour-shift staff. |
 | `*/15 * * * *` (every 15 min) | `markUninformedAbsent` | `attendance/shift-absent.scheduler.ts` | Escalates any still-unpunched `UNMARKED`/`ABSENT` row to `UNINFORMED_ABSENT` once **3 hours** have passed since shift start, and applies the associated payroll deduction / possible auto-suspension. |
 | `0 * * * *` (hourly) | `autoRejectExpiredRelieverRequests` | `leave/reliever.scheduler.ts` | Auto-rejects a reliever request that's sat `PENDING` for more than 8 hours (HR-assigned requests are exempt). |
-| `0 * * * *` (hourly) | `autoAcceptExpiredReceipts` | `stipend-receipts/stipend-receipt.scheduler.ts` | Auto-accepts a stipend/payslip receipt whose 48-hour employee-response deadline has passed. |
+| `*/5 * * * *` | `autoAccept` | `stipend-receipts/stipend-receipt.scheduler.ts` | Auto-accepts a salary review whose deadline (3rd, 12:00 PM PKT) has passed (Req 20). |
 | `0 9 3 * *` (09:00 on the 3rd of each month) | `generateMonthlyStipendReceipts` | `stipend-receipts/stipend-receipt.scheduler.ts` | Creates that month's payslip-acceptance receipts for eligible employees. |
 | `0 * * * *` (hourly) | `autoEscalateShowCauseLetters` | `letters/show-cause.scheduler.ts` | Auto-suspends any employee who hasn't replied to a Show Cause letter within 48 hours. |
 
@@ -487,7 +487,7 @@ The request → approve/reject workflow (`AdvanceLoanRequest`) is functionally c
 ### 14.6 Payslip / receipt workflow
 No PDF library is used for payslips specifically — the on-screen payslip is rendered as a React component and printed via the browser's own print-to-PDF (`window.print()`); a separate bulk Excel export exists for whole-branch reports (`exceljs`). Several printed line items (`providentFund`, `tax`, `auditDifference`) are **always hardcoded to zero** — inherited from a legacy paper-slip layout, not computed from any real data.
 
-A **payslip acceptance workflow** (`StipendReceipt`) runs alongside: receipts are generated monthly (cron, 3rd of the month) or manually, employees have **48 hours** to Accept/Reject in the Portal, and unanswered receipts are **auto-accepted** by the hourly cron once the deadline passes.
+A **payslip acceptance workflow** (`StipendReceipt`) runs alongside: reviews are sent monthly (cron, 1st of the month at 00:05 after the payroll rebuild) or manually, employees review until the **3rd, 12:00 PM** (Req 20, PART 33) in the Portal, and unanswered receipts are **auto-accepted** by a 5-minute cron once the deadline passes.
 
 ### 14.7 Finance module
 `apps/api/src/modules/finance` is a confirmed, explicitly-labeled **scaffold** ("Domain logic... will land here") — two read-only stub endpoints, no models, no write paths, no frontend page anywhere. All actual money movement lives in Payroll/Stipend-Receipts/Incentives/Advance-Loan instead.
@@ -1070,9 +1070,8 @@ Client-approved decisions are listed under each requirement. "Executives" = Chai
 - On reversal the fine row is **removed** from Pending / Verified / Processed slips and net pay goes back up — the slip shows only the remaining fines (no "reversal" line). A **Paid** slip stays as paid and the amount is **refunded on the next open month** ("Refund of reversed fine (M/YYYY)"); if no open month exists yet, Finance is notified to refund it.
 - Backend history kept: audit `FINE_REMOVED_BY_LETTER_REVERSAL` / `FINE_REFUNDED_AFTER_PAID` and payroll change log `FINE_REVERSED`.
 
-### 32.9 Req 20 — Automatic access expiry
-- `User.accessFrom / accessUntil` (migration `20261021090000_user_access_window`). IT / Super Admin set "Access period" (from date-time → until date-time) on Login Access.
-- Login is refused outside the window, and **every API request** checks it (re-read at most every 30 s), so an already logged-in user loses access within 30 s after "until". **Executives (Chairman, President, Founder) and Super Admin are exempt.** Audit `SET_ACCESS_WINDOW`.
+### 32.9 Req 20 — (replaced)
+- The login-expiry version (`User.accessFrom / accessUntil`) was **removed** (migration `20261022090000_drop_user_access_window`). Req 20 is now the monthly payroll workflow with **activity** time windows — see PART 33.
 
 ### 32.10 Testing scenarios (expected results)
 | Scenario | Expected |
@@ -1086,4 +1085,49 @@ Client-approved decisions are listed under each requirement. "Executives" = Chai
 | Uniform fine letter sent for a verified month | Fine deducted in next open month |
 | IT reverses fine on Processed slip | Row removed, net +amount, audit row kept |
 | IT reverses fine on Paid slip | Paid slip unchanged, refund on next open month |
-| User past accessUntil | Login refused; open session gets 401 within 30 s |
+
+---
+
+## PART 33 — Req 20: Monthly payroll workflow and activity time windows (October 2026)
+
+All times are Pakistan time. Each window is about **last month's** salary. Windows close an **activity only**; login stays. Enforced on the backend (`ActivityWindowsService.assertOpen`). **Chairman, President, Founder and Super Admin have no time limit.**
+
+### 33.1 Monthly calendar
+| Day / time | Who | What |
+|---|---|---|
+| 1st 00:05 | System | Rebuilds last month's payroll and sends each employee a salary review (`StipendReceipt`, deadline 3rd 12:00) |
+| 1st 00:00 → 3rd 12:00 | Employee (Portal) | Accept, or **Request correction** (Overtime with dates + hours / Extra duty with dates / Wrong deduction / Other + details). No answer → auto-accepted (checked every 5 min). After acceptance, later changes only send a notification. |
+| 1st 00:00 → 5th 12:00 | Department In-Charge | Incentive / allowance suggestions and **Loss / deduction** rows (own department only) on Incentive Management |
+| 3rd 12:00 → 5th 12:00 | HR Operations | Salary Workflow → Salary suggestions: verify, price lines (OT hours × hourly, extra days × daily, ± amounts) and forward to the Chairman, or reject with a note |
+| No deadline | Chairman | Approve / reject one, selected or all (impact shown). Approved lines go on the salary as allowances / deductions. If the slip was already verified (unpaid) it goes back to Pending and Finance is told; if paid, the lines go to the next open month. |
+| 5th 12:00 → 8th 00:00 | Finance (Payroll Officer) | Verify each slip (locks it). **Send correction** to the person who made an entry; they fix it and answer from Salary Workflow → My corrections. After the window Finance cannot edit last month's slips. |
+| From the 7th | Founder | Salary Workflow → Founder approval (select / approve; name opens the profile; appointment letter button) |
+| 7th 00:00 → 11th 00:00 | Project Coordinator (new role) | Proof-reading: verify, or raise an issue → Founder resolves (no change) or reopens the slip for Finance → verify → Founder → PC again |
+| After PC verified | Finance | Processed → Paid |
+
+Status order: **Pending → Verified → Founder Approved → PC Verified → Processed → Paid**. Processed is refused before PC Verified. The generic status endpoints cannot set Founder Approved / PC Verified.
+
+### 33.2 IT extensions
+Salary Workflow → Time extensions (IT Admin / Super Admin): user, activity, from, until, reason. Revocable. Audited (`ACTIVITY_EXTENSION_GRANTED / REVOKED`).
+
+### 33.3 Removed
+- Login access period (accessFrom / accessUntil) — dropped.
+- Old 48-hour stipend receipt rule — replaced by the 3rd 12:00 deadline.
+
+### 33.4 Technical
+- Migrations: `20261022090000_drop_user_access_window`, `20261022100000_activity_windows` (enum `PayrollActivity`, model `ActivityExtension`), `20261022110000_payroll_monthly_workflow` (role `PROJECT_COORDINATOR`, statuses `FOUNDER_APPROVED` / `PC_VERIFIED`, `PaySuggestionKind.DEDUCTION`, models `SalaryCorrectionRequest`, `PayrollReviewIssue`).
+- API: `/activity-windows` (me, extensions), `/salary-corrections` (list, mine, :id/rate, :id/hr, chairman), `/payroll-workflow` (entries, founder-approve, pc-verify, issues, assignees).
+- HRMS: `/payroll-workflow` page (tabs by role); Payroll page "Send correction"; Payroll tab "Salary Reviews". Portal: My Payroll salary review + "My correction requests".
+
+### 33.5 Testing scenarios (expected results)
+| Scenario | Expected |
+|---|---|
+| Employee requests OT correction without dates | Refused |
+| HR Ops prices 3 OT hours on 30,000 basic, 30 days, 8 h | 375 impact |
+| HR Ops acts on the 6th without extension | Refused (window closed) |
+| Chairman approves a request on a Verified slip | Lines added, slip back to Pending, Finance notified |
+| Mark Processed on a Founder Approved slip | Refused |
+| PC verifies a slip with an open issue | Skipped with reason |
+| Founder reopens a PC issue | Slip Pending, Finance notified |
+| Finance edits last month's deduction on the 9th | Refused unless IT extension |
+| Chairman acts any day | Allowed (exempt) |

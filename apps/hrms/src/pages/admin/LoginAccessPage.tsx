@@ -1,4 +1,3 @@
-import { AccessWindowDialog, accessWindowLabel } from '@/components/admin/AccessWindowDialog'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -571,7 +570,6 @@ function CreateSystemLoginDialog({
 }
 
 export function LoginAccessPage() {
-  const [accessWindowUser, setAccessWindowUser] = useState<UserAccessRecord | null>(null)
   const queryClient = useQueryClient()
   const { hasRole } = useAuth()
   const isSuperAdmin = hasRole(['SUPER_ADMIN'])
@@ -959,13 +957,6 @@ export function LoginAccessPage() {
                       >
                         {record.isActive ? 'Active' : 'Disabled'}
                       </Badge>
-                      {accessWindowLabel(record) ? (
-                        <div
-                          className={`mt-1 text-xs ${accessWindowLabel(record)!.expired ? 'text-red-600' : 'text-text-secondary'}`}
-                        >
-                          {accessWindowLabel(record)!.text}
-                        </div>
-                      ) : null}
                     </TableCell>
                     <TableCell>
                       {password ? (
@@ -1009,9 +1000,6 @@ export function LoginAccessPage() {
                           onClick={() => toggleMutation.mutate(record.id)}
                         >
                           {record.isActive ? 'Disable' : 'Enable'}
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => setAccessWindowUser(record)}>
-                          Access period
                         </Button>
                         {isSuperAdmin && record.employeeId && (
                           <Button
@@ -1063,9 +1051,6 @@ export function LoginAccessPage() {
         data={waShares}
         isLoading={waLoading}
       />
-      {accessWindowUser ? (
-        <AccessWindowDialog user={accessWindowUser} onClose={() => setAccessWindowUser(null)} />
-      ) : null}
     </div>
   )
 }

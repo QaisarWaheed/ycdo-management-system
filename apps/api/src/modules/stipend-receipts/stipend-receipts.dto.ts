@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -38,6 +40,16 @@ export class RespondStipendDto {
   @IsOptional()
   @IsString()
   rejectionReason?: string;
+
+  /** Req 20.1: correction request — OVERTIME / EXTRA_DUTY / DEDUCTION / OTHER. */
+  @IsOptional()
+  @IsIn(['OVERTIME', 'EXTRA_DUTY', 'DEDUCTION', 'OTHER'])
+  category?: string;
+
+  /** Claimed dates, e.g. overtime: [{date: '2026-10-12', hours: 3}]. */
+  @IsOptional()
+  @IsArray()
+  claimItems?: Array<{ date: string; hours?: number; note?: string }>;
 }
 
 export class StipendReceiptQueryDto {
