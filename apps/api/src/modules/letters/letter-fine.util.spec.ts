@@ -22,6 +22,8 @@ describe('letter fines', () => {
     { finePreset: 'ABSENT', fineAmount: '1000' },
     { finePreset: 'LATE_DEDUCTION', fineAmount: '1000' },
     { reversed: true, fineAmount: '500' },
+    // Attendance-generated fine (missing checkout / late): owned by the attendance Card.
+    { fineAmount: 'Rs. 1774.19', deductionMonth: 'August 2026', incidentDate: '2026-08-16', fineReason: 'checkout' },
     { fineAmount: '-1' }, { fineAmount: 'NaN' }, { fineAmount: '0' },
     { fineAmount: '9999999999' }, { fineAmount: '500', deductionMonth: 'unknown month' },
   ])('does not create invalid or duplicate policy charges: %j', variables => {

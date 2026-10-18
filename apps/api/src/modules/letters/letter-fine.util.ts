@@ -9,7 +9,11 @@ const PRESET_FINE_REASON: Record<string, FineReason> = { UNIFORM: FineReason.NO_
 type FineLetter = { id: string; employeeId: string; letterType: LetterType; generatedAt: Date; letterNo?: string | null; variables: unknown; content?: unknown };
 function manualFineVariables(letter: FineLetter) {
   const vars = { ...((letter.content ?? {}) as Record<string, unknown>), ...((letter.variables ?? {}) as Record<string, unknown>) };
+  // Attendance letters (late / missing / early checkout, absence) always carry
+  // incidentDate; their money is owned by the attendance Card, not a letter fine.
+  const attendanceOwned = !!vars.incidentDate && !vars.finePreset;
   return (letter.letterType === LetterType.FINE || letter.letterType === LetterType.EXPLANATION_FINE) &&
+    !attendanceOwned &&
     !vars.disciplineCategory && !vars.inquiryId && !vars.reversed && !vars.reversedDueToShortLeave &&
     !['ABSENT', 'LATE_DEDUCTION'].includes(String(vars.finePreset)) ? vars : null;
 }
