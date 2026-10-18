@@ -11,7 +11,11 @@ function manualFineVariables(letter: FineLetter) {
   const vars = { ...((letter.content ?? {}) as Record<string, unknown>), ...((letter.variables ?? {}) as Record<string, unknown>) };
   // Attendance letters (late / missing / early checkout, absence) always carry
   // incidentDate; their money is owned by the attendance Card, not a letter fine.
-  const attendanceOwned = !!vars.incidentDate && !vars.finePreset;
+  // Older attendance letters have no incidentDate but always say "one-day
+  // salary deduction" (یک روزہ تنخواہ کی کٹوتی) in the generated reason.
+  const attendanceOwned =
+    !vars.finePreset &&
+    (!!vars.incidentDate || /یک روزہ تنخواہ کی کٹوتی/.test(String(vars.fineReason ?? '')));
   return (letter.letterType === LetterType.FINE || letter.letterType === LetterType.EXPLANATION_FINE) &&
     !attendanceOwned &&
     !vars.disciplineCategory && !vars.inquiryId && !vars.reversed && !vars.reversedDueToShortLeave &&
