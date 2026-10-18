@@ -446,6 +446,9 @@ export interface Letter {
   status?: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'SENT' | 'REVERSED'
   fileUrl?: string | null
   letterNo?: string | null
+  /** Req 13: scanned signed appointment form. */
+  signedScanUrl?: string | null
+  signedScanFileName?: string | null
   templateCode?: string | null
   variables?: Record<string, unknown> | null
   templateVersion?: number | null
@@ -692,7 +695,8 @@ export type AttendanceStatus =
   | 'SHORT_LEAVE'
   | 'HOLIDAY'
 
-export type PayrollStatus = 'PENDING' | 'PROCESSED' | 'PAID'
+/** Req 12: VERIFIED = checked by Finance and locked. */
+export type PayrollStatus = 'PENDING' | 'VERIFIED' | 'PROCESSED' | 'PAID'
 
 export type DeductionType =
   | 'LATE_ARRIVAL'
@@ -823,6 +827,7 @@ export interface PayrollSummary {
   totalNetStipend: number
   byStatus: {
     PENDING: number
+    VERIFIED?: number
     PROCESSED: number
     PAID: number
   }
@@ -1013,6 +1018,9 @@ export interface DisciplinaryAction {
 export interface Inquiry {
   id: string
   disciplinaryActionId: string
+  /** Req 9: suspension asked from inside the inquiry. */
+  suspendStatus?: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | null
+  suspendFrom?: string | null
   startedAt: string
   deadlineAt: string
   outcome?: string | null

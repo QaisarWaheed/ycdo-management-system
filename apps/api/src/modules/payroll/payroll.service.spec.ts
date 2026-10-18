@@ -639,8 +639,8 @@ describe('PayrollService.computeHourlyBreakdown — mid-month StipendRecord segm
 
     const source = fs.readFileSync(path.join(__dirname, 'payroll.service.ts'), 'utf8');
     expect(source).toMatch(/if\s*\(entry && entry.status !== PayrollStatus\.PENDING\)\s*return entry;/);
-    const processedOrPaidGuard =
-      /status === PayrollStatus\.PROCESSED \|\|[\s\S]{0,80}status === PayrollStatus\.PAID/g;
+    // Verified (Req 12), Processed and Paid are all locked: anything not Pending.
+    const processedOrPaidGuard = /status !== PayrollStatus\.PENDING/g;
     const guardCount = (source.match(processedOrPaidGuard) ?? []).length;
     expect(guardCount).toBeGreaterThanOrEqual(2);
   });

@@ -138,6 +138,6 @@ describe('Accounts cannot cut pay without approval', () => {
       {} as never,
     );
     await service.approve('r1', founder);
-    expect(allowances.end).toHaveBeenCalledWith('a1', '2026-10', founder);
+    expect(allowances.end).toHaveBeenCalledWith('a1', '2026-10', founder, undefined);
   });
 });

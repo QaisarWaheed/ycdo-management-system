@@ -1,3 +1,4 @@
+import { SignedScanUploadButton } from '@/components/letters/SignedScan'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
@@ -325,6 +326,9 @@ export function EditDraftLetterDialog({
       >
         {status === 'SENT' ? 'Download / Print Final' : 'Print Draft'}
       </Button>
+      {canSubmitAppointment ? (
+        <SignedScanUploadButton letterId={active!.id} uploaded={!!active?.signedScanUrl} />
+      ) : null}
       {canSubmitAppointment ? (
         <Button
           type="button"

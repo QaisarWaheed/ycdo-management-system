@@ -217,9 +217,10 @@ export class AdditionalWorkingDaysService {
   }
 
   /**
-   * Point 20 workflow. PENDING: HR Operations / Super Admin approve, or reject
-   * (goes to Chairman as ESCALATED). ESCALATED: Chairman / Super Admin approve
-   * or reject (final). Whoever entered the item can never review it.
+   * Two-level workflow (Phase 2 Req 3). PENDING: HR Operations / Super Admin
+   * approve (goes to Chairman as ESCALATED) or reject (final). ESCALATED:
+   * Chairman / Super Admin approve or reject (final). Only APPROVED is paid.
+   * Whoever entered the item can never review it.
    */
   async reviewExtraTime(
     kind: 'day' | 'overtime',
@@ -269,15 +270,15 @@ export class AdditionalWorkingDaysService {
     if (!hasAnyRole(user.roles, reviewers)) {
       throw new ForbiddenException(
         escalated
-          ? 'Only the Chairman can decide an escalated entry'
+          ? 'Only the Chairman can give the final decision on this entry'
           : 'Only HR Operations can approve or reject this entry',
       );
     }
 
-    const status = approve
-      ? ExtraTimeStatus.APPROVED
+    const status = !approve
+      ? ExtraTimeStatus.REJECTED
       : escalated
-        ? ExtraTimeStatus.REJECTED
+        ? ExtraTimeStatus.APPROVED
         : ExtraTimeStatus.ESCALATED;
     const now = new Date();
     const reviewNote = note?.trim() || null;

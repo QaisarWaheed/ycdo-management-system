@@ -30,10 +30,10 @@ describe('payroll reopen for correction', () => {
     );
   });
 
-  it('normal flow unchanged', () => {
-    expect(
-      check(PayrollStatus.PENDING, PayrollStatus.PROCESSED, false),
-    ).not.toThrow();
+  it('Req 12: Pending → Verified (Finance) → Processed; no skipping verification', () => {
+    expect(check(PayrollStatus.PENDING, PayrollStatus.VERIFIED, false)).not.toThrow();
+    expect(check(PayrollStatus.VERIFIED, PayrollStatus.PROCESSED, false)).not.toThrow();
+    expect(check(PayrollStatus.PENDING, PayrollStatus.PROCESSED, false)).toThrow(/Verify by Finance/);
     expect(check(PayrollStatus.PENDING, PayrollStatus.PAID, true)).toThrow();
   });
 });

@@ -1,3 +1,4 @@
+import { SignedScanUploadButton } from '@/components/letters/SignedScan'
 import { PAGE_SIZE } from '@/constants/pagination'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -1647,9 +1648,22 @@ export function LettersPage() {
                             )}
                             {canSubmitAppointment(letter) && (
                               <DropdownMenuItem
+                                onSelect={(e) => e.preventDefault()}
+                                className="p-0"
+                              >
+                                <SignedScanUploadButton
+                                  letterId={letter.id}
+                                  uploaded={!!letter.signedScanUrl}
+                                />
+                              </DropdownMenuItem>
+                            )}
+                            {canSubmitAppointment(letter) && (
+                              <DropdownMenuItem
+                                disabled={!letter.signedScanUrl}
                                 onClick={() => setSubmitLetter(letter)}
                               >
                                 Submit for Approval
+                                {!letter.signedScanUrl ? ' (upload signed scan first)' : ''}
                               </DropdownMenuItem>
                             )}
                             {canApproveAppointment &&

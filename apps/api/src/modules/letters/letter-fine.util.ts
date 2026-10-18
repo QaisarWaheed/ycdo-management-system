@@ -49,10 +49,21 @@ export async function applyLetterFine(tx: Prisma.TransactionClient, letter: Fine
   const entries = await tx.payrollEntry.findMany({ where: {
     month: fine.month, year: fine.year, stipendRecord: { employeeId: letter.employeeId },
   }, orderBy: { createdAt: 'desc' } });
-  if (entries.some(row => row.status !== 'PENDING')) throw new BadRequestException('Fine month payroll is finalized. Reopen it or select an unpaid deduction month.');
-  const entry = entries[0];
+  // Req 18: the fine month is already verified / processed / paid → the fine
+  // is taken from the next open month's salary (payroll rebuild does the same
+  // when that month's slip does not exist yet).
+  let entry = entries[0];
+  let description = fine.description;
+  if (entries.some(row => row.status !== 'PENDING')) {
+    const after = fine.year * 12 + fine.month;
+    entry = (await tx.payrollEntry.findMany({
+      where: { status: 'PENDING', stipendRecord: { employeeId: letter.employeeId } },
+      orderBy: [{ year: 'asc' }, { month: 'asc' }],
+    })).find(row => row.year * 12 + row.month > after);
+    description = `${fine.description} (fine for ${fine.month}/${fine.year})`;
+  }
   if (!entry) return;
-  await tx.payrollDeduction.create({ data: { payrollEntryId: entry.id, reason: fine.reason, fineReason: fine.fineReason, amount: fine.amount, description: fine.description } });
+  await tx.payrollDeduction.create({ data: { payrollEntryId: entry.id, reason: fine.reason, fineReason: fine.fineReason, amount: fine.amount, description } });
   await tx.payrollEntry.update({ where: { id: entry.id }, data: {
     totalDeductions: { increment: fine.amount }, netStipend: { decrement: fine.amount },
   } });

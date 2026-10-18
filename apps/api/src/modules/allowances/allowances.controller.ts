@@ -160,7 +160,7 @@ export class AllowancesController {
         {
           kind: PayChangeKind.ALLOWANCE,
           employeeId,
-          payload: { action: 'END', allowanceId: id, endMonth: dto.endMonth },
+          payload: { action: 'END', allowanceId: id, endMonth: dto.endMonth, endDay: dto.endDay },
           summary,
           reason: summary,
           approverTarget: dto.approverTarget,
@@ -168,6 +168,6 @@ export class AllowancesController {
         user,
       );
     }
-    return this.allowances.end(id, dto.endMonth, user);
+    return this.allowances.end(id, dto.endMonth, user, dto.endDay);
   }
 }

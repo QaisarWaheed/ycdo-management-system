@@ -101,6 +101,38 @@ export const disciplinaryApi = {
     api.post(`/disciplinary/inquiries/${id}/open/approve`, { note }),
   rejectInquiryOpen: (id: string, reason: string) =>
     api.post(`/disciplinary/inquiries/${id}/open/reject`, { reason }),
+  /** Req 9: Suspend inside an inquiry (executives apply at once; others ask an executive). */
+  suspendFromInquiry: (
+    id: string,
+    data: { suspendFrom: string; reason: string; approverUserId?: string },
+  ) => api.post<unknown, { status: string }>(`/disciplinary/inquiries/${id}/suspend`, data),
+  inquirySuspendApprovers: () =>
+    api.get<unknown, Array<{ id: string; displayName: string; eligibleRole: string }>>(
+      '/disciplinary/inquiry-suspend-approvers',
+    ),
+  myPendingInquirySuspends: () =>
+    api.get<
+      unknown,
+      Array<{
+        id: string
+        suspendFrom: string
+        suspendReason: string | null
+        suspendRequestedAt: string
+        disciplinaryAction: {
+          reason: string
+          employee: {
+            id: string
+            fullName: string
+            employeeCode: string | null
+            currentBranch: { name: string } | null
+          }
+        }
+      }>
+    >('/disciplinary/inquiry-suspend-approvals/my-pending'),
+  approveInquirySuspend: (id: string, note?: string) =>
+    api.post(`/disciplinary/inquiries/${id}/suspend/approve`, { note }),
+  rejectInquirySuspend: (id: string, reason: string) =>
+    api.post(`/disciplinary/inquiries/${id}/suspend/reject`, { reason }),
 }
 
 export type SuspensionApprovalRequest = {

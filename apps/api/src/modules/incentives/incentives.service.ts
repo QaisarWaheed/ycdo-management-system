@@ -15,6 +15,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { monthCoverage } from '../allowances/package-allowances.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import {
   CreateIncentiveDto,
@@ -57,6 +58,8 @@ export class IncentivesService {
       dto.employeeId,
       async (tx) => {
         let planId: string | undefined;
+        const startDay = dto.startDay && dto.startDay > 1 ? dto.startDay : null;
+        const endDay = duration === IncentiveDuration.PERMANENT ? null : (dto.endDay ?? null);
         if (duration !== IncentiveDuration.ONE_TIME) {
           // Point 21: later months are added when their payroll is generated.
           const end =
@@ -74,6 +77,8 @@ export class IncentivesService {
               startYear: dto.year,
               endMonth: end?.month ?? null,
               endYear: end?.year ?? null,
+              startDay,
+              endDay,
               addedBy: addedById,
             },
           });
@@ -89,15 +94,35 @@ export class IncentivesService {
                 amount: dto.amount,
                 reason,
                 duration,
-                start: `${dto.month}/${dto.year}`,
-                end: end ? `${end.month}/${end.year}` : null,
+                start: `${startDay ?? 1}/${dto.month}/${dto.year}`,
+                end: end ? `${endDay ?? 'end'}/${end.month}/${end.year}` : null,
               },
             },
           });
         }
+        // Req 4: the first month pays only its calendar days from startDay
+        // (and up to endDay when it is also the last month).
+        const startKey = monthIndex(dto.year, dto.month);
+        const lastKey =
+          duration === IncentiveDuration.ONE_TIME
+            ? startKey
+            : duration === IncentiveDuration.MONTHS
+              ? startKey + dto.months! - 1
+              : null;
+        const coverage = monthCoverage(
+          { startKey, startDay, endKey: lastKey, endDay },
+          dto.year,
+          dto.month,
+        );
         return addIncentiveRow(
           tx,
-          { ...dto, reason, typeId: dto.typeId ?? null, planId },
+          {
+            ...dto,
+            amount: Math.round(dto.amount * coverage),
+            reason,
+            typeId: dto.typeId ?? null,
+            planId,
+          },
           addedById,
         );
       },
@@ -161,6 +186,7 @@ export class IncentivesService {
           }
           data.endMonth = dto.endMonth;
           data.endYear = dto.endYear;
+          data.endDay = null;
           await this.removePlanIncentivesAfter(tx, plan.id, last, actingUserId);
         }
         const updated = await tx.incentivePlan.update({ where: { id }, data });
@@ -891,11 +917,26 @@ export async function materializeIncentivePlans(
   const entry = await findIncentivePayrollEntry(tx, employeeId, month, year);
   if (!entry || entry.status !== PayrollStatus.PENDING) return 0;
   for (const plan of plans) {
+    // Req 4: a plan ending mid-month pays that month's calendar days only.
+    const coverage = monthCoverage(
+      {
+        startKey: monthIndex(plan.startYear, plan.startMonth),
+        startDay: plan.startDay,
+        endKey:
+          plan.endYear != null && plan.endMonth != null
+            ? monthIndex(plan.endYear, plan.endMonth)
+            : null,
+        endDay: plan.endDay,
+      },
+      year,
+      month,
+    );
+    if (coverage <= 0) continue;
     await addIncentiveRow(
       tx,
       {
         employeeId,
-        amount: Number(plan.amount),
+        amount: Math.round(Number(plan.amount) * coverage),
         reason: plan.reason,
         typeId: plan.typeId,
         month,

@@ -147,6 +147,7 @@ import { itemizePayrollEntries } from './payroll-itemize.util';
 import { materializeIncentivePlans } from '../incentives/incentives.service';
 import {
   computePackageAllowanceLines,
+  allowanceCoverage,
   isActiveInMonth,
   monthStartUtc,
   usesAllowanceTable,
@@ -276,8 +277,7 @@ export class PayrollService {
 
     if (
       existingActiveEntry &&
-      (existingActiveEntry.status === PayrollStatus.PROCESSED ||
-        existingActiveEntry.status === PayrollStatus.PAID)
+      existingActiveEntry.status !== PayrollStatus.PENDING
     ) {
       await this.pruneDuplicateOpenActivePayrollEntries(
         dto.employeeId,
@@ -479,8 +479,7 @@ export class PayrollService {
       }
 
       if (
-        existing.status === PayrollStatus.PAID ||
-        existing.status === PayrollStatus.PROCESSED
+        existing.status !== PayrollStatus.PENDING
       ) {
         results.push({
           stipendRecordId: stipendRecord.id,
@@ -912,7 +911,7 @@ export class PayrollService {
     }
 
     const unpaidWhere: Prisma.PayrollEntryWhereInput = {
-      status: { in: [PayrollStatus.PENDING, PayrollStatus.PROCESSED] },
+      status: { in: [PayrollStatus.PENDING, PayrollStatus.VERIFIED, PayrollStatus.PROCESSED] },
       ...(dto.allUnpaidMonths ? {} : { month: dto.month, year: dto.year }),
       ...(dto.branchId
         ? {
@@ -1517,7 +1516,7 @@ export class PayrollService {
             year: dto.year,
             stipendRecord: { employeeId: dto.employeeId },
             stipendRecordId: { not: stipendRecord.id },
-            status: { in: [PayrollStatus.PROCESSED, PayrollStatus.PAID] },
+            status: { in: [PayrollStatus.VERIFIED, PayrollStatus.PROCESSED, PayrollStatus.PAID] },
             OR: [
               { basicStipend: { gt: 0 } },
               { totalAllowances: { gt: 0 } },
@@ -1540,8 +1539,29 @@ export class PayrollService {
     const issuedFineLetters = await this.prisma.letter.findMany({
       where: { employeeId: dto.employeeId, status: 'SENT', letterType: { in: [LetterType.FINE, LetterType.EXPLANATION_FINE] } },
     });
-    const letterFines = issuedFineLetters.map(letterFine).filter(fine =>
-      fine !== null && fine.month === dto.month && fine.year === dto.year);
+    const allLetterFines = issuedFineLetters.map(letterFine).filter((fine) => fine !== null);
+    // Req 18: a fine for an earlier month whose slip is already locked
+    // (verified / processed / paid) is taken from this month instead.
+    const thisKey = dto.year * 12 + dto.month;
+    const lockedEarlier = new Set<string>();
+    for (const fine of allLetterFines) {
+      if (!fine || fine.year * 12 + fine.month >= thisKey) continue;
+      const locked = await this.prisma.payrollEntry.findFirst({
+        where: {
+          month: fine.month,
+          year: fine.year,
+          status: { not: PayrollStatus.PENDING },
+          stipendRecord: { employeeId: dto.employeeId },
+        },
+        select: { id: true },
+      });
+      if (locked) lockedEarlier.add(fine.letterId);
+    }
+    const letterFines = allLetterFines.filter(
+      (fine) =>
+        fine !== null &&
+        ((fine.month === dto.month && fine.year === dto.year) || lockedEarlier.has(fine.letterId)),
+    );
     const newLetterFines: NonNullable<ReturnType<typeof letterFine>>[] = [];
     if (applyContractualPackage) for (const fine of letterFines) {
       if (!fine) continue;
@@ -1739,8 +1759,7 @@ export class PayrollService {
       );
     }
     if (
-      deduction.payrollEntry.status === PayrollStatus.PROCESSED ||
-      deduction.payrollEntry.status === PayrollStatus.PAID
+      deduction.payrollEntry.status !== PayrollStatus.PENDING
     ) {
       throw new BadRequestException(
         'Cannot change deductions on processed or paid payroll entries',
@@ -1897,8 +1916,7 @@ export class PayrollService {
     }
 
     if (
-      entry.status === PayrollStatus.PROCESSED ||
-      entry.status === PayrollStatus.PAID
+      entry.status !== PayrollStatus.PENDING
     ) {
       throw new BadRequestException(
         'Cannot add deductions to processed or paid payroll entries',
@@ -1972,10 +1990,10 @@ export class PayrollService {
       await this.assertAttendanceVerified(entry.stipendRecord.employeeId, entry.year, entry.month);
     }
 
-    // Freeze the hourly calculation just before processing.
+    // Freeze the hourly calculation when Finance verifies (Req 12).
     if (
       entry.status === PayrollStatus.PENDING &&
-      dto.status === PayrollStatus.PROCESSED
+      dto.status === PayrollStatus.VERIFIED
     ) {
       await this.createOrGetEntry({
         employeeId: entry.stipendRecord.employeeId,
@@ -1991,6 +2009,12 @@ export class PayrollService {
           status: dto.status,
           processedAt:
             dto.status === PayrollStatus.PROCESSED ? new Date() : undefined,
+          ...(dto.status === PayrollStatus.VERIFIED
+            ? { financeVerifiedAt: new Date(), financeVerifiedById: actingUserId }
+            : {}),
+          ...(dto.status === PayrollStatus.PENDING
+            ? { financeVerifiedAt: null, financeVerifiedById: null }
+            : {}),
         },
         include: { deductions: true, allowances: true },
       });
@@ -2043,8 +2067,12 @@ export class PayrollService {
     dto: { branchId: string; month: number; year: number; status: PayrollStatus },
     actingUserId: string,
   ) {
-    if (dto.status !== PayrollStatus.PROCESSED && dto.status !== PayrollStatus.PAID) {
-      throw new BadRequestException('Choose Processed or Paid');
+    if (
+      dto.status !== PayrollStatus.VERIFIED &&
+      dto.status !== PayrollStatus.PROCESSED &&
+      dto.status !== PayrollStatus.PAID
+    ) {
+      throw new BadRequestException('Choose Verified, Processed or Paid');
     }
     if (
       dto.status === PayrollStatus.PROCESSED &&
@@ -2054,8 +2082,13 @@ export class PayrollService {
         `Attendance for this branch (${monthName(dto.year, dto.month)}) is not verified by HR yet`,
       );
     }
+    // Req 12: Pending → Verified (Finance) → Processed → Paid.
     const from =
-      dto.status === PayrollStatus.PROCESSED ? PayrollStatus.PENDING : PayrollStatus.PROCESSED;
+      dto.status === PayrollStatus.VERIFIED
+        ? PayrollStatus.PENDING
+        : dto.status === PayrollStatus.PROCESSED
+          ? PayrollStatus.VERIFIED
+          : PayrollStatus.PROCESSED;
     const entries = await this.prisma.payrollEntry.findMany({
       where: {
         month: dto.month,
@@ -2215,8 +2248,7 @@ export class PayrollService {
     }
 
     if (
-      entry.status === PayrollStatus.PROCESSED ||
-      entry.status === PayrollStatus.PAID
+      entry.status !== PayrollStatus.PENDING
     ) {
       throw new BadRequestException(
         'Cannot add allowances to processed or paid payroll entries',
@@ -3371,6 +3403,7 @@ export class PayrollService {
             proration: r.type.proration,
             amount: Number(r.amount) || 0,
             sortOrder: r.type.sortOrder,
+            coverage: allowanceCoverage(r, year, month),
           })),
         { prorate, paidDays: salary.paidDays, calendarDays: card.calendarDays },
       );
@@ -3425,6 +3458,7 @@ export class PayrollService {
               proration: r.type.proration,
               amount: Number(r.amount) || 0,
               sortOrder: r.type.sortOrder,
+              coverage: allowanceCoverage(r, year, month),
             })),
           ],
           { prorate, paidDays: salary.paidDays, calendarDays: card.calendarDays },
@@ -3820,6 +3854,7 @@ export class PayrollService {
 
     const byStatus = {
       PENDING: 0,
+      VERIFIED: 0,
       PROCESSED: 0,
       PAID: 0,
     };
@@ -4316,8 +4351,19 @@ export class PayrollService {
       );
     }
 
-    if (current === PayrollStatus.PENDING && next === PayrollStatus.PROCESSED) {
+    // Req 12: Finance verifies first; only a verified slip can be processed.
+    if (current === PayrollStatus.PENDING && next === PayrollStatus.VERIFIED) {
       return;
+    }
+
+    if (current === PayrollStatus.VERIFIED && next === PayrollStatus.PROCESSED) {
+      return;
+    }
+
+    if (current === PayrollStatus.PENDING && next === PayrollStatus.PROCESSED) {
+      throw new BadRequestException(
+        'Verify by Finance first; only a verified salary slip can be processed',
+      );
     }
 
     if (current === PayrollStatus.PROCESSED && next === PayrollStatus.PAID) {

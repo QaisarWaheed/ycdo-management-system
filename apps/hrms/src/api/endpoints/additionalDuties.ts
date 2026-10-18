@@ -9,6 +9,8 @@ export type AdditionalDuty = {
   endDate: string | null
   /** EmployeeAllowance paid for this duty, once added. */
   allowanceId: string | null
+  /** Req 5: HR marked that the role carries an allowance (Accounts adds it). */
+  allowanceApplicable: boolean
   note: string | null
   createdById: string
   createdAt: string
@@ -37,10 +39,17 @@ export const additionalDutiesApi = {
     startDate: string
     endDate?: string
     note?: string
+    allowanceApplicable?: boolean
   }) => api.post<unknown, AdditionalDuty>('/additional-duties', data),
   update: (
     id: string,
-    data: { title?: string; startDate?: string; endDate?: string | null; note?: string | null },
+    data: {
+      title?: string
+      startDate?: string
+      endDate?: string | null
+      note?: string | null
+      allowanceApplicable?: boolean
+    },
   ) => api.patch<unknown, AdditionalDuty>(`/additional-duties/${id}`, data),
   linkAllowance: (id: string, allowanceId: string | null) =>
     api.patch<unknown, AdditionalDuty>(`/additional-duties/${id}/allowance`, { allowanceId }),

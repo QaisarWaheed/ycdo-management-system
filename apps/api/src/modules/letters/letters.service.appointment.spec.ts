@@ -491,8 +491,16 @@ describe('LettersService appointment Phase 3A', () => {
     );
   });
 
+  it('Req 13: submit for approval needs the signed scan first', async () => {
+    const { service } = build();
+    await expect(
+      service.submitAppointmentForApproval('letter-1', 'user-hr', UserRole.HR_MANAGER),
+    ).rejects.toThrow(/signed scan/);
+  });
+
   it('submit for approval keeps DRAFT watermark side-effects off', async () => {
-    const { service, tx } = build();
+    const { service, tx, prisma, draftLetter } = build();
+    prisma.letter.findUnique.mockResolvedValue({ ...draftLetter, signedScanUrl: '/uploads/signed-letters/x/s.pdf' });
     const result = await service.submitAppointmentForApproval(
       'letter-1',
       'user-hr',

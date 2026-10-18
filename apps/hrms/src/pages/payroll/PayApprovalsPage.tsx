@@ -1,3 +1,5 @@
+import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
+import { AppointmentLetterButton } from '@/components/letters/AppointmentLetterButton'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -254,7 +256,9 @@ export function PayApprovalsPage() {
                     />
                   ) : null}
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold">{r.employee?.fullName ?? '—'}</div>
+                    <div className="font-semibold">
+                      <EmployeeNameLink employee={r.employee} />
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       {[r.employee?.employeeCode, r.employee?.currentDesignation, r.employee?.currentBranch?.name]
                         .filter(Boolean)
@@ -336,11 +340,17 @@ export function PayApprovalsPage() {
                       </TableCell>
                     ) : null}
                     <TableCell>
-                      <div className="font-medium">{r.employee?.fullName ?? '—'}</div>
+                      {/* Req 15: open the employee's profile; Req 14: appointment letter. */}
+                      <div className="font-medium">
+                        <EmployeeNameLink employee={r.employee} />
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {r.employee?.employeeCode}
                         {r.employee?.currentDesignation ? ` · ${r.employee.currentDesignation}` : ''}
                         {r.employee?.currentBranch?.name ? ` · ${r.employee.currentBranch.name}` : ''}
+                      </div>
+                      <div className="mt-1">
+                        <AppointmentLetterButton employeeId={r.employee?.id} />
                       </div>
                       {r.blockedReason ? (
                         <div className="mt-1 max-w-xs text-xs font-medium text-red-700">

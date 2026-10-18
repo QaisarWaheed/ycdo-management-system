@@ -40,7 +40,13 @@ function employeeKey(entry: PayrollSegmentForAggregate): string {
 }
 
 function statusRank(s: PayrollStatus): number {
-  return s === PayrollStatus.PAID ? 3 : s === PayrollStatus.PROCESSED ? 2 : 1;
+  return s === PayrollStatus.PAID
+    ? 4
+    : s === PayrollStatus.PROCESSED
+      ? 3
+      : s === PayrollStatus.VERIFIED
+        ? 2
+        : 1;
 }
 
 /**

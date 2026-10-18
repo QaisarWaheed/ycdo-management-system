@@ -1,3 +1,5 @@
+import { ChangeRequestsCard } from '@/components/employees/ChangeRequests'
+import { PayrollAmendmentsCard } from '@/components/payroll/PayrollAmendments'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import {
@@ -23,6 +25,7 @@ import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { StatusBadge } from '@/components/employees/StatusBadge'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
 import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
+import { PendingInquirySuspendsCard } from '@/components/disciplinary/InquirySuspend'
 import { PendingSuspensionApprovalsCard } from '@/components/disciplinary/PendingSuspensionApprovalsCard'
 import { PendingAppointmentApprovalsCard } from '@/components/letters/PendingAppointmentApprovalsCard'
 import type { AttendanceLog, Employee, LeaveRecord } from '@/types'
@@ -456,7 +459,10 @@ function AdminDashboard() {
   return (
     <div className="space-y-6">
       <PendingInquiryOpenApprovalsCard />
+      <PendingInquirySuspendsCard />
       <PendingAppointmentApprovalsCard />
+      <PayrollAmendmentsCard />
+      <ChangeRequestsCard />
       <PendingSuspensionApprovalsCard />
       <PendingInquiryDecisionsCard />
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">

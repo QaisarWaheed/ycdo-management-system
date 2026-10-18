@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -9,7 +10,9 @@ import {
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { AllowanceProration, EmployeeApproverTarget } from '@prisma/client';
@@ -85,6 +88,22 @@ export class AssignAllowanceDto {
   @Matches(MONTH, { message: MONTH_MSG })
   endMonth?: string;
 
+  /** Req 4: day of startMonth it starts; the first month pays its calendar days. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  startDay?: number;
+
+  /** Req 4: last day paid in endMonth (pro-rata). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  endDay?: number;
+
   /** What it is for; shown with the allowance. */
   @IsString()
   @IsNotEmpty({ message: 'Write what this allowance is for' })
@@ -102,6 +121,14 @@ export class EndAllowanceDto {
   @Matches(MONTH, { message: MONTH_MSG })
   @IsNotEmpty()
   endMonth: string;
+
+  /** Req 4: last day paid in endMonth (pro-rata); empty = month end. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  endDay?: number;
 
   /** Executive who approves it when Accounts ends an allowance. */
   @IsOptional()

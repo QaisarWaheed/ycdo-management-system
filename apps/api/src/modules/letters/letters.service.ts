@@ -19,6 +19,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import {
+  AllowanceType,
   AppointmentLetterLanguage,
   DeductionType,
   DisciplinaryStatus,
@@ -1493,6 +1494,39 @@ export class LettersService implements OnModuleInit {
     return { letter: updated, previewHtml: built.htmlContent };
   }
 
+  /** Req 13: scanned signed appointment form, attached while the letter is a draft. */
+  async uploadSignedScan(letterId: string, file: Express.Multer.File, actingUserId: string) {
+    if (!file) throw new BadRequestException('Choose the scanned signed form (JPG, PNG or PDF)');
+    const letter = await this.prisma.letter.findUnique({ where: { id: letterId } });
+    if (!letter) throw new NotFoundException('Letter not found');
+    if (letter.letterType !== LetterType.APPOINTMENT) {
+      throw new BadRequestException('A signed scan is only for appointment letters');
+    }
+    if (letter.status !== LetterStatus.DRAFT) {
+      throw new BadRequestException('Attach the signed scan before sending for approval');
+    }
+    const updated = await this.prisma.letter.update({
+      where: { id: letterId },
+      data: {
+        signedScanUrl: `/uploads/signed-letters/${letterId}/${file.filename}`,
+        signedScanMimeType: file.mimetype,
+        signedScanFileName: file.originalname,
+        signedScanUploadedAt: new Date(),
+      },
+      select: { id: true, signedScanFileName: true, signedScanUploadedAt: true },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actingUserId,
+        action: 'APPOINTMENT_SIGNED_SCAN_UPLOADED',
+        entity: 'Letter',
+        entityId: letterId,
+        changes: { employeeId: letter.employeeId, fileName: file.originalname },
+      },
+    });
+    return updated;
+  }
+
   async submitAppointmentForApproval(
     letterId: string,
     actingUserId: string,
@@ -1512,6 +1546,12 @@ export class LettersService implements OnModuleInit {
       letter.employeeId,
     );
     this.assertAppointmentLetter(letter);
+    // Req 13: digital form printed, signed, scanned and uploaded first.
+    if (!(letter as { signedScanUrl?: string | null }).signedScanUrl) {
+      throw new BadRequestException(
+        'Print the appointment form, get it signed, then upload the signed scan before sending for approval',
+      );
+    }
 
     if (letter.status !== LetterStatus.DRAFT) {
       throw new BadRequestException(
@@ -2388,7 +2428,7 @@ export class LettersService implements OnModuleInit {
           letter.letterType === LetterType.FINE ||
           letter.letterType === LetterType.EXPLANATION_FINE
         ) {
-          const unwind = await this.tryUnwindFineDeduction(tx, letter);
+          const unwind = await this.tryUnwindFineDeduction(tx, letter, actingUserId);
           fineUndone = unwind.undone;
           fineSkippedReason = unwind.skippedReason;
         }
@@ -2474,6 +2514,7 @@ export class LettersService implements OnModuleInit {
       variables: unknown;
       generatedAt: Date;
     },
+    actingUserId?: string,
   ): Promise<{ undone: boolean; skippedReason: string | null }> {
     await lockPayrollEmployee(tx, letter.employeeId);
     const vars = (letter.variables ?? {}) as Record<string, unknown>;
@@ -2537,41 +2578,135 @@ export class LettersService implements OnModuleInit {
       return { undone: false, skippedReason: null };
     }
 
-    const allPending = deductions.filter(
-      (d) => d.payrollEntry.status === PayrollStatus.PENDING,
-    );
-    // Own rows: remove every one. Legacy incident match: one row, as before.
-    const pending = own.length ? allPending : allPending.slice(0, 1);
-    if (pending.length === 0) {
-      return {
-        undone: false,
-        skippedReason: 'fine not undone (payroll finalized)',
-      };
-    }
+    // Req 19: the reversed fine leaves the slip (no "reversal" line) and the
+    // salary is recalculated: Pending / Verified / Processed slips lose the
+    // row; a Paid slip stays as paid and the amount is refunded on the next
+    // open month. Every removed row stays in the audit log.
+    const editable = deductions.filter((d) => d.payrollEntry.status !== PayrollStatus.PAID);
+    const paid = deductions.filter((d) => d.payrollEntry.status === PayrollStatus.PAID);
+    // Own rows: every one. Legacy incident match: one row, as before.
+    const remove = own.length ? editable : editable.slice(0, 1);
+    const refund = own.length ? paid : remove.length ? [] : paid.slice(0, 1);
+    const actorId = actingUserId ?? null;
 
-    for (const row of pending) {
+    for (const row of remove) {
       const amount = Number(row.amount);
       await tx.payrollDeduction.delete({ where: { id: row.id } });
-      await tx.payrollEntry.update({
+      const updated = await tx.payrollEntry.update({
         where: { id: row.payrollEntry.id },
         data: {
-          totalDeductions: {
-            decrement: amount,
-          },
-          netStipend: {
-            increment: amount,
-          },
+          totalDeductions: { decrement: amount },
+          netStipend: { increment: amount },
         },
       });
+      if (actorId) {
+        await tx.auditLog.create({
+          data: {
+            userId: actorId,
+            action: 'FINE_REMOVED_BY_LETTER_REVERSAL',
+            entity: 'PayrollDeduction',
+            entityId: row.id,
+            changes: {
+              employeeId: letter.employeeId,
+              letterId: letter.id ?? null,
+              amount,
+              reason: row.reason,
+              description: row.description,
+              payrollEntryId: row.payrollEntry.id,
+              entryStatus: row.payrollEntry.status,
+            },
+          },
+        });
+      }
+      if (row.payrollEntry.status !== PayrollStatus.PENDING) {
+        await tx.payrollChangeLog.create({
+          data: {
+            payrollEntryId: row.payrollEntry.id,
+            userId: actorId,
+            action: 'FINE_REVERSED',
+            summary: `Fine ${amount} removed (letter reversed by IT)`,
+            netBefore: Number(updated.netStipend) - amount,
+            netAfter: Number(updated.netStipend),
+          },
+        });
+      }
+    }
+
+    let refundNote: string | null = null;
+    for (const row of refund) {
+      const amount = Number(row.amount);
+      const paidEntry = await tx.payrollEntry.findUnique({
+        where: { id: row.payrollEntry.id },
+        select: { month: true, year: true },
+      });
+      const after = paidEntry ? paidEntry.year * 12 + paidEntry.month : 0;
+      const open = (
+        await tx.payrollEntry.findMany({
+          where: { status: PayrollStatus.PENDING, stipendRecord: { employeeId: letter.employeeId } },
+          orderBy: [{ year: 'asc' }, { month: 'asc' }],
+        })
+      ).find((e) => e.year * 12 + e.month > after);
+      if (!open) {
+        refundNote = `refund of ${amount} due on the next payroll (paid month)`;
+        await this.notifyPayrollOfficers(
+          tx,
+          `Fine letter reversed after salary was paid: refund ${amount} to employee on the next payroll (letter ${letter.id ?? ''}).`,
+        );
+        continue;
+      }
+      await tx.allowance.create({
+        data: {
+          payrollEntryId: open.id,
+          type: AllowanceType.CUSTOM,
+          description: `Refund of reversed fine (${paidEntry?.month}/${paidEntry?.year})`,
+          amount,
+        },
+      });
+      await tx.payrollEntry.update({
+        where: { id: open.id },
+        data: { totalAllowances: { increment: amount }, netStipend: { increment: amount } },
+      });
+      if (actorId) {
+        await tx.auditLog.create({
+          data: {
+            userId: actorId,
+            action: 'FINE_REFUNDED_AFTER_PAID',
+            entity: 'PayrollEntry',
+            entityId: open.id,
+            changes: {
+              employeeId: letter.employeeId,
+              letterId: letter.id ?? null,
+              amount,
+              paidMonth: `${paidEntry?.month}/${paidEntry?.year}`,
+            },
+          },
+        });
+      }
     }
 
     return {
-      undone: true,
-      skippedReason:
-        own.length && pending.length < own.length
-          ? 'fine partly undone (payroll finalized)'
-          : null,
+      undone: remove.length + refund.length > 0,
+      skippedReason: refundNote,
     };
+  }
+
+  private async notifyPayrollOfficers(tx: Prisma.TransactionClient, message: string) {
+    const users = await tx.user.findMany({
+      where: {
+        isActive: true,
+        employeeId: { not: null },
+        OR: [
+          { role: UserRole.PAYROLL_OFFICER },
+          { additionalRoles: { some: { role: UserRole.PAYROLL_OFFICER } } },
+        ],
+      },
+      select: { employeeId: true },
+    });
+    for (const u of users) {
+      await tx.notification.create({
+        data: { employeeId: u.employeeId!, type: 'FINE_REFUND_DUE', message },
+      });
+    }
   }
 
   private async listWhere(
@@ -2846,6 +2981,28 @@ export class LettersService implements OnModuleInit {
     this.assertOwnLetterAccess(letter, letterId, actor);
 
     return letter;
+  }
+
+  /** Req 14: latest appointment letter (sent > approved > pending > draft). */
+  async getAppointmentLetterPdf(employeeId: string) {
+    const letters = await this.prisma.letter.findMany({
+      where: {
+        employeeId,
+        letterType: LetterType.APPOINTMENT,
+        status: { not: LetterStatus.REVERSED },
+      },
+      orderBy: { generatedAt: 'desc' },
+      select: { id: true, status: true },
+    });
+    const rank: LetterStatus[] = [
+      LetterStatus.SENT,
+      LetterStatus.APPROVED,
+      LetterStatus.PENDING_APPROVAL,
+      LetterStatus.DRAFT,
+    ];
+    const best = [...letters].sort((a, b) => rank.indexOf(a.status) - rank.indexOf(b.status))[0];
+    if (!best) throw new NotFoundException('No appointment letter for this employee');
+    return this.getPdf(best.id);
   }
 
   async getPdf(

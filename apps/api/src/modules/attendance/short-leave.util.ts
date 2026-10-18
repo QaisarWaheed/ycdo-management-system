@@ -261,7 +261,8 @@ export async function countApprovedFullLeaveOccurrencesThisMonth(
   const rows = await tx.leaveRecord.findMany({
     where: {
       employeeId,
-      leaveType: { not: LeaveType.SHORT_LEAVE },
+      // Special leaves are outside the monthly quota.
+      leaveType: { notIn: [LeaveType.SHORT_LEAVE, LeaveType.SPECIAL] },
       status: LeaveStatus.APPROVED,
       startDate: { gte: startOfMonth, lte: endOfMonth },
       ...(excludeLeaveRecordId ? { NOT: { id: excludeLeaveRecordId } } : {}),

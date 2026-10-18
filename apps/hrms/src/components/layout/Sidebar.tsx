@@ -76,6 +76,27 @@ const extraTimeApprovalsNavItem = {
   icon: CalendarCheck,
 }
 
+/** Phase 3 Req 18: fine letters vs salary deductions. */
+const fineAuditNavItem = {
+  to: '/fine-audit',
+  label: 'Fine Audit',
+  icon: ShieldCheck,
+}
+
+/** Phase 2 Req 7/8: suggested / previous / current incentives and allowances. */
+const incentiveManagementNavItem = {
+  to: '/incentive-management',
+  label: 'Incentive Management',
+  icon: BadgeCheck,
+}
+
+/** Phase 2 Req 2: special leaves (HR Operations → Chairman). */
+const specialLeavesNavItem = {
+  to: '/special-leaves',
+  label: 'Special Leaves',
+  icon: CalendarCheck,
+}
+
 /** Device punches with an uncertain clock; HR enters the real time. */
 const punchReviewsNavItem = {
   to: '/punch-reviews',
@@ -135,8 +156,16 @@ function navItemsForRole(role?: string) {
       ...items,
       payApprovalsNavItem,
       punchReviewsNavItem,
+      specialLeavesNavItem,
       ...(role === 'SUPER_ADMIN'
-        ? [extraTimeApprovalsNavItem, doctorPerformanceNavItem, activityTrailNavItem, shiftsNavItem]
+        ? [
+            extraTimeApprovalsNavItem,
+            incentiveManagementNavItem,
+            fineAuditNavItem,
+            doctorPerformanceNavItem,
+            activityTrailNavItem,
+            shiftsNavItem,
+          ]
         : []),
     ]
     if (role === 'SUPER_ADMIN') {
@@ -175,6 +204,7 @@ function navItemsForRole(role?: string) {
         ].includes(item.to),
       ),
       extraTimeApprovalsNavItem,
+      specialLeavesNavItem,
       punchReviewsNavItem,
     ]
   }
@@ -187,7 +217,8 @@ function navItemsForRole(role?: string) {
         ),
       ),
       payApprovalsNavItem,
-      ...(role === 'CHAIRMAN' ? [extraTimeApprovalsNavItem] : []),
+      ...(role === 'CHAIRMAN' ? [extraTimeApprovalsNavItem, specialLeavesNavItem] : []),
+      incentiveManagementNavItem,
       doctorPerformanceNavItem,
     ]
   }
@@ -200,6 +231,8 @@ function navItemsForRole(role?: string) {
         ),
       ),
       payApprovalsNavItem,
+      incentiveManagementNavItem,
+      fineAuditNavItem,
       doctorPerformanceNavItem,
     ]
   }
@@ -218,6 +251,7 @@ function navItemsForRole(role?: string) {
       { to: '/branch-contacts', label: 'Branch Contacts', icon: Phone },
       { to: '/payroll', label: 'Payroll', icon: Wallet },
       payApprovalsNavItem,
+      fineAuditNavItem,
       { to: '/shifts', label: 'Shifts', icon: Timer },
       { to: '/branches', label: 'Branches & Projects', icon: Building2 },
       ...itTeamNavItems,
@@ -226,7 +260,8 @@ function navItemsForRole(role?: string) {
     ]
   }
 
-  return allNavItems
+  // Req 7: Department Heads suggest incentives / allowances for their department.
+  return role === 'DEPARTMENT_HEAD' ? [...allNavItems, incentiveManagementNavItem] : allNavItems
 }
 
 /**
@@ -297,6 +332,13 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
   '/admin/login-access': { roles: ['IT_ADMIN'] },
   '/admin/pending-approvals': { roles: ['IT_ADMIN', 'SUPER_ADMIN'] },
   '/extra-time-approvals': { roles: ['HR_OPERATIONS_MANAGER', 'CHAIRMAN', 'SUPER_ADMIN'] },
+  '/fine-audit': { roles: ['SUPER_ADMIN', 'IT_ADMIN', 'PAYROLL_OFFICER'] },
+  '/incentive-management': {
+    roles: ['CHAIRMAN', 'PRESIDENT', 'FOUNDER', 'DEPARTMENT_HEAD', 'PAYROLL_OFFICER', 'SUPER_ADMIN'],
+  },
+  '/special-leaves': {
+    roles: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_OPERATIONS_MANAGER', 'HR_EXECUTIVE', 'CHAIRMAN', 'SUPER_ADMIN'],
+  },
   '/punch-reviews': {
     roles: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_OPERATIONS_MANAGER', 'HR_EXECUTIVE'],
   },

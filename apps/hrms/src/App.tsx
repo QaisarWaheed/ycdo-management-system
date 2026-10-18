@@ -31,6 +31,9 @@ import { LoginAccessPage } from '@/pages/admin/LoginAccessPage'
 import { PendingApprovalsPage } from '@/pages/admin/PendingApprovalsPage'
 import { PayApprovalsPage } from '@/pages/payroll/PayApprovalsPage'
 import { ExtraTimeApprovalsPage } from '@/pages/attendance/ExtraTimeApprovalsPage'
+import { SpecialLeavesPage } from '@/pages/leave/SpecialLeavesPage'
+import { IncentiveManagementPage } from '@/pages/incentives/IncentiveManagementPage'
+import { FineAuditPage } from '@/pages/letters/FineAuditPage'
 import { PunchReviewsPage } from '@/pages/attendance/PunchReviewsPage'
 import { DoctorPerformancePage } from '@/pages/payroll/DoctorPerformancePage'
 import { MasterDataPage } from '@/pages/admin/MasterDataPage'
@@ -263,6 +266,30 @@ export default function App() {
         element={
           <ProtectedRoute>
             <PayApprovalsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/fine-audit"
+        element={
+          <ProtectedRoute>
+            <FineAuditPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/incentive-management"
+        element={
+          <ProtectedRoute>
+            <IncentiveManagementPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/special-leaves"
+        element={
+          <ProtectedRoute>
+            <SpecialLeavesPage />
           </ProtectedRoute>
         }
       />

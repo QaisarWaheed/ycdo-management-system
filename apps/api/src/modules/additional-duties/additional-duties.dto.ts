@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsInt,
   IsNotEmpty,
@@ -32,6 +33,11 @@ export class CreateAdditionalDutyDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  /** Req 5: does this role carry an allowance? Accounts adds the amount. */
+  @IsOptional()
+  @IsBoolean()
+  allowanceApplicable?: boolean;
 }
 
 /** `null` clears endDate / note (re-open an ended duty). */
@@ -54,6 +60,10 @@ export class UpdateAdditionalDutyDto {
   @IsString()
   @MaxLength(500)
   note?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  allowanceApplicable?: boolean;
 }
 
 /** Link (or unlink with null) the EmployeeAllowance paid for this duty. */

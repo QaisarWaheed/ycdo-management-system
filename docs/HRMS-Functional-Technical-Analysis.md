@@ -959,3 +959,131 @@ Login, Dashboard (role-branched), My Attendance (read-only — see below), My Le
 ---
 
 *This document reflects the codebase as of the analysis date. It was produced by static code review only (no runtime/UI testing was performed against a live environment), so any behavior that depends on external service configuration (Cloudinary, WhatsApp, SMTP credentials) reflects what the code does when those services are reachable and correctly configured.*
+
+
+---
+
+## PART 31 — Phase 2 Requirements (October 2026)
+
+Client-approved decisions are listed under each requirement. "Executives" = Chairman, President, Founder. Super Admin can act at every step.
+
+### 31.1 Req 1 — Employee profile: letters and complete financial audit trail
+- **Letters tab:** month filter and category filter (already existed; server-side `startDate/endDate/letterType`).
+- **New Financial tab** (`EmployeeFinancialTab`) on the employee profile, API `GET /payroll/employee/:employeeId/financial` (`EmployeeFinancialService`, payroll read roles + Payroll Officer):
+  - Cards: fines, other deductions, incentives, allowances, overtime, extra duty (overall, or the selected month).
+  - Month-by-month table: basic, allowances (incl. package allowances), incentives, overtime, extra duty, fines, other deductions, net, letters count. A letters count / "Letters of this month" opens the Letters tab filtered to that month (cross-check).
+  - Lists: fines and deductions with reason (deduction type, fine reason, description); incentives / allowances / payments per month.
+  - Change history: every `AuditLog` row for StipendRecord, EmployeeAllowance, Incentive, IncentivePlan, PayChangeRequest, PayrollEntry, PayrollDeduction of the employee (also rows found by `changes.employeeId`) plus every `PayrollChangeLog` of the employee's payroll entries. Shown: date, area, change, previous, updated, reason, user. Filter by area.
+- **Test:** increment salary with a reason → history shows Salary, previous → new basic, reason, user. Add a fine → Fines card and month row change.
+
+### 31.2 Req 2 — Special leaves (Maternity, Accident, Marriage, …)
+- **Decisions:** pay % only 0 / 50 / 100; outside the monthly / yearly leave quota; weekly offs inside the leave stay paid (Holiday); employee applies from the portal and HR can enter for an employee.
+- **DB:** `SpecialLeaveType` (name, payPercent, maxDays, isActive); `LeaveRecord.leaveType = SPECIAL`, `specialLeaveTypeId`, `requestedById`, `payPercent` copied from the type (snapshot); `LeaveStatus.CHAIRMAN_PENDING`; `LeaveApprovalStage.CHAIRMAN`. Migration `20261020090000_special_leaves`.
+- **Flow:** apply (`POST /special-leave`) → `HR_PENDING` → HR Operations approve (`PATCH /special-leave/:id/decide`) → `CHAIRMAN_PENDING` → Chairman approve → `APPROVED`. Reject at either level is final. Every step writes `LeaveApproval`, `AuditLog`, notifications.
+- **Salary:** only on final approval the working days become `ON_LEAVE` with the type's pay % (`markLeaveAttendance`), weekly offs become Holiday; payroll recomputes. 50% days are `halfPaidLeaveDays` (50% paid / 50% deducted); 0% unpaid; 100% full.
+- **Guards:** special leave cannot be entered via normal leave / verified leave and cannot be approved via the normal HR approval; overlap with any open leave is refused; `maxDays` enforced.
+- **Screens:** HRMS `/special-leaves` (pending approvals, HR entry, leave types for Super Admin / HR Operations); portal My Leave → Special Leave tab.
+- **Test:** Maternity 50%, 10 days incl. a Sunday → after Chairman approval 9 days ON_LEAVE at 50%, Sunday Holiday; monthly quota unchanged.
+
+### 31.3 Req 3 — Extra time: two-level approval
+- **Decision:** HR Operations approval is not final; the Chairman always gives the final decision. A rejection at either level is final.
+- **Flow:** HR entry (`PENDING`, unpaid) → HR Operations approve → `ESCALATED` (= waiting for Chairman, still unpaid) → Chairman approve → `APPROVED` → salary recomputed. The person who entered it can never decide it. Audit `EXTRA_TIME_<status>`.
+- **Screen:** `/extra-time-approvals`. **Test:** HR Ops approve → not in salary; Chairman approve → in salary.
+
+### 31.4 Req 4 — Allowance / incentive duration and effective date
+- **Decisions:** exact start / end date with **calendar-day pro-rata**, for allowances and incentives.
+- **DB:** `EmployeeAllowance.startDay/endDay`, `IncentivePlan.startDay/endDay` (migration `20261020100000_allowance_incentive_effective_days`).
+- **Rule:** month coverage = covered calendar days ÷ days in month (`monthCoverage`). Allowance 3,000 from 16 Oct → October 1,548. Attendance-based allowance types also apply their paid-days ratio. A mid-month change keeps the old amount until the day before. Plans with an end stop automatically; permanent continues until stopped.
+- **Screens:** allowance dialog asks Duration (Permanent / Temporary), from month + day, last month + day, and shows "Pays … – …, then stops automatically"; End dialog has a last day. Incentive form: starts on day / last day with the same text.
+
+### 31.5 Req 5 — Additional role allowances
+- **Decision:** HR assigns the role and marks "this role carries an allowance"; **Accounts adds the amount** (normal executive approval).
+- **DB:** `EmployeeAdditionalDuty.allowanceApplicable` (migration `20261020110000_duty_allowance_applicable`). Accounts (Payroll Officer) get a notification; the payroll-time reminder only lists roles marked applicable; the allowance dialog opens with the role's dates.
+- **Auto end:** when the role ends (end date set, or an allowance linked to an ended role) the linked allowance ends the same day (pro-rata). Designation, department and salary never change; salary is computed once.
+
+### 31.6 Req 6 — Month-end overtime, extra duty and deduction report
+- `GET /payroll/reports/overtime` now lists everyone with overtime, extra duty **or any deduction**, so totals are complete. Trend (last 6 months) includes overtime, extra duty and deductions.
+- Payroll → Reports → Overtime: summary cards (total OT paid, extra duty paid, deductions, net), bar charts by branch, department and month for each of the three, employee / branch / department tables, month-wise table; branch / department filters; Excel and print.
+
+### 31.7 Req 7 & 8 — Executive incentive & allowance management, bulk approval
+- **Decisions:** Department Heads (own department) and Payroll Officer suggest; executives approve / reject / amend / type the current amount; one row per employee per incentive / allowance type; "performance issues" = fine this month, warning-type letter this month, late/absent watchlist, or a decrease.
+- **DB:** `IncentiveSuggestion` (employee, kind INCENTIVE/ALLOWANCE, typeId, month, year, suggestedAmount, status PENDING/APPROVED/AMENDED/REJECTED, approvedAmount, decidedBy/At). Migration `20261020130000_incentive_suggestions`.
+- **API:** `GET /incentive-management`, `POST /incentive-management/suggestions`, `POST /incentive-management/apply`, `POST /incentive-management/reject`.
+- **Screen `/incentive-management`:** previous / suggested / current per row; typing an amount selects the row; select all; approve / reject buttons at top and bottom; approval dialog shows selected employees, previous-month total, this-month total, difference, increased / decreased / same, employees with performance issues or a decrease. Closing the dialog keeps the selection and amounts; Reject unselects so amounts can be corrected. Apply uses the normal incentive / allowance services (the payroll entry must be open for incentives); failures are reported per line.
+
+### 31.8 Req 9 — Suspension from an inquiry
+- **Decisions:** HR Operations, HR Manager / HR Admin and executives can press **Suspend** in the inquiry; it needs **executive approval** (an executive pressing it applies at once).
+- **DB:** `Inquiry.suspendStatus/suspendFrom/suspendReason/suspendRequestedById/At/suspendApproverUserId/suspendDecidedById/At/suspendDecisionNote/suspendLetterId` (migration `20261020120000_inquiry_suspend`).
+- **Flow:** `POST /disciplinary/inquiries/:id/suspend` → pending for the chosen executive (`/disciplinary/inquiry-suspend-approvals/my-pending`, dashboard card) → approve → employee `SUSPENDED` with `statusEffectiveFrom` = chosen date (pay stops from it), case UNDER_INQUIRY, Suspension Notice letter generated and marked SENT, notifications to employee and HR, audit `EMPLOYEE_SUSPENDED`. Reinstatement stays with the inquiry decision.
+
+### 31.9 Req 10 — Automatic suspension after 3 consecutive uninformed absences
+- **Decisions:** only UNINFORMED_ABSENT counts; weekly offs / holidays in between are skipped; suspension is immediate (no approval); suspended **from the first absent day**.
+- **How:** when the 15-minute job marks a day UNINFORMED_ABSENT, `autoSuspendOnUninformedAbsence` checks the run (`uninformedAbsenceRun`). On the third day an ACTIVE employee gets a SUSPENSION case + inquiry (opened automatically), status SUSPENDED from the first day, notice letter, notifications; payroll recomputes.
+- **Test:** Sat UA, Sun off, Mon UA, Tue UA → suspended from Saturday. Mon informed absent → no suspension.
+
+### 31.10 Migrations added (run automatically at container start)
+`20261020090000_special_leaves`, `20261020100000_allowance_incentive_effective_days`, `20261020110000_duty_allowance_applicable`, `20261020120000_inquiry_suspend`, `20261020130000_incentive_suggestions`.
+
+
+---
+
+## PART 32 — Phase 3 Requirements (October 2026): salary data, payroll and approvals
+
+"Executives" = Chairman, President, Founder. "Finance" = Payroll Officer. Super Admin can act at every step.
+
+### 32.1 Req 12 — Finance verification and locked salary slips
+- **New status `VERIFIED`** between Pending and Processed (`PayrollStatus`), plus `PayrollEntry.financeVerifiedAt/financeVerifiedById`. Flow: **Pending → Verified (Finance) → Processed → Paid**. Pending → Processed is refused ("Verify by Finance first").
+- **Save:** Finance edits a Pending slip as before (deductions, allowances, incentives, package edit) — every edit is saved immediately.
+- **Verify by Finance:** row action "Verify by Finance", or "Verify by Finance (all)" in the branch Finalise dialog. Verification freezes the calculation and **locks** the slip: every edit path and every automatic recalculation (attendance, leave, fines, allowances) treats anything not Pending as locked.
+- **Amendment after verification** (`PayrollAmendmentRequest`, statuses HR_NOTIFIED → SUBMITTED → APPROVED / REJECTED; API `/payroll-amendments`):
+  1. HR (HR Manager / HR Admin / HR Operations) writes an **amendment notification** on a verified slip → Finance is notified.
+  2. Finance **submits** it to the Founder (same executive-approval pattern as appointment approvals) → Founder notified.
+  3. **Founder approves** → slip goes back to Pending (Finance edits, then Verify again); **rejects** → the verified slip stays unchanged.
+  Every step: audit log + payroll change log. Card "Salary slip amendments" on Payroll page and dashboards.
+- Fines issued for a verified / processed / paid month are taken from the next open month (Req 18).
+- Migration `20261021100000_payroll_finance_verify`.
+
+### 32.2 Req 13 — Computerized appointment form, print, signed scan, approval
+- Onboarding (already present): digital form → appointment preview Print → scanned physical form upload (required) → onboarding approval shows Physical and System tabs.
+- **Appointment letter approval (new):** `Letter.signedScanUrl/MimeType/FileName/UploadedAt` (migration `20261021120000_letter_signed_scan`). HR prints the draft appointment letter, gets signatures, uploads the scan (`POST /letters/:id/signed-scan`, JPG / PNG / PDF ≤ 10 MB, stored under `uploads/signed-letters/<letterId>/`). **Submit for approval is refused without the scan.** Approvers see "Print Draft" (digital) and "Signed scan" (`GET /letters/:id/signed-scan`) side by side.
+
+### 32.3 Req 14 — Appointment letter from salary screens
+- `GET /letters/appointment/:employeeId/pdf` returns the employee's latest appointment letter (sent > approved > pending > draft). Button "Appointment letter" on the salary slip (Payslip view) and on every Pay Approval row (executives, Finance, HR).
+
+### 32.4 Req 15 — Employee profile from the approval screen
+- Pay Approvals: employee names are links to the employee profile (personal details, letters, appointment details, Financial tab with full money history from Phase 2).
+
+### 32.5 Req 16 — Transfer only through letter + notification + approval
+- `EmployeeChangeRequest` (kind TRANSFER, payload, summary, status, letterId; migration `20261021110000_employee_change_requests`), API `/employee-change-requests`.
+- HR (Transfer button) → request + **draft Transfer letter** (TRANSFER template: from / to posting, designation, timing, effective date) + notification to HR Operations. **Nothing changes on the employee** until **HR Operations approves**; then the normal transfer runs (employment history, duty, shift). Reject → nothing changes. HR sends the letter from Letters as usual; IT can reverse it.
+- Direct transfer / branch / department change: **Super Admin only** (API refuses others).
+
+### 32.6 Req 17 — Working hours only through letter + notification + approval
+- Same model, kind WORKING_HOURS. Changing duty times / total hours in "Edit Branch & Duty" (non Super Admin) asks effective date + reason → request + **draft letter** ("Change of Working Hours", old → new hours) + notification to executives. Hours change only after **Chairman / President / Founder approval**. Weekly offs / reliever / leave allowance remain direct edits.
+- Employee profile → Letters tab shows the employee's transfer / working-hours requests with letter, decision and note. Direct hours change: Super Admin only.
+
+### 32.7 Req 18 — Fine letters and salary deductions
+- Sending a manual fine letter (incl. uniform fine) deducts its amount once (`Letter fine [<letterId>]`). If the fine month is verified / processed / paid, the fine is taken from the **next open month** (description "fine for M/YYYY"); payroll rebuild does the same when that month's slip is created later.
+- **Fine Audit** page (`/fine-audit`, Super Admin / IT / Finance; API `GET /fine-audit`, `POST /fine-audit/fix`): lists sent letters without deduction, reversed / deleted letters still deducted, and amount mismatches; **Fix all** applies / removes / corrects (Paid slips never changed; listed for manual action). Every fix is audited.
+
+### 32.8 Req 19 — IT reverses a fine letter
+- On reversal the fine row is **removed** from Pending / Verified / Processed slips and net pay goes back up — the slip shows only the remaining fines (no "reversal" line). A **Paid** slip stays as paid and the amount is **refunded on the next open month** ("Refund of reversed fine (M/YYYY)"); if no open month exists yet, Finance is notified to refund it.
+- Backend history kept: audit `FINE_REMOVED_BY_LETTER_REVERSAL` / `FINE_REFUNDED_AFTER_PAID` and payroll change log `FINE_REVERSED`.
+
+### 32.9 Req 20 — Automatic access expiry
+- `User.accessFrom / accessUntil` (migration `20261021090000_user_access_window`). IT / Super Admin set "Access period" (from date-time → until date-time) on Login Access.
+- Login is refused outside the window, and **every API request** checks it (re-read at most every 30 s), so an already logged-in user loses access within 30 s after "until". **Executives (Chairman, President, Founder) and Super Admin are exempt.** Audit `SET_ACCESS_WINDOW`.
+
+### 32.10 Testing scenarios (expected results)
+| Scenario | Expected |
+|---|---|
+| Finance verifies a slip, attendance later changes | Slip unchanged; Mark Processed allowed |
+| HR amendment → Finance submit → Founder approve | Slip back to Pending, editable, verify again |
+| Founder rejects | Slip stays verified, unchanged |
+| Submit appointment letter without signed scan | Refused with message |
+| HR transfer request | Draft Transfer letter, HR Ops notified, employee unchanged until approval |
+| HR Ops approves hours request | Refused (executive only) |
+| Uniform fine letter sent for a verified month | Fine deducted in next open month |
+| IT reverses fine on Processed slip | Row removed, net +amount, audit row kept |
+| IT reverses fine on Paid slip | Paid slip unchanged, refund on next open month |
+| User past accessUntil | Login refused; open session gets 401 within 30 s |

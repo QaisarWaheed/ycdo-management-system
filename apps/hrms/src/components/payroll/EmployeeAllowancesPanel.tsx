@@ -10,6 +10,7 @@ import {
   type PendingApprovalResponse,
 } from '@/api/endpoints/payApprovals'
 import { PKRInput } from '@/components/common/PKRInput'
+import { payPeriodText } from '@/lib/payPeriod'
 import { ApproverSelect, useNeedsPayApproval } from '@/components/payroll/ApproverSelect'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -183,10 +184,14 @@ export function EmployeeAllowancesPanel({
                         </div>
                       </>
                     ) : (
-                      monthText(r.startMonth)
+                      `${r.startDay ? `${r.startDay} ` : ''}${monthText(r.startMonth)}`
                     )}
                   </TableCell>
-                  <TableCell>{r.endMonth ? monthText(r.endMonth) : 'Ongoing'}</TableCell>
+                  <TableCell>
+                    {r.endMonth
+                      ? `${r.endDay ? `${r.endDay} ` : ''}${monthText(r.endMonth)}`
+                      : 'Ongoing'}
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline">
                       {r.type.proration === 'ATTENDANCE' ? 'By attendance' : 'Full month'}
@@ -229,6 +234,7 @@ export function AssignAllowanceDialog({
   current,
   onClose,
   defaultStartMonth,
+  defaultPeriod,
   defaultNote = '',
   onSaved,
 }: {
@@ -237,6 +243,8 @@ export function AssignAllowanceDialog({
   onClose: () => void
   /** Prefill (e.g. from the payroll duty reminder). */
   defaultStartMonth?: string
+  /** Req 5: the role's dates (YYYY-MM-DD); the allowance starts / ends with it. */
+  defaultPeriod?: { start: string; end?: string | null }
   defaultNote?: string
   /** Called with the saved allowance, or the pending-approval response. */
   onSaved?: (res: EmployeeAllowance | PendingApprovalResponse) => void
@@ -249,8 +257,18 @@ export function AssignAllowanceDialog({
   })
   const [typeId, setTypeId] = useState(current?.typeId ?? '')
   const [amount, setAmount] = useState(current ? Number(current.amount) : 0)
-  const [startMonth, setStartMonth] = useState(defaultStartMonth ?? thisMonth())
-  const [endMonth, setEndMonth] = useState('')
+  const [startMonth, setStartMonth] = useState(
+    defaultPeriod?.start.slice(0, 7) ?? defaultStartMonth ?? thisMonth(),
+  )
+  const [endMonth, setEndMonth] = useState(defaultPeriod?.end?.slice(0, 7) ?? '')
+  // Req 4: exact start / last day (calendar-day pro-rata) and an explicit duration.
+  const [startDay, setStartDay] = useState(
+    defaultPeriod ? Number(defaultPeriod.start.slice(8, 10)) : 1,
+  )
+  const [endDay, setEndDay] = useState<number | ''>(
+    defaultPeriod?.end ? Number(defaultPeriod.end.slice(8, 10)) : '',
+  )
+  const [permanent, setPermanent] = useState(!defaultPeriod?.end)
   const [note, setNote] = useState(defaultNote)
   const [approver, setApprover] = useState<EmployeeApproverTarget>()
 
@@ -261,7 +279,9 @@ export function AssignAllowanceDialog({
         typeId,
         amount,
         startMonth,
-        endMonth: endMonth || undefined,
+        endMonth: permanent ? undefined : endMonth || undefined,
+        startDay: startDay > 1 ? startDay : undefined,
+        endDay: !permanent && endDay ? endDay : undefined,
         note: note.trim(),
         approverTarget: approver,
       }),
@@ -295,8 +315,8 @@ export function AssignAllowanceDialog({
     amount > 0 &&
     note.trim().length >= 3 &&
     startMonth >= minMonth &&
-    (!beforeSwitch || !endMonth) &&
-    (!endMonth || endMonth >= startMonth)
+    (permanent || (!!endMonth && endMonth >= startMonth)) &&
+    (!beforeSwitch || (permanent && startDay === 1))
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -327,7 +347,24 @@ export function AssignAllowanceDialog({
             <Label htmlFor="allowance-amount">Monthly amount</Label>
             <PKRInput id="allowance-amount" value={amount} onChange={setAmount} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label>Duration</Label>
+            <Select
+              value={permanent ? 'PERMANENT' : 'TEMPORARY'}
+              onValueChange={(v) => setPermanent(v === 'PERMANENT')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PERMANENT">Permanent (until stopped)</SelectItem>
+                <SelectItem value="TEMPORARY" disabled={beforeSwitch}>
+                  Temporary (stops automatically)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-[1fr_6rem] gap-3">
             <div className="space-y-1">
               <Label htmlFor="allowance-from">From month</Label>
               <Input
@@ -339,28 +376,65 @@ export function AssignAllowanceDialog({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="allowance-to">To month (optional)</Label>
+              <Label htmlFor="allowance-from-day">From day</Label>
               <Input
-                id="allowance-to"
-                type="month"
-                min={startMonth}
-                value={endMonth}
+                id="allowance-from-day"
+                type="number"
+                min={1}
+                max={31}
+                value={startDay}
                 disabled={beforeSwitch}
-                onChange={(e) => setEndMonth(e.target.value)}
+                onChange={(e) => setStartDay(Math.min(31, Math.max(1, Number(e.target.value) || 1)))}
               />
             </div>
           </div>
+          {!permanent ? (
+            <div className="grid grid-cols-[1fr_6rem] gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="allowance-to">Last month</Label>
+                <Input
+                  id="allowance-to"
+                  type="month"
+                  min={startMonth}
+                  value={endMonth}
+                  onChange={(e) => setEndMonth(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="allowance-to-day">Last day</Label>
+                <Input
+                  id="allowance-to-day"
+                  type="number"
+                  min={1}
+                  max={31}
+                  placeholder="End"
+                  value={endDay}
+                  onChange={(e) =>
+                    setEndDay(e.target.value ? Math.min(31, Math.max(1, Number(e.target.value))) : '')
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
           {beforeSwitch ? (
             <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
               {format(new Date(`${startMonth}-15`), 'MMMM yyyy')} uses the stipend package, so this
               changes the package from that month onward and recalculates its unpaid payroll.
             </p>
-          ) : (
+          ) : startMonth && (permanent || endMonth) ? (
             <p className="text-xs text-muted-foreground">
-              Leave &quot;To month&quot; empty for a regular allowance. For a one-off (e.g. Salary
-              Difference) set the same month in both.
+              {payPeriodText(
+                { year: Number(startMonth.slice(0, 4)), month: Number(startMonth.slice(5, 7)), day: startDay },
+                permanent
+                  ? null
+                  : {
+                      year: Number(endMonth.slice(0, 4)),
+                      month: Number(endMonth.slice(5, 7)),
+                      day: endDay || null,
+                    },
+              )}
             </p>
-          )}
+          ) : null}
           <div className="space-y-1">
             <Label htmlFor="allowance-note">What is it for? *</Label>
             <Textarea id="allowance-note" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -388,11 +462,12 @@ export function AssignAllowanceDialog({
 function EndAllowanceDialog({ row, onClose }: { row: EmployeeAllowance; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [endMonth, setEndMonth] = useState(thisMonth())
+  const [endDay, setEndDay] = useState<number | ''>('')
   // Ending an allowance cuts pay: Accounts needs an executive's approval.
   const needsApproval = useNeedsPayApproval()
   const [approver, setApprover] = useState<EmployeeApproverTarget>()
   const mutation = useMutation({
-    mutationFn: () => allowancesApi.end(row.id, endMonth, approver),
+    mutationFn: () => allowancesApi.end(row.id, endMonth, approver, endDay || undefined),
     onSuccess: (res) => {
       toast({
         title: isPendingApproval(res)
@@ -419,6 +494,17 @@ function EndAllowanceDialog({ row, onClose }: { row: EmployeeAllowance; onClose:
             type="month"
             value={endMonth}
             onChange={(e) => setEndMonth(e.target.value)}
+          />
+          <Label htmlFor="allowance-end-day">Last day paid (empty = month end)</Label>
+          <Input
+            id="allowance-end-day"
+            type="number"
+            min={1}
+            max={31}
+            value={endDay}
+            onChange={(e) =>
+              setEndDay(e.target.value ? Math.min(31, Math.max(1, Number(e.target.value))) : '')
+            }
           />
           <p className="text-xs text-muted-foreground">
             Choosing a month before it starts removes it completely.

@@ -35,11 +35,55 @@ export function isActiveInMonth(
   );
 }
 
+/**
+ * Req 4: share of `year`/`month` an allowance or incentive covers, by calendar
+ * days. startDay applies only in its first month and endDay only in its last;
+ * 1 = whole month (also when no days are set).
+ */
+export function monthCoverage(
+  range: {
+    startKey: number;
+    startDay?: number | null;
+    endKey?: number | null;
+    endDay?: number | null;
+  },
+  year: number,
+  month: number,
+): number {
+  const key = year * 12 + month;
+  if (key < range.startKey || (range.endKey != null && key > range.endKey)) return 0;
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const first = key === range.startKey && range.startDay ? range.startDay : 1;
+  const last =
+    key === range.endKey && range.endDay ? Math.min(range.endDay, days) : days;
+  return Math.max(0, last - first + 1) / days;
+}
+
+/** monthCoverage for an EmployeeAllowance row. */
+export function allowanceCoverage(
+  row: { startMonth: Date; endMonth: Date | null; startDay?: number | null; endDay?: number | null },
+  year: number,
+  month: number,
+): number {
+  return monthCoverage(
+    {
+      startKey: monthKey(row.startMonth),
+      startDay: row.startDay,
+      endKey: row.endMonth ? monthKey(row.endMonth) : null,
+      endDay: row.endDay,
+    },
+    year,
+    month,
+  );
+}
+
 export type PackageAllowanceRow = {
   name: string;
   proration: AllowanceProration;
   amount: number;
   sortOrder?: number;
+  /** Req 4: share of the month covered (start / end mid-month); default 1. */
+  coverage?: number;
 };
 
 export type PackageAllowanceLine = { label: string; amount: number };
@@ -65,9 +109,20 @@ export function computePackageAllowanceLines(
       (a.sortOrder ?? 100) - (b.sortOrder ?? 100) ||
       a.name.localeCompare(b.name),
   );
+  const partial = (r: PackageAllowanceRow) => r.coverage != null && r.coverage < 1;
   const full = sorted.filter(
-    (r) => r.proration === AllowanceProration.FULL_MONTH,
+    (r) => r.proration === AllowanceProration.FULL_MONTH && !partial(r),
   );
+  // Req 4: a FULL_MONTH allowance starting / ending mid-month pays its calendar
+  // days. ponytail: capped by the employment proration rather than intersecting
+  // both ranges exactly; it never overpays, and a same-month join + mid-month
+  // allowance start is rare.
+  const partialLines = sorted
+    .filter((r) => r.proration === AllowanceProration.FULL_MONTH && partial(r))
+    .map((r) => ({
+      label: r.name,
+      amount: Math.min(Math.round(r.amount * r.coverage!), opts.prorate(r.amount)),
+    }));
   const byAttendance = sorted.filter(
     (r) => r.proration === AllowanceProration.ATTENDANCE,
   );
@@ -88,11 +143,13 @@ export function computePackageAllowanceLines(
     label: r.name,
     amount:
       opts.calendarDays > 0
-        ? Math.round((r.amount * opts.paidDays) / opts.calendarDays)
+        ? Math.round(
+            (r.amount * (r.coverage ?? 1) * opts.paidDays) / opts.calendarDays,
+          )
         : 0,
   }));
 
-  const lines = [...fullLines, ...attendanceLines].filter(
+  const lines = [...fullLines, ...partialLines, ...attendanceLines].filter(
     (l) => l.amount !== 0,
   );
   return { lines, total: lines.reduce((s, l) => s + l.amount, 0) };

@@ -1,3 +1,5 @@
+import { ChangeRequestsCard } from '@/components/employees/ChangeRequests'
+import { PayrollAmendmentsCard } from '@/components/payroll/PayrollAmendments'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -32,6 +34,7 @@ import type { LeaveRecord } from '@/types'
 import { formatBranchLabel } from '@/lib/formatBranchLabel'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
 import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
+import { PendingInquirySuspendsCard } from '@/components/disciplinary/InquirySuspend'
 import { PendingSuspensionApprovalsCard } from '@/components/disciplinary/PendingSuspensionApprovalsCard'
 
 export function ExecutiveDashboard() {
@@ -123,7 +126,10 @@ export function ExecutiveDashboard() {
       </div>
 
       <PendingInquiryOpenApprovalsCard />
+      <PendingInquirySuspendsCard />
       <PendingAppointmentApprovalsCard />
+      <PayrollAmendmentsCard />
+      <ChangeRequestsCard />
       <PendingSuspensionApprovalsCard />
       <PendingInquiryDecisionsCard />
 

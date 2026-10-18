@@ -1,3 +1,5 @@
+import api from '@/api/axios'
+import { useAuth } from '@/hooks/useAuth'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { branchesApi } from '@/api/endpoints/branches'
@@ -118,9 +120,25 @@ export function TransferDialog({
     [designations],
   )
 
+  // Req 16: only Super Admin transfers directly; others send a request
+  // (draft Transfer letter + HR Operations approval).
+  const isSuperAdmin = useAuth().hasRole(['SUPER_ADMIN'])
   const mutation = useMutation({
     mutationFn: () =>
-      employeesApi.transfer(employeeId, {
+      !isSuperAdmin
+        ? api.post('/employee-change-requests/transfer', {
+            employeeId,
+            currentBranchId: branchId,
+            currentDepartmentId: departmentId,
+            currentDesignation: designation,
+            changeType,
+            changeReason,
+            effectiveDate,
+            ...(dutyStartTime ? { dutyStartTime } : {}),
+            ...(dutyEndTime ? { dutyEndTime } : {}),
+            ...(dutyTotalHours !== '' ? { dutyTotalHours: Number(dutyTotalHours) } : {}),
+          })
+        : employeesApi.transfer(employeeId, {
         currentBranchId: branchId,
         currentDepartmentId: departmentId,
         currentDesignation: designation,
@@ -134,7 +152,11 @@ export function TransferDialog({
           monthlyAllowedLeaves === '' ? null : Number(monthlyAllowedLeaves),
       }),
     onSuccess: () => {
-      toast({ title: 'Employee transferred successfully' })
+      toast({
+        title: isSuperAdmin
+          ? 'Employee transferred successfully'
+          : 'Transfer request sent to HR Operations; draft Transfer letter created (send it from Letters)',
+      })
       queryClient.invalidateQueries({ queryKey: ['employee', employeeId] })
       queryClient.invalidateQueries({ queryKey: ['employees'] })
       onOpenChange(false)

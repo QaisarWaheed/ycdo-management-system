@@ -68,6 +68,22 @@ export class CreateIncentiveDto {
   @Min(2)
   @Max(24)
   months?: number;
+
+  /** Req 4: day of the start month it starts; that month pays its calendar days. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  startDay?: number;
+
+  /** Req 4: last day paid in the last month (one-time / N months). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  endDay?: number;
 }
 
 /** Point 21: change a recurring incentive for the months not yet in payroll. */

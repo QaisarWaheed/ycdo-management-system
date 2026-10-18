@@ -96,6 +96,7 @@ export class PayApprovalsService {
             String(payload.allowanceId),
             String(payload.endMonth),
             user,
+            payload.endDay ? Number(payload.endDay) : undefined,
           );
         }
         const [y, m] = String(payload.startMonth).split('-').map(Number);
@@ -108,6 +109,8 @@ export class PayApprovalsService {
             );
           }
         }
+        // Moved to a later open month: it starts from that month's 1st.
+        if (open.year * 12 + open.month !== y * 12 + m) delete payload.startDay;
         payload.startMonth = `${open.year}-${String(open.month).padStart(2, '0')}`;
         return this.allowances.assign(payload as any, user);
       }

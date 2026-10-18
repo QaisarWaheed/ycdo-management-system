@@ -9,6 +9,7 @@ import { InquiryDeadlineScheduler } from './inquiry-deadline.scheduler';
 import { InquiryDecisionService } from './inquiry-decision.service';
 import { InquiryOpeningService } from './inquiry-opening.service';
 import { SuspensionRequestService } from './suspension-request.service';
+import { InquirySuspensionService } from './inquiry-suspension.service';
 import { SuspensionPeriodEndScheduler } from './suspension-period-end.scheduler';
 
 @Module({
@@ -19,6 +20,7 @@ import { SuspensionPeriodEndScheduler } from './suspension-period-end.scheduler'
     SuspensionRequestService,
     InquiryDecisionService,
     InquiryOpeningService,
+    InquirySuspensionService,
     InquiryDeadlineScheduler,
     SuspensionPeriodEndScheduler,
   ],
@@ -27,6 +29,7 @@ import { SuspensionPeriodEndScheduler } from './suspension-period-end.scheduler'
     SuspensionRequestService,
     InquiryDecisionService,
     InquiryOpeningService,
+    InquirySuspensionService,
   ],
 })
 export class DisciplinaryModule {}

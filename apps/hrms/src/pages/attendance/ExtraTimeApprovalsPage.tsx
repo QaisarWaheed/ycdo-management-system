@@ -37,7 +37,7 @@ const errText = (err: ApiError) => {
 
 type Action = { approve: boolean; item: PendingExtraTime }
 
-/** Point 20: HR enters, HR Operations approves; a rejection goes to the Chairman (final). */
+/** HR enters → HR Operations approves → Chairman gives the final approval. A rejection at either level is final. */
 export function ExtraTimeApprovalsPage() {
   const { user, hasRole } = useAuth()
   const queryClient = useQueryClient()
@@ -63,11 +63,11 @@ export function ExtraTimeApprovalsPage() {
       ),
     onSuccess: (_res, { approve, item }) => {
       toast({
-        title: approve
-          ? 'Approved — salary updated'
+        title: !approve
+          ? 'Rejected (final)'
           : item.status === 'ESCALATED'
-            ? 'Rejected (final)'
-            : 'Rejected — sent to Chairman',
+            ? 'Approved — salary updated'
+            : 'Approved — sent to Chairman for final approval',
       })
       setAction(null)
       setNote('')
@@ -86,8 +86,9 @@ export function ExtraTimeApprovalsPage() {
         <h1 className="text-2xl font-bold">Extra Time Approvals</h1>
         <p className="text-sm text-text-secondary">
           Additional working days and overtime entered by HR. They are not paid
-          until approved. HR Operations approves or rejects; a rejection goes to
-          the Chairman for the final decision. Nobody can decide their own entry.
+          until the Chairman gives the final approval. HR Operations approves first,
+          then it goes to the Chairman. A rejection at either level is final.
+          Nobody can decide their own entry.
         </p>
       </div>
 
@@ -199,11 +200,11 @@ export function ExtraTimeApprovalsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {action?.approve
-                ? 'Approve extra time'
+              {!action?.approve
+                ? 'Reject (final)'
                 : action?.item.status === 'ESCALATED'
-                  ? 'Reject (final)'
-                  : 'Reject and send to Chairman'}
+                  ? 'Final approval'
+                  : 'Approve and send to Chairman'}
             </DialogTitle>
           </DialogHeader>
           {action && (

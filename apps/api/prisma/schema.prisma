@@ -237,7 +237,7 @@ model Employee {
   spouseContactNumber       String?
   photoUrl                  String?
   privatePhotoUrl           String?
-  hideProfilePhoto          Boolean        @default(false)
+  hideProfilePhoto          Boolean                 @default(false)
   caste                     String?
   domicile                  String?
   currentAddress            String?
@@ -246,15 +246,15 @@ model Employee {
   tehsil                    String?
   policeStation             String?
   bloodGroup                String?
-  staffType                 StaffType      @default(NEW)
+  staffType                 StaffType               @default(NEW)
   /// Reliever-only staff: no regular duty; skipped by auto-absent marking.
-  relieverOnly              Boolean        @default(false)
+  relieverOnly              Boolean                 @default(false)
   dutyStartTime             String?
   dutyEndTime               String?
   /// Daily duty length in hours; half-hour steps (e.g. 6.5).
   dutyTotalHours            Float?
   /// Paid weekly rest: JS weekday 0=Sun … 6=Sat (Pakistan calendar). Empty = seven-day week.
-  weeklyOffWeekdays         Int[]          @default([])
+  weeklyOffWeekdays         Int[]                   @default([])
   /// Monthly paid leave allowance. Null/omitted uses the runtime default of 2 days (not unlimited).
   monthlyAllowedLeaves      Int?
   /// Pakistan calendar date: LATE/UA on this day or later count toward the next Near/Due cycle after a closed suspension inquiry reinstatement. Null = full current month.
@@ -264,6 +264,8 @@ model Employee {
   permanentProvince         String?
   permanentCity             String?
   maritalStatus             MaritalStatus?
+  incentiveSuggestions      IncentiveSuggestion[]
+  changeRequests            EmployeeChangeRequest[]
 }
 
 enum MaritalStatus {
@@ -617,12 +619,16 @@ model PayrollEntry {
    */
   forcedNonActive       Boolean            @default(false)
   processedAt           DateTime?
+  /// Req 12: Finance verification (Verify by Finance).
+  financeVerifiedAt     DateTime?
+  financeVerifiedById   String?
   createdAt             DateTime           @default(now())
 
-  stipendRecord  StipendRecord      @relation(fields: [stipendRecordId], references: [id])
-  deductions     PayrollDeduction[]
-  allowances     Allowance[]
-  stipendReceipt StipendReceipt?
+  stipendRecord     StipendRecord             @relation(fields: [stipendRecordId], references: [id])
+  deductions        PayrollDeduction[]
+  allowances        Allowance[]
+  stipendReceipt    StipendReceipt?
+  amendmentRequests PayrollAmendmentRequest[]
 
   @@unique([stipendRecordId, month, year])
 }
@@ -697,6 +703,8 @@ enum DeductionType {
 
 enum PayrollStatus {
   PENDING
+  /// Req 12: checked by Finance; locked (no edits, no automatic recalculation) until a Founder-approved amendment reopens it.
+  VERIFIED
   PROCESSED
   PAID
 }
@@ -772,6 +780,17 @@ model Inquiry {
   openDecidedById             String?
   openDecidedAt               DateTime?
   openDecisionNote            String?
+  /// Req 9: explicit "Suspend" inside the inquiry (HR asks, an executive approves).
+  suspendStatus               InquirySuspendStatus?
+  suspendFrom                 DateTime?                   @db.Date
+  suspendReason               String?
+  suspendRequestedById        String?
+  suspendRequestedAt          DateTime?
+  suspendApproverUserId       String?
+  suspendDecidedById          String?
+  suspendDecidedAt            DateTime?
+  suspendDecisionNote         String?
+  suspendLetterId             String?
 
   disciplinaryAction       DisciplinaryAction @relation(fields: [disciplinaryActionId], references: [id])
   inquiryOfficer           User?              @relation("InquiryOfficer", fields: [inquiryOfficerUserId], references: [id])
@@ -787,6 +806,13 @@ model Inquiry {
   @@index([inquiryOfficerUserId])
   @@index([selectedFinalApproverUserId, finalDecisionStatus])
   @@index([selectedOpenApproverUserId, openApprovalStatus])
+}
+
+/// Req 9: the inquiry's suspension request.
+enum InquirySuspendStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
 }
 
 enum InquiryOutcome {
@@ -899,6 +925,11 @@ model Letter {
   letterType              LetterType
   status                  LetterStatus @default(SENT)
   content                 Json
+  /// Req 13: scanned appointment form signed on paper (required before appointment approval).
+  signedScanUrl           String?
+  signedScanMimeType      String?
+  signedScanFileName      String?
+  signedScanUploadedAt    DateTime?
   generatedAt             DateTime     @default(now())
   printedAt               DateTime?
   fileUrl                 String?
@@ -1028,25 +1059,45 @@ enum LetterStatus {
 // ─── LEAVE ────────────────────────────────────────────────
 
 model LeaveRecord {
-  id              String              @id @default(uuid())
-  employeeId      String
-  leaveType       LeaveType           @default(REGULAR)
-  startDate       DateTime
-  endDate         DateTime
-  totalDays       Int
+  id                 String              @id @default(uuid())
+  employeeId         String
+  leaveType          LeaveType           @default(REGULAR)
+  startDate          DateTime
+  endDate            DateTime
+  totalDays          Int
   /// Pay for the leave days chosen by HR: 100 full, 50 half, 0 without pay; null = monthly quota rule.
-  payPercent      Int?
-  status          LeaveStatus         @default(PENDING)
-  reason          String?
-  approvedBy      String?
-  currentStage    LeaveApprovalStage? @default(BRANCH_MANAGER)
-  branchManagerId String?
-  deptInchargeId  String?
-  createdAt       DateTime            @default(now())
+  payPercent         Int?
+  status             LeaveStatus         @default(PENDING)
+  reason             String?
+  approvedBy         String?
+  currentStage       LeaveApprovalStage? @default(BRANCH_MANAGER)
+  branchManagerId    String?
+  deptInchargeId     String?
+  /// SPECIAL leave only: the configured type (Maternity, Accident, ...). payPercent is copied from it.
+  specialLeaveTypeId String?
+  /// SPECIAL leave only: who entered it (employee's own user or HR).
+  requestedById      String?
+  createdAt          DateTime            @default(now())
 
-  employee        Employee         @relation(fields: [employeeId], references: [id])
-  relieverRequest RelieverRequest?
-  approvals       LeaveApproval[]
+  employee         Employee          @relation(fields: [employeeId], references: [id])
+  relieverRequest  RelieverRequest?
+  approvals        LeaveApproval[]
+  specialLeaveType SpecialLeaveType? @relation(fields: [specialLeaveTypeId], references: [id])
+}
+
+/// Special leaves (Maternity, Accident, Marriage, ...): pay % per type, outside the monthly quota.
+/// Flow: employee / HR apply → HR Operations → Chairman (final) → attendance + payroll.
+model SpecialLeaveType {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  /// 100 full pay, 50 half pay, 0 without pay (per working day; weekly offs stay paid).
+  payPercent Int      @default(50)
+  /// Longest allowed single leave of this type in days; null = no limit.
+  maxDays    Int?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  leaves LeaveRecord[]
 }
 
 model LeaveApproval {
@@ -1067,6 +1118,8 @@ enum LeaveApprovalStage {
   BRANCH_MANAGER
   DEPARTMENT_INCHARGE
   HR_OPERATIONS
+  /// Final approval of a SPECIAL leave.
+  CHAIRMAN
   /// The distinct HR decision on a PENDING_APPROVAL (quota-exceeded) leave —
   /// logged via the same LeaveApproval audit trail as every other stage.
   QUOTA_EXCEPTION
@@ -1081,6 +1134,8 @@ enum LeaveType {
   REGULAR
   SHORT_LEAVE
   EMERGENCY
+  /// Maternity / Accident / Marriage ... (see SpecialLeaveType).
+  SPECIAL
 }
 
 enum LeaveStatus {
@@ -1091,6 +1146,8 @@ enum LeaveStatus {
   RELIEVER_CONFIRMED
   RELIEVER_REJECTED
   HR_PENDING
+  /// SPECIAL leave approved by HR Operations, awaiting the Chairman.
+  CHAIRMAN_PENDING
   APPROVED
   REJECTED
   CANCELLED
@@ -1224,6 +1281,10 @@ model EmployeeAllowance {
   startMonth  DateTime  @db.Date
   /// First day of the last month it applies; null = until ended.
   endMonth    DateTime? @db.Date
+  /// Req 4: day of startMonth it starts (pro-rata by calendar days); null = 1st.
+  startDay    Int?
+  /// Req 4: last day paid in endMonth (pro-rata); null = month end.
+  endDay      Int?
   note        String?
   createdById String?
   createdAt   DateTime  @default(now())
@@ -1316,6 +1377,9 @@ model User {
   branchId        String?
   isActive        Boolean            @default(true)
   createdAt       DateTime           @default(now())
+  /// Req 20: access only from accessFrom to accessUntil (null = open). Executives are exempt.
+  accessFrom      DateTime?
+  accessUntil     DateTime?
   lastLogin       DateTime?
   /// Set only on successful Employee Portal login (not HRMS).
   lastPortalLogin DateTime?
@@ -1805,6 +1869,38 @@ model AttendanceMonthLock {
 }
 
 /// Who changed a payroll entry, when, and what it did to net pay.
+/// Req 12: change to a Finance-verified salary slip. HR notifies → Finance asks → Founder decides.
+model PayrollAmendmentRequest {
+  id             String                 @id @default(uuid())
+  payrollEntryId String
+  employeeId     String
+  month          Int
+  year           Int
+  status         PayrollAmendmentStatus @default(HR_NOTIFIED)
+  /// What must change and why (HR's amendment notification).
+  notification   String
+  notifiedById   String
+  notifiedAt     DateTime               @default(now())
+  financeNote    String?
+  submittedById  String?
+  submittedAt    DateTime?
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionNote   String?
+
+  payrollEntry PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([employeeId])
+}
+
+enum PayrollAmendmentStatus {
+  HR_NOTIFIED
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
 model PayrollChangeLog {
   id             String   @id @default(uuid())
   payrollEntryId String
@@ -1896,7 +1992,7 @@ enum ExtraTimeStatus {
   PENDING
   APPROVED
   REJECTED
-  /// Rejected by HR Operations; waiting for Chairman's final decision.
+  /// Approved by HR Operations; waiting for Chairman's final decision.
   ESCALATED
 }
 
@@ -1920,6 +2016,10 @@ model IncentivePlan {
   /// Last month (inclusive). MONTHS: computed; PERMANENT: null until stopped.
   endMonth   Int?
   endYear    Int?
+  /// Req 4: day of the start month it starts (calendar-day pro-rata); null = 1st.
+  startDay   Int?
+  /// Req 4: last day paid in the end month (pro-rata); null = month end.
+  endDay     Int?
   stoppedAt  DateTime?
   addedBy    String
   createdAt  DateTime          @default(now())
@@ -1932,19 +2032,96 @@ model IncentivePlan {
   @@index([employeeId])
 }
 
+/// Phase 3 Req 16 / 17: transfer or working-hours change through a letter and approval.
+/// Transfer → HR Operations approves; working hours → Chairman / President / Founder.
+model EmployeeChangeRequest {
+  id            String               @id @default(uuid())
+  employeeId    String
+  kind          EmployeeChangeKind
+  /// The change to apply on approval (transfer / branch-duty fields).
+  payload       Json
+  summary       String
+  status        EmployeeChangeStatus @default(PENDING)
+  /// The draft letter (TRANSFER, or CUSTOM for working hours); HR sends it as usual.
+  letterId      String?
+  requestedById String
+  requestedAt   DateTime             @default(now())
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([status, kind])
+  @@index([employeeId])
+}
+
+enum EmployeeChangeKind {
+  TRANSFER
+  WORKING_HOURS
+}
+
+enum EmployeeChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Req 7: a suggested incentive / allowance amount for one employee, one type, one month.
+/// Department Heads / Accounts suggest; Chairman / President / Founder approve, amend or reject.
+model IncentiveSuggestion {
+  id              String              @id @default(uuid())
+  employeeId      String
+  kind            PaySuggestionKind
+  /// IncentiveType id (INCENTIVE) or PayAllowanceType id (ALLOWANCE).
+  typeId          String
+  month           Int
+  year            Int
+  suggestedAmount Decimal             @db.Decimal(10, 2)
+  note            String?
+  suggestedById   String
+  status          PaySuggestionStatus @default(PENDING)
+  approvedAmount  Decimal?            @db.Decimal(10, 2)
+  decidedById     String?
+  decidedAt       DateTime?
+  decisionNote    String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, kind, typeId, month, year])
+  @@index([year, month, status])
+}
+
+enum PaySuggestionKind {
+  INCENTIVE
+  ALLOWANCE
+}
+
+enum PaySuggestionStatus {
+  PENDING
+  APPROVED
+  /// Approved with a changed amount.
+  AMENDED
+  REJECTED
+}
+
 /// Point 22: an extra duty on top of the employee's own designation (e.g. Ward In-charge).
 model EmployeeAdditionalDuty {
-  id          String    @id @default(uuid())
-  employeeId  String
-  title       String
-  startDate   DateTime  @db.Date
-  endDate     DateTime? @db.Date
+  id                  String    @id @default(uuid())
+  employeeId          String
+  title               String
+  startDate           DateTime  @db.Date
+  endDate             DateTime? @db.Date
   /// The EmployeeAllowance paid for this duty, once added.
-  allowanceId String?
-  note        String?
-  createdById String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  allowanceId         String?
+  /// Req 5: HR marks whether the role carries an allowance; Accounts then adds the amount.
+  allowanceApplicable Boolean   @default(true)
+  note                String?
+  createdById         String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 

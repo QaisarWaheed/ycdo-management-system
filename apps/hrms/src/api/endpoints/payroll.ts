@@ -101,7 +101,13 @@ export interface OvertimeReport {
   byBranch: OvertimeGroupTotal[]
   byDepartment: OvertimeGroupTotal[]
   totals: OvertimeMoney & { employees: number }
-  trend: Array<{ month: number; year: number; otAmount: number }>
+  trend: Array<{
+    month: number
+    year: number
+    otAmount: number
+    extraDutyAmount: number
+    totalDeductions: number
+  }>
 }
 
 export const payrollApi = {

@@ -126,6 +126,14 @@ export function DutyAllowanceReminderDialog({
           employeeId={adding.employee.id}
           current={null}
           defaultStartMonth={monthValue}
+          // The allowance follows the role's dates, from this payroll month at the earliest.
+          defaultPeriod={{
+            start:
+              adding.startDate.slice(0, 7) < monthValue
+                ? `${monthValue}-01`
+                : adding.startDate.slice(0, 10),
+            end: adding.endDate?.slice(0, 10) ?? null,
+          }}
           defaultNote={`${adding.title} (additional duty)`}
           onClose={() => setAdding(null)}
           onSaved={async (res) => {

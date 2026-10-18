@@ -43,6 +43,7 @@ import {
 } from './payroll.dto';
 import { PayrollService } from './payroll.service';
 import { OvertimeReportService } from './overtime-report.service';
+import { EmployeeFinancialService } from './employee-financial.service';
 import { PayChangeKind } from '@prisma/client';
 import {
   isPayExecutive,
@@ -141,6 +142,7 @@ export class PayrollController {
     private payrollService: PayrollService,
     private payChangeRequests: PayChangeRequestsService,
     private overtimeReportService: OvertimeReportService,
+    private employeeFinancial: EmployeeFinancialService,
   ) {}
   @Post('entries')
   @Roles(...PAYROLL_WRITE_ROLES)
@@ -393,6 +395,13 @@ export class PayrollController {
       `attachment; filename="${filename}"`,
     );
     res.send(buffer);
+  }
+
+  /** Phase 2 Req 1: month-wise money, items with reasons and the full change trail. */
+  @Get('employee/:employeeId/financial')
+  @Roles(...PAYROLL_READ_ROLES, UserRole.PAYROLL_OFFICER)
+  getEmployeeFinancial(@Param('employeeId') employeeId: string) {
+    return this.employeeFinancial.summary(employeeId);
   }
 
   @Get('history/:employeeId')

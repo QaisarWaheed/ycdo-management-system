@@ -49,7 +49,7 @@ export const payrollFinalizeApi = {
     branchId: string
     month: number
     year: number
-    status: 'PROCESSED' | 'PAID'
+    status: 'VERIFIED' | 'PROCESSED' | 'PAID'
   }) =>
     api.post<
       unknown,

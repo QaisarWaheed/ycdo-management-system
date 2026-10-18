@@ -82,12 +82,30 @@ describe('Point 20 extra time approval', () => {
     ).toBe(ExtraTimeStatus.APPROVED);
   });
 
-  it('HR Operations reject sends the day to the Chairman (ESCALATED)', async () => {
+  it('HR Operations reject is final', async () => {
+    const { prisma, service } = setup({ status: ExtraTimeStatus.PENDING });
+    await expect(
+      service.reviewExtraTime('day', 'awd-1', false, HR_OPS),
+    ).resolves.toMatchObject({ status: ExtraTimeStatus.REJECTED });
+    expect(
+      prisma.additionalWorkingDay.update.mock.calls[0][0].data.status,
+    ).toBe(ExtraTimeStatus.REJECTED);
+  });
+
+  it('Chairman approve after HR Operations is final and paid', async () => {
+    const { recompute, service } = setup({ status: ExtraTimeStatus.ESCALATED });
+    await expect(
+      service.reviewExtraTime('day', 'awd-1', true, CHAIRMAN),
+    ).resolves.toMatchObject({ status: ExtraTimeStatus.APPROVED });
+    expect(recompute).toHaveBeenCalled();
+  });
+
+  it('HR Operations approve sends the day to the Chairman (ESCALATED, not paid yet)', async () => {
     const { prisma, recompute, service } = setup({
       status: ExtraTimeStatus.PENDING,
     });
     await expect(
-      service.reviewExtraTime('day', 'awd-1', false, HR_OPS, 'not needed'),
+      service.reviewExtraTime('day', 'awd-1', true, HR_OPS, 'not needed'),
     ).resolves.toMatchObject({ status: ExtraTimeStatus.ESCALATED });
     expect(
       prisma.additionalWorkingDay.update.mock.calls[0][0].data,
@@ -141,14 +159,14 @@ describe('Point 20 extra time approval', () => {
       id: 'log-1',
       employeeId: 'emp-1',
       date: new Date(Date.UTC(2026, 9, 5)),
-      overtimeStatus: ExtraTimeStatus.PENDING,
+      overtimeStatus: ExtraTimeStatus.ESCALATED,
       overtimeRequestedById: 'hr',
     });
-    await service.reviewExtraTime('overtime', 'log-1', true, HR_OPS);
+    await service.reviewExtraTime('overtime', 'log-1', true, CHAIRMAN);
     expect(prisma.attendanceLog.update.mock.calls[0][0].data).toMatchObject({
       overtimeStatus: ExtraTimeStatus.APPROVED,
       overtimePending: false,
-      overtimeApprovedBy: 'ops',
+      overtimeApprovedBy: CHAIRMAN.id,
     });
   });
 

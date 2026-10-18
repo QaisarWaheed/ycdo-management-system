@@ -12,7 +12,7 @@ import {
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles } from '../auth/roles.decorator';
+import { Roles, StrictRoles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import type { Response } from 'express';
 import {
@@ -32,6 +32,22 @@ import { DisciplinaryService } from './disciplinary.service';
 import { InquiryDecisionService } from './inquiry-decision.service';
 import { InquiryOpeningService, INQUIRY_CLOSE_ROLES } from './inquiry-opening.service';
 import { SuspensionRequestService } from './suspension-request.service';
+import {
+  INQUIRY_SUSPEND_APPROVER_ROLES,
+  INQUIRY_SUSPEND_REQUEST_ROLES,
+  InquirySuspensionService,
+} from './inquiry-suspension.service';
+import { IsDateString, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+
+class SuspendFromInquiryDto {
+  @IsDateString() suspendFrom: string;
+  @IsString() @MinLength(3) @MaxLength(500) reason: string;
+  /** Executive who approves (not needed when an executive suspends). */
+  @IsOptional() @IsUUID() approverUserId?: string;
+}
+
+type RoleUser = { id: string; role: UserRole; roles?: UserRole[] };
+const actorOf = (u: RoleUser) => ({ id: u.id, roles: u.roles?.length ? u.roles : [u.role] });
 
 const SUSPENSION_PREPARE_ROLES = [
   UserRole.SUPER_ADMIN,
@@ -54,7 +70,60 @@ export class DisciplinaryController {
     private suspensionRequestService: SuspensionRequestService,
     private inquiryDecisionService: InquiryDecisionService,
     private inquiryOpeningService: InquiryOpeningService,
+    private inquirySuspension: InquirySuspensionService,
   ) {}
+
+  /** Req 9: "Suspend" inside an inquiry; executives apply at once, others ask an executive. */
+  @Post('inquiries/:id/suspend')
+  @Roles(...INQUIRY_SUSPEND_REQUEST_ROLES)
+  @StrictRoles()
+  suspendFromInquiry(
+    @Param('id') id: string,
+    @Body() dto: SuspendFromInquiryDto,
+    @CurrentUser() user: RoleUser,
+  ) {
+    return this.inquirySuspension.request(id, dto, actorOf(user));
+  }
+
+  /** Executives who can approve an inquiry suspension (Chairman / President / Founder). */
+  @Get('inquiry-suspend-approvers')
+  @Roles(...INQUIRY_SUSPEND_REQUEST_ROLES)
+  @StrictRoles()
+  async inquirySuspendApprovers() {
+    const all = await this.suspensionRequestService.listEligibleApprovers();
+    return all.filter((a) =>
+      (INQUIRY_SUSPEND_APPROVER_ROLES as string[]).includes(a.eligibleRole),
+    );
+  }
+
+  @Get('inquiry-suspend-approvals/my-pending')
+  @Roles(...INQUIRY_SUSPEND_APPROVER_ROLES, UserRole.SUPER_ADMIN)
+  @StrictRoles()
+  myPendingInquirySuspends(@CurrentUser() user: RoleUser) {
+    return this.inquirySuspension.pendingFor(actorOf(user));
+  }
+
+  @Post('inquiries/:id/suspend/approve')
+  @Roles(...INQUIRY_SUSPEND_APPROVER_ROLES, UserRole.SUPER_ADMIN)
+  @StrictRoles()
+  approveInquirySuspend(
+    @Param('id') id: string,
+    @Body() dto: DecideSuspensionDto,
+    @CurrentUser() user: RoleUser,
+  ) {
+    return this.inquirySuspension.decide(id, true, actorOf(user), dto.note);
+  }
+
+  @Post('inquiries/:id/suspend/reject')
+  @Roles(...INQUIRY_SUSPEND_APPROVER_ROLES, UserRole.SUPER_ADMIN)
+  @StrictRoles()
+  rejectInquirySuspend(
+    @Param('id') id: string,
+    @Body() dto: RejectSuspensionDto,
+    @CurrentUser() user: RoleUser,
+  ) {
+    return this.inquirySuspension.decide(id, false, actorOf(user), dto.reason);
+  }
 
   @Post('inquiry')
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER)

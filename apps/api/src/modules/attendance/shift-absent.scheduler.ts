@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PayrollService } from '../payroll/payroll.service';
+import { InquirySuspensionService } from '../disciplinary/inquiry-suspension.service';
 import { applyDisciplineRules, reverseAbsenceDeductionForDate } from './discipline.helper';
 import { isWeeklyOffDate } from './weekly-off.util';
 import { is24HourShift, is24HourShiftRecord } from './attendance-biometric.util';
@@ -40,6 +41,7 @@ export class ShiftAbsentScheduler {
   constructor(
     private prisma: PrismaService,
     private payrollService: PayrollService,
+    private inquirySuspension?: InquirySuspensionService,
   ) {}
 
   // Every 5 min (not 15) so an UNMARKED placeholder exists close to the
@@ -303,6 +305,23 @@ export class ShiftAbsentScheduler {
         log.employee.id,
         log.date,
       );
+
+      // Req 10: third consecutive uninformed absence → suspended at once.
+      try {
+        const suspended = await this.inquirySuspension?.autoSuspendOnUninformedAbsence(
+          log.employee.id,
+          log.date,
+        );
+        if (suspended) {
+          await this.payrollService.recomputePendingPayrollForAttendanceDate(
+            log.employee.id,
+            log.date,
+          );
+          this.logger.log(`Auto-suspended ${log.employee.id} after consecutive uninformed absences`);
+        }
+      } catch (err) {
+        this.logger.error(`Auto-suspension check failed for ${log.employee.id}: ${String(err)}`);
+      }
 
       upgraded++;
     }

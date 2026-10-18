@@ -109,7 +109,7 @@ describe('OvertimeReportService', () => {
         entry('c1', c, {
           allowances: [{ type: 'OVERTIME', amount: 400, hours: 2 }],
         }),
-        // No OT / extra duty -> not listed.
+        // Req 6: deductions only -> listed too, so the deduction total is complete.
         entry('d1', emp('d', 'Karachi', 'Admin'), {
           deductions: [{ reason: 'FINE', amount: 500 }],
         }),
@@ -137,7 +137,7 @@ describe('OvertimeReportService', () => {
       extraDutyAmount: 700,
       net: -300,
     });
-    expect(r.rows.map((x) => x.employeeId).sort()).toEqual(['a', 'b', 'c']);
+    expect(r.rows.map((x) => x.employeeId).sort()).toEqual(['a', 'b', 'c', 'd']);
 
     const lahore = r.byBranch.find((g) => g.name === 'Lahore')!;
     expect(lahore).toMatchObject({
@@ -153,11 +153,11 @@ describe('OvertimeReportService', () => {
       otHours: 11,
     });
     expect(r.totals).toMatchObject({
-      employees: 3,
+      employees: 4,
       otAmount: 2900,
       extraDutyAmount: 2700,
-      totalDeductions: 1380,
-      net: 4220,
+      totalDeductions: 1880,
+      net: 3720,
     });
     // Group totals add up to the grand total.
     const sumNet = (gs: Array<{ net: number }>) =>
@@ -166,7 +166,13 @@ describe('OvertimeReportService', () => {
     expect(sumNet(r.byDepartment)).toBe(r.totals.net);
     // Last trend point is the report's own OT total.
     expect(r.trend).toHaveLength(6);
-    expect(r.trend[5]).toEqual({ month: 8, year: 2026, otAmount: 2900 });
+    expect(r.trend[5]).toEqual({
+      month: 8,
+      year: 2026,
+      otAmount: 2900,
+      extraDutyAmount: 2700,
+      totalDeductions: 1880,
+    });
   });
 
   it('builds the 6-month trend from earlier months and narrows by actor scope', async () => {

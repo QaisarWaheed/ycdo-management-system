@@ -270,24 +270,37 @@ export class AllowancesService {
       );
     }
 
+    const startDay = dto.startDay && dto.startDay > 1 ? dto.startDay : null;
     const data = {
       amount: dto.amount,
       endMonth: end?.date ?? null,
+      endDay: end ? (dto.endDay ?? null) : null,
       note: dto.note?.trim() || null,
     };
     const saved = await this.prisma.$transaction(async (tx) => {
-      if (current && monthKey(current.startMonth) === start.key) {
-        return tx.employeeAllowance.update({ where: { id: current.id }, data });
+      if (
+        current &&
+        monthKey(current.startMonth) === start.key &&
+        (current.startDay ?? 1) >= (startDay ?? 1)
+      ) {
+        return tx.employeeAllowance.update({
+          where: { id: current.id },
+          data: { ...data, startDay },
+        });
       }
       if (current) {
+        // Req 4: a mid-month change keeps the old amount until the day before.
         await tx.employeeAllowance.update({
           where: { id: current.id },
-          data: { endMonth: fromKey(start.key - 1) },
+          data: startDay
+            ? { endMonth: start.date, endDay: startDay - 1 }
+            : { endMonth: fromKey(start.key - 1), endDay: null },
         });
       }
       return tx.employeeAllowance.create({
         data: {
           ...data,
+          startDay,
           employeeId: dto.employeeId,
           typeId: dto.typeId,
           startMonth: start.date,
@@ -308,6 +321,8 @@ export class AllowancesService {
         after: dto.amount,
         startMonth: dto.startMonth,
         endMonth: dto.endMonth ?? null,
+        startDay,
+        endDay: data.endDay,
       },
     );
     await this.recomputePendingFrom(dto.employeeId, start.key);
@@ -329,15 +344,19 @@ export class AllowancesService {
   }
 
   /** Stop an allowance after `endMonth` (executives directly; Accounts via approval). */
-  async end(id: string, endMonth: string, user: Actor) {
+  async end(id: string, endMonth: string, user: Actor, endDay?: number) {
     const row = await this.prisma.employeeAllowance.findUnique({
       where: { id },
       include: { type: true },
     });
     if (!row) throw new NotFoundException('Allowance not found');
     const end = parseMonth(endMonth);
-    if (row.endMonth && monthKey(row.endMonth) <= end.key) {
-      throw new BadRequestException('It already ends by that month');
+    if (
+      row.endMonth &&
+      (monthKey(row.endMonth) < end.key ||
+        (monthKey(row.endMonth) === end.key && (row.endDay ?? 31) <= (endDay ?? 31)))
+    ) {
+      throw new BadRequestException('It already ends by that date');
     }
     const startKey = monthKey(row.startMonth);
     if (end.key < startKey) {
@@ -346,7 +365,7 @@ export class AllowancesService {
     } else {
       await this.prisma.employeeAllowance.update({
         where: { id },
-        data: { endMonth: end.date },
+        data: { endMonth: end.date, endDay: endDay ?? null },
       });
     }
     await this.audit(
@@ -359,6 +378,7 @@ export class AllowancesService {
         type: row.type.name,
         amount: Number(row.amount),
         endMonth,
+        endDay: endDay ?? null,
       },
     );
     await this.recomputePendingFrom(

@@ -28,6 +28,9 @@ export interface EmployeeAllowance {
   startMonth: string
   /** ISO date, first day of the last month; null = until ended. */
   endMonth: string | null
+  /** Req 4: start / last day inside the first / last month (pro-rata). */
+  startDay?: number | null
+  endDay?: number | null
   note?: string | null
   type: PayAllowanceType
 }
@@ -123,14 +126,16 @@ export const allowancesApi = {
     amount: number
     startMonth: string
     endMonth?: string
+    startDay?: number
+    endDay?: number
     note?: string
     approverTarget?: EmployeeApproverTarget
   }) =>
     api.post<unknown, EmployeeAllowance | PendingApprovalResponse>('/employee-allowances', data),
-  end: (id: string, endMonth: string, approverTarget?: EmployeeApproverTarget) =>
+  end: (id: string, endMonth: string, approverTarget?: EmployeeApproverTarget, endDay?: number) =>
     api.patch<unknown, { id: string } | PendingApprovalResponse>(
       `/employee-allowances/${id}/end`,
-      { endMonth, approverTarget },
+      { endMonth, approverTarget, endDay },
     ),
 }
 

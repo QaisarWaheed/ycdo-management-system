@@ -78,6 +78,7 @@ function enrichSlipWithEmployee(
 function PayrollStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
+    VERIFIED: 'bg-violet-100 text-violet-800 border-violet-200',
     PROCESSED: 'bg-blue-100 text-blue-800 border-blue-200',
     PAID: 'bg-green-100 text-green-800 border-green-200',
   }

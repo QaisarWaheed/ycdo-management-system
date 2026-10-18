@@ -1,3 +1,4 @@
+import { SignedScanViewButton } from '@/components/letters/SignedScan'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -169,6 +170,7 @@ export function PendingAppointmentApprovalsCard() {
                         >
                           Print Draft
                         </Button>
+                        <SignedScanViewButton letterId={letter.id} />
                         <Button
                           variant="outline"
                           size="sm"

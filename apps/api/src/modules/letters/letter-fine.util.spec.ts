@@ -42,10 +42,17 @@ describe('letter fines', () => {
       totalDeductions: { increment: 200 }, netStipend: { decrement: 200 },
     } });
   });
-  it.each(['PROCESSED', 'PAID'])('rejects a charge against %s salary', async status => {
-    const tx = db([{ id: 'p', status }]);
-    await expect(applyLetterFine(tx, letter)).rejects.toThrow('finalized');
-    expect(tx.payrollDeduction.create).not.toHaveBeenCalled();
+  it.each(['VERIFIED', 'PROCESSED', 'PAID'])('Req 18: a %s fine month moves the fine to the next open month', async status => {
+    const tx = db();
+    tx.payrollEntry.findMany = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: 'p10', status, month: 10, year: 2026 }])
+      .mockResolvedValueOnce([{ id: 'p11', status: 'PENDING', month: 11, year: 2026 }]);
+    await applyLetterFine(tx, letter);
+    expect(tx.payrollDeduction.create.mock.calls[0][0].data).toMatchObject({
+      payrollEntryId: 'p11',
+      description: expect.stringContaining('(fine for 10/2026)'),
+    });
   });
   it('rejects a fine with no usable numeric amount instead of issuing it without a deduction', async () => {
     const tx = db();

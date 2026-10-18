@@ -3,8 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AllowancesService } from '../allowances/allowances.service';
 import { isActiveInMonth } from '../allowances/package-allowances.util';
 import type {
   CreateAdditionalDutyDto,
@@ -79,7 +80,61 @@ export function assertDateOrder(start: Date, end: Date | null) {
  */
 @Injectable()
 export class AdditionalDutiesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private allowances?: AllowancesService,
+  ) {}
+
+  /** Req 5: Accounts adds the role's allowance amount (with approval as usual). */
+  private async notifyAccounts(duty: { employeeId: string; title: string; startDate: Date }) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: duty.employeeId },
+      select: { fullName: true, employeeCode: true },
+    });
+    const users = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        employeeId: { not: null },
+        OR: [
+          { role: UserRole.PAYROLL_OFFICER },
+          { additionalRoles: { some: { role: UserRole.PAYROLL_OFFICER } } },
+        ],
+      },
+      select: { employeeId: true },
+    });
+    for (const u of users) {
+      await this.prisma.notification.create({
+        data: {
+          employeeId: u.employeeId!,
+          type: 'DUTY_ALLOWANCE_NEEDED',
+          message: `${employee?.fullName ?? 'Employee'} (${employee?.employeeCode ?? ''}) got the additional role "${duty.title}" from ${duty.startDate.toISOString().slice(0, 10)}. Please add its allowance.`,
+        },
+      });
+    }
+  }
+
+  /**
+   * Req 5: when the role ends, the allowance paid for it ends the same day
+   * (calendar-day pro-rata for that month). Nothing to do when it already
+   * ends by then.
+   */
+  private async endLinkedAllowance(
+    duty: { allowanceId: string | null; endDate: Date | null },
+    user: Actor,
+  ) {
+    if (!duty.allowanceId || !duty.endDate || !this.allowances) return;
+    const end = duty.endDate.toISOString().slice(0, 10);
+    try {
+      await this.allowances.end(
+        duty.allowanceId,
+        end.slice(0, 7),
+        user,
+        Number(end.slice(8, 10)),
+      );
+    } catch (err) {
+      if (!(err instanceof BadRequestException)) throw err;
+    }
+  }
 
   list(employeeId?: string) {
     return this.prisma.employeeAdditionalDuty.findMany({
@@ -104,9 +159,11 @@ export class AdditionalDutiesService {
         startDate,
         endDate,
         note: dto.note?.trim() || null,
+        allowanceApplicable: dto.allowanceApplicable ?? true,
         createdById: user.id,
       },
     });
+    if (duty.allowanceApplicable) await this.notifyAccounts(duty);
     await this.audit(user, 'ADDITIONAL_DUTY_CREATED', duty.id, {
       employeeId: duty.employeeId,
       title: duty.title,
@@ -134,8 +191,10 @@ export class AdditionalDutiesService {
         startDate,
         endDate,
         note: dto.note === undefined ? undefined : dto.note?.trim() || null,
+        allowanceApplicable: dto.allowanceApplicable,
       },
     });
+    await this.endLinkedAllowance(duty, user);
     await this.audit(user, 'ADDITIONAL_DUTY_UPDATED', id, {
       employeeId: before.employeeId,
       before: {
@@ -167,6 +226,7 @@ export class AdditionalDutiesService {
       where: { id },
       data: { allowanceId },
     });
+    await this.endLinkedAllowance(duty, user);
     await this.audit(user, 'ADDITIONAL_DUTY_ALLOWANCE_LINKED', id, {
       employeeId: before.employeeId,
       before: before.allowanceId,
@@ -193,6 +253,8 @@ export class AdditionalDutiesService {
     const { start, end } = monthBounds(year, month);
     const duties = await this.prisma.employeeAdditionalDuty.findMany({
       where: {
+        // Req 5: roles HR marked "no allowance" never remind Accounts.
+        allowanceApplicable: true,
         startDate: { lte: end },
         OR: [{ endDate: null }, { endDate: { gte: start } }],
       },

@@ -22,6 +22,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { toast } from '@/hooks/use-toast'
 import type { Incentive } from '@/types'
 import { formatPKR } from '@/lib/stipendUtils'
+import { payPeriodText } from '@/lib/payPeriod'
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1)
 const currentYear = new Date().getFullYear()
@@ -65,6 +66,15 @@ export function AddIncentivesForm({
   const [duration, setDuration] = useState<IncentiveDuration>('ONE_TIME')
   const [months, setMonths] = useState(3)
   const monthsValid = duration !== 'MONTHS' || (months >= 2 && months <= 24)
+  // Req 4: exact start / last day; part months pay their calendar days.
+  const [startDay, setStartDay] = useState(1)
+  const [endDay, setEndDay] = useState<number | ''>('')
+  const lastIndex =
+    year * 12 + month - 1 + (duration === 'MONTHS' ? months - 1 : 0)
+  const periodEnd =
+    duration === 'PERMANENT'
+      ? null
+      : { year: Math.floor(lastIndex / 12), month: (lastIndex % 12) + 1, day: endDay || null }
   const [newType, setNewType] = useState('')
   const needsApproval = useNeedsPayApproval()
   const [approver, setApprover] = useState<EmployeeApproverTarget>()
@@ -121,6 +131,8 @@ export function AddIncentivesForm({
           approverTarget: approver,
           duration,
           months: duration === 'MONTHS' ? months : undefined,
+          startDay: startDay > 1 ? startDay : undefined,
+          endDay: duration !== 'PERMANENT' && endDay ? endDay : undefined,
         })
         if (isPendingApproval(res)) {
           pending++
@@ -224,12 +236,39 @@ export function AddIncentivesForm({
           </div>
         ) : null}
       </div>
-      {duration !== 'ONE_TIME' ? (
-        <p className="text-xs text-text-secondary">
-          Repeats from the selected month. The payslip shows only the incentive and amount, never
-          the duration.
-        </p>
-      ) : null}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label htmlFor="incentive-start-day">Starts on day</Label>
+          <Input
+            id="incentive-start-day"
+            type="number"
+            min={1}
+            max={31}
+            value={startDay}
+            onChange={(e) => setStartDay(Math.min(31, Math.max(1, Number(e.target.value) || 1)))}
+          />
+        </div>
+        {duration !== 'PERMANENT' ? (
+          <div className="space-y-1">
+            <Label htmlFor="incentive-end-day">Last day in last month</Label>
+            <Input
+              id="incentive-end-day"
+              type="number"
+              min={1}
+              max={31}
+              placeholder="Month end"
+              value={endDay}
+              onChange={(e) =>
+                setEndDay(e.target.value ? Math.min(31, Math.max(1, Number(e.target.value))) : '')
+              }
+            />
+          </div>
+        ) : null}
+      </div>
+      <p className="text-xs text-text-secondary">
+        {payPeriodText({ year, month, day: startDay }, periodEnd)} The payslip shows only the
+        incentive and amount, never the duration.
+      </p>
 
       {employeeId && existing.length > 0 ? (
         <div className="space-y-2 rounded-lg border border-border p-3">

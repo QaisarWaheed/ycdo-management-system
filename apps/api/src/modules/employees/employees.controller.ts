@@ -56,6 +56,19 @@ const BIOMETRIC_REFERENCE_ROLES = Object.values(UserRole).filter(
   (role) => role !== UserRole.EMPLOYEE,
 );
 
+/** Req 16 / 17: only Super Admin changes branch / department / working hours directly. */
+function assertSuperAdminForDirectChange(
+  user: { role: UserRole; roles?: UserRole[] },
+  what: string,
+) {
+  const roles = user.roles?.length ? user.roles : [user.role];
+  if (!roles.includes(UserRole.SUPER_ADMIN)) {
+    throw new ForbiddenException(
+      `${what} needs a letter and approval: use the request button (it creates the draft letter and notifies the approver).`,
+    );
+  }
+}
+
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class EmployeesController {
@@ -327,6 +340,21 @@ export class EmployeesController {
       );
     }
 
+    // Req 17: working hours only through an approved request (Super Admin excepted).
+    if (
+      dto.dutyStartTime !== undefined ||
+      dto.dutyEndTime !== undefined ||
+      dto.dutyTotalHours !== undefined
+    ) {
+      const current = await this.employeesService.findOne(id);
+      if (
+        (dto.dutyStartTime !== undefined && dto.dutyStartTime !== current.dutyStartTime) ||
+        (dto.dutyEndTime !== undefined && dto.dutyEndTime !== current.dutyEndTime) ||
+        (dto.dutyTotalHours !== undefined && dto.dutyTotalHours !== current.dutyTotalHours)
+      ) {
+        assertSuperAdminForDirectChange(user, 'Working hours change');
+      }
+    }
     // Permission grant allows personal fields even for roles that are usually restricted
     return this.employeesService.update(id, dto);
   }
@@ -338,7 +366,13 @@ export class EmployeesController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
   )
-  transfer(@Param('id') id: string, @Body() dto: TransferDto) {
+  transfer(
+    @Param('id') id: string,
+    @Body() dto: TransferDto,
+    @CurrentUser() user: { role: UserRole; roles?: UserRole[] },
+  ) {
+    // Req 16: transfers go through a letter + HR Operations approval.
+    assertSuperAdminForDirectChange(user, 'Transfer');
     return this.employeesService.transfer(id, dto);
   }
 
@@ -380,11 +414,24 @@ export class EmployeesController {
     UserRole.HR_OPERATIONS_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  updateBranchDuty(
+  async updateBranchDuty(
     @Param('id') id: string,
     @Body() dto: UpdateBranchDutyDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
   ) {
+    // Req 16 / 17: branch, department and working hours change only through an
+    // approved request; weekly offs / reliever settings stay direct.
+    const current = await this.employeesService.findOne(id);
+    const changes =
+      (dto.currentBranchId !== undefined && dto.currentBranchId !== current.currentBranchId) ||
+      (dto.currentDepartmentId !== undefined && dto.currentDepartmentId !== current.currentDepartmentId)
+        ? 'Transfer'
+        : (dto.dutyStartTime !== undefined && dto.dutyStartTime !== current.dutyStartTime) ||
+            (dto.dutyEndTime !== undefined && dto.dutyEndTime !== current.dutyEndTime) ||
+            (dto.dutyTotalHours !== undefined && dto.dutyTotalHours !== current.dutyTotalHours)
+          ? 'Working hours change'
+          : null;
+    if (changes) assertSuperAdminForDirectChange(user, changes);
     return this.employeesService.updateBranchDuty(id, dto, user.id);
   }
 

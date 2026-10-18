@@ -239,11 +239,9 @@ async function getBasicStipend(
   return Number(stipendRecord?.basicStipend ?? 0);
 }
 
-/** PROCESSED and PAID payroll entries must not be financially mutated. */
+/** VERIFIED (Req 12), PROCESSED and PAID payroll entries must not be financially mutated. */
 function isPayrollFinanciallyFrozen(status: PayrollStatus): boolean {
-  return (
-    status === PayrollStatus.PROCESSED || status === PayrollStatus.PAID
-  );
+  return status !== PayrollStatus.PENDING;
 }
 
 async function applyLateArrivalFineDeduction(

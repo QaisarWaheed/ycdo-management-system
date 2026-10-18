@@ -52,6 +52,7 @@ import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 import type { LeaveRecord } from '@/types'
+import { SpecialLeaveTab } from './SpecialLeaveTab'
 
 function LeaveStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -889,6 +890,7 @@ export function MyLeavePage() {
         <TabsList>
           <TabsTrigger value="requests">My Requests</TabsTrigger>
           <TabsTrigger value="apply">Apply Leave</TabsTrigger>
+          <TabsTrigger value="special">Special Leave</TabsTrigger>
           <TabsTrigger value="reliever" className="relative">
             Reliever Requests
             {pendingRelieverCount > 0 && (
@@ -905,6 +907,10 @@ export function MyLeavePage() {
 
         <TabsContent value="apply" className="mt-4">
           <ApplyLeaveTab onSuccess={() => setTab('requests')} />
+        </TabsContent>
+
+        <TabsContent value="special" className="mt-4">
+          <SpecialLeaveTab />
         </TabsContent>
 
         <TabsContent value="reliever" className="mt-4">

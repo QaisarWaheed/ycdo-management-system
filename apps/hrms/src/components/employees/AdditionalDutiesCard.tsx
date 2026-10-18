@@ -176,8 +176,10 @@ export function AdditionalDutiesCard({ employeeId }: { employeeId: string }) {
                           </Select>
                         ) : d.allowanceId ? (
                           allowanceLabel(d.allowanceId)
+                        ) : d.allowanceApplicable ? (
+                          <Badge variant="outline">Accounts to add allowance</Badge>
                         ) : (
-                          <Badge variant="secondary">No allowance</Badge>
+                          <Badge variant="secondary">No allowance for this role</Badge>
                         )}
                       </TableCell>
                       <TableCell className="space-x-1 whitespace-nowrap text-right">
@@ -246,6 +248,7 @@ function DutyDialog({
   const [startDate, setStartDate] = useState(duty?.startDate.slice(0, 10) ?? today())
   const [endDate, setEndDate] = useState(duty?.endDate?.slice(0, 10) ?? '')
   const [note, setNote] = useState(duty?.note ?? '')
+  const [allowanceApplicable, setAllowanceApplicable] = useState(duty?.allowanceApplicable ?? true)
   const mutation = useMutation({
     mutationFn: () =>
       duty
@@ -254,6 +257,7 @@ function DutyDialog({
             startDate,
             endDate: endDate || null,
             note: note.trim() || null,
+            allowanceApplicable,
           })
         : additionalDutiesApi.create({
             employeeId,
@@ -261,6 +265,7 @@ function DutyDialog({
             startDate,
             endDate: endDate || undefined,
             note: note.trim() || undefined,
+            allowanceApplicable,
           }),
     onSuccess: () => {
       toast({ title: duty ? 'Duty updated' : 'Duty added' })
@@ -310,8 +315,17 @@ function DutyDialog({
             <Label htmlFor="duty-note">Note</Label>
             <Textarea id="duty-note" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={allowanceApplicable}
+              onChange={(e) => setAllowanceApplicable(e.target.checked)}
+            />
+            This role carries an allowance (Accounts will add the amount)
+          </label>
           <p className="text-xs text-muted-foreground">
-            The employee stays in their original designation; salary is calculated once.
+            The employee stays in their original designation; salary is calculated once. When the
+            role ends, its allowance ends the same day.
           </p>
         </div>
         <DialogFooter>

@@ -15,6 +15,9 @@ export interface CreateIncentivePayload {
   duration?: IncentiveDuration
   /** 2–24, with duration MONTHS. */
   months?: number
+  /** Req 4: start / last day (part months pay their calendar days). */
+  startDay?: number
+  endDay?: number
 }
 
 export type IncentiveDuration = 'ONE_TIME' | 'MONTHS' | 'PERMANENT'

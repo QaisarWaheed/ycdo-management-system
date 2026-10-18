@@ -1,3 +1,9 @@
+import { FileInterceptor } from '@nestjs/platform-express';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileResponse } from '../../common/employee-files.util';
+import { resolveUploadPath, safeFileName } from '../documents/documents.service';
+import { signedScanMulterConfig } from './signed-scan.multer.config';
 import {
   Body,
   Controller,
@@ -10,6 +16,9 @@ import {
   Query,
   Res,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  NotFoundException,
 } from '@nestjs/common';
 import { Permission, UserRole } from '@prisma/client';
 import type { Response } from 'express';
@@ -423,6 +432,70 @@ export class LettersController {
   )
   findPendingAppointmentApprovals() {
     return this.lettersService.findPendingAppointmentApprovals();
+  }
+
+  /** Req 13: HR uploads the scanned appointment form signed on paper (before approval). */
+  @Post(':id/signed-scan')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+  )
+  @UseInterceptors(FileInterceptor('file', signedScanMulterConfig))
+  uploadSignedScan(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.lettersService.uploadSignedScan(id, file, user.id);
+  }
+
+  /** Req 13: the signed scan for the approvers (and HR). */
+  @Get(':id/signed-scan')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+    UserRole.ADMIN_MANAGER,
+    UserRole.ADMIN_OFFICER,
+    UserRole.PAYROLL_OFFICER,
+  )
+  async signedScan(@Param('id') id: string) {
+    const letter = await this.lettersService.findOne(id);
+    if (!letter.signedScanUrl) throw new NotFoundException('No signed scan uploaded');
+    const fullPath = resolveUploadPath(letter.signedScanUrl);
+    return fileResponse(
+      fs.createReadStream(fullPath),
+      safeFileName(letter.signedScanFileName ?? `signed${path.extname(fullPath)}`),
+    );
+  }
+
+  /** Req 14: the employee's appointment letter from the salary slip / approval screens. */
+  @Get('appointment/:employeeId/pdf')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.PRESIDENT,
+    UserRole.FOUNDER,
+    UserRole.CHAIRMAN,
+    UserRole.PAYROLL_OFFICER,
+    UserRole.HR_MANAGER,
+    UserRole.HR_ADMIN_MANAGER,
+    UserRole.HR_OPERATIONS_MANAGER,
+  )
+  async getAppointmentPdf(@Param('employeeId') employeeId: string, @Res() res: Response) {
+    const { buffer, filename } = await this.lettersService.getAppointmentLetterPdf(employeeId);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+    });
+    res.send(buffer);
   }
 
   @Get(':id/pdf')

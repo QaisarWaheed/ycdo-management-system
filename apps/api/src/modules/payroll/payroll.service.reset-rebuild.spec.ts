@@ -70,7 +70,7 @@ describe('PayrollService.resetUnpaidPayroll / rebuild', () => {
           month: 8,
           year: 2026,
           status: {
-            in: [PayrollStatus.PENDING, PayrollStatus.PROCESSED],
+            in: [PayrollStatus.PENDING, PayrollStatus.VERIFIED, PayrollStatus.PROCESSED],
           },
         }),
       }),

@@ -14,6 +14,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
+  AccessWindowDto,
   CreateSystemLoginDto,
   ResetLoginPasswordDto,
   UpdateUserAccessDto,
@@ -53,6 +54,16 @@ export class UserAccessController {
     @CurrentUser() user: { role: UserRole },
   ) {
     return this.userAccessService.findOne(userId, user.role);
+  }
+
+  /** Req 20: access only between these date-times (null = open). */
+  @Patch(':userId/access-window')
+  setAccessWindow(
+    @Param('userId') userId: string,
+    @Body() dto: AccessWindowDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.userAccessService.setAccessWindow(userId, dto, user.id, user.role);
   }
 
   @Patch(':userId/toggle-active')

@@ -1,3 +1,6 @@
+import { SignedScanUploadButton } from '@/components/letters/SignedScan'
+import { ChangeRequestsCard } from '@/components/employees/ChangeRequests'
+import { EmployeeFinancialTab } from '@/components/employees/EmployeeFinancialTab'
 import { useCanSetIncentive } from '@/components/payroll/ApproverSelect'
 import { selectCurrentStipend } from '@/lib/stipendUtils'
 import { Fragment, useMemo, useRef, useState } from 'react'
@@ -717,6 +720,7 @@ export function EmployeeProfilePage() {
   const [incentiveOpen, setIncentiveOpen] = useState(false)
   const [profileMonth, setProfileMonth] = useState('')
   const [letterCategory, setLetterCategory] = useState('ALL')
+  const [profileTab, setProfileTab] = useState('overview')
   const [statusCommunicationPending, setStatusCommunicationPending] = useState(false)
   const [faceSyncOpen, setFaceSyncOpen] = useState(false)
   const [attendanceToEdit, setAttendanceToEdit] =
@@ -901,6 +905,19 @@ export function EmployeeProfilePage() {
   )
   const monthPayrollPaid = monthPayroll.some((entry) => entry.status === 'PAID')
   const canEditAttendance = hasRole([...ATTENDANCE_EDIT_ROLES])
+  // Phase 2 Req 1: same roles as the payroll read API.
+  const canViewFinancial = hasRole([
+    'SUPER_ADMIN',
+    'HR_MANAGER',
+    'HR_ADMIN_MANAGER',
+    'HR_OPERATIONS_MANAGER',
+    'HR_EXECUTIVE',
+    'IT_ADMIN',
+    'CHAIRMAN',
+    'FOUNDER',
+    'PRESIDENT',
+    'PAYROLL_OFFICER',
+  ])
   const attendanceUnlocked = canHrCorrectAttendance(employee?.status)
   const canUpdateAttendance = canEditAttendance && attendanceUnlocked
 
@@ -1753,11 +1770,12 @@ export function EmployeeProfilePage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="overview" className="min-w-0">
+      <Tabs value={profileTab} onValueChange={setProfileTab} className="min-w-0">
         <TabsList className="flex h-auto flex-wrap gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="payroll">Payroll</TabsTrigger>
+          {canViewFinancial ? <TabsTrigger value="financial">Financial</TabsTrigger> : null}
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="leave">Leave</TabsTrigger>
           <TabsTrigger value="letters">Letters</TabsTrigger>
@@ -2327,6 +2345,19 @@ export function EmployeeProfilePage() {
           />
         </TabsContent>
 
+        {canViewFinancial ? (
+          <TabsContent value="financial" className="space-y-4">
+            <EmployeeFinancialTab
+              employeeId={id}
+              onOpenLetters={(month) => {
+                setProfileMonth(month)
+                setLetterCategory('ALL')
+                setProfileTab('letters')
+              }}
+            />
+          </TabsContent>
+        ) : null}
+
         <TabsContent value="documents" className="space-y-4">
           {canManagePersonalData && (
           <div className="flex flex-wrap items-end gap-3">
@@ -2600,6 +2631,8 @@ export function EmployeeProfilePage() {
         </TabsContent>
 
         <TabsContent value="letters" className="space-y-4">
+          {/* Req 16 / 17: transfer & working-hours letters and approvals. */}
+          <ChangeRequestsCard employeeId={id} />
           <div className="flex flex-wrap items-end gap-3">
             <div><Label htmlFor="profile-letter-month">Month</Label><Input id="profile-letter-month" type="month" value={profileMonth} onChange={(e) => setProfileMonth(e.target.value)} /></div>
             <div><Label htmlFor="profile-letter-category">Category</Label><AlphabeticalSelect id="profile-letter-category" value={letterCategory} onChange={(e) => setLetterCategory(e.target.value)}><option value="ALL">All categories</option>{LETTER_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</AlphabeticalSelect></div>
@@ -2735,6 +2768,14 @@ export function EmployeeProfilePage() {
                                     Preview
                                   </Button>
                                 )}
+                                {letter.letterType === 'APPOINTMENT' &&
+                                  letter.status === 'DRAFT' &&
+                                  employee.status !== 'ACTIVE' && (
+                                    <SignedScanUploadButton
+                                      letterId={letter.id}
+                                      uploaded={!!letter.signedScanUrl}
+                                    />
+                                  )}
                                 {letter.letterType === 'APPOINTMENT' &&
                                   letter.status === 'DRAFT' &&
                                   employee.status !== 'ACTIVE' && (

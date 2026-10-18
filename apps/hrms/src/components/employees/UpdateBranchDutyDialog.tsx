@@ -1,3 +1,5 @@
+import api from '@/api/axios'
+import { useAuth } from '@/hooks/useAuth'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { branchesApi } from '@/api/endpoints/branches'
@@ -80,22 +82,55 @@ export function UpdateBranchDutyDialog({
     enabled: open,
   })
 
+  // Req 16 / 17: only Super Admin changes branch / department / hours here;
+  // others send a working-hours request (draft letter + executive approval).
+  const isSuperAdmin = useAuth().hasRole(['SUPER_ADMIN'])
+  const [hoursEffective, setHoursEffective] = useState(new Date().toISOString().slice(0, 10))
+  const [hoursReason, setHoursReason] = useState('')
+  const branchChanged =
+    (!!branchId && branchId !== (employee.currentBranchId ?? '')) ||
+    (!!departmentId && departmentId !== (employee.currentDepartmentId ?? ''))
+  const hoursChanged =
+    (dutyStartTime || '') !== (employee.dutyStartTime ?? '') ||
+    (dutyEndTime || '') !== (employee.dutyEndTime ?? '') ||
+    (dutyTotalHours === '' ? null : Number(dutyTotalHours)) !== (employee.dutyTotalHours ?? null)
+  const needsRequest = !isSuperAdmin && hoursChanged
   const mutation = useMutation({
-    mutationFn: () =>
-      employeesApi.updateBranchDuty(employee.id, {
-        currentBranchId: branchId || undefined,
-        currentDepartmentId: departmentId || undefined,
-        dutyTotalHours:
-          dutyTotalHours !== '' ? Number(dutyTotalHours) : undefined,
-        dutyStartTime: dutyStartTime || undefined,
-        dutyEndTime: dutyEndTime || undefined,
+    mutationFn: async () => {
+      if (!isSuperAdmin && branchChanged) {
+        throw { response: { data: { message: 'Branch / department change needs a Transfer request: use the Transfer button.' } } }
+      }
+      if (needsRequest) {
+        await api.post('/employee-change-requests/working-hours', {
+          employeeId: employee.id,
+          dutyStartTime,
+          dutyEndTime,
+          dutyTotalHours: Number(dutyTotalHours),
+          effectiveDate: hoursEffective,
+          reason: hoursReason.trim(),
+        })
+      }
+      return employeesApi.updateBranchDuty(employee.id, {
+        ...(isSuperAdmin
+          ? {
+              currentBranchId: branchId || undefined,
+              currentDepartmentId: departmentId || undefined,
+              dutyTotalHours: dutyTotalHours !== '' ? Number(dutyTotalHours) : undefined,
+              dutyStartTime: dutyStartTime || undefined,
+              dutyEndTime: dutyEndTime || undefined,
+            }
+          : {}),
         relieverOnly,
-        monthlyAllowedLeaves:
-          monthlyAllowedLeaves === '' ? null : Number(monthlyAllowedLeaves),
+        monthlyAllowedLeaves: monthlyAllowedLeaves === '' ? null : Number(monthlyAllowedLeaves),
         weeklyOffWeekdays,
-      }),
+      })
+    },
     onSuccess: () => {
-      toast({ title: 'Branch and duty time updated' })
+      toast({
+        title: needsRequest
+          ? 'Working-hours request sent to the executives; draft letter created (send it from Letters). Other settings saved.'
+          : 'Branch and duty time updated',
+      })
       onSuccess()
       onOpenChange(false)
     },
@@ -223,9 +258,25 @@ export function UpdateBranchDutyDialog({
             </p>
           </div>
 
+          {needsRequest ? (
+            <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-amber-800">
+                New working hours need a letter and executive approval. They apply only after approval.
+              </p>
+              <div className="space-y-1">
+                <Label htmlFor="hoursEffective">Effective from</Label>
+                <Input id="hoursEffective" type="date" value={hoursEffective} onChange={(e) => setHoursEffective(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="hoursReason">Reason</Label>
+                <Input id="hoursReason" value={hoursReason} onChange={(e) => setHoursReason(e.target.value)} />
+              </div>
+            </div>
+          ) : null}
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
-            Changing the branch will create a transfer record in employment
-            history.
+            {isSuperAdmin
+              ? 'Changing the branch will create a transfer record in employment history.'
+              : 'Branch / department changes go through the Transfer button (letter + HR Operations approval).'}
           </p>
         </div>
 
@@ -235,7 +286,7 @@ export function UpdateBranchDutyDialog({
           </Button>
           <Button
             className="bg-primary hover:bg-primary-dark"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || (needsRequest && hoursReason.trim().length < 3)}
             onClick={() => {
               if (
                 !relieverOnly &&

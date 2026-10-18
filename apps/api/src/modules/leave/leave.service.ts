@@ -72,6 +72,7 @@ const ACTIVE_LEAVE_STATUSES: LeaveStatus[] = [
   LeaveStatus.RELIEVER_PENDING,
   LeaveStatus.RELIEVER_CONFIRMED,
   LeaveStatus.HR_PENDING,
+  LeaveStatus.CHAIRMAN_PENDING,
   LeaveStatus.APPROVED,
 ];
 
@@ -102,7 +103,7 @@ export class LeaveService {
    * markLeaveAttendance actually ran (callers check leave.status ===
    * APPROVED first — see each call site).
    */
-  private async recomputePendingPayrollForLeave(leave: {
+  async recomputePendingPayrollForLeave(leave: {
     employeeId: string;
     startDate: Date;
     endDate: Date;
@@ -146,6 +147,9 @@ export class LeaveService {
     const endDate = this.toDateOnly(new Date(dto.endDate));
     const today = this.toDateOnly(new Date());
     const leaveType = dto.leaveType ?? LeaveType.REGULAR;
+    if (leaveType === LeaveType.SPECIAL) {
+      throw new BadRequestException('Use the Special Leave form for special leaves');
+    }
 
     if (startDate < today) {
       throw new BadRequestException('Leave start date must be today or later');
@@ -537,6 +541,11 @@ export class LeaveService {
     }
 
     const leave = await this.getLeaveWithEmployee(leaveId);
+    if (leave.leaveType === LeaveType.SPECIAL) {
+      throw new BadRequestException(
+        'Special leave is decided from Special Leave approvals (HR Operations → Chairman)',
+      );
+    }
 
     if (
       leave.status !== LeaveStatus.RELIEVER_CONFIRMED &&
@@ -1125,6 +1134,9 @@ export class LeaveService {
     }
 
     assertEmployeeEligibleForManualAttendance(employee.status);
+    if (dto.leaveType === LeaveType.SPECIAL) {
+      throw new BadRequestException('Use the Special Leave form for special leaves');
+    }
 
     if (isMedicineManagerRole(actingUser.role)) {
       if (!assertEmployeeInMedicineScope(employee)) {
@@ -1918,7 +1930,8 @@ export class LeaveService {
     }
   }
 
-  private async markLeaveAttendance(
+  /** Also used by SpecialLeaveService on the Chairman's final approval. */
+  async markLeaveAttendance(
     tx: Prisma.TransactionClient,
     leave: {
       employeeId: string;
@@ -2055,7 +2068,8 @@ export class LeaveService {
     const result = await this.prisma.leaveRecord.aggregate({
       where: {
         employeeId,
-        leaveType: { not: LeaveType.SHORT_LEAVE },
+        // Special leaves are outside the yearly / monthly quota.
+        leaveType: { notIn: [LeaveType.SHORT_LEAVE, LeaveType.SPECIAL] },
         status: LeaveStatus.APPROVED,
         startDate: {
           gte: new Date(Date.UTC(year, 0, 1)),

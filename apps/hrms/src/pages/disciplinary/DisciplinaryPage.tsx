@@ -17,6 +17,11 @@ import { PrepareSuspensionDialog } from '@/components/disciplinary/PrepareSuspen
 import { CloseInquiryDialog } from '@/components/disciplinary/CloseInquiryDialog'
 import { PendingInquiryDecisionsCard } from '@/components/disciplinary/PendingInquiryDecisionsCard'
 import { PendingInquiryOpenApprovalsCard } from '@/components/disciplinary/PendingInquiryOpenApprovalsCard'
+import {
+  INQUIRY_SUSPEND_ROLES,
+  PendingInquirySuspendsCard,
+  SuspendInquiryDialog,
+} from '@/components/disciplinary/InquirySuspend'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -1036,6 +1041,9 @@ function InquiriesTab({
   >(null)
   const [employeeId, setEmployeeId] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState('PENDING')
+  // Req 9: Suspend from inside the inquiry.
+  const canSuspend = hasRole([...INQUIRY_SUSPEND_ROLES])
+  const [suspending, setSuspending] = useState<{ id: string; name: string } | null>(null)
 
   const { data: actions = [], isLoading } = useQuery({
     queryKey: ['disciplinary', 'inquiries', employeeId],
@@ -1071,7 +1079,15 @@ function InquiriesTab({
   return (
     <div className="space-y-4">
       <PendingInquiryOpenApprovalsCard />
+      <PendingInquirySuspendsCard />
       <PendingInquiryDecisionsCard />
+      {suspending ? (
+        <SuspendInquiryDialog
+          inquiryId={suspending.id}
+          employeeName={suspending.name}
+          onClose={() => setSuspending(null)}
+        />
+      ) : null}
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[220px] flex-1">
           <EmployeeSearchSelect
@@ -1230,6 +1246,26 @@ function InquiriesTab({
                             Complete Inquiry
                           </Button>
                         )}
+                        {canSuspend &&
+                          inquiry.id &&
+                          inquiryIsOpen(inquiry) &&
+                          action.employee?.status !== 'SUSPENDED' &&
+                          (inquiry.suspendStatus === 'PENDING_APPROVAL' ? (
+                            <p className="text-xs text-amber-700">Suspension waiting for executive</p>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() =>
+                                setSuspending({
+                                  id: inquiry.id,
+                                  name: action.employee?.fullName ?? 'employee',
+                                })
+                              }
+                            >
+                              Suspend
+                            </Button>
+                          ))}
                         <Button
                           size="sm"
                           variant="outline"

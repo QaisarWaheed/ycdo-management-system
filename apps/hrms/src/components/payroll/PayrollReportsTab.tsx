@@ -726,7 +726,11 @@ function OvertimeReportView({
   if (base.isError || sub.isError)
     return <p className="text-sm text-destructive">Could not load the overtime report.</p>
   if (noMatch || !data || data.rows.length === 0)
-    return <p className="text-sm text-muted-foreground">No overtime or extra duty for this month.</p>
+    return (
+      <p className="text-sm text-muted-foreground">
+        No overtime, extra duty or deductions for this month.
+      </p>
+    )
 
   const labels = OT_COLUMNS.map((c) => c.label)
   const header = ['Code', 'Employee', 'Branch', 'Department', ...labels]
@@ -751,19 +755,39 @@ function OvertimeReportView({
 <h3>Department totals</h3>${htmlTable(deptHeader, deptRows)}
 <div style="display:grid;grid-template-columns:repeat(${PAYROLL_REPORT_SIGNATORIES.length},1fr);gap:24px;margin-top:56px;break-inside:avoid">${signatures}</div>`
 
-  const charts = [
+  // Req 6: overtime, extra duty and deductions by branch, department and month.
+  const monthLabel = (t: { month: number; year: number }) => `${MONTHS[t.month - 1]} ${t.year}`
+  const series = [
+    { key: 'otAmount', name: 'Overtime' },
+    { key: 'extraDutyAmount', name: 'Extra duty' },
+    { key: 'totalDeductions', name: 'Deductions' },
+  ] as const
+  const charts = series.flatMap((s) => [
     {
-      title: 'OT amount by branch (PKR)',
-      rows: data.byBranch.map((g) => ({ label: g.name, value: g.otAmount })),
+      title: `${s.name} by branch (PKR)`,
+      rows: data.byBranch.map((g) => ({ label: g.name, value: g[s.key] })),
     },
     {
-      title: 'OT amount by department (PKR)',
-      rows: data.byDepartment.map((g) => ({ label: g.name, value: g.otAmount })),
+      title: `${s.name} by department (PKR)`,
+      rows: data.byDepartment.map((g) => ({ label: g.name, value: g[s.key] })),
     },
     {
-      title: 'OT amount, last 6 months (PKR)',
-      rows: data.trend.map((t) => ({ label: `${MONTHS[t.month - 1]} ${t.year}`, value: t.otAmount })),
+      title: `${s.name}, last 6 months (PKR)`,
+      rows: data.trend.map((t) => ({ label: monthLabel(t), value: t[s.key] })),
     },
+  ])
+  const monthHeader = ['Month', 'Overtime', 'Extra duty', 'Deductions']
+  const monthRows: unknown[][] = data.trend.map((t) => [
+    monthLabel(t),
+    formatPKR(t.otAmount),
+    formatPKR(t.extraDutyAmount),
+    formatPKR(t.totalDeductions),
+  ])
+  const summary = [
+    { label: 'Total overtime paid', value: data.totals.otAmount },
+    { label: 'Total extra duty paid', value: data.totals.extraDutyAmount },
+    { label: 'Total deductions', value: data.totals.totalDeductions },
+    { label: 'Net (OT + extra − deductions)', value: data.totals.net },
   ]
 
   return (
@@ -797,6 +821,17 @@ function OvertimeReportView({
         amount − all deductions on the month&apos;s payroll.
       </p>
 
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {summary.map((s) => (
+          <Card key={s.label}>
+            <CardContent className="p-4">
+              <div className="text-xs text-muted-foreground">{s.label}</div>
+              <div className="text-xl font-semibold tabular-nums">{formatPKR(s.value)}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-3">
         {charts.map((c) => (
           <Card key={c.title}>
@@ -813,6 +848,33 @@ function OvertimeReportView({
       <OtTable header={branchHeader} rows={branchRows} />
       <p className="text-sm font-medium">Department totals</p>
       <OtTable header={deptHeader} rows={deptRows} />
+      <p className="text-sm font-medium">Month-wise (last 6 months, same filters)</p>
+      <Card>
+        <CardContent className="overflow-x-auto p-0">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50">
+              <tr>
+                {monthHeader.map((h, i) => (
+                  <th key={h} className={`whitespace-nowrap px-3 py-2 ${i ? 'text-right' : 'text-left'}`}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {monthRows.map((r, i) => (
+                <tr key={i} className="border-t">
+                  {r.map((c, j) => (
+                    <td key={j} className={`whitespace-nowrap px-3 py-1.5 ${j ? 'text-right tabular-nums' : ''}`}>
+                      {String(c)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
     </div>
   )
 }

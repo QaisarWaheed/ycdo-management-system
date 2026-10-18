@@ -58,7 +58,7 @@ const MONEY_KEYS: Array<keyof Money> = [
 const zero = (): Money =>
   Object.fromEntries(MONEY_KEYS.map((k) => [k, 0])) as Money;
 
-const EXTRA_DUTY_TYPES: string[] = [
+const EXTRA_DUTY_TYPES: AllowanceType[] = [
   AllowanceType.ADDITIONAL_WORKING_DAYS,
   AllowanceType.RELIEVER,
 ];
@@ -214,12 +214,15 @@ export class OvertimeReportService {
           .reduce((s, a) => s + Number(a.amount), 0),
       );
       const extraDutyDays = extraDays.get(emp.id) ?? 0;
-      if (!otAmount && !otHours && !extraDutyAmount && !extraDutyDays) continue;
 
       const cat = { attendance: 0, fine: 0, other: 0 };
       for (const d of e.deductions)
         cat[overtimeDeductionCategory(d)] += Number(d.amount);
       const totalDeductions = roundMoney(cat.attendance + cat.fine + cat.other);
+      // Req 6: everyone with overtime, extra duty or any deduction, so the
+      // month's deduction total is complete too.
+      if (!otAmount && !otHours && !extraDutyAmount && !extraDutyDays && !totalDeductions)
+        continue;
       rows.push({
         employeeId: emp.id,
         code: emp.employeeCode ?? '',
@@ -255,23 +258,34 @@ export class OvertimeReportService {
         month: q.month,
         year: q.year,
         otAmount: totals.otAmount,
+        extraDutyAmount: totals.extraDutyAmount,
+        totalDeductions: totals.totalDeductions,
       }),
     };
   }
 
-  /** OT amount per month for the 6 months ending at the selected one (same scope/filters). */
+  /** OT, extra duty and deductions per month for the 6 months ending at the selected one (same scope/filters). */
   private async trend(
     month: number,
     year: number,
     employee: Prisma.EmployeeWhereInput,
-    current: { month: number; year: number; otAmount: number },
+    current: {
+      month: number;
+      year: number;
+      otAmount: number;
+      extraDutyAmount: number;
+      totalDeductions: number;
+    },
   ) {
     const months = lastSixMonths(month, year);
     const earlier = months.slice(0, -1);
     const entries = await this.prisma.payrollEntry.findMany({
       where: { OR: earlier, stipendRecord: { employee } },
       include: {
-        allowances: { where: { type: AllowanceType.OVERTIME } },
+        allowances: {
+          where: { type: { in: [AllowanceType.OVERTIME, ...EXTRA_DUTY_TYPES] } },
+        },
+        deductions: { select: { amount: true } },
         stipendRecord: {
           select: { employeeId: true, effectiveFrom: true, effectiveTo: true },
         },
@@ -282,13 +296,23 @@ export class OvertimeReportService {
         const merged = aggregateMonthlyPayrollByEmployee(
           entries.filter((e) => e.month === m.month && e.year === m.year),
         );
-        const otAmount = roundMoney(
-          merged
-            .flatMap((e) => e.allowances)
-            .filter((a) => a.type === AllowanceType.OVERTIME)
-            .reduce((s, a) => s + Number(a.amount), 0),
-        );
-        return { ...m, otAmount };
+        const sum = (types: AllowanceType[]) =>
+          roundMoney(
+            merged
+              .flatMap((e) => e.allowances)
+              .filter((a) => types.includes(a.type))
+              .reduce((s, a) => s + Number(a.amount), 0),
+          );
+        return {
+          ...m,
+          otAmount: sum([AllowanceType.OVERTIME]),
+          extraDutyAmount: sum(EXTRA_DUTY_TYPES),
+          totalDeductions: roundMoney(
+            merged
+              .flatMap((e) => e.deductions)
+              .reduce((s, d) => s + Number(d.amount), 0),
+          ),
+        };
       }),
       current,
     ];

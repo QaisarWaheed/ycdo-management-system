@@ -62,7 +62,7 @@ export function PayrollFinalizeDialog({
   const verified = branch?.status === 'VERIFIED'
 
   const mutation = useMutation({
-    mutationFn: (status: 'PROCESSED' | 'PAID') =>
+    mutationFn: (status: 'VERIFIED' | 'PROCESSED' | 'PAID') =>
       payrollFinalizeApi.finalize({ branchId, month, year, status }),
     onSuccess: (res) => {
       setResult(res)
@@ -117,7 +117,9 @@ export function PayrollFinalizeDialog({
             )
           ) : null}
           <p className="text-muted-foreground">
-            Processed moves every Pending entry of the branch; Paid moves every Processed entry.
+            Verify by Finance locks every Pending slip of the branch (no more edits or automatic
+            recalculation; changes then need a Founder-approved amendment). Processed moves every
+            Verified slip; Paid moves every Processed one.
           </p>
           {result ? (
             <div className="rounded-md border p-2">
@@ -148,6 +150,13 @@ export function PayrollFinalizeDialog({
             onClick={() => mutation.mutate('PROCESSED')}
           >
             Mark Processed
+          </Button>
+          <Button
+            className="bg-primary hover:bg-primary-dark"
+            disabled={!branchId || mutation.isPending}
+            onClick={() => mutation.mutate('VERIFIED')}
+          >
+            Verify by Finance (all)
           </Button>
         </DialogFooter>
       </DialogContent>

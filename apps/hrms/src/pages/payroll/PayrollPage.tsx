@@ -1,3 +1,4 @@
+import { AmendmentNotifyDialog, AMENDMENT_HR_ROLES, PayrollAmendmentsCard } from '@/components/payroll/PayrollAmendments'
 import { useAuth } from '@/hooks/useAuth'
 import { useCallback, useMemo, useState, Fragment } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -138,6 +139,7 @@ function formatPKR(amount: number | string) {
 function PayrollStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     PENDING: 'bg-amber-100 text-amber-800 border-amber-200',
+    VERIFIED: 'bg-violet-100 text-violet-800 border-violet-200',
     PROCESSED: 'bg-blue-100 text-blue-800 border-blue-200',
     PAID: 'bg-green-100 text-green-800 border-green-200',
   }
@@ -942,6 +944,9 @@ function MonthlyPayrollTab() {
   const [allowancesFor, setAllowancesFor] = useState<{ id: string; name: string } | null>(null)
   const canFinalize = useCanFinalizePayroll()
   const canFinanceEdit = useCanEditPay()
+  // Req 12: HR raises an amendment for a Finance-verified slip.
+  const canNotifyAmendment = useAuth().hasRole([...AMENDMENT_HR_ROLES])
+  const [amendFor, setAmendFor] = useState<{ id: string; name: string } | null>(null)
   // Super Admin reopens a Processed / Paid salary to correct a mistake.
   const canReopen = useAuth().hasRole(['SUPER_ADMIN'])
   const [finalizeOpen, setFinalizeOpen] = useState(false)
@@ -1324,6 +1329,10 @@ function MonthlyPayrollTab() {
 
   return (
     <div className="space-y-4">
+      <PayrollAmendmentsCard />
+      {amendFor ? (
+        <AmendmentNotifyDialog entryId={amendFor.id} employeeName={amendFor.name} onClose={() => setAmendFor(null)} />
+      ) : null}
       <div className="no-print flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <MonthYearPicker value={monthYear} onChange={setMonthYear} />
@@ -1360,6 +1369,7 @@ function MonthlyPayrollTab() {
               <SelectContent>
                 <SelectItem value={ALL}>All</SelectItem>
                 <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="VERIFIED">Verified by Finance</SelectItem>
                 <SelectItem value="PROCESSED">Processed</SelectItem>
                 <SelectItem value="PAID">Paid</SelectItem>
               </SelectContent>
@@ -1727,6 +1737,30 @@ function MonthlyPayrollTab() {
                           >
                             Payroll Detail
                           </DropdownMenuItem>
+                          {entry.status === 'VERIFIED' && canFinalize ? (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setConfirmStatus({
+                                  id: entry.id,
+                                  status: 'PROCESSED',
+                                })
+                              }
+                            >
+                              Mark as Processed
+                            </DropdownMenuItem>
+                          ) : null}
+                          {entry.status === 'VERIFIED' && canNotifyAmendment ? (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setAmendFor({
+                                  id: entry.id,
+                                  name: entry.stipendRecord?.employee?.fullName ?? 'employee',
+                                })
+                              }
+                            >
+                              Amendment notification
+                            </DropdownMenuItem>
+                          ) : null}
                           {entry.status === 'PENDING' && (
                             <>
                               {canFinalize ? (
@@ -1734,11 +1768,11 @@ function MonthlyPayrollTab() {
                                   onClick={() =>
                                     setConfirmStatus({
                                       id: entry.id,
-                                      status: 'PROCESSED',
+                                      status: 'VERIFIED',
                                     })
                                   }
                                 >
-                                  Mark as Processed
+                                  Verify by Finance
                                 </DropdownMenuItem>
                               ) : null}
                               {canFinanceEdit ? (
@@ -2066,7 +2100,9 @@ function MonthlyPayrollTab() {
         description={
           confirmStatus?.status === 'PENDING'
             ? 'Reopen this salary to Pending? Basic, allowances, incentives and deductions can be corrected, then mark it Processed / Paid again.'
-            : `Mark this entry as ${confirmStatus?.status}?`
+            : confirmStatus?.status === 'VERIFIED'
+              ? 'Verify this salary slip? It is locked after verification: no more edits or automatic recalculation. A change then needs an HR amendment notification approved by the Founder.'
+              : `Mark this entry as ${confirmStatus?.status}?`
         }
         confirmLabel="Confirm"
         loading={statusMutation.isPending}

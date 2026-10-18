@@ -118,6 +118,8 @@ describe('AdditionalDutiesService', () => {
       },
       employeeAllowance: { findUnique: jest.fn(), findMany: jest.fn() },
       auditLog: { create: jest.fn() },
+      user: { findMany: jest.fn().mockResolvedValue([{ employeeId: 'acc' }]) },
+      notification: { create: jest.fn() },
     };
     return { prisma, service: new AdditionalDutiesService(prisma as never) };
   }
@@ -222,5 +224,30 @@ describe('AdditionalDutiesService', () => {
     const where = prisma.employeeAdditionalDuty.findMany.mock.calls[0][0].where;
     expect(where.startDate.lte).toEqual(d('2026-11-30'));
     expect(where.OR[1].endDate.gte).toEqual(d('2026-11-01'));
+  });
+});
+
+describe('Req 5: ending a role ends its allowance', () => {
+  it('ends the linked allowance on the role end day', async () => {
+    const duty = {
+      id: 'd1',
+      employeeId: 'e1',
+      title: 'Admin',
+      startDate: new Date('2026-10-01T00:00:00.000Z'),
+      endDate: null,
+      allowanceId: 'a1',
+      note: null,
+    };
+    const prisma = {
+      employeeAdditionalDuty: {
+        findUnique: jest.fn().mockResolvedValue(duty),
+        update: jest.fn(async ({ data }) => ({ ...duty, ...data })),
+      },
+      auditLog: { create: jest.fn() },
+    };
+    const allowances = { end: jest.fn() };
+    const service = new AdditionalDutiesService(prisma as never, allowances as never);
+    await service.update('d1', { endDate: '2026-11-20' }, { id: 'hr' });
+    expect(allowances.end).toHaveBeenCalledWith('a1', '2026-11', { id: 'hr' }, 20);
   });
 });

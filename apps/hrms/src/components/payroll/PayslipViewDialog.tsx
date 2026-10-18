@@ -1,3 +1,4 @@
+import { AppointmentLetterButton } from '@/components/letters/AppointmentLetterButton'
 import { useQuery } from '@tanstack/react-query'
 import { Printer } from 'lucide-react'
 import { payrollApi } from '@/api/endpoints/payroll'
@@ -84,6 +85,7 @@ export function PayslipViewDialog({
         </DialogHeader>
 
         <div className="no-print mb-4 flex justify-end">
+          <AppointmentLetterButton employeeId={fromEntry?.id} />
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="mr-2 h-4 w-4" />
             Print
