@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { useAuth } from '@/hooks/useAuth'
 import api from '@/api/axios'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
@@ -31,11 +30,9 @@ const KIND: Record<Issue['kind'], string> = {
   AMOUNT_MISMATCH: 'Deducted amount differs from letter',
 }
 
-/** Phase 3 Req 18: fine letters vs salary deductions, with one-click fix. */
+/** Phase 3 Req 18: fine letters vs salary deductions; HR deducts or waives each missing fine. */
 export function FineAuditPage() {
   const queryClient = useQueryClient()
-  // Only Super Admin / IT / Finance may Fix all; HR decides line by line.
-  const canFixAll = useAuth().hasRole(['SUPER_ADMIN', 'IT_ADMIN', 'PAYROLL_OFFICER'])
   const [waiving, setWaiving] = useState<Issue | null>(null)
   const [reason, setReason] = useState('')
   const refresh = () => {
@@ -72,18 +69,6 @@ export function FineAuditPage() {
     queryFn: () =>
       api.get<unknown, { checkedLetters: number; checkedDeductions: number; issues: Issue[] }>('/fine-audit'),
   })
-  const fix = useMutation({
-    mutationFn: () => api.post<unknown, { fixed: number; skipped: string[] }>('/fine-audit/fix'),
-    onSuccess: (r) => {
-      toast({
-        title: `${r.fixed} fixed`,
-        description: r.skipped.length ? `${r.skipped.length} need manual action: ${r.skipped.join('; ')}` : undefined,
-        variant: r.skipped.length ? 'destructive' : undefined,
-      })
-      queryClient.invalidateQueries({ queryKey: ['fine-audit'] })
-      queryClient.invalidateQueries({ queryKey: ['payroll'] })
-    },
-  })
   const issues = data?.issues ?? []
 
   return (
@@ -93,9 +78,7 @@ export function FineAuditPage() {
         <p className="text-sm text-text-secondary">
           Every sent fine letter (manual, uniform and other) must be deducted once with the letter&apos;s amount; a
           reversed letter must leave no deduction. For each missing fine choose Deduct (taken from the next open
-          month) or Waive (kept on record, never deducted). Fix applies missing fines (next open month when the month is
-          verified / processed / paid), removes fines of reversed letters and corrects amounts. Paid slips are never
-          changed.
+          month) or Waive (kept on record, never deducted).
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -103,11 +86,6 @@ export function FineAuditPage() {
           Checked {data?.checkedLetters ?? 0} fine letters and {data?.checkedDeductions ?? 0} letter deductions ·{' '}
           <b>{issues.length}</b> issue(s)
         </span>
-        {canFixAll ? (
-          <Button variant="outline" disabled={!issues.length || fix.isPending} onClick={() => fix.mutate()}>
-            Fix all
-          </Button>
-        ) : null}
       </div>
       <Card>
         <CardContent className="overflow-x-auto p-0">

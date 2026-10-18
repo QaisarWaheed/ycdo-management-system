@@ -40,9 +40,8 @@ type Issue = {
 /**
  * Phase 3 Req 18: every sent manual fine letter (incl. uniform fines) must
  * have exactly its amount deducted once; a reversed / deleted letter must
- * have no deduction left. The audit lists every mismatch; Fix applies the
- * missing fines (next open month when the month is locked), removes fines of
- * reversed letters (Paid slips are left as paid) and corrects amounts.
+ * have no deduction left. The audit lists every mismatch; HR decides each
+ * missing fine one by one (deduct on the next open month, or waive).
  */
 @Injectable()
 export class FineAuditService {
@@ -186,52 +185,6 @@ export class FineAuditService {
     ]);
     return { letterId, waived: true };
   }
-
-  async fix(actorId: string) {
-    const { issues } = await this.audit();
-    let fixed = 0;
-    const skipped: string[] = [];
-    for (const i of issues) {
-      try {
-        await this.prisma.$transaction(async (tx) => {
-          await lockPayrollEmployee(tx, i.employeeId);
-          if (i.kind === 'MISSING_DEDUCTION' && i.letterId) {
-            const letter = await tx.letter.findUniqueOrThrow({ where: { id: i.letterId } });
-            await applyLetterFine(tx, letter);
-          } else if (i.deductionId && i.slipStatus === PayrollStatus.PAID) {
-            throw new Error('slip already paid — refund / recover on the next month by hand');
-          } else if (i.kind === 'REVERSED_STILL_DEDUCTED' && i.deductionId) {
-            const row = await tx.payrollDeduction.delete({ where: { id: i.deductionId } });
-            await tx.payrollEntry.update({
-              where: { id: row.payrollEntryId },
-              data: { totalDeductions: { decrement: row.amount }, netStipend: { increment: row.amount } },
-            });
-          } else if (i.kind === 'AMOUNT_MISMATCH' && i.deductionId && i.letterAmount != null) {
-            const diff = i.letterAmount - (i.deductedAmount ?? 0);
-            const row = await tx.payrollDeduction.findUniqueOrThrow({ where: { id: i.deductionId } });
-            await tx.payrollDeduction.update({ where: { id: row.id }, data: { amount: Number(row.amount) + diff } });
-            await tx.payrollEntry.update({
-              where: { id: row.payrollEntryId },
-              data: { totalDeductions: { increment: diff }, netStipend: { decrement: diff } },
-            });
-          }
-          await tx.auditLog.create({
-            data: {
-              userId: actorId,
-              action: `FINE_AUDIT_FIX_${i.kind}`,
-              entity: 'PayrollDeduction',
-              entityId: i.deductionId ?? i.letterId ?? 'n/a',
-              changes: { ...i },
-            },
-          });
-        });
-        fixed++;
-      } catch (err) {
-        skipped.push(`${i.employeeName} ${i.letterNo ?? i.letterId ?? ''}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    return { fixed, skipped };
-  }
 }
 
 const FINE_AUDIT_ROLES = [UserRole.SUPER_ADMIN, UserRole.IT_ADMIN, UserRole.PAYROLL_OFFICER];
@@ -257,12 +210,6 @@ export class FineAuditController {
   @Roles(...FINE_REVIEW_ROLES)
   audit() {
     return this.service.audit();
-  }
-
-  @Post('fix')
-  @Roles(...FINE_AUDIT_ROLES)
-  fix(@CurrentUser() user: { id: string }) {
-    return this.service.fix(user.id);
   }
 
   @Post(':letterId/deduct')
