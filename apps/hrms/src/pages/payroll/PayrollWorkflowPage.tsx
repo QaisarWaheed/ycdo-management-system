@@ -744,6 +744,7 @@ function ExtensionsTab() {
               <SelectContent>
                 {users.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
+                    {u.employee ? `${u.employee.fullName} (${u.employee.employeeCode}) · ` : ''}
                     {u.email} · {formatRole(u.role)}
                   </SelectItem>
                 ))}

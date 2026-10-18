@@ -4,6 +4,8 @@ import type { StipendReceipt } from '@/types'
 export interface GenerateStipendReceiptsPayload {
   month: number
   year: number
+  /** Send (or re-send) to this employee only. */
+  employeeId?: string
 }
 
 export interface RespondStipendPayload {

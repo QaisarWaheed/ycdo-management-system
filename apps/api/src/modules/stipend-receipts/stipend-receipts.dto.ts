@@ -26,6 +26,11 @@ export class GenerateStipendReceiptsDto {
   @Min(2020)
   @IsNotEmpty()
   year: number;
+
+  /** Send (or re-send) to this employee only. */
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
 }
 
 export class RespondStipendDto {

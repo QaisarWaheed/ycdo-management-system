@@ -25,11 +25,17 @@ const deadlineLabel = (d: Date) =>
 export class StipendReceiptsService {
   constructor(private prisma: PrismaService) {}
 
-  async generateMonthlyReceipts(month: number, year: number) {
+  /**
+   * `employeeId` = send (or re-send) the review to one employee only. A re-send
+   * reopens an answered review; its deadline is the normal one or 24 h from now,
+   * whichever is later, so it does not auto-accept at once.
+   */
+  async generateMonthlyReceipts(month: number, year: number, employeeId?: string) {
     if (!isCompletedStipendPeriod(month, year)) throw new BadRequestException('Salary acceptance is for the previous month or earlier, not the current or a future month.');
     const employees = await this.prisma.employee.findMany({
       where: {
         status: { in: [EmployeeStatus.ACTIVE, EmployeeStatus.APPOINTED] },
+        ...(employeeId ? { id: employeeId } : {}),
       },
     });
 
@@ -54,27 +60,46 @@ export class StipendReceiptsService {
         where: { payrollEntryId: payrollEntry.id },
       });
 
-      if (existing) {
+      if (existing && !employeeId) {
         skipped += 1;
         continue;
       }
 
       // Req 20.1: review until the 3rd, 12:00 PKT of the month after the salary month.
-      const deadlineAt = salaryReviewDeadline(month, year);
+      const normalDeadline = salaryReviewDeadline(month, year);
+      const deadlineAt = employeeId
+        ? new Date(Math.max(normalDeadline.getTime(), Date.now() + 24 * 3600_000))
+        : normalDeadline;
       const amount = payrollEntry.netStipend;
 
       await this.prisma.$transaction(async (tx) => {
-        await tx.stipendReceipt.create({
-          data: {
-            employeeId: employee.id,
-            payrollEntryId: payrollEntry.id,
-            month,
-            year,
-            amount,
-            status: StipendStatus.PENDING,
-            deadlineAt,
-          },
-        });
+        if (existing) {
+          await tx.stipendReceipt.update({
+            where: { id: existing.id },
+            data: {
+              amount,
+              status: StipendStatus.PENDING,
+              deadlineAt,
+              generatedAt: new Date(),
+              acceptedAt: null,
+              rejectedAt: null,
+              autoAcceptedAt: null,
+              rejectionReason: null,
+            },
+          });
+        } else {
+          await tx.stipendReceipt.create({
+            data: {
+              employeeId: employee.id,
+              payrollEntryId: payrollEntry.id,
+              month,
+              year,
+              amount,
+              status: StipendStatus.PENDING,
+              deadlineAt,
+            },
+          });
+        }
 
         await tx.notification.create({
           data: {

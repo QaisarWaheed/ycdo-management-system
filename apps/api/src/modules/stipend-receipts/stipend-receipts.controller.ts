@@ -35,6 +35,7 @@ export class StipendReceiptsController {
     return this.stipendReceiptsService.generateMonthlyReceipts(
       dto.month,
       dto.year,
+      dto.employeeId,
     );
   }
 

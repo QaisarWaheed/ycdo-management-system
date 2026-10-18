@@ -2892,6 +2892,9 @@ function StipendReceiptsTab() {
   })
   const [statusFilter, setStatusFilter] = useState(ALL)
   const [generateOpen, setGenerateOpen] = useState(false)
+  // Send (or re-send) the review to one employee only.
+  const [oneOpen, setOneOpen] = useState(false)
+  const [oneEmployeeId, setOneEmployeeId] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const { data: receipts = [], isLoading } = useQuery({
@@ -2904,17 +2907,24 @@ function StipendReceiptsTab() {
   })
 
   const generateMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (employeeId?: string) =>
       stipendReceiptsApi.generate({
         month: monthYear.month,
         year: monthYear.year,
+        employeeId,
       }),
-    onSuccess: (result) => {
+    onSuccess: (result, employeeId) => {
       toast({
-        title: `${result.generated} receipts generated`,
+        title: employeeId
+          ? result.generated
+            ? 'Salary review sent'
+            : 'No salary for this employee in that month'
+          : `${result.generated} salary reviews sent`,
       })
       queryClient.invalidateQueries({ queryKey: ['stipend-receipts'] })
       setGenerateOpen(false)
+      setOneOpen(false)
+      setOneEmployeeId('')
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
       const msg = err.response?.data?.message
@@ -2958,7 +2968,12 @@ function StipendReceiptsTab() {
             </Select>
           </div>
         </div>
-        <Button onClick={() => setGenerateOpen(true)}>Send salary reviews</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setOneOpen(true)}>
+            Send to one employee
+          </Button>
+          <Button onClick={() => setGenerateOpen(true)}>Send salary reviews</Button>
+        </div>
       </div>
 
       <TableRecordCount count={total} label="salary review" />
@@ -3073,9 +3088,32 @@ function StipendReceiptsTab() {
         description={`Ask every active employee to review the ${monthYear.month}/${monthYear.year} salary (accept or request a correction until the 3rd, 12:00 PM)? The system also does this on the 1st automatically.`}
         confirmLabel="Generate"
         loading={generateMutation.isPending}
-        onConfirm={() => generateMutation.mutate()}
+        onConfirm={() => generateMutation.mutate(undefined)}
         onCancel={() => setGenerateOpen(false)}
       />
+
+      <Dialog open={oneOpen} onOpenChange={setOneOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Send salary review — {monthYear.month}/{monthYear.year}
+            </DialogTitle>
+          </DialogHeader>
+          <EmployeeSearchSelect value={oneEmployeeId} onChange={(id) => setOneEmployeeId(id)} />
+          <p className="text-sm text-text-secondary">
+            Only this employee gets the review. An answered review is reopened; it stays open until the
+            3rd, 12:00 PM or at least 24 hours from now.
+          </p>
+          <DialogFooter>
+            <Button
+              disabled={!oneEmployeeId || generateMutation.isPending}
+              onClick={() => generateMutation.mutate(oneEmployeeId)}
+            >
+              Send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
