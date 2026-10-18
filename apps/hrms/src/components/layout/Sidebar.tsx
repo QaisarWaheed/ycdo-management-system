@@ -157,11 +157,11 @@ function navItemsForRole(role?: string) {
       payApprovalsNavItem,
       punchReviewsNavItem,
       specialLeavesNavItem,
+      fineAuditNavItem,
       ...(role === 'SUPER_ADMIN'
         ? [
             extraTimeApprovalsNavItem,
             incentiveManagementNavItem,
-            fineAuditNavItem,
             doctorPerformanceNavItem,
             activityTrailNavItem,
             shiftsNavItem,
@@ -206,6 +206,7 @@ function navItemsForRole(role?: string) {
       extraTimeApprovalsNavItem,
       specialLeavesNavItem,
       punchReviewsNavItem,
+      fineAuditNavItem,
     ]
   }
 
@@ -332,7 +333,9 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
   '/admin/login-access': { roles: ['IT_ADMIN'] },
   '/admin/pending-approvals': { roles: ['IT_ADMIN', 'SUPER_ADMIN'] },
   '/extra-time-approvals': { roles: ['HR_OPERATIONS_MANAGER', 'CHAIRMAN', 'SUPER_ADMIN'] },
-  '/fine-audit': { roles: ['SUPER_ADMIN', 'IT_ADMIN', 'PAYROLL_OFFICER'] },
+  '/fine-audit': {
+    roles: ['SUPER_ADMIN', 'IT_ADMIN', 'PAYROLL_OFFICER', 'HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_OPERATIONS_MANAGER'],
+  },
   '/incentive-management': {
     roles: ['CHAIRMAN', 'PRESIDENT', 'FOUNDER', 'DEPARTMENT_HEAD', 'PAYROLL_OFFICER', 'SUPER_ADMIN'],
   },

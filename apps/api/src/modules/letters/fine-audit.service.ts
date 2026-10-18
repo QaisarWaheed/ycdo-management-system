@@ -1,5 +1,16 @@
-import { Controller, Get, Injectable, Post, UseGuards } from '@nestjs/common';
-import { LetterStatus, LetterType, PayrollStatus, UserRole } from '@prisma/client';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Injectable,
+  NotFoundException,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { IsString, MaxLength, MinLength } from 'class-validator';
+import { LetterStatus, LetterType, PayrollStatus, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -116,6 +127,66 @@ export class FineAuditService {
     return { checkedLetters: letters.length, checkedDeductions: deductions.length, issues };
   }
 
+  /** HR decision on one letter: deduct now (next open month when its month is closed). */
+  async deductOne(letterId: string, actorId: string) {
+    const letter = await this.prisma.letter.findUnique({ where: { id: letterId } });
+    if (!letter) throw new NotFoundException('Letter not found');
+    if (!letterFine(letter)) throw new BadRequestException('This letter has no deductible fine');
+    await this.prisma.$transaction(async (tx) => {
+      await applyLetterFine(tx, letter);
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'FINE_AUDIT_DEDUCTED',
+          entity: 'Letter',
+          entityId: letterId,
+          changes: { employeeId: letter.employeeId, letterNo: letter.letterNo },
+        },
+      });
+    });
+    const row = await this.prisma.payrollDeduction.findFirst({
+      where: { description: { startsWith: `${LETTER_FINE_PREFIX}${letterId}]` } },
+      include: { payrollEntry: { select: { month: true, year: true } } },
+    });
+    // No open month yet: the next payroll generation picks it up.
+    return {
+      letterId,
+      deducted: !!row,
+      month: row ? `${row.payrollEntry.month}/${row.payrollEntry.year}` : null,
+    };
+  }
+
+  /** HR decision on one letter: waive the fine (kept in the letter and audit, never deducted). */
+  async waiveOne(letterId: string, reason: string, actorId: string) {
+    const letter = await this.prisma.letter.findUnique({ where: { id: letterId } });
+    if (!letter) throw new NotFoundException('Letter not found');
+    const vars = (letter.variables ?? {}) as Record<string, unknown>;
+    await this.prisma.$transaction([
+      this.prisma.letter.update({
+        where: { id: letterId },
+        data: {
+          variables: {
+            ...vars,
+            fineWaived: true,
+            fineWaivedReason: reason.trim(),
+            fineWaivedById: actorId,
+            fineWaivedAt: new Date().toISOString(),
+          } as Prisma.InputJsonValue,
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'FINE_AUDIT_WAIVED',
+          entity: 'Letter',
+          entityId: letterId,
+          changes: { employeeId: letter.employeeId, letterNo: letter.letterNo, reason: reason.trim() },
+        },
+      }),
+    ]);
+    return { letterId, waived: true };
+  }
+
   async fix(actorId: string) {
     const { issues } = await this.audit();
     let fixed = 0;
@@ -164,21 +235,45 @@ export class FineAuditService {
 }
 
 const FINE_AUDIT_ROLES = [UserRole.SUPER_ADMIN, UserRole.IT_ADMIN, UserRole.PAYROLL_OFFICER];
+/** HR reviews old missing fines one by one (deduct or waive). */
+const FINE_REVIEW_ROLES = [
+  ...FINE_AUDIT_ROLES,
+  UserRole.HR_MANAGER,
+  UserRole.HR_ADMIN_MANAGER,
+  UserRole.HR_OPERATIONS_MANAGER,
+];
+
+class WaiveFineDto {
+  @IsString() @MinLength(3) @MaxLength(500) reason: string;
+}
 
 @Controller('fine-audit')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(...FINE_AUDIT_ROLES)
 @StrictRoles()
 export class FineAuditController {
   constructor(private service: FineAuditService) {}
 
   @Get()
+  @Roles(...FINE_REVIEW_ROLES)
   audit() {
     return this.service.audit();
   }
 
   @Post('fix')
+  @Roles(...FINE_AUDIT_ROLES)
   fix(@CurrentUser() user: { id: string }) {
     return this.service.fix(user.id);
+  }
+
+  @Post(':letterId/deduct')
+  @Roles(...FINE_REVIEW_ROLES)
+  deduct(@Param('letterId') letterId: string, @CurrentUser() user: { id: string }) {
+    return this.service.deductOne(letterId, user.id);
+  }
+
+  @Post(':letterId/waive')
+  @Roles(...FINE_REVIEW_ROLES)
+  waive(@Param('letterId') letterId: string, @Body() dto: WaiveFineDto, @CurrentUser() user: { id: string }) {
+    return this.service.waiveOne(letterId, dto.reason, user.id);
   }
 }

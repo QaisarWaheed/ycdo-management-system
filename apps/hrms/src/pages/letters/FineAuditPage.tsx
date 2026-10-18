@@ -1,4 +1,8 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { useAuth } from '@/hooks/useAuth'
 import api from '@/api/axios'
 import { EmployeeNameLink } from '@/components/employees/EmployeeNameLink'
 import { Badge } from '@/components/ui/badge'
@@ -30,6 +34,39 @@ const KIND: Record<Issue['kind'], string> = {
 /** Phase 3 Req 18: fine letters vs salary deductions, with one-click fix. */
 export function FineAuditPage() {
   const queryClient = useQueryClient()
+  // Only Super Admin / IT / Finance may Fix all; HR decides line by line.
+  const canFixAll = useAuth().hasRole(['SUPER_ADMIN', 'IT_ADMIN', 'PAYROLL_OFFICER'])
+  const [waiving, setWaiving] = useState<Issue | null>(null)
+  const [reason, setReason] = useState('')
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['fine-audit'] })
+    queryClient.invalidateQueries({ queryKey: ['payroll'] })
+  }
+  const onError = (err: { response?: { data?: { message?: string } } }) =>
+    toast({ title: 'Failed', description: String(err.response?.data?.message ?? 'Error'), variant: 'destructive' })
+  const deduct = useMutation({
+    mutationFn: (i: Issue) =>
+      api.post<unknown, { deducted: boolean; month: string | null }>(`/fine-audit/${i.letterId}/deduct`),
+    onSuccess: (r) => {
+      toast({
+        title: r.deducted
+          ? `Fine deducted on ${r.month} salary`
+          : 'No open payroll month yet — it is deducted when the next payroll is generated',
+      })
+      refresh()
+    },
+    onError,
+  })
+  const waive = useMutation({
+    mutationFn: () => api.post(`/fine-audit/${waiving!.letterId}/waive`, { reason: reason.trim() }),
+    onSuccess: () => {
+      toast({ title: 'Fine waived — it will not be deducted' })
+      setWaiving(null)
+      setReason('')
+      refresh()
+    },
+    onError,
+  })
   const { data, isLoading } = useQuery({
     queryKey: ['fine-audit'],
     queryFn: () =>
@@ -55,7 +92,8 @@ export function FineAuditPage() {
         <h1 className="text-2xl font-bold">Fine Audit</h1>
         <p className="text-sm text-text-secondary">
           Every sent fine letter (manual, uniform and other) must be deducted once with the letter&apos;s amount; a
-          reversed letter must leave no deduction. Fix applies missing fines (next open month when the month is
+          reversed letter must leave no deduction. For each missing fine choose Deduct (taken from the next open
+          month) or Waive (kept on record, never deducted). Fix applies missing fines (next open month when the month is
           verified / processed / paid), removes fines of reversed letters and corrects amounts. Paid slips are never
           changed.
         </p>
@@ -65,9 +103,11 @@ export function FineAuditPage() {
           Checked {data?.checkedLetters ?? 0} fine letters and {data?.checkedDeductions ?? 0} letter deductions ·{' '}
           <b>{issues.length}</b> issue(s)
         </span>
-        <Button disabled={!issues.length || fix.isPending} onClick={() => fix.mutate()}>
-          Fix all
-        </Button>
+        {canFixAll ? (
+          <Button variant="outline" disabled={!issues.length || fix.isPending} onClick={() => fix.mutate()}>
+            Fix all
+          </Button>
+        ) : null}
       </div>
       <Card>
         <CardContent className="overflow-x-auto p-0">
@@ -81,16 +121,17 @@ export function FineAuditPage() {
                 <TableHead className="text-right">Letter</TableHead>
                 <TableHead className="text-right">Deducted</TableHead>
                 <TableHead>Slip</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7}>Checking…</TableCell>
+                  <TableCell colSpan={8}>Checking…</TableCell>
                 </TableRow>
               ) : issues.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-text-secondary">
+                  <TableCell colSpan={8} className="text-text-secondary">
                     All fine letters and deductions match.
                   </TableCell>
                 </TableRow>
@@ -111,6 +152,18 @@ export function FineAuditPage() {
                     <TableCell className="text-right tabular-nums">{i.letterAmount != null ? formatPKR(i.letterAmount) : '—'}</TableCell>
                     <TableCell className="text-right tabular-nums">{i.deductedAmount != null ? formatPKR(i.deductedAmount) : '—'}</TableCell>
                     <TableCell className="text-xs">{i.slipStatus ?? '—'}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {i.kind === 'MISSING_DEDUCTION' && i.letterId ? (
+                        <div className="flex gap-2">
+                          <Button size="sm" disabled={deduct.isPending} onClick={() => deduct.mutate(i)}>
+                            Deduct
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setWaiving(i)}>
+                            Waive
+                          </Button>
+                        </div>
+                      ) : null}
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -118,6 +171,25 @@ export function FineAuditPage() {
           </Table>
         </CardContent>
       </Card>
+      <Dialog open={!!waiving} onOpenChange={(o) => !o && setWaiving(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Waive fine · {waiving?.employeeName}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Letter {waiving?.letterNo} ({waiving?.month}/{waiving?.year}) stays on record but is never deducted.
+          </p>
+          <Input placeholder="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWaiving(null)}>
+              Cancel
+            </Button>
+            <Button disabled={reason.trim().length < 3 || waive.isPending} onClick={() => waive.mutate()}>
+              Waive
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

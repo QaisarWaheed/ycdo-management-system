@@ -17,7 +17,7 @@ function manualFineVariables(letter: FineLetter) {
     !vars.finePreset &&
     (!!vars.incidentDate || /یک روزہ تنخواہ کی کٹوتی/.test(String(vars.fineReason ?? '')));
   return (letter.letterType === LetterType.FINE || letter.letterType === LetterType.EXPLANATION_FINE) &&
-    !attendanceOwned &&
+    !attendanceOwned && !vars.fineWaived &&
     !vars.disciplineCategory && !vars.inquiryId && !vars.reversed && !vars.reversedDueToShortLeave &&
     !['ABSENT', 'LATE_DEDUCTION'].includes(String(vars.finePreset)) ? vars : null;
 }

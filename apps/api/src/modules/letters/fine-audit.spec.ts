@@ -50,3 +50,19 @@ describe('Req 18 fine audit', () => {
     ]);
   });
 });
+
+describe('Req 18 option 3: HR waives an old fine', () => {
+  it('marks the letter waived so it is never deducted', async () => {
+    const letter = { id: 'w1', employeeId: 'e1', letterNo: 'N', variables: { fineAmount: '200' } };
+    const prisma = {
+      letter: { findUnique: jest.fn().mockResolvedValue(letter), update: jest.fn() },
+      auditLog: { create: jest.fn() },
+      $transaction: jest.fn(async (ops: unknown[]) => ops),
+    };
+    await new FineAuditService(prisma as never).waiveOne('w1', 'old month, forgiven', 'hr');
+    expect(prisma.letter.update.mock.calls[0][0].data.variables).toMatchObject({
+      fineWaived: true,
+      fineWaivedReason: 'old month, forgiven',
+    });
+  });
+});

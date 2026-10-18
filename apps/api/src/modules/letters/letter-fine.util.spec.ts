@@ -22,6 +22,7 @@ describe('letter fines', () => {
     { finePreset: 'ABSENT', fineAmount: '1000' },
     { finePreset: 'LATE_DEDUCTION', fineAmount: '1000' },
     { reversed: true, fineAmount: '500' },
+    { fineWaived: true, fineAmount: '200', finePreset: 'UNIFORM' },
     // Attendance-generated fine (missing checkout / late): owned by the attendance Card.
     { fineAmount: 'Rs. 1774.19', deductionMonth: 'August 2026', incidentDate: '2026-08-16', fineReason: 'checkout' },
     // Older attendance letter without incidentDate.
