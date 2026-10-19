@@ -84,8 +84,10 @@ import {
 import { mapDeviceStatusToPunchType } from './device-status.util';
 import {
   CHECKOUT_TOO_SOON_REASON,
+  DELAY_SLACK_MS,
   DUMP_BURST_WINDOW_MS,
   PUNCH_REVIEW_REASON,
+  STALE_PUNCH_REASON,
   devicePunchRejectReason,
   isCheckoutTooSoon,
   resolveDevicePunch,
@@ -348,6 +350,9 @@ export class AttendanceService {
     if (branchReason) {
       throw new BadRequestException(branchReason);
     }
+    if (punchClock.verdict === 'stale') {
+      throw new BadRequestException(STALE_PUNCH_REASON);
+    }
     const reviewReason = devicePunchRejectReason(punchClock.verdict);
     if (reviewReason && device) {
       // Old agent has no serial number; the device time identifies the punch.
@@ -468,6 +473,15 @@ export class AttendanceService {
         employee.id,
         punchClock.deviceTime,
         true,
+      );
+    }
+    // More than 2 h late: dropped, not put on HR's review list.
+    if (punchClock.verdict === 'stale') {
+      return this.claimRawScanAndReject(
+        dto,
+        STALE_PUNCH_REASON,
+        employee.id,
+        punchClock.deviceTime,
       );
     }
 
@@ -787,6 +801,83 @@ export class AttendanceService {
       ...swaps.flatMap((sw) => [sw.branch, sw.coveredEmployee.currentBranch]),
     ];
     return branchLockRejectReason({ ...base, dutyBranches });
+  }
+
+  /**
+   * Super Admin repair: one device, one Pakistan date. Accepted punches that
+   * reached us more than 2 min late but were saved at their arrival moment
+   * (before the clock fix) move to device time + the device's real clock
+   * error, through the normal HR edit (status / late recomputed, audited).
+   * `apply: false` only lists them.
+   */
+  async repairDelayedDevicePunches(
+    dto: { deviceId: string; date: string; offsetSec: number; apply?: boolean },
+    actingUser: { id: string; role: UserRole },
+  ) {
+    const dayStart = new Date(`${dto.date}T00:00:00+05:00`);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 3600_000);
+    const events = await this.prisma.processedDeviceEvent.findMany({
+      where: {
+        deviceId: dto.deviceId,
+        rejectReason: null,
+        deviceTime: { not: null },
+        employeeId: { not: null },
+        processedAt: { gte: dayStart, lt: dayEnd },
+        punchType: { in: ['CHECKIN', 'CHECKOUT'] },
+      },
+      orderBy: { processedAt: 'asc' },
+    });
+    const items: Array<{
+      logId: string;
+      employee: string;
+      field: 'checkIn' | 'checkOut';
+      from: Date;
+      to: Date;
+      result?: string;
+    }> = [];
+    for (const ev of events) {
+      const real = new Date(ev.deviceTime!.getTime() + dto.offsetSec * 1000);
+      if (ev.processedAt.getTime() - real.getTime() <= DELAY_SLACK_MS) continue;
+      const field = ev.punchType === 'CHECKIN' ? 'checkIn' : 'checkOut';
+      // The row still holds the arrival moment (receive time ≈ processedAt).
+      const log = await this.prisma.attendanceLog.findFirst({
+        where: {
+          employeeId: ev.employeeId!,
+          type: 'REGULAR',
+          [field]: {
+            gte: new Date(ev.processedAt.getTime() - 15_000),
+            lte: ev.processedAt,
+          },
+        },
+        include: { employee: { select: { fullName: true, employeeCode: true } } },
+      });
+      if (!log) continue;
+      items.push({
+        logId: log.id,
+        employee: `${log.employee.fullName} (${log.employee.employeeCode ?? '—'})`,
+        field,
+        from: log[field]!,
+        to: real,
+      });
+    }
+    if (dto.apply) {
+      for (const item of items) {
+        try {
+          await this.updateAttendance(
+            item.logId,
+            {
+              [item.field]: item.to.toISOString(),
+              note: `Device ${dto.deviceId}: delayed delivery corrected to device time`,
+            },
+            actingUser,
+          );
+          item.result = 'fixed';
+        } catch (err) {
+          item.result = err instanceof Error ? err.message : 'failed';
+        }
+      }
+    }
+    return { count: items.length, applied: !!dto.apply, items };
   }
 
   /** GET /attendance/punch-reviews — punches whose device clock HR must confirm. */

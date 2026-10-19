@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node api.js && node src/index.js",
     "check": "node --check src/index.js"
   },
   "engines": {

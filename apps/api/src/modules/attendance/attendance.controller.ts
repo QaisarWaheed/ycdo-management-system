@@ -15,7 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { Permission, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles, AlsoAllowPermission } from '../auth/roles.decorator';
+import { Roles, AlsoAllowPermission, StrictRoles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
   ApplyPunchReviewDto,
@@ -32,6 +32,7 @@ import {
   PunchReviewQueryDto,
   RawScanDto,
   RecalculateMonthDto,
+  RepairDelayedPunchesDto,
   RelieverCheckInDto,
   RelieverCheckOutDto,
   RelieverSessionsQueryDto,
@@ -189,6 +190,17 @@ export class AttendanceController {
       throw new ForbiddenException('Access denied');
     }
     return this.attendanceService.getActiveTimer(employeeId);
+  }
+
+  @Post('device-punch-repair')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  @StrictRoles()
+  repairDelayedDevicePunches(
+    @Body() dto: RepairDelayedPunchesDto,
+    @CurrentUser() user: { id: string; role: UserRole },
+  ) {
+    return this.attendanceService.repairDelayedDevicePunches(dto, user);
   }
 
   /** Device punches not saved because the device clock changed or is unknown. */

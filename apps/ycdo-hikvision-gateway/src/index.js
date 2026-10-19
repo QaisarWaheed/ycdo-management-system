@@ -521,9 +521,9 @@ async function deliverOne(row) {
       return;
     }
 
-    if (outcome.deliveryStatus === "REJECTED_BY_HRMS") {
-      db.prepare(`UPDATE events SET delivery_status='REJECTED_BY_HRMS', attempts=?, hrms_http_status=?, hrms_response=?, hrms_reason=?, last_error=?, updated_at=? WHERE id=?`)
-        .run(attemptNo, response.status, text, outcome.hrmsReason, outcome.hrmsReason || `HRMS ${response.status}`, now, row.id);
+    if (outcome.deliveryStatus === "REJECTED_BY_HRMS" || outcome.deliveryStatus === "STALE") {
+      db.prepare(`UPDATE events SET delivery_status=?, attempts=?, hrms_http_status=?, hrms_response=?, hrms_reason=?, last_error=?, updated_at=? WHERE id=?`)
+        .run(outcome.deliveryStatus, attemptNo, response.status, text, outcome.hrmsReason, outcome.hrmsReason || `HRMS ${response.status}`, now, row.id);
       log("warn", "HRMS rejected event", {
         id: row.id,
         employeeNo: row.employee_no,

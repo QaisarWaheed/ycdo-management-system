@@ -2,6 +2,7 @@ import {
   CHECKOUT_TOO_SOON_REASON,
   DeviceClockState,
   PUNCH_REVIEW_REASON,
+  STALE_PUNCH_REASON,
   devicePunchRejectReason,
   isCheckoutTooSoon,
   resolveDevicePunch,
@@ -61,13 +62,13 @@ describe('device-punch-time.util', () => {
 
   it('sends an isolated old punch from a correct-clock device to HR review', () => {
     const result = resolveDevicePunch({
-      eventTime: '2026-08-30T05:00:00+05:00',
+      eventTime: '2026-08-30T07:00:00+05:00',
       now,
       clock: { clockOffsetSec: 3, clockCandidateSec: null, clockCandidateAt: null },
     });
     expect(result.verdict).toBe('review');
     expect(devicePunchRejectReason(result.verdict)).toBe(PUNCH_REVIEW_REASON);
-    expect(result.deviceTime).toEqual(new Date('2026-08-30T05:00:00+05:00'));
+    expect(result.deviceTime).toEqual(new Date('2026-08-30T07:00:00+05:00'));
   });
 
   it('sends an isolated old punch from a slow-clock device to HR review', () => {
@@ -90,14 +91,14 @@ describe('device-punch-time.util', () => {
     });
     expect(result.verdict).toBe('delayed');
     expect(result.checkTime).toEqual(new Date('2026-08-30T06:00:00+05:00'));
-    expect(result.nextClock).toBeNull();
+    expect(result.nextClock?.clockOffsetSec ?? 2.5 * HOUR).toBe(2.5 * HOUR);
     expect(devicePunchRejectReason(result.verdict)).toBeNull();
   });
 
-  it('saves a dump from last night on a correct clock at its real time', () => {
-    const punched = new Date('2026-08-29T21:15:00+05:00');
+  it('saves a dump from an hour ago on a correct clock at its real time', () => {
+    const punched = new Date('2026-08-30T07:00:00+05:00');
     const result = resolveDevicePunch({
-      eventTime: '2026-08-29T21:15:00+05:00',
+      eventTime: '2026-08-30T07:00:00+05:00',
       now,
       clock: correctClock,
       recentDeviceEvents: 3,
@@ -106,14 +107,73 @@ describe('device-punch-time.util', () => {
     expect(result.checkTime).toEqual(new Date(punched.getTime() + 3000));
   });
 
-  it('sends a dump older than 7 days to HR review', () => {
+  it('drops a punch that reached us more than 2 h late as stale', () => {
+    for (const eventTime of ['2026-08-29T21:15:00+05:00', '2026-08-20T09:00:00+05:00']) {
+      const result = resolveDevicePunch({
+        eventTime,
+        now,
+        clock: correctClock,
+        recentDeviceEvents: 10,
+      });
+      expect(result.verdict).toBe('stale');
+      expect(devicePunchRejectReason(result.verdict)).toBe(STALE_PUNCH_REASON);
+    }
+  });
+
+  it('saves a punch delayed a few minutes at its device time, without a burst', () => {
+    // Device 4 min fast (error -253 s); punched 08:09:22, delivered 08:20:00.
     const result = resolveDevicePunch({
-      eventTime: '2026-08-20T09:00:00+05:00',
-      now,
-      clock: correctClock,
+      eventTime: '2026-10-19T08:09:22+05:00',
+      receivedTime: '2026-10-19T08:20:00+05:00',
+      now: new Date('2026-10-19T08:20:01+05:00'),
+      clock: { clockOffsetSec: -253, clockCandidateSec: null, clockCandidateAt: null },
+    });
+    expect(result.verdict).toBe('delayed');
+    expect(result.checkTime).toEqual(new Date('2026-10-19T08:05:09+05:00'));
+  });
+
+  it('does not chain-learn a draining backlog as the clock error (Masoom Shah 19 Oct)', () => {
+    // Baseline wrongly learned from a punch that was itself 14 min late.
+    let clock: DeviceClockState = { clockOffsetSec: 835, clockCandidateSec: null, clockCandidateAt: null };
+    const dump = [
+      ['2026-10-19T08:00:53+05:00', '2026-10-19T08:49:52+05:00'],
+      ['2026-10-19T08:09:22+05:00', '2026-10-19T08:50:04+05:00'],
+      ['2026-10-19T08:28:26+05:00', '2026-10-19T08:50:19+05:00'],
+    ];
+    for (const [eventTime, receivedTime] of dump) {
+      const result = resolveDevicePunch({
+        eventTime,
+        receivedTime,
+        now: new Date(receivedTime),
+        clock,
+        recentDeviceEvents: 10,
+      });
+      expect(result.verdict).toBe('delayed');
+      // Never stamped at the dump moment.
+      expect(result.checkTime.getTime()).toBeLessThan(new Date(receivedTime).getTime() - 2 * 60 * 1000);
+      clock = { ...clock, ...(result.nextClock ?? {}) };
+      expect(clock.clockOffsetSec).toBe(835);
+    }
+    // A punch less late than the wrong baseline lowers it (cannot tell better).
+    const lessLate = resolveDevicePunch({
+      eventTime: '2026-10-19T08:45:06+05:00',
+      receivedTime: '2026-10-19T08:50:22+05:00',
+      now: new Date('2026-10-19T08:50:22+05:00'),
+      clock,
       recentDeviceEvents: 10,
     });
-    expect(result.verdict).toBe('review');
+    expect(lessLate.verdict).toBe('ok');
+    expect(lessLate.nextClock?.clockOffsetSec).toBe(316);
+    clock = { ...clock, ...lessLate.nextClock };
+    // First live punch (device 4 min fast) lowers the baseline to the real error.
+    const live = resolveDevicePunch({
+      eventTime: '2026-10-19T09:04:40+05:00',
+      receivedTime: '2026-10-19T09:00:25+05:00',
+      now: new Date('2026-10-19T09:00:26+05:00'),
+      clock,
+    });
+    expect(live.verdict).toBe('ok');
+    expect(live.nextClock?.clockOffsetSec).toBe(-255);
   });
 
   it('sends a clock set forward to HR review even in a burst', () => {

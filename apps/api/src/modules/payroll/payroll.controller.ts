@@ -1,7 +1,18 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 import { PayrollActivity, PayrollStatus } from '@prisma/client';
-import { ActivityWindowsService, actorOf } from '../activity-windows/activity-windows';
+import {
+  ActivityWindowsService,
+  actorOf,
+} from '../activity-windows/activity-windows';
 import {
   BadRequestException,
   Body,
@@ -141,8 +152,13 @@ type WindowUser = { id: string; role: UserRole; roles?: UserRole[] };
 
 /** Req 20: Founder approval and PC verification have their own screens and roles. */
 function assertNotWorkflowStatus(status: PayrollStatus) {
-  if (status === PayrollStatus.FOUNDER_APPROVED || status === PayrollStatus.PC_VERIFIED) {
-    throw new BadRequestException('Use the Founder approval / proof-reading screens for this step');
+  if (
+    status === PayrollStatus.FOUNDER_APPROVED ||
+    status === PayrollStatus.PC_VERIFIED
+  ) {
+    throw new BadRequestException(
+      'Use the Founder approval / proof-reading screens for this step',
+    );
   }
 }
 
@@ -226,22 +242,35 @@ export class PayrollController {
     @Body() dto: RebuildPayrollDto,
     @CurrentUser() user: { id: string; role: UserRole },
   ) {
-    return this.payrollService.rebuildPayrollFromAttendanceAndLetters(dto, user);
+    return this.payrollService.rebuildPayrollFromAttendanceAndLetters(
+      dto,
+      user,
+    );
   }
 
   @Post('deductions')
   @Roles(...PAY_CHANGE_ROLES)
   @StrictRoles()
-  async addDeduction(@Body() dto: AddDeductionDto, @CurrentUser() user: WindowUser) {
-    await this.windows.assertFinanceEdit(actorOf(user), { entryId: dto.payrollEntryId });
+  async addDeduction(
+    @Body() dto: AddDeductionDto,
+    @CurrentUser() user: WindowUser,
+  ) {
+    await this.windows.assertFinanceEdit(actorOf(user), {
+      entryId: dto.payrollEntryId,
+    });
     return this.payrollService.addDeduction(dto, user.id);
   }
 
   @Post('deductions/batch')
   @Roles(...PAY_CHANGE_ROLES)
   @StrictRoles()
-  async addDeductions(@Body() dto: AddDeductionsDto, @CurrentUser() user: WindowUser) {
-    await this.windows.assertFinanceEdit(actorOf(user), { entryId: dto.payrollEntryId });
+  async addDeductions(
+    @Body() dto: AddDeductionsDto,
+    @CurrentUser() user: WindowUser,
+  ) {
+    await this.windows.assertFinanceEdit(actorOf(user), {
+      entryId: dto.payrollEntryId,
+    });
     return this.payrollService.addDeductions(dto, user.id);
   }
 
@@ -271,8 +300,13 @@ export class PayrollController {
   @Post('allowances')
   @Roles(...PAY_CHANGE_ROLES)
   @StrictRoles()
-  async addAllowance(@Body() dto: AddAllowanceDto, @CurrentUser() user: PayActor) {
-    await this.windows.assertFinanceEdit(actorOf(user as WindowUser), { entryId: dto.payrollEntryId });
+  async addAllowance(
+    @Body() dto: AddAllowanceDto,
+    @CurrentUser() user: PayActor,
+  ) {
+    await this.windows.assertFinanceEdit(actorOf(user as WindowUser), {
+      entryId: dto.payrollEntryId,
+    });
     if (!isPayExecutive(user)) {
       const { employeeId, summary } =
         await this.payChangeRequests.describePayrollAddition(dto);
@@ -324,7 +358,10 @@ export class PayrollController {
   ) {
     assertNotWorkflowStatus(dto.status);
     if (dto.status === PayrollStatus.VERIFIED) {
-      await this.windows.assertOpen(PayrollActivity.FINANCE_VERIFICATION, actorOf(user));
+      await this.windows.assertOpen(
+        PayrollActivity.FINANCE_VERIFICATION,
+        actorOf(user),
+      );
     }
     return this.payrollService.finalizeBranchMonth(dto, user.id);
   }
@@ -364,7 +401,10 @@ export class PayrollController {
   ) {
     assertNotWorkflowStatus(dto.status);
     if (dto.status === PayrollStatus.VERIFIED) {
-      await this.windows.assertOpen(PayrollActivity.FINANCE_VERIFICATION, actorOf(user));
+      await this.windows.assertOpen(
+        PayrollActivity.FINANCE_VERIFICATION,
+        actorOf(user),
+      );
     }
     const roles = user.roles?.length ? user.roles : [user.role];
     return this.payrollService.updateStatus(
@@ -415,10 +455,7 @@ export class PayrollController {
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
   }
 
@@ -448,7 +485,9 @@ export class PayrollController {
   ) {
     // Portal: an employee may read only their own history.
     if (user.role === UserRole.EMPLOYEE && user.employeeId !== employeeId) {
-      throw new ForbiddenException('You can only view your own payroll history');
+      throw new ForbiddenException(
+        'You can only view your own payroll history',
+      );
     }
     return this.payrollService.getEmployeePayrollHistory(employeeId);
   }
@@ -499,7 +538,11 @@ export class PayrollController {
     @Body() dto: SalaryIncrementDto,
     @CurrentUser() user: PayActor,
   ) {
-    const pending = await this.packageApproval(PayChangeKind.SALARY_INCREMENT, dto, user);
+    const pending = await this.packageApproval(
+      PayChangeKind.SALARY_INCREMENT,
+      dto,
+      user,
+    );
     if (pending) return pending;
     const result = await this.payrollService.salaryIncrement(dto, user.id);
     await this.payChangeRequests.afterPackageChange(dto.employeeId);
@@ -513,7 +556,11 @@ export class PayrollController {
     @Body() dto: UpdateActiveStipendDto,
     @CurrentUser() user: PayActor,
   ) {
-    const pending = await this.packageApproval(PayChangeKind.PACKAGE_EDIT, dto, user);
+    const pending = await this.packageApproval(
+      PayChangeKind.PACKAGE_EDIT,
+      dto,
+      user,
+    );
     if (pending) return pending;
     const result = await this.payrollService.updateActiveStipend(dto, user.id);
     await this.payChangeRequests.afterPackageChange(dto.employeeId);

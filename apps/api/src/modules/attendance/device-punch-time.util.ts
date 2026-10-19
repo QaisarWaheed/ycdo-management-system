@@ -18,8 +18,11 @@ const MAX_RECEIVED_TIME_FUTURE_MS = 60 * 1000;
 /** Burst replay stamps check-in and check-out on the same second. */
 export const MIN_BIOMETRIC_SESSION_MS = 2 * 60 * 1000;
 
-/** An offline dump older than this is not auto-saved. */
-export const MAX_DELAYED_PUNCH_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+/** A punch that reached us later than this is stale: not saved, not reviewed. */
+export const MAX_DELAYED_PUNCH_AGE_MS = 2 * 60 * 60 * 1000;
+
+/** Network jitter: a punch this much later than the clock baseline is still live. */
+export const DELAY_SLACK_MS = 2 * 60 * 1000;
 
 /** A device sending this many events in the last minute is replaying its memory. */
 export const DUMP_BURST_MIN_EVENTS = 3;
@@ -27,14 +30,15 @@ export const DUMP_BURST_WINDOW_MS = 60 * 1000;
 
 export const PUNCH_REVIEW_REASON =
   'Needs HR review: device clock changed or unknown';
+export const STALE_PUNCH_REASON = 'STALE_DEVICE_EVENT';
 export const CHECKOUT_TOO_SOON_REASON = 'CHECKOUT_TOO_SOON';
 
 /**
- * ok: live punch at receive time. delayed: offline dump replayed on a known,
- * unchanged clock — saved at its real time. review: clock changed/unknown,
- * not saved; HR decides.
+ * ok: live punch at receive time. delayed: reached us late on a known clock —
+ * saved at its real time. review: clock changed/unknown, not saved; HR
+ * decides. stale: reached us more than 2 h late — dropped.
  */
-export type DevicePunchVerdict = 'ok' | 'delayed' | 'review';
+export type DevicePunchVerdict = 'ok' | 'delayed' | 'review' | 'stale';
 
 /** What we remember about one device's clock error (receive time − device time). */
 export interface DeviceClockState {
@@ -72,19 +76,19 @@ function learned(offsetMs: number): DeviceClockState {
 }
 
 /**
- * Punch time is always Pakistan time at receipt (gateway receive time, else
- * API now), never the device clock. A device may run hours slow/fast, in a
- * China +08:00 zone, or in a factory year — its punches still land at the
- * real moment.
+ * A live punch lands at Pakistan time at receipt (gateway receive time, else
+ * API now). A device may run hours slow/fast, in a China +08:00 zone, or in a
+ * factory year — its punches still land at the real moment.
  *
- * The device clock is only used to catch offline dumps: each device's clock
- * error is learned from its live punches. A punch whose error is far from
- * that happened before it reached us: when it arrives in a burst (the device
- * replaying its memory, ≥3 events in the last minute) and is at most 7 days
- * old, it is saved at its real time (device time + learned error). Any other
- * mismatch goes to HR review. If a clock is re-set, the new error is trusted
- * once it repeats on a punch at least 10 minutes later (immediately when the
- * clock becomes correct).
+ * Each device's clock error (receive − device time) is learned. Delivery
+ * delay only ever adds to it, so the baseline only moves DOWN on its own: a
+ * punch arriving faster than the baseline (within 30 min) lowers it. A punch
+ * more than 2 min slower than the baseline reached us late and is saved at
+ * its real time (device time + baseline) — when within 30 min, or in a burst
+ * (device replaying its memory, ≥3 events in the last minute). More than 2 h
+ * late = stale (dropped). Other mismatches go to HR review. A re-set clock's
+ * new error is trusted once it repeats on a punch at least 10 minutes later
+ * (immediately when the clock becomes correct).
  */
 export function resolveDevicePunch(opts: {
   eventTime?: string | null;
@@ -119,11 +123,25 @@ export function resolveDevicePunch(opts: {
   });
 
   const baselineSec = opts.clock?.clockOffsetSec ?? null;
-  // Correct clock, or first punch we see from this device.
-  if (Math.abs(offsetMs) <= CLOCK_OFFSET_TOLERANCE_MS || baselineSec == null) {
-    return accept();
+  // First punch we see from this device.
+  if (baselineSec == null) return accept();
+
+  // How much later than the baseline this punch reached us (< 0 = sooner).
+  const delayMs = offsetMs - baselineSec * 1000;
+  if (Math.abs(delayMs) <= DELAY_SLACK_MS) {
+    return {
+      checkTime,
+      verdict: 'ok',
+      deviceTime,
+      nextClock: delayMs < 0 ? learned(offsetMs) : null,
+    };
   }
-  if (Math.abs(offsetMs - baselineSec * 1000) <= CLOCK_OFFSET_TOLERANCE_MS) {
+  // Arrived sooner than the baseline: the baseline carried a delivery delay
+  // (or the clock became correct) — learn the smaller error.
+  if (
+    (delayMs < 0 && -delayMs <= CLOCK_OFFSET_TOLERANCE_MS) ||
+    Math.abs(offsetMs) <= DELAY_SLACK_MS
+  ) {
     return accept();
   }
 
@@ -139,43 +157,41 @@ export function resolveDevicePunch(opts: {
   ) {
     return accept();
   }
+  // Remember this error so a re-set clock is confirmed by its next punch.
+  const withCandidate: DeviceClockState | null = matchesCandidate
+    ? null
+    : {
+        clockOffsetSec: baselineSec,
+        clockCandidateSec: Math.round(offsetMs / 1000),
+        clockCandidateAt: checkTime,
+      };
 
-  // ponytail: a clock set back during a busy burst looks like a dump and is
-  // saved early; HR can fix it. Add a per-device "clock changed" flag if seen.
-  const correctedMs = deviceTime.getTime() + baselineSec * 1000;
-  const delayMs = checkTime.getTime() - correctedMs;
+  // ponytail: a clock set back looks like a delay and is saved early until
+  // the reset is confirmed 10 min later; HR can fix those few punches.
+  if (delayMs > MAX_DELAYED_PUNCH_AGE_MS) {
+    return { checkTime, verdict: 'stale', deviceTime, nextClock: withCandidate };
+  }
   if (
-    delayMs > CLOCK_OFFSET_TOLERANCE_MS &&
-    delayMs <= MAX_DELAYED_PUNCH_AGE_MS &&
-    (opts.recentDeviceEvents ?? 0) >= DUMP_BURST_MIN_EVENTS
+    delayMs > 0 &&
+    (delayMs <= CLOCK_OFFSET_TOLERANCE_MS ||
+      (opts.recentDeviceEvents ?? 0) >= DUMP_BURST_MIN_EVENTS)
   ) {
     return {
-      checkTime: new Date(correctedMs),
+      checkTime: new Date(deviceTime.getTime() + baselineSec * 1000),
       verdict: 'delayed',
       deviceTime,
-      nextClock: null,
+      nextClock: withCandidate,
     };
   }
-
-  if (matchesCandidate) {
-    return { checkTime, verdict: 'review', deviceTime, nextClock: null };
-  }
-  return {
-    checkTime,
-    verdict: 'review',
-    deviceTime,
-    nextClock: {
-      clockOffsetSec: baselineSec,
-      clockCandidateSec: Math.round(offsetMs / 1000),
-      clockCandidateAt: checkTime,
-    },
-  };
+  return { checkTime, verdict: 'review', deviceTime, nextClock: withCandidate };
 }
 
 export function devicePunchRejectReason(
   verdict: DevicePunchVerdict,
 ): string | null {
-  return verdict === 'review' ? PUNCH_REVIEW_REASON : null;
+  if (verdict === 'review') return PUNCH_REVIEW_REASON;
+  if (verdict === 'stale') return STALE_PUNCH_REASON;
+  return null;
 }
 
 export function isCheckoutTooSoon(

@@ -9,6 +9,8 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsBoolean,
+  Matches,
   IsUUID,
   Max,
   MaxLength,
@@ -248,6 +250,25 @@ export class PortalCheckDto {
   @Type(() => Number)
   @IsNumber()
   longitude: number;
+}
+
+/** Super Admin: move delayed device punches of one device/day to device time. */
+export class RepairDelayedPunchesDto {
+  @IsString()
+  @IsNotEmpty()
+  deviceId: string;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  date: string;
+
+  /** The device's real clock error, receive − device time (e.g. -253). */
+  @Type(() => Number)
+  @IsInt()
+  offsetSec: number;
+
+  @IsOptional()
+  @IsBoolean()
+  apply?: boolean;
 }
 
 export class UpdateAttendanceDto {

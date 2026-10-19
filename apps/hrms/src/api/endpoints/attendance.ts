@@ -207,6 +207,16 @@ export const attendanceApi = {
     api.post(`/attendance/punch-reviews/${id}/apply`, data),
   dismissPunchReview: (id: string, note?: string) =>
     api.post(`/attendance/punch-reviews/${id}/dismiss`, { note }),
+  /** Super Admin: move delayed punches of one device/day to device time. */
+  repairDelayedPunches: (data: { deviceId: string; date: string; offsetSec: number; apply?: boolean }) =>
+    api.post<
+      unknown,
+      {
+        count: number
+        applied: boolean
+        items: Array<{ logId: string; employee: string; field: 'checkIn' | 'checkOut'; from: string; to: string; result?: string }>
+      }
+    >('/attendance/device-punch-repair', data),
 }
 
 export type PunchType =

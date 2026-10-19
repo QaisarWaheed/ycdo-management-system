@@ -158,7 +158,7 @@ describe('rawScan branch lock + punch review', () => {
       clockCandidateSec: null,
       clockCandidateAt: null,
     });
-    const deviceTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const deviceTime = new Date(now.getTime() - 60 * 60 * 1000);
     const res = await h.service.rawScan({
       ...scan,
       eventTime: deviceTime.toISOString(),
@@ -187,13 +187,33 @@ describe('rawScan branch lock + punch review', () => {
       clockCandidateAt: null,
     });
     h.prisma.processedDeviceEvent.count.mockResolvedValue(4);
-    const deviceTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const deviceTime = new Date(now.getTime() - 90 * 60 * 1000);
     const res = await h.service.rawScan({
       ...scan,
       eventTime: deviceTime.toISOString(),
     });
     expect(res).toMatchObject({ accepted: true });
     expect(h.processResolvedPunch.mock.calls[0][3]).toEqual(deviceTime);
+  });
+
+  it('drops a punch that reached us more than 2 h late as stale (no HR review)', async () => {
+    const h = makeHarness({
+      id: 'd1',
+      deviceId: 'dev-1',
+      branchId: 'branch-a',
+      clockOffsetSec: 0,
+      clockCandidateSec: null,
+      clockCandidateAt: null,
+    });
+    h.prisma.processedDeviceEvent.count.mockResolvedValue(4);
+    const deviceTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const res = await h.service.rawScan({
+      ...scan,
+      eventTime: deviceTime.toISOString(),
+    });
+    expect(res).toMatchObject({ accepted: false, reason: 'STALE_DEVICE_EVENT' });
+    expect(h.prisma.punchReview.create).not.toHaveBeenCalled();
+    expect(h.processResolvedPunch).not.toHaveBeenCalled();
   });
 });
 

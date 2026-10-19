@@ -36,6 +36,10 @@ function deliveryOutcome(httpStatus, responseText) {
         hrmsReason: parsed.reason || "DEVICE_EVENT_ALREADY_PROCESSED",
       };
     }
+    // HRMS drops punches that reached it more than 2 h late.
+    if (parsed.accepted === false && parsed.reason === "STALE_DEVICE_EVENT") {
+      return { deliveryStatus: "STALE", hrmsReason: parsed.reason };
+    }
     if (parsed.accepted === false) {
       return {
         deliveryStatus: "REJECTED_BY_HRMS",

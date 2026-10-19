@@ -125,7 +125,8 @@ function HrPriceDialog({ correction, onClose }: { correction: SalaryCorrection; 
       ? (correction.claimItems ?? []).map((i) => ({ kind: 'OVERTIME', hours: i.hours ?? 0, note: i.date }))
       : correction.category === 'EXTRA_DUTY'
         ? (correction.claimItems ?? []).map((i) => ({ kind: 'EXTRA_DUTY', days: 1, note: i.date }))
-        : [{ kind: correction.category === 'DEDUCTION' ? 'DEDUCT' : 'ADD', amount: 0 }]
+        : // A "wrong deduction" claim is money back to the employee.
+          [{ kind: 'ADD', amount: 0, note: correction.category === 'DEDUCTION' ? 'Refund of wrong deduction' : undefined }]
   const [lines, setLines] = useState<CorrectionLine[]>(initial)
   const [note, setNote] = useState('')
 

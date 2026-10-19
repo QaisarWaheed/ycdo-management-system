@@ -34,6 +34,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { formatPakistanDate, formatPKT } from '@/lib/timeFormat'
+import { useAuth } from '@/hooks/useAuth'
 
 type ApiError = { response?: { data?: { message?: string | string[] } } }
 const errText = (err: ApiError) => {
@@ -61,6 +62,79 @@ const punchLabel = (type: string | null) =>
 
 type Action = { accept: boolean; item: PunchReview }
 
+/** Super Admin: punches that reached us late but were saved at arrival time. */
+function DelayedPunchRepair() {
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState({ deviceId: '', date: '', offsetSec: '0' })
+  const run = useMutation({
+    mutationFn: (apply: boolean) =>
+      attendanceApi.repairDelayedPunches({ ...form, offsetSec: Number(form.offsetSec), apply }),
+    onSuccess: (res) => {
+      if (res.applied) {
+        toast({ title: `${res.items.filter((i) => i.result === 'fixed').length} of ${res.count} corrected` })
+        queryClient.invalidateQueries({ queryKey: ['attendance'] })
+      }
+    },
+    onError: (err: ApiError) => toast({ title: 'Failed', description: errText(err), variant: 'destructive' }),
+  })
+  const ready = form.deviceId.trim() && /^\d{4}-\d{2}-\d{2}$/.test(form.date)
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <p className="font-medium">Repair delayed device punches (Super Admin)</p>
+        <p className="text-sm text-text-secondary">
+          Punches that reached the system more than 2 minutes late but were saved at their arrival time move to the device
+          time + the device's real clock error (seconds, receive − device; e.g. -253 = device 4 min fast). Preview first.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-4">
+          <Input placeholder="Device id (e.g. masoom shah)" value={form.deviceId} onChange={(e) => setForm({ ...form, deviceId: e.target.value })} />
+          <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          <Input type="number" placeholder="Clock error (s)" value={form.offsetSec} onChange={(e) => setForm({ ...form, offsetSec: e.target.value })} />
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={!ready || run.isPending} onClick={() => run.mutate(false)}>
+              Preview
+            </Button>
+            <Button disabled={!ready || run.isPending || !run.data?.count || run.data.applied} onClick={() => run.mutate(true)}>
+              Apply
+            </Button>
+          </div>
+        </div>
+        {run.data ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Employee</TableHead>
+                <TableHead>Punch</TableHead>
+                <TableHead>Saved (arrival)</TableHead>
+                <TableHead>Correct</TableHead>
+                <TableHead>Result</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {run.data.items.map((i) => (
+                <TableRow key={i.logId + i.field}>
+                  <TableCell>{i.employee}</TableCell>
+                  <TableCell>{i.field === 'checkIn' ? 'Check-in' : 'Check-out'}</TableCell>
+                  <TableCell>{formatPKT(i.from)}</TableCell>
+                  <TableCell>{formatPKT(i.to)}</TableCell>
+                  <TableCell>{i.result ?? (run.data?.applied ? '' : 'preview')}</TableCell>
+                </TableRow>
+              ))}
+              {!run.data.items.length ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-text-secondary">
+                    Nothing to repair
+                  </TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
 /** Device punches the system could not place itself (device clock changed or unknown). */
 export function PunchReviewsPage() {
   const queryClient = useQueryClient()
@@ -69,6 +143,7 @@ export function PunchReviewsPage() {
   const [punchType, setPunchType] = useState<PunchType>('CHECKIN')
   const [note, setNote] = useState('')
 
+  const isSuperAdmin = useAuth().hasRole(['SUPER_ADMIN'])
   const { data = [], isLoading } = useQuery({
     queryKey: ['punch-reviews'],
     queryFn: () => attendanceApi.punchReviews(),
@@ -114,6 +189,8 @@ export function PunchReviewsPage() {
           are not in attendance. Check the time and accept, or dismiss.
         </p>
       </div>
+
+      {isSuperAdmin ? <DelayedPunchRepair /> : null}
 
       <Card>
         <CardContent className="p-0">
