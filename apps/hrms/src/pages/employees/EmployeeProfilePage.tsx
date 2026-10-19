@@ -3305,6 +3305,12 @@ export function EmployeeProfilePage() {
             This voids the letter on the portal and unwinds linked pending
             fines or two-day absence deductions where payroll is not finalized.
           </p>
+          {reverseLetter?.letterType === 'EXPLANATION' ? (
+            <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+              The absence deduction follows the attendance, not this letter. Also update that day&apos;s
+              attendance (e.g. Present or On Leave); while it stays Uninformed Absent the deduction remains.
+            </p>
+          ) : null}
           <div className="space-y-2">
             <Label>Reason</Label>
             <Textarea
