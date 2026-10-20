@@ -221,6 +221,7 @@ model Employee {
   additionalDuties           EmployeeAdditionalDuty[]
   portalAttendances          PortalAttendance[]
   advanceLoanRequests        AdvanceLoanRequest[]
+  loans                      EmployeeLoan[]
   faceSyncJobs               FaceSyncJob[]
   onboardingApproval         EmployeeOnboardingApproval?
   coveringSwaps              MutualSwap[]                @relation("CoveringSwaps")
@@ -2245,4 +2246,38 @@ model EmployeeAdditionalDuty {
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
+}
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Staff loan: Founder approves on paper, Finance / HR records the decision
+/// and uploads the signed notification; installments are then taken from
+/// payroll each month from startMonth until the amount is repaid.
+model EmployeeLoan {
+  id                     String     @id @default(uuid())
+  employeeId             String
+  amount                 Decimal    @db.Decimal(10, 2)
+  monthlyInstallment     Decimal    @db.Decimal(10, 2)
+  /// 1st of the first month an installment is taken.
+  startMonth             DateTime   @db.Date
+  reason                 String     @db.Text
+  status                 LoanStatus @default(PENDING)
+  createdById            String
+  createdAt              DateTime   @default(now())
+  decidedById            String?
+  decidedAt              DateTime?
+  decisionNote           String?
+  notificationUrl        String?
+  notificationFileName   String?
+  notificationMimeType   String?
+  notificationUploadedAt DateTime?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, status])
 }

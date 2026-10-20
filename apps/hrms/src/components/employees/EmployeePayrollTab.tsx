@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Pencil, Printer } from 'lucide-react'
-import { advanceLoanApi } from '@/api/endpoints/advanceLoan'
+import { EmployeeLoansPanel } from '@/components/payroll/EmployeeLoansPanel'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { EditPayrollDialog } from '@/components/employees/EditPayrollDialog'
@@ -298,12 +298,6 @@ export function EmployeePayrollTab({
     )
   }, [latestStipend])
 
-  const { data: advanceLoans = [], isLoading: loadingAdvanceLoans } = useQuery({
-    queryKey: ['advance-loan', employeeId],
-    queryFn: () => advanceLoanApi.getByEmployee(employeeId),
-    enabled: !!employeeId,
-  })
-
   const { data: payrollHistory = [], isLoading: loadingPayroll } = useQuery({
     queryKey: ['payroll-history', employeeId],
     queryFn: () => payrollApi.getHistory(employeeId),
@@ -480,60 +474,14 @@ export function EmployeePayrollTab({
 
       <AdditionalDutiesCard employeeId={employeeId} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Advance & Loan Requests</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loadingAdvanceLoans ? (
-            <div className="space-y-2 p-4">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {advanceLoans.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-text-secondary">
-                      No advance or loan requests
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  advanceLoans.map((req) => (
-                    <TableRow key={req.id}>
-                      <TableCell>{req.type}</TableCell>
-                      <TableCell>{money(req.amount)}</TableCell>
-                      <TableCell
-                        className="max-w-[240px] truncate"
-                        title={req.reason}
-                      >
-                        {req.reason}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={req.status} />
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(req.createdAt), 'dd/MM/yyyy')}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <EmployeeLoansPanel
+        employeeId={employeeId}
+        employeeName={employeeName}
+        employeeCode={employeeCode}
+        designation={designation}
+        branch={branch}
+        joiningDate={joiningDate}
+      />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">

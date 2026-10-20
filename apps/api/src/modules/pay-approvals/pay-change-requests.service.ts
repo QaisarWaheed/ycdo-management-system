@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   EmployeeApproverTarget,
+  EmployeeStatus,
   PayChangeKind,
   PayChangeStatus,
   Prisma,
@@ -158,6 +159,131 @@ export class PayChangeRequestsService {
       select: { payPackageVerifiedAt: true },
     });
     return Boolean(employee?.payPackageVerifiedAt);
+  }
+
+  /**
+   * Finance progress: which staff have their salary package verified, which
+   * were changed but not verified yet, and which are untouched.
+   */
+  async packageStatus() {
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        status: {
+          notIn: [
+            EmployeeStatus.TERMINATED,
+            EmployeeStatus.RESIGNED,
+            EmployeeStatus.DISMISSED,
+            EmployeeStatus.PENDING_APPROVAL,
+          ],
+        },
+      },
+      select: {
+        id: true,
+        employeeCode: true,
+        fullName: true,
+        status: true,
+        currentDesignation: true,
+        payPackageVerifiedAt: true,
+        currentBranch: { select: { name: true } },
+        stipendRecords: {
+          select: {
+            id: true,
+            basicStipend: true,
+            lumpsumTotal: true,
+            effectiveTo: true,
+          },
+        },
+        payChangeRequests: {
+          where: { status: PayChangeStatus.PENDING },
+          select: { id: true },
+        },
+      },
+      orderBy: { fullName: 'asc' },
+    });
+    const recordOwner = new Map<string, string>();
+    for (const e of employees)
+      for (const r of e.stipendRecords) recordOwner.set(r.id, e.id);
+    const logs = await this.prisma.auditLog.findMany({
+      where: {
+        OR: [
+          {
+            action: { in: ['SALARY_INCREMENT', 'STIPEND_PACKAGE_CORRECTED'] },
+            entityId: { in: [...recordOwner.keys()] },
+          },
+          {
+            action: 'PAY_PACKAGE_VERIFIED',
+            entityId: { in: employees.map((e) => e.id) },
+          },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        action: true,
+        entityId: true,
+        createdAt: true,
+        user: {
+          select: { email: true, employee: { select: { fullName: true } } },
+        },
+      },
+    });
+    // Newest first, so the first log seen per employee is the last change.
+    const lastChange = new Map<string, (typeof logs)[number]>();
+    for (const log of logs) {
+      const owner =
+        log.action === 'PAY_PACKAGE_VERIFIED'
+          ? log.entityId
+          : recordOwner.get(log.entityId);
+      if (owner && !lastChange.has(owner)) lastChange.set(owner, log);
+    }
+    const LABEL: Record<string, string> = {
+      SALARY_INCREMENT: 'Salary increment',
+      STIPEND_PACKAGE_CORRECTED: 'Package edited',
+      PAY_PACKAGE_VERIFIED: 'Verified',
+    };
+    const rows = employees.map((e) => {
+      const active = e.stipendRecords.find((r) => r.effectiveTo == null);
+      const log = lastChange.get(e.id);
+      const state = e.payPackageVerifiedAt
+        ? 'VERIFIED'
+        : log
+          ? 'UPDATED'
+          : active
+            ? 'NOT_STARTED'
+            : 'NO_PACKAGE';
+      return {
+        employeeId: e.id,
+        employeeCode: e.employeeCode,
+        fullName: e.fullName,
+        designation: e.currentDesignation,
+        branch: e.currentBranch?.name ?? null,
+        status: e.status,
+        basicStipend: active ? Number(active.basicStipend) : null,
+        lumpsumTotal:
+          active?.lumpsumTotal != null ? Number(active.lumpsumTotal) : null,
+        state,
+        verifiedAt: e.payPackageVerifiedAt,
+        pendingApproval: e.payChangeRequests.length > 0,
+        lastChange: log
+          ? {
+              type: LABEL[log.action] ?? log.action,
+              at: log.createdAt,
+              by: log.user.employee?.fullName ?? log.user.email,
+            }
+          : null,
+      };
+    });
+    const count = (s: string) => rows.filter((r) => r.state === s).length;
+    return {
+      summary: {
+        total: rows.length,
+        verified: count('VERIFIED'),
+        updated: count('UPDATED'),
+        notStarted: count('NOT_STARTED'),
+        noPackage: count('NO_PACKAGE'),
+        pendingApproval: rows.filter((r) => r.pendingApproval).length,
+      },
+      rows,
+    };
   }
 
   /** Finance locks the package: from now on non-executive changes go to the Founder. */

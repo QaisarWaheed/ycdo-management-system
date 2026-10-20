@@ -7,6 +7,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { DateInput } from '@/components/common/DateInput'
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
+import { PayComponentsSection } from '@/components/payroll/PayComponentsSection'
 import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
 import { isPendingApproval } from '@/api/endpoints/payApprovals'
 import {
@@ -319,6 +320,7 @@ export function EditPayrollDialog({
                   to the 1st without ticking increment.
                 </p>
                 <StipendPackageFields control={form.control} watch={form.watch} />
+                <PayComponentsSection employeeId={employeeId} />
 
                 <label className="flex items-start gap-2 text-sm">
                   <input

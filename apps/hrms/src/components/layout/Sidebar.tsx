@@ -83,6 +83,13 @@ const extraTimeApprovalsNavItem = {
   icon: CalendarCheck,
 }
 
+/** Finance progress on setting and verifying every salary package. */
+const salarySetupNavItem = {
+  to: '/salary-setup-status',
+  label: 'Salary Setup Status',
+  icon: Wallet,
+}
+
 /** Phase 3 Req 18: fine letters vs salary deductions. */
 const fineAuditNavItem = {
   to: '/fine-audit',
@@ -165,6 +172,7 @@ function navItemsForRole(role?: string) {
       punchReviewsNavItem,
       specialLeavesNavItem,
       fineAuditNavItem,
+      salarySetupNavItem,
       ...(role === 'SUPER_ADMIN'
         ? [
             extraTimeApprovalsNavItem,
@@ -225,6 +233,7 @@ function navItemsForRole(role?: string) {
         ),
       ),
       payApprovalsNavItem,
+      salarySetupNavItem,
       ...(role === 'CHAIRMAN' ? [extraTimeApprovalsNavItem, specialLeavesNavItem] : []),
       incentiveManagementNavItem,
       doctorPerformanceNavItem,
@@ -239,6 +248,7 @@ function navItemsForRole(role?: string) {
         ),
       ),
       payApprovalsNavItem,
+      salarySetupNavItem,
       incentiveManagementNavItem,
       fineAuditNavItem,
       doctorPerformanceNavItem,

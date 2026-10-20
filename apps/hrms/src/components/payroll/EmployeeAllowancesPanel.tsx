@@ -236,10 +236,13 @@ export function AssignAllowanceDialog({
   defaultStartMonth,
   defaultPeriod,
   defaultNote = '',
+  defaultTypeId,
   onSaved,
 }: {
   employeeId: string
   current: EmployeeAllowance | null
+  /** Preselect a type (e.g. from the Edit Payroll component list). */
+  defaultTypeId?: string
   onClose: () => void
   /** Prefill (e.g. from the payroll duty reminder). */
   defaultStartMonth?: string
@@ -255,7 +258,7 @@ export function AssignAllowanceDialog({
     queryKey: ['allowance-types'],
     queryFn: allowancesApi.listTypes,
   })
-  const [typeId, setTypeId] = useState(current?.typeId ?? '')
+  const [typeId, setTypeId] = useState(current?.typeId ?? defaultTypeId ?? '')
   const [amount, setAmount] = useState(current ? Number(current.amount) : 0)
   const [startMonth, setStartMonth] = useState(
     defaultPeriod?.start.slice(0, 7) ?? defaultStartMonth ?? thisMonth(),

@@ -58,6 +58,7 @@ import {
   LeaveStatus,
   LeaveType,
   LetterType,
+  LoanStatus,
   Permission,
   PayrollStatus,
   Prisma,
@@ -145,6 +146,7 @@ import {
 import { FINE_REASON_LABELS } from './payslip-slip.util';
 import { itemizePayrollEntries } from './payroll-itemize.util';
 import { materializeIncentivePlans } from '../incentives/incentives.service';
+import { installmentForMonth, loanInstallmentDescription } from '../loans/loans.util';
 import {
   computePackageAllowanceLines,
   allowanceCoverage,
@@ -1570,12 +1572,50 @@ export class PayrollService {
       } });
       if (!existing) newLetterFines.push(fine);
     }
+    // Approved staff loans: this month's installment, once per loan per month.
+    const newLoanInstallments: Array<{
+      reason: DeductionType;
+      fineReason: null;
+      amount: number;
+      description: string;
+    }> = [];
+    // (Test doubles without the loan table skip this, as the Card does for discipline events.)
+    if (applyContractualPackage && hasPresenceInMonth(attendanceCard) && this.prisma.employeeLoan) {
+      const loans = await this.prisma.employeeLoan.findMany({
+        where: {
+          employeeId: dto.employeeId,
+          status: LoanStatus.APPROVED,
+          startMonth: { lte: new Date(Date.UTC(dto.year, dto.month - 1, 1)) },
+        },
+      });
+      for (const loan of loans) {
+        const description = loanInstallmentDescription(loan.id);
+        const taken = await this.prisma.payrollDeduction.findMany({
+          where: { description, payrollEntry: { stipendRecord: { employeeId: dto.employeeId } } },
+          select: { amount: true, payrollEntry: { select: { month: true, year: true } } },
+        });
+        if (taken.some((r) => r.payrollEntry.month === dto.month && r.payrollEntry.year === dto.year))
+          continue;
+        const amount = installmentForMonth(
+          {
+            amount: Number(loan.amount),
+            monthlyInstallment: Number(loan.monthlyInstallment),
+            startMonth: loan.startMonth,
+          },
+          dto.year,
+          dto.month,
+          taken.reduce((sum, r) => sum + Number(r.amount), 0),
+        );
+        if (amount > 0)
+          newLoanInstallments.push({ reason: DeductionType.LOAN, fineReason: null, amount, description });
+      }
+    }
     const context = {
       stipendRecord,
       employee,
       applyContractualPackage,
       attendanceCard,
-      existingDeductions: [...(entry?.deductions ?? []), ...newLetterFines],
+      existingDeductions: [...(entry?.deductions ?? []), ...newLetterFines, ...newLoanInstallments],
       existingAllowances: entry?.allowances ?? [],
     };
     const breakdown = await this.computeHourlyBreakdown(
@@ -1620,6 +1660,11 @@ export class PayrollService {
     for (const fine of newLetterFines) {
       await this.prisma.payrollDeduction.create({ data: {
         payrollEntryId: entry.id, reason: fine.reason, fineReason: fine.fineReason, amount: fine.amount, description: fine.description,
+      } });
+    }
+    for (const loan of newLoanInstallments) {
+      await this.prisma.payrollDeduction.create({ data: {
+        payrollEntryId: entry.id, reason: loan.reason, amount: loan.amount, description: loan.description,
       } });
     }
     // Card owns all attendance money. Replace legacy managed rows, retain unrelated stored adjustments.

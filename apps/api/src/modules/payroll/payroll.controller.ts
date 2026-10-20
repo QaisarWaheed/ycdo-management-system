@@ -568,6 +568,13 @@ export class PayrollController {
     return result;
   }
 
+  /** Finance progress: verified / changed / untouched salary packages. */
+  @Get('stipend/status')
+  @Roles(UserRole.PAYROLL_OFFICER, ...PAYROLL_READ_ROLES)
+  packageStatus() {
+    return this.payChangeRequests.packageStatus();
+  }
+
   /** Finance verifies the package; later changes from non-executives need the Founder. */
   @Post('stipend/verify')
   @Roles(UserRole.PAYROLL_OFFICER, UserRole.SUPER_ADMIN)
