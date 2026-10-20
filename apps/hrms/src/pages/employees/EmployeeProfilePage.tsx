@@ -1,3 +1,4 @@
+import { OrgPrintHeader } from '@/components/common/OrgPrintHeader'
 import { ReverseImpactNote } from '@/components/letters/ReverseImpactNote'
 import { SignedScanUploadButton } from '@/components/letters/SignedScan'
 import { ChangeRequestsCard } from '@/components/employees/ChangeRequests'
@@ -1341,13 +1342,7 @@ export function EmployeeProfilePage() {
       )}
 
       <div className="print-only hidden">
-        <div className="print-header">
-          <h1 className="text-2xl font-bold">YCDO</h1>
-          <p className="text-sm">Youth Community Development Organization</p>
-        </div>
-        <h2 className="mb-2 text-center text-lg font-semibold">
-          Employee Profile
-        </h2>
+        <OrgPrintHeader title="Employee Profile" />
         <p className="mb-6 text-center text-sm">
           {employee.employeeCode} · Printed{' '}
           {format(new Date(), 'dd/MM/yyyy')}

@@ -13,6 +13,15 @@ function dayCount(amount: number, stipend: number, totalDays: number): number {
   return Math.round(amount / (stipend / totalDays))
 }
 
+/** YCDO logo on a white tile so it stays clear on the yellow band. */
+function SlipLogo({ size }: { size: number }) {
+  return (
+    <span className="inline-flex shrink-0 items-center justify-center rounded bg-white p-[2px]" style={{ height: size, width: size }}>
+      <img src="/ycdo-logo.jpeg" alt="YCDO" style={{ maxHeight: '100%', maxWidth: '100%' }} />
+    </span>
+  )
+}
+
 /**
  * One payslip matching the YCDO stipend slip format:
  * yellow header, 4-col info table, 5-col main table, 3 signatures.
@@ -117,13 +126,17 @@ export function PayslipDocument({
       >
         {/* ── Yellow header ── */}
         <div
-          className="mb-[2px] text-center font-bold"
+          className="mb-[2px] flex items-center gap-2 font-bold"
           style={{ background: '#FFFF00', padding: compact ? '2px 4px' : '4px 8px' }}
         >
-          <div style={{ fontSize: fs.org, fontWeight: 'bold', textTransform: 'uppercase' }}>
-            {slip.orgName || 'Youth Community Development Organization'}
+          <SlipLogo size={compact ? 30 : 40} />
+          <div className="flex-1 text-center">
+            <div style={{ fontSize: fs.org, fontWeight: 'bold', textTransform: 'uppercase' }}>
+              {slip.orgName || 'Youth Community Development Organization'}
+            </div>
+            <div style={{ fontSize: fs.title, marginTop: '1px' }}>{slip.title}</div>
           </div>
-          <div style={{ fontSize: fs.title, marginTop: '1px' }}>{slip.title}</div>
+          <div style={{ width: compact ? 30 : 40 }} />
         </div>
 
         {/* ── Info table ── */}
@@ -140,7 +153,10 @@ export function PayslipDocument({
             </tr>
             <tr>
               <td className={cell('font-semibold')}>Name</td>
-              <td className={cell()}>{slip.employeeName || '—'}</td>
+              <td className={cell()}>
+                {slip.employeeName || '—'}
+                {slip.employeeId ? <span className="font-semibold"> ({slip.employeeId})</span> : null}
+              </td>
               <td className={cell('font-semibold')}>Work Plac</td>
               <td className={cell()}>{slip.workPlace || '—'}</td>
             </tr>
@@ -305,11 +321,15 @@ function SectionedPayslip({ slip, compact }: { slip: PayslipSlipData; compact: b
         className={cn('flex flex-col border-2 border-black', compact ? 'h-full p-[5px]' : 'p-3')}
         style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
       >
-        <div className="text-center font-bold" style={{ background: '#FFFF00', padding: '2px 6px' }}>
-          <div style={{ fontSize: f.head, textTransform: 'uppercase' }}>
-            {slip.orgName || 'Youth Community Development Organization'}
+        <div className="flex items-center gap-2 font-bold" style={{ background: '#FFFF00', padding: '2px 6px' }}>
+          <SlipLogo size={compact ? 32 : 40} />
+          <div className="flex-1 text-center">
+            <div style={{ fontSize: f.head, textTransform: 'uppercase' }}>
+              {slip.orgName || 'Youth Community Development Organization'}
+            </div>
+            <div style={{ fontSize: f.base }}>{slip.title}</div>
           </div>
-          <div style={{ fontSize: f.base }}>{slip.title}</div>
+          <div style={{ width: compact ? 32 : 40 }} />
         </div>
 
         <div className="mt-[4px] flex gap-3">
@@ -318,6 +338,11 @@ function SectionedPayslip({ slip, compact }: { slip: PayslipSlipData; compact: b
               <span className="font-bold leading-tight" style={{ fontSize: f.name }}>
                 {slip.employeeName || '—'}
               </span>
+              {slip.employeeId ? (
+                <span className="rounded border-2 border-black px-2 font-bold" style={{ fontSize: f.base }}>
+                  {slip.employeeId}
+                </span>
+              ) : null}
               {status ? (
                 <span
                   className="rounded border-2 px-2 font-bold uppercase"

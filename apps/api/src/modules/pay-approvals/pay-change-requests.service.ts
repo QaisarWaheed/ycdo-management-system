@@ -76,6 +76,61 @@ export const monthLabel = (year: number, month: number) =>
  * approves, like the new-employee approval. This service only records and
  * routes them; PayApprovalsService applies an approved one.
  */
+/** One line of salary amendment history: what changed, in words. */
+export function describeAmendment(
+  action: string,
+  c: Record<string, unknown>,
+): { type: string; detail: string } {
+  const n = (v: unknown) => `PKR ${pkr(Number(v) || 0)}`;
+  switch (action) {
+    case 'SALARY_INCREMENT':
+      return {
+        type: 'Salary increment',
+        detail: `Basic ${n(c.previousSalary)} → ${n(c.newBasicStipend)}, package ${n(c.lumpsumTotal)}`,
+      };
+    case 'STIPEND_PACKAGE_CORRECTED':
+      return {
+        type: 'Package edited',
+        detail: `Basic ${n(c.previousBasicStipend)} → ${n(c.newBasicStipend)}, package ${n(c.lumpsumTotal)}`,
+      };
+    case 'PAY_PACKAGE_VERIFIED':
+      return {
+        type: 'Verified by Finance',
+        detail: 'Package locked; later changes need Founder approval',
+      };
+    case 'EMPLOYEE_ALLOWANCE_SET':
+      return {
+        type: 'Allowance set',
+        detail: `${String(c.type ?? '')} ${n(c.before)} → ${n(c.after)} from ${String(c.startMonth ?? '')}${c.endMonth ? ` to ${String(c.endMonth)}` : ''}`,
+      };
+    case 'EMPLOYEE_ALLOWANCE_ENDED':
+      return {
+        type: 'Allowance ended',
+        detail: `${String(c.type ?? '')} ${n(c.amount)}, last month ${String(c.endMonth ?? '')}`,
+      };
+    case 'LOAN_APPLICATION_CREATED':
+      return {
+        type: 'Loan applied',
+        detail: `${n(c.amount)}, ${n(c.monthlyInstallment)} per month from ${String(c.startMonth ?? '')}`,
+      };
+    default: {
+      // PAY_CHANGE_* (requested / approved / rejected / edited / cancelled / forwarded) and LOAN_*.
+      const words = action
+        .replace(/^PAY_CHANGE_/, 'Pay request ')
+        .replace(/^LOAN_/, 'Loan ')
+        .replace(/_/g, ' ');
+      const type = words.charAt(0) + words.slice(1).toLowerCase();
+      const note = c.reviewNote ?? c.note ?? c.reason;
+      return {
+        type,
+        detail: [c.summary, note ? `Note: ${String(note)}` : null]
+          .filter(Boolean)
+          .join(' · '),
+      };
+    }
+  }
+}
+
 @Injectable()
 export class PayChangeRequestsService {
   constructor(private prisma: PrismaService) {}
@@ -284,6 +339,54 @@ export class PayChangeRequestsService {
       },
       rows,
     };
+  }
+
+  /** Salary amendment history of one employee, newest first, from the audit log. */
+  async packageHistory(employeeId: string) {
+    const records = await this.prisma.stipendRecord.findMany({
+      where: { employeeId },
+      select: { id: true },
+    });
+    const forEmployee = { path: ['employeeId'], equals: employeeId };
+    const logs = await this.prisma.auditLog.findMany({
+      where: {
+        OR: [
+          {
+            action: { in: ['SALARY_INCREMENT', 'STIPEND_PACKAGE_CORRECTED'] },
+            entityId: { in: records.map((r) => r.id) },
+          },
+          { action: 'PAY_PACKAGE_VERIFIED', entityId: employeeId },
+          { action: { startsWith: 'PAY_CHANGE_' }, changes: forEmployee },
+          {
+            action: {
+              in: ['EMPLOYEE_ALLOWANCE_SET', 'EMPLOYEE_ALLOWANCE_ENDED'],
+            },
+            changes: forEmployee,
+          },
+          { entity: 'EmployeeLoan', changes: forEmployee },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+      select: {
+        id: true,
+        action: true,
+        createdAt: true,
+        changes: true,
+        user: {
+          select: { email: true, employee: { select: { fullName: true } } },
+        },
+      },
+    });
+    return logs.map((log) => ({
+      id: log.id,
+      at: log.createdAt,
+      by: log.user.employee?.fullName ?? log.user.email,
+      ...describeAmendment(
+        log.action,
+        (log.changes ?? {}) as Record<string, unknown>,
+      ),
+    }));
   }
 
   /** Finance locks the package: from now on non-executive changes go to the Founder. */

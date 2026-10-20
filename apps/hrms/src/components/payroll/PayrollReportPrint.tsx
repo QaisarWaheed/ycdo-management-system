@@ -1,3 +1,4 @@
+import { OrgPrintHeader } from '@/components/common/OrgPrintHeader'
 import { Fragment } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -192,8 +193,7 @@ export function PayrollReportPrintSection({
       }
     >
       <div className="payroll-report-print-header">
-        <h2 className="text-xl font-bold">YCDO Central Hospital</h2>
-        <p className="text-lg font-semibold">{title}</p>
+        <OrgPrintHeader title={title} />
         {subtitle ? <p className="text-sm">{subtitle}</p> : null}
         <p className="text-xs text-gray-600">
           Printed on {new Date().toLocaleString('en-PK')}

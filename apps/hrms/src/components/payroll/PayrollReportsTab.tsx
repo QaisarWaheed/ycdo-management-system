@@ -1,3 +1,4 @@
+import { ORG_HEADER_CSS, orgHeaderHtml } from '@/lib/orgHeader'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -127,11 +128,11 @@ function printTable(title: string, header: string[], rows: unknown[][], footerHt
 <style>@page{size:A4 landscape;margin:10mm}body{font-family:Arial,sans-serif;font-size:10px}
 h2{font-size:14px;margin:0 0 8px}h3{font-size:12px;margin:14px 0 6px}table{border-collapse:collapse;width:100%}
 th,td{border:1px solid #999;padding:3px 5px}th{background:#eee}td.n{text-align:right}
-tr.t td{font-weight:bold;background:#f5f5f5}</style></head><body>
-<h2>YCDO — ${esc(title)}</h2>${htmlTable(header, rows)}${footerHtml}</body></html>`)
+tr.t td{font-weight:bold;background:#f5f5f5}${ORG_HEADER_CSS}</style></head><body>
+${orgHeaderHtml(title)}${htmlTable(header, rows)}${footerHtml}
+<script>window.onload=()=>window.print()</script></body></html>`)
   w.document.close()
   w.focus()
-  w.print()
 }
 
 /** Payroll → Reports: itemised allowances / incentives / deductions and month comparison. */

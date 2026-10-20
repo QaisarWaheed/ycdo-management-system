@@ -14,7 +14,9 @@ import {
 /** Today's date in Pakistan (UTC+5) as a UTC midnight Date. */
 function pakistanToday() {
   const now = new Date(Date.now() + 5 * 60 * 60 * 1000);
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
 }
 
 @Injectable()
@@ -70,7 +72,9 @@ export class LoansService {
       );
     }
     if (dto.monthlyInstallment > dto.amount) {
-      throw new BadRequestException('Monthly installment cannot be more than the loan amount');
+      throw new BadRequestException(
+        'Monthly installment cannot be more than the loan amount',
+      );
     }
     const [y, m] = dto.startMonth.split('-').map(Number);
     const loan = await this.prisma.employeeLoan.create({
@@ -93,8 +97,14 @@ export class LoansService {
   }
 
   /** Founder approved on paper: record it with the signed notification. */
-  async approve(id: string, file: Express.Multer.File | undefined, note: string | undefined, userId: string) {
-    if (!file) throw new BadRequestException('Upload the signed approval notification');
+  async approve(
+    id: string,
+    file: Express.Multer.File | undefined,
+    note: string | undefined,
+    userId: string,
+  ) {
+    if (!file)
+      throw new BadRequestException('Upload the signed approval notification');
     const loan = await this.pending(id);
     const updated = await this.prisma.employeeLoan.update({
       where: { id },
@@ -117,11 +127,19 @@ export class LoansService {
         message: `Your loan of PKR ${Number(loan.amount).toLocaleString('en-PK')} is approved. PKR ${Number(loan.monthlyInstallment).toLocaleString('en-PK')} will be deducted from your salary each month from ${start}.`,
       },
     });
-    await this.audit(userId, 'LOAN_APPROVED', id, { employeeId: loan.employeeId, note: note ?? null });
+    await this.audit(userId, 'LOAN_APPROVED', id, {
+      employeeId: loan.employeeId,
+      note: note ?? null,
+    });
     return updated;
   }
 
-  async decide(id: string, status: 'REJECTED' | 'CANCELLED', note: string | undefined, userId: string) {
+  async decide(
+    id: string,
+    status: 'REJECTED' | 'CANCELLED',
+    note: string | undefined,
+    userId: string,
+  ) {
     const loan = await this.pending(id);
     const updated = await this.prisma.employeeLoan.update({
       where: { id },
@@ -141,7 +159,10 @@ export class LoansService {
         },
       });
     }
-    await this.audit(userId, `LOAN_${status}`, id, { employeeId: loan.employeeId, note: note ?? null });
+    await this.audit(userId, `LOAN_${status}`, id, {
+      employeeId: loan.employeeId,
+      note: note ?? null,
+    });
     return updated;
   }
 
@@ -154,7 +175,9 @@ export class LoansService {
   private async pending(id: string) {
     const loan = await this.findOne(id);
     if (loan.status !== LoanStatus.PENDING) {
-      throw new BadRequestException(`This loan is already ${loan.status.toLowerCase()}`);
+      throw new BadRequestException(
+        `This loan is already ${loan.status.toLowerCase()}`,
+      );
     }
     return loan;
   }
@@ -170,14 +193,20 @@ export class LoansService {
     });
     const paid = new Map<string, number>();
     for (const row of rows) {
-      const id = row.description?.slice(LOAN_INSTALLMENT_PREFIX.length, -1) ?? '';
+      const id =
+        row.description?.slice(LOAN_INSTALLMENT_PREFIX.length, -1) ?? '';
       if (row.description !== loanInstallmentDescription(id)) continue;
       paid.set(id, (paid.get(id) ?? 0) + Number(row.amount));
     }
     return paid;
   }
 
-  private audit(userId: string, action: string, loanId: string, changes: Record<string, unknown>) {
+  private audit(
+    userId: string,
+    action: string,
+    loanId: string,
+    changes: Record<string, unknown>,
+  ) {
     return this.prisma.auditLog.create({
       data: {
         userId,

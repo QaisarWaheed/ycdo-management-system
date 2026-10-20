@@ -575,6 +575,13 @@ export class PayrollController {
     return this.payChangeRequests.packageStatus();
   }
 
+  /** Salary amendment history of one employee (bottom of the profile Payroll tab). */
+  @Get('stipend/history/:employeeId')
+  @Roles(UserRole.PAYROLL_OFFICER, ...PAYROLL_READ_ROLES)
+  packageHistory(@Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.payChangeRequests.packageHistory(employeeId);
+  }
+
   /** Finance verifies the package; later changes from non-executives need the Founder. */
   @Post('stipend/verify')
   @Roles(UserRole.PAYROLL_OFFICER, UserRole.SUPER_ADMIN)

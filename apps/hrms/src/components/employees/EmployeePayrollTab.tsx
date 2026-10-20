@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { Pencil, Printer } from 'lucide-react'
 import { EmployeeLoansPanel } from '@/components/payroll/EmployeeLoansPanel'
+import { SalaryAmendmentHistory } from '@/components/payroll/SalaryAmendmentHistory'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { EditPayrollDialog } from '@/components/employees/EditPayrollDialog'
@@ -699,6 +700,8 @@ export function EmployeePayrollTab({
           )}
         </CardContent>
       </Card>
+
+      <SalaryAmendmentHistory employeeId={employeeId} />
     </div>
   )
 }

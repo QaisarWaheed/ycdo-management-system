@@ -1,3 +1,4 @@
+import { OrgPrintHeader } from '@/components/common/OrgPrintHeader'
 import { Fragment, useState } from 'react'
 import { Download, FileText, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -204,7 +205,7 @@ export function ReportModal({
         {ran && (
           <div id="report-results" className="space-y-3">
             <div className="hidden print:block">
-              <h2 className="text-lg font-bold">{reportTitle}</h2>
+              <OrgPrintHeader title={reportTitle} />
               {filterSummary.length > 0 && (
                 <p className="text-sm text-text-secondary">
                   {filterSummary.join(' · ')}

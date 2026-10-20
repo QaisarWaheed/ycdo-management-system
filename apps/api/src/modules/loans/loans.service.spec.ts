@@ -33,7 +33,9 @@ const dto = {
 describe('LoansService', () => {
   it('refuses an application before 6 months of service', async () => {
     const { service, prisma } = setup(new Date());
-    await expect(service.create(dto, 'fin')).rejects.toThrow('Not eligible for loan');
+    await expect(service.create(dto, 'fin')).rejects.toThrow(
+      'Not eligible for loan',
+    );
     expect(prisma.employeeLoan.create).not.toHaveBeenCalled();
   });
 
@@ -47,8 +49,19 @@ describe('LoansService', () => {
 
   it('approval needs the signed notification and tells the employee', async () => {
     const { service, prisma } = setup(new Date('2025-01-01T00:00:00.000Z'));
-    await expect(service.approve('l1', undefined, undefined, 'fin')).rejects.toThrow('signed approval notification');
-    await service.approve('l1', { filename: 'n.jpg', originalname: 'n.jpg', mimetype: 'image/jpeg' } as never, 'ok', 'fin');
+    await expect(
+      service.approve('l1', undefined, undefined, 'fin'),
+    ).rejects.toThrow('signed approval notification');
+    await service.approve(
+      'l1',
+      {
+        filename: 'n.jpg',
+        originalname: 'n.jpg',
+        mimetype: 'image/jpeg',
+      } as never,
+      'ok',
+      'fin',
+    );
     expect(prisma.employeeLoan.update.mock.calls[0][0].data).toMatchObject({
       status: LoanStatus.APPROVED,
       notificationUrl: '/uploads/loan-notifications/l1/n.jpg',

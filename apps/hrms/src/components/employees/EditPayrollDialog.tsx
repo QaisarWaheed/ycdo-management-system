@@ -257,6 +257,7 @@ export function EditPayrollDialog({
       })
       // Joining date decides loan eligibility.
       queryClient.invalidateQueries({ queryKey: ['loans', employeeId] })
+      queryClient.invalidateQueries({ queryKey: ['salary-history', employeeId] })
       onSuccess()
       onOpenChange(false)
     },

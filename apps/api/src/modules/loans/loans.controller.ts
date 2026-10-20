@@ -30,7 +30,10 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { resolveUploadPath, safeFileName } from '../documents/documents.service';
+import {
+  resolveUploadPath,
+  safeFileName,
+} from '../documents/documents.service';
 import { loanNotificationMulterConfig } from './loan-notification.multer.config';
 import { LoansService } from './loans.service';
 
@@ -94,13 +97,21 @@ export class LoansController {
 
   @Post(':id/reject')
   @Roles(...LOAN_ROLES)
-  reject(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecisionDto, @CurrentUser() user: { id: string }) {
+  reject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DecisionDto,
+    @CurrentUser() user: { id: string },
+  ) {
     return this.loans.decide(id, 'REJECTED', dto.note, user.id);
   }
 
   @Post(':id/cancel')
   @Roles(...LOAN_ROLES)
-  cancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecisionDto, @CurrentUser() user: { id: string }) {
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DecisionDto,
+    @CurrentUser() user: { id: string },
+  ) {
     return this.loans.decide(id, 'CANCELLED', dto.note, user.id);
   }
 
@@ -108,11 +119,14 @@ export class LoansController {
   @Roles(...LOAN_READ_ROLES)
   async notification(@Param('id', ParseUUIDPipe) id: string) {
     const loan = await this.loans.findOne(id);
-    if (!loan.notificationUrl) throw new NotFoundException('No notification uploaded');
+    if (!loan.notificationUrl)
+      throw new NotFoundException('No notification uploaded');
     const fullPath = resolveUploadPath(loan.notificationUrl);
     return fileResponse(
       fs.createReadStream(fullPath),
-      safeFileName(loan.notificationFileName ?? `notification${path.extname(fullPath)}`),
+      safeFileName(
+        loan.notificationFileName ?? `notification${path.extname(fullPath)}`,
+      ),
     );
   }
 }

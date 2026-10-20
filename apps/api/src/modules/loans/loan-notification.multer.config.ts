@@ -3,7 +3,12 @@ import { diskStorage } from 'multer';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+const ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'application/pdf',
+];
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.pdf'];
 
 /** Signed loan approval notification (JPG / PNG / PDF, 10 MB). Never public. */
@@ -16,7 +21,12 @@ export const loanNotificationMulterConfig = {
         cb(new BadRequestException('Invalid loan id'), '');
         return;
       }
-      const dir = path.join(process.cwd(), 'uploads', 'loan-notifications', loanId);
+      const dir = path.join(
+        process.cwd(),
+        'uploads',
+        'loan-notifications',
+        loanId,
+      );
       fs.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },
@@ -31,10 +41,16 @@ export const loanNotificationMulterConfig = {
     cb: (error: Error | null, acceptFile: boolean) => void,
   ) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (ALLOWED_MIME_TYPES.includes(file.mimetype) && ALLOWED_EXTENSIONS.includes(ext)) {
+    if (
+      ALLOWED_MIME_TYPES.includes(file.mimetype) &&
+      ALLOWED_EXTENSIONS.includes(ext)
+    ) {
       cb(null, true);
     } else {
-      cb(new BadRequestException('Only JPG, PNG, or PDF files are allowed'), false);
+      cb(
+        new BadRequestException('Only JPG, PNG, or PDF files are allowed'),
+        false,
+      );
     }
   },
   limits: { fileSize: 10 * 1024 * 1024 },

@@ -1,4 +1,5 @@
 import { format } from 'date-fns'
+import { ORG_HEADER_CSS, orgHeaderHtml } from '@/lib/orgHeader'
 import type { EmployeeAllowance } from '@/api/endpoints/payApprovals'
 import type { StipendRecord } from '@/types'
 
@@ -49,7 +50,8 @@ export function printPayFixation(opts: {
   const w = window.open('', '_blank')
   if (!w) return
   const rows = lines.map((l) => `<tr><td>${esc(l.label)}</td><td class="n">${pkr(l.amount)}</td></tr>`).join('')
-  const signs = ['Prepared by (Finance)', 'Chairman Finance', 'Founder / Head of Organization']
+  // Verification order: Finance prepares, the Founder signs last.
+  const signs = ['Prepared by (Finance)', 'Chairman Finance', 'Chairman Admin', 'Founder / Chief Executive (Final)']
     .map((s) => `<div class="s">${s}</div>`)
     .join('')
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Pay Fixation - ${esc(opts.employeeName)}</title>
@@ -57,17 +59,17 @@ export function printPayFixation(opts: {
 h2{text-align:center;margin:0 0 4px}h3{text-align:center;margin:0 0 24px;text-decoration:underline}
 table{border-collapse:collapse;width:100%;margin:12px 0}td{border:1px solid #999;padding:6px 8px}
 td.n{text-align:right}tr.t td{font-weight:bold;background:#f2f2f2}
-.sig{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:80px}
+.sig{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:80px}${ORG_HEADER_CSS}
 .s{border-top:1px solid #000;padding-top:4px;text-align:center;font-weight:bold}</style></head><body>
-<h2>YCDO</h2><h3>Pay Fixation</h3>
+${orgHeaderHtml('Pay Fixation')}
 <p>Date: ${format(new Date(), 'dd/MM/yyyy')}</p>
 <p>Name: <b>${esc(opts.employeeName)}</b> (${esc(opts.employeeCode)})<br>
 Designation: ${esc(opts.designation ?? '—')}<br>Branch: ${esc(opts.branch ?? '—')}</p>
 <p>Your pay is fixed as below with effect from <b>${format(new Date(opts.stipend.effectiveFrom), 'dd/MM/yyyy')}</b>.
 Deductions (late, absence, leave without pay, fines) apply as per SOP.</p>
 <table><tbody>${rows}<tr class="t"><td>Total monthly package</td><td class="n">${pkr(total)}</td></tr></tbody></table>
-<div class="sig">${signs}</div></body></html>`)
+<div class="sig">${signs}</div>
+<script>window.onload=()=>window.print()</script></body></html>`)
   w.document.close()
   w.focus()
-  w.print()
 }
