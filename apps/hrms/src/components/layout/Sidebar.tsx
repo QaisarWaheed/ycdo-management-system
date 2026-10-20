@@ -83,6 +83,13 @@ const extraTimeApprovalsNavItem = {
   icon: CalendarCheck,
 }
 
+/** Finance's daily Medicine Pending log (deducted from salary). */
+const medicinePendingNavItem = {
+  to: '/medicine-pending',
+  label: 'Medicine Pending',
+  icon: Wallet,
+}
+
 /** Finance progress on setting and verifying every salary package. */
 const salarySetupNavItem = {
   to: '/salary-setup-status',
@@ -173,6 +180,7 @@ function navItemsForRole(role?: string) {
       specialLeavesNavItem,
       fineAuditNavItem,
       salarySetupNavItem,
+      ...(role === 'SUPER_ADMIN' ? [medicinePendingNavItem] : []),
       ...(role === 'SUPER_ADMIN'
         ? [
             extraTimeApprovalsNavItem,
@@ -234,6 +242,7 @@ function navItemsForRole(role?: string) {
       ),
       payApprovalsNavItem,
       salarySetupNavItem,
+      medicinePendingNavItem,
       ...(role === 'CHAIRMAN' ? [extraTimeApprovalsNavItem, specialLeavesNavItem] : []),
       incentiveManagementNavItem,
       doctorPerformanceNavItem,
@@ -249,6 +258,7 @@ function navItemsForRole(role?: string) {
       ),
       payApprovalsNavItem,
       salarySetupNavItem,
+      medicinePendingNavItem,
       incentiveManagementNavItem,
       fineAuditNavItem,
       doctorPerformanceNavItem,

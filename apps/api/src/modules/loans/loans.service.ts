@@ -3,12 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { LoanStatus, Prisma } from '@prisma/client';
+import { LoanKind, LoanPurpose, LoanStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  LOAN_INSTALLMENT_PREFIX,
+  INSTALLMENT_PREFIXES,
+  installmentLoanId,
   loanEligibility,
-  loanInstallmentDescription,
 } from './loans.util';
 
 /** Today's date in Pakistan (UTC+5) as a UTC midnight Date. */
@@ -57,16 +57,20 @@ export class LoansService {
       monthlyInstallment: number;
       startMonth: string;
       reason: string;
+      kind?: LoanKind;
+      purpose?: LoanPurpose;
     },
     userId: string,
   ) {
+    const kind = dto.kind ?? LoanKind.LOAN;
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       select: { joiningDate: true },
     });
     if (!employee) throw new NotFoundException('Employee not found');
     const eligibility = loanEligibility(employee.joiningDate, pakistanToday());
-    if (!eligibility.eligible) {
+    // The 6-month service rule is for loans only; a salary advance has none.
+    if (kind === LoanKind.LOAN && !eligibility.eligible) {
       throw new BadRequestException(
         `Not eligible for loan: ${eligibility.serviceMonths} month(s) of service, at least ${eligibility.minMonths} needed`,
       );
@@ -83,6 +87,8 @@ export class LoansService {
         amount: dto.amount,
         monthlyInstallment: dto.monthlyInstallment,
         startMonth: new Date(Date.UTC(y, m - 1, 1)),
+        kind,
+        purpose: dto.purpose ?? LoanPurpose.PERSONAL,
         reason: dto.reason.trim(),
         createdById: userId,
       },
@@ -92,6 +98,8 @@ export class LoansService {
       amount: dto.amount,
       monthlyInstallment: dto.monthlyInstallment,
       startMonth: dto.startMonth,
+      kind,
+      purpose: dto.purpose ?? LoanPurpose.PERSONAL,
     });
     return loan;
   }
@@ -124,7 +132,7 @@ export class LoansService {
       data: {
         employeeId: loan.employeeId,
         type: 'LOAN_APPROVED',
-        message: `Your loan of PKR ${Number(loan.amount).toLocaleString('en-PK')} is approved. PKR ${Number(loan.monthlyInstallment).toLocaleString('en-PK')} will be deducted from your salary each month from ${start}.`,
+        message: `Your ${loan.kind === LoanKind.ADVANCE ? 'salary advance' : 'loan'} of PKR ${Number(loan.amount).toLocaleString('en-PK')} is approved. PKR ${Number(loan.monthlyInstallment).toLocaleString('en-PK')} will be deducted from your salary each month from ${start}.`,
       },
     });
     await this.audit(userId, 'LOAN_APPROVED', id, {
@@ -155,7 +163,7 @@ export class LoansService {
         data: {
           employeeId: loan.employeeId,
           type: 'LOAN_REJECTED',
-          message: `Your loan application of PKR ${Number(loan.amount).toLocaleString('en-PK')} was not approved.`,
+          message: `Your ${loan.kind === LoanKind.ADVANCE ? 'salary advance' : 'loan'} application of PKR ${Number(loan.amount).toLocaleString('en-PK')} was not approved.`,
         },
       });
     }
@@ -186,17 +194,15 @@ export class LoansService {
   private async paidByLoan(employeeId: string) {
     const rows = await this.prisma.payrollDeduction.findMany({
       where: {
-        description: { startsWith: LOAN_INSTALLMENT_PREFIX },
+        OR: INSTALLMENT_PREFIXES.map((p) => ({ description: { startsWith: p } })),
         payrollEntry: { stipendRecord: { employeeId } },
       },
       select: { description: true, amount: true },
     });
     const paid = new Map<string, number>();
     for (const row of rows) {
-      const id =
-        row.description?.slice(LOAN_INSTALLMENT_PREFIX.length, -1) ?? '';
-      if (row.description !== loanInstallmentDescription(id)) continue;
-      paid.set(id, (paid.get(id) ?? 0) + Number(row.amount));
+      const id = installmentLoanId(row.description);
+      if (id) paid.set(id, (paid.get(id) ?? 0) + Number(row.amount));
     }
     return paid;
   }

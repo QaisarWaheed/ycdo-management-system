@@ -115,6 +115,7 @@ export function describeAmendment(
       };
     default: {
       // PAY_CHANGE_* (requested / approved / rejected / edited / cancelled / forwarded) and LOAN_*.
+      if (action === 'PAY_CHANGE_REQUESTED') action = 'PAY_CHANGE_SENT';
       const words = action
         .replace(/^PAY_CHANGE_/, 'Pay request ')
         .replace(/^LOAN_/, 'Loan ')
@@ -424,6 +425,55 @@ export class PayChangeRequestsService {
       },
     });
     return { employeeId, payPackageVerifiedAt: verifiedAt };
+  }
+
+  /**
+   * Which parts of the open package a change touches: any earning (needs
+   * Founder approval once verified) and Basic itself (needs a notification).
+   */
+  async packageChangeScope(
+    employeeId: string,
+    dto: Record<string, unknown>,
+  ): Promise<{ earnings: boolean; basic: boolean }> {
+    const active = await this.prisma.stipendRecord.findFirst({
+      where: { employeeId, effectiveTo: null },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    if (!active) return { earnings: true, basic: true };
+    const changed = (field: (typeof PACKAGE_EARNINGS)[number]) =>
+      dto[field] != null && Number(dto[field]) !== Number(active[field] ?? 0);
+    return {
+      earnings: PACKAGE_EARNINGS.some(changed),
+      basic: changed('basicStipend'),
+    };
+  }
+
+  async findOne(id: string) {
+    const request = await this.prisma.payChangeRequest.findUnique({ where: { id } });
+    if (!request) throw new NotFoundException('Request not found');
+    return request;
+  }
+
+  /** Finance attaches the signed notification to a pending Basic / increment request. */
+  async attach(id: string, file: Express.Multer.File | undefined, user: PayActor) {
+    if (!file) throw new BadRequestException('Choose the signed notification (JPG, PNG or PDF)');
+    const request = await this.getPending(id);
+    const roles = user.roles?.length ? user.roles : [user.role];
+    if (request.submittedById !== user.id && !roles.includes(UserRole.SUPER_ADMIN)) {
+      throw new ForbiddenException('Only the sender can attach the notification');
+    }
+    const updated = await this.prisma.payChangeRequest.update({
+      where: { id },
+      data: {
+        attachmentUrl: `/uploads/pay-change-notifications/${id}/${file.filename}`,
+        attachmentFileName: file.originalname,
+        attachmentMimeType: file.mimetype,
+      },
+    });
+    await this.audit(user, 'PAY_CHANGE_NOTIFICATION_ATTACHED', request, {
+      fileName: file.originalname,
+    });
+    return updated;
   }
 
   /** After any package save: keep the copied November rows equal to the open package. */

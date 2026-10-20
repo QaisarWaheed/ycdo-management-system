@@ -16,6 +16,7 @@ export const MANUAL_DEDUCTION_REASONS: DeductionType[] = [
   DeductionType.VEHICLE_INSTALLMENT,
   DeductionType.OTHER,
   DeductionType.FINE,
+  DeductionType.AUDIT_DIFFERENCE,
 ];
 
 export function isManualDeduction(row: {

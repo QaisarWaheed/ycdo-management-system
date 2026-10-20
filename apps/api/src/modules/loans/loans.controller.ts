@@ -11,9 +11,10 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { UserRole } from '@prisma/client';
+import { LoanKind, LoanPurpose, UserRole } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsEnum,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -34,7 +35,7 @@ import {
   resolveUploadPath,
   safeFileName,
 } from '../documents/documents.service';
-import { loanNotificationMulterConfig } from './loan-notification.multer.config';
+import { notificationUploadConfig } from '../../common/notification-upload.multer';
 import { LoansService } from './loans.service';
 
 /** Finance and HR make loan applications and record the Founder's decision. */
@@ -58,6 +59,8 @@ class CreateLoanDto {
   @Type(() => Number) @IsNumber() @IsPositive() amount: number;
   @Type(() => Number) @IsNumber() @IsPositive() monthlyInstallment: number;
   @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) startMonth: string;
+  @IsOptional() @IsEnum(LoanKind) kind?: LoanKind;
+  @IsOptional() @IsEnum(LoanPurpose) purpose?: LoanPurpose;
   @IsString() @MinLength(3) @MaxLength(1000) reason: string;
 }
 
@@ -85,7 +88,7 @@ export class LoansController {
   /** Multipart: `file` = signed notification (required), `note` optional. */
   @Post(':id/approve')
   @Roles(...LOAN_ROLES)
-  @UseInterceptors(FileInterceptor('file', loanNotificationMulterConfig))
+  @UseInterceptors(FileInterceptor('file', notificationUploadConfig('loan-notifications')))
   approve(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File,

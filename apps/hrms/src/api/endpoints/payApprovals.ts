@@ -54,6 +54,9 @@ export interface PayChangeRequest {
   status: PayChangeStatus
   /** Original request values (incentive requests are edited from these). */
   payload?: Record<string, unknown>
+  /** Signed notification for a Basic / increment change of a verified package. */
+  attachmentUrl?: string | null
+  attachmentFileName?: string | null
   reviewNote?: string | null
   reviewedAt?: string | null
   createdAt: string
@@ -142,6 +145,16 @@ export const allowancesApi = {
 export const payApprovalsApi = {
   list: (params: { status?: PayChangeStatus; employeeId?: string } = {}) =>
     api.get<unknown, PayChangeRequest[]>('/pay-approvals', { params }),
+  /** Finance attaches the signed notification to a Basic / increment request. */
+  attach: (id: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post(`/pay-approvals/${id}/attachment`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  attachment: (id: string) =>
+    api.get<unknown, Blob>(`/pay-approvals/${id}/attachment`, { responseType: 'blob' }),
   approve: (id: string, reviewNote?: string) =>
     api.post(`/pay-approvals/${id}/approve`, { reviewNote }),
   reject: (id: string, reviewNote: string) =>

@@ -1,6 +1,9 @@
 import api from '../axios'
 
 export type LoanStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type LoanKind = 'LOAN' | 'ADVANCE'
+export type LoanPurpose = 'PERSONAL' | 'MEDICAL' | 'MARRIAGE' | 'EDUCATION'
+export const LOAN_PURPOSES: LoanPurpose[] = ['PERSONAL', 'MEDICAL', 'MARRIAGE', 'EDUCATION']
 
 export interface EmployeeLoan {
   id: string
@@ -8,6 +11,8 @@ export interface EmployeeLoan {
   amount: number
   monthlyInstallment: number
   startMonth: string
+  kind: LoanKind
+  purpose: LoanPurpose
   reason: string
   status: LoanStatus
   createdAt: string
@@ -33,6 +38,8 @@ export const loansApi = {
     monthlyInstallment: number
     startMonth: string
     reason: string
+    kind: LoanKind
+    purpose: LoanPurpose
   }) => api.post<unknown, EmployeeLoan>('/loans', data),
   /** The signed notification is required to approve. */
   approve: (id: string, file: File, note?: string) => {

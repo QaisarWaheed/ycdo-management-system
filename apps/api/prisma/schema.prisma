@@ -222,6 +222,7 @@ model Employee {
   portalAttendances          PortalAttendance[]
   advanceLoanRequests        AdvanceLoanRequest[]
   loans                      EmployeeLoan[]
+  medicinePendings           MedicinePendingEntry[]
   faceSyncJobs               FaceSyncJob[]
   onboardingApproval         EmployeeOnboardingApproval?
   coveringSwaps              MutualSwap[]                @relation("CoveringSwaps")
@@ -705,6 +706,8 @@ enum DeductionType {
   /// that aggregate logic silently overwriting or deleting this exact,
   /// incident-linked deduction).
   EXTRA_LEAVE_REJECTED
+  /// Shortfall found in a pharmacy / reception audit, entered by Finance.
+  AUDIT_DIFFERENCE
 }
 
 enum PayrollStatus {
@@ -1337,6 +1340,10 @@ model PayChangeRequest {
   reviewedById   String?
   reviewedAt     DateTime?
   reviewNote     String?
+  /// Signed notification for a Basic / increment change of a verified package.
+  attachmentUrl      String?
+  attachmentFileName String?
+  attachmentMimeType String?
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 
@@ -2265,6 +2272,8 @@ model EmployeeLoan {
   monthlyInstallment     Decimal    @db.Decimal(10, 2)
   /// 1st of the first month an installment is taken.
   startMonth             DateTime   @db.Date
+  kind                   LoanKind    @default(LOAN)
+  purpose                LoanPurpose @default(PERSONAL)
   reason                 String     @db.Text
   status                 LoanStatus @default(PENDING)
   createdById            String
@@ -2280,4 +2289,34 @@ model EmployeeLoan {
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, status])
+}
+
+enum LoanKind {
+  LOAN
+  ADVANCE
+}
+
+enum LoanPurpose {
+  PERSONAL
+  MEDICAL
+  MARRIAGE
+  EDUCATION
+}
+
+/// Finance's daily Medicine Pending log; each entry is deducted from the
+/// salary of the month of its pending date.
+model MedicinePendingEntry {
+  id          String   @id @default(uuid())
+  employeeId  String
+  tokenNo     String
+  amount      Decimal  @db.Decimal(10, 2)
+  pendingDate DateTime @db.Date
+  note        String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, pendingDate])
+  @@index([pendingDate])
 }

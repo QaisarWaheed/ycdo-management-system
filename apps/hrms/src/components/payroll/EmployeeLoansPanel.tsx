@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { loansApi, type EmployeeLoan, type LoanStatus } from '@/api/endpoints/loans'
+import {
+  LOAN_PURPOSES,
+  loansApi,
+  type EmployeeLoan,
+  type LoanKind,
+  type LoanPurpose,
+  type LoanStatus,
+} from '@/api/endpoints/loans'
 import { printLoanApplication } from '@/components/payroll/printLoanApplication'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,6 +43,7 @@ const LOAN_ROLES = [
   'HR_EXECUTIVE',
 ]
 
+const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase()
 const pkr = (n: number) => `PKR ${Math.round(n).toLocaleString('en-PK')}`
 const STATUS_STYLE: Record<LoanStatus, string> = {
   PENDING: 'bg-amber-100 text-amber-800',
@@ -88,7 +96,7 @@ export function EmployeeLoansPanel(props: {
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
-          <CardTitle className="text-lg">Loans</CardTitle>
+          <CardTitle className="text-lg">Loans &amp; Advances</CardTitle>
           {eligibility ? (
             <p className="text-xs text-text-secondary">
               Service: {eligibility.serviceMonths} months · loans need at least {eligibility.minMonths} months
@@ -97,11 +105,11 @@ export function EmployeeLoansPanel(props: {
         </div>
         {canManage ? (
           <div className="text-right">
-            <Button size="sm" disabled={!eligibility?.eligible} onClick={() => setApplyOpen(true)}>
-              New loan application
+            <Button size="sm" onClick={() => setApplyOpen(true)}>
+              New loan / advance application
             </Button>
             {eligibility && !eligibility.eligible ? (
-              <p className="mt-1 text-xs font-medium text-red-600">Not eligible for loan</p>
+              <p className="mt-1 text-xs font-medium text-red-600">Not eligible for loan (advance allowed)</p>
             ) : null}
           </div>
         ) : null}
@@ -111,6 +119,7 @@ export function EmployeeLoansPanel(props: {
           <TableHeader>
             <TableRow>
               <TableHead>Applied</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Installment</TableHead>
               <TableHead>From</TableHead>
@@ -123,14 +132,18 @@ export function EmployeeLoansPanel(props: {
           <TableBody>
             {!data?.loans.length ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-text-secondary">
-                  No loans
+                <TableCell colSpan={9} className="text-text-secondary">
+                  No loans or advances
                 </TableCell>
               </TableRow>
             ) : (
               data.loans.map((loan) => (
                 <TableRow key={loan.id}>
                   <TableCell>{format(new Date(loan.createdAt), 'dd/MM/yyyy')}</TableCell>
+                  <TableCell title={loan.reason}>
+                    {loan.kind === 'ADVANCE' ? 'Advance' : 'Loan'}
+                    <div className="text-xs text-text-secondary">{titleCase(loan.purpose)}</div>
+                  </TableCell>
                   <TableCell>{pkr(loan.amount)}</TableCell>
                   <TableCell>{pkr(loan.monthlyInstallment)}</TableCell>
                   <TableCell>{format(new Date(loan.startMonth), 'MMM yyyy')}</TableCell>
@@ -174,6 +187,7 @@ export function EmployeeLoansPanel(props: {
         open={applyOpen}
         onOpenChange={setApplyOpen}
         employeeId={employeeId}
+        loanEligible={eligibility?.eligible ?? false}
         onCreated={refresh}
       />
       {decide ? (
@@ -187,8 +201,11 @@ function ApplyLoanDialog(props: {
   open: boolean
   onOpenChange: (open: boolean) => void
   employeeId: string
+  loanEligible: boolean
   onCreated: () => void
 }) {
+  const [kind, setKind] = useState<LoanKind>('LOAN')
+  const [purpose, setPurpose] = useState<LoanPurpose>('PERSONAL')
   const [amount, setAmount] = useState('')
   const [installment, setInstallment] = useState('')
   const [startMonth, setStartMonth] = useState(nextMonth())
@@ -203,6 +220,8 @@ function ApplyLoanDialog(props: {
         monthlyInstallment: i,
         startMonth,
         reason: reason.trim(),
+        kind,
+        purpose,
       }),
     onSuccess: () => {
       toast({ title: 'Loan application created. Press Print on it for the CEO / Founder.' })
@@ -215,16 +234,51 @@ function ApplyLoanDialog(props: {
     onError: (err: ApiError) =>
       toast({ title: 'Could not create the application', description: errorText(err), variant: 'destructive' }),
   })
-  const valid = a > 0 && i > 0 && i <= a && reason.trim().length >= 3 && !!startMonth
+  const blocked = kind === 'LOAN' && !props.loanEligible
+  const valid = !blocked && a > 0 && i > 0 && i <= a && reason.trim().length >= 3 && !!startMonth
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New loan application</DialogTitle>
+          <DialogTitle>New loan / advance application</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="loan-kind">Type</Label>
+              <select
+                id="loan-kind"
+                className="h-10 w-full rounded-md border border-border bg-white px-3"
+                value={kind}
+                onChange={(e) => setKind(e.target.value as LoanKind)}
+              >
+                <option value="LOAN">Loan</option>
+                <option value="ADVANCE">Salary advance</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="loan-purpose">Purpose</Label>
+              <select
+                id="loan-purpose"
+                className="h-10 w-full rounded-md border border-border bg-white px-3"
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value as LoanPurpose)}
+              >
+                {LOAN_PURPOSES.map((p) => (
+                  <option key={p} value={p}>
+                    {titleCase(p)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {blocked ? (
+            <p className="text-sm font-medium text-red-600">
+              Not eligible for loan: less than 6 months of service. A salary advance can still be applied for.
+            </p>
+          ) : null}
           <div className="space-y-1">
-            <Label htmlFor="loan-amount">Loan amount (PKR)</Label>
+            <Label htmlFor="loan-amount">Amount (PKR)</Label>
             <Input id="loan-amount" type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
           </div>
           <div className="space-y-1">
@@ -247,7 +301,7 @@ function ApplyLoanDialog(props: {
             <Input id="loan-start" type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="loan-reason">Reason</Label>
+            <Label htmlFor="loan-reason">Details</Label>
             <Textarea id="loan-reason" value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
         </div>

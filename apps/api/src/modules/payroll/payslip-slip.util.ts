@@ -211,7 +211,11 @@ const titleCase = (s: string) => {
 };
 /** Hand-entered notes only; system text ("Attendance Card: …") is replaced by counts. */
 const humanNote = (d?: string | null) => {
-  const t = (d ?? '').trim().replace(/^Letter fine \[[^\]]+\] /, 'Letter fine ');
+  const t = (d ?? '')
+    .trim()
+    .replace(/^Letter fine \[[^\]]+\] /, 'Letter fine ')
+    .replace(/^(Loan|Advance) installment \[[^\]]+\]/, '$1 installment')
+    .replace(/^Medicine pending \[[^\]]+\] /, '');
   return t && !t.startsWith('Attendance Card') ? t : undefined;
 };
 
@@ -236,6 +240,8 @@ function deductionBucket(d: SlipDeductionRow): DeductionBucket {
       return 'loan';
     case 'ADVANCE':
       return 'advance';
+    case 'AUDIT_DIFFERENCE':
+      return 'auditDifference';
     case 'MEDICINE_PENDING':
       return 'staffPendingMed';
     case 'KITCHEN_PENDING':

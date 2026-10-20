@@ -32,6 +32,7 @@ import { PendingApprovalsPage } from '@/pages/admin/PendingApprovalsPage'
 import { PayApprovalsPage } from '@/pages/payroll/PayApprovalsPage'
 import { PayrollWorkflowPage } from '@/pages/payroll/PayrollWorkflowPage'
 import { SalarySetupStatusPage } from '@/pages/payroll/SalarySetupStatusPage'
+import { MedicinePendingPage } from '@/pages/payroll/MedicinePendingPage'
 import { ExtraTimeApprovalsPage } from '@/pages/attendance/ExtraTimeApprovalsPage'
 import { SpecialLeavesPage } from '@/pages/leave/SpecialLeavesPage'
 import { IncentiveManagementPage } from '@/pages/incentives/IncentiveManagementPage'
@@ -268,6 +269,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <PayApprovalsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/medicine-pending"
+        element={
+          <ProtectedRoute>
+            <MedicinePendingPage />
           </ProtectedRoute>
         }
       />

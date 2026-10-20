@@ -247,6 +247,7 @@ export function buildPayslipSlipFromEntry(data: {
         d.reason === 'LOAN' ||
         d.reason === 'ADVANCE' ||
         d.reason === 'MEDICINE_PENDING' ||
+        d.reason === 'AUDIT_DIFFERENCE' ||
         d.reason === 'KITCHEN_PENDING' ||
         d.reason === 'ELECTRICITY_BILL' ||
         d.reason === 'MOBILE_BILL'
@@ -288,7 +289,7 @@ export function buildPayslipSlipFromEntry(data: {
     health: money(pkg?.healthDeduction),
     providentFund: 0,
     tax: 0,
-    auditDifference: 0,
+    auditDifference: sumReason('AUDIT_DIFFERENCE'),
     staffPendingMed: sumReason('MEDICINE_PENDING'),
     kitchenPending: sumReason('KITCHEN_PENDING'),
     electricityBill: sumReason('ELECTRICITY_BILL'),

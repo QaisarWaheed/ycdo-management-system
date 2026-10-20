@@ -715,6 +715,7 @@ export type DeductionType =
   | 'MOBILE_BILL'
   | 'VEHICLE_INSTALLMENT'
   | 'FINE'
+  | 'AUDIT_DIFFERENCE'
 
 export interface PayrollDeduction {
   id: string
@@ -915,6 +916,7 @@ export const DEDUCTION_TYPES: { value: DeductionType; label: string }[] = [
   { value: 'VEHICLE_INSTALLMENT', label: 'Vehicle Installment' },
   { value: 'OTHER', label: 'Other Deductions' },
   { value: 'FINE', label: 'Fine' },
+  { value: 'AUDIT_DIFFERENCE', label: 'Audit Difference' },
 ]
 
 /** Manually added deductions are the only ones HR can edit or remove from payroll. */

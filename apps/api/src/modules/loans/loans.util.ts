@@ -1,11 +1,16 @@
 /** Loan eligibility: at least this many months of service on the application date. */
 export const LOAN_MIN_SERVICE_MONTHS = 6;
 
-/** Payroll deduction rows for an installment start with this, then `<loanId>]`. */
-export const LOAN_INSTALLMENT_PREFIX = 'Loan installment [';
+/** Payroll deduction rows for an installment: `Loan installment [<id>]` / `Advance installment [<id>]`. */
+export const INSTALLMENT_PREFIXES = ['Loan installment [', 'Advance installment ['];
 
-export function loanInstallmentDescription(loanId: string) {
-  return `${LOAN_INSTALLMENT_PREFIX}${loanId}]`;
+export function loanInstallmentDescription(loanId: string, kind: 'LOAN' | 'ADVANCE' = 'LOAN') {
+  return `${kind === 'ADVANCE' ? 'Advance' : 'Loan'} installment [${loanId}]`;
+}
+
+/** The loan id an installment row belongs to, or null for any other row. */
+export function installmentLoanId(description?: string | null): string | null {
+  return /^(?:Loan|Advance) installment \[([^\]]+)\]$/.exec(description ?? '')?.[1] ?? null;
 }
 
 /** Whole months of service from the joining date to `on` (calendar based). */

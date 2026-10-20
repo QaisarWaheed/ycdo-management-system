@@ -73,10 +73,11 @@ describe('Accounts cannot cut pay without approval', () => {
     expect(allowances.assign).toHaveBeenCalled();
   });
 
-  it('before verification Finance saves directly; after it a money change goes to the Founder', async () => {
+  it('verified package: Basic goes to the Founder with a notification, deductions apply directly', async () => {
     const describe = jest.fn();
     const submit = jest.fn().mockResolvedValue({ pendingApproval: true });
     const isPackageVerified = jest.fn();
+    const packageChangeScope = jest.fn();
     const controller = Object.assign(
       Object.create(PayrollController.prototype),
       {
@@ -84,6 +85,7 @@ describe('Accounts cannot cut pay without approval', () => {
           describePackageChange: describe,
           submit,
           isPackageVerified,
+          packageChangeScope,
         },
       },
     ) as unknown as {
@@ -93,28 +95,62 @@ describe('Accounts cannot cut pay without approval', () => {
         u: unknown,
       ) => Promise<unknown>;
     };
-    const cut = { isIncrease: false, summary: 'Basic 30,000 → 25,000' };
     const dto = { employeeId: 'e1', approverTarget: EmployeeApproverTarget.PRESIDENT };
 
+    // Not verified yet: Finance saves directly.
     isPackageVerified.mockResolvedValueOnce(false);
     await expect(
       controller.packageApproval(PayChangeKind.PACKAGE_EDIT, dto, finance),
     ).resolves.toBeNull();
 
+    // Verified, Basic cut: Founder, notification required.
     isPackageVerified.mockResolvedValue(true);
-    describe.mockResolvedValueOnce(cut);
+    packageChangeScope.mockResolvedValueOnce({ earnings: true, basic: true });
+    describe.mockResolvedValueOnce({ isIncrease: false, summary: 'Basic 30,000 → 25,000' });
     await expect(
       controller.packageApproval(PayChangeKind.PACKAGE_EDIT, dto, finance),
-    ).resolves.toEqual({ pendingApproval: true });
-    expect(submit.mock.calls[0][0].approverTarget).toBe(
-      EmployeeApproverTarget.FOUNDER,
-    );
+    ).resolves.toEqual({ pendingApproval: true, notificationRequired: true });
+    expect(submit.mock.calls[0][0]).toMatchObject({
+      approverTarget: EmployeeApproverTarget.FOUNDER,
+      payload: { _needsNotification: true },
+    });
 
-    describe.mockResolvedValueOnce({ isIncrease: false, summary: 'No change' });
+    // Verified, only a deduction changed: saves directly.
+    packageChangeScope.mockResolvedValueOnce({ earnings: false, basic: false });
     await expect(
       controller.packageApproval(PayChangeKind.PACKAGE_EDIT, dto, finance),
     ).resolves.toBeNull();
     expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it('a Basic / increment request cannot be approved before the notification is attached', async () => {
+    const request = {
+      id: 'r2',
+      kind: PayChangeKind.SALARY_INCREMENT,
+      employeeId: 'e1',
+      payload: { basicStipend: 35000, _needsNotification: true },
+      summary: 'Basic 30,000 → 35,000',
+      approverTarget: EmployeeApproverTarget.FOUNDER,
+      status: PayChangeStatus.PENDING,
+      submittedById: 'fin',
+      attachmentUrl: null,
+    };
+    const prisma = {
+      payChangeRequest: {
+        findUnique: jest.fn().mockResolvedValue(request),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      auditLog: { create: jest.fn() },
+    };
+    const service = new PayApprovalsService(
+      prisma as never,
+      new PayChangeRequestsService(prisma as never),
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    await expect(service.approve('r2', founder)).rejects.toThrow('signed notification is not attached');
+    expect(prisma.payChangeRequest.updateMany).not.toHaveBeenCalled();
   });
 
   it('approving an end request ends the allowance', async () => {

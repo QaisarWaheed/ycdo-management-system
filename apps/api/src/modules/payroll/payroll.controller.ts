@@ -605,6 +605,15 @@ export class PayrollController {
     if (isPayExecutive(user)) return null;
     if (!(await this.payChangeRequests.isPackageVerified(dto.employeeId)))
       return null;
+    const scope = await this.payChangeRequests.packageChangeScope(
+      dto.employeeId,
+      { ...dto },
+    );
+    // Deductions need no approval (Founder decision 2026-10-21).
+    if (kind === PayChangeKind.PACKAGE_EDIT && !scope.earnings) return null;
+    // Basic and increments need the signed notification before approval.
+    const notificationRequired =
+      kind === PayChangeKind.SALARY_INCREMENT || scope.basic;
     const { summary } = await this.payChangeRequests.describePackageChange(
       dto.employeeId,
       { ...dto },
@@ -612,16 +621,20 @@ export class PayrollController {
     // Accounts cannot raise or cut pay on their own (Founder decision);
     // only a change with no money effect saves directly.
     if (!summary || summary.startsWith('No change')) return null;
-    return this.payChangeRequests.submit(
+    const result = await this.payChangeRequests.submit(
       {
         kind,
         employeeId: dto.employeeId,
-        payload: { ...dto },
+        payload: {
+          ...dto,
+          ...(notificationRequired ? { _needsNotification: true } : {}),
+        },
         summary,
         reason: dto.reason,
         approverTarget: EmployeeApproverTarget.FOUNDER,
       },
       user,
     );
+    return { ...result, notificationRequired };
   }
 }

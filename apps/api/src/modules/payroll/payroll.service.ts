@@ -148,6 +148,10 @@ import { itemizePayrollEntries } from './payroll-itemize.util';
 import { materializeIncentivePlans } from '../incentives/incentives.service';
 import { installmentForMonth, loanInstallmentDescription } from '../loans/loans.util';
 import {
+  MEDICINE_PENDING_PREFIX,
+  medicinePendingDescription,
+} from '../medicine-pending/medicine-pending.util';
+import {
   computePackageAllowanceLines,
   allowanceCoverage,
   isActiveInMonth,
@@ -1589,7 +1593,7 @@ export class PayrollService {
         },
       });
       for (const loan of loans) {
-        const description = loanInstallmentDescription(loan.id);
+        const description = loanInstallmentDescription(loan.id, loan.kind);
         const taken = await this.prisma.payrollDeduction.findMany({
           where: { description, payrollEntry: { stipendRecord: { employeeId: dto.employeeId } } },
           select: { amount: true, payrollEntry: { select: { month: true, year: true } } },
@@ -1607,7 +1611,46 @@ export class PayrollService {
           taken.reduce((sum, r) => sum + Number(r.amount), 0),
         );
         if (amount > 0)
-          newLoanInstallments.push({ reason: DeductionType.LOAN, fineReason: null, amount, description });
+          newLoanInstallments.push({
+            reason: loan.kind === 'ADVANCE' ? DeductionType.ADVANCE : DeductionType.LOAN,
+            fineReason: null,
+            amount,
+            description,
+          });
+      }
+    }
+    // Finance's Medicine Pending log: each entry is deducted in its own month, once.
+    const newMedicinePending: Array<{
+      reason: DeductionType;
+      fineReason: null;
+      amount: number;
+      description: string;
+    }> = [];
+    if (applyContractualPackage && this.prisma.medicinePendingEntry) {
+      const entries = await this.prisma.medicinePendingEntry.findMany({
+        where: {
+          employeeId: dto.employeeId,
+          pendingDate: {
+            gte: new Date(Date.UTC(dto.year, dto.month - 1, 1)),
+            lt: new Date(Date.UTC(dto.year, dto.month, 1)),
+          },
+        },
+      });
+      for (const e of entries) {
+        const taken = await this.prisma.payrollDeduction.findFirst({
+          where: {
+            description: { startsWith: `${MEDICINE_PENDING_PREFIX}${e.id}]` },
+            payrollEntry: { stipendRecord: { employeeId: dto.employeeId } },
+          },
+          select: { id: true },
+        });
+        if (!taken)
+          newMedicinePending.push({
+            reason: DeductionType.MEDICINE_PENDING,
+            fineReason: null,
+            amount: Number(e.amount),
+            description: medicinePendingDescription(e),
+          });
       }
     }
     const context = {
@@ -1615,7 +1658,12 @@ export class PayrollService {
       employee,
       applyContractualPackage,
       attendanceCard,
-      existingDeductions: [...(entry?.deductions ?? []), ...newLetterFines, ...newLoanInstallments],
+      existingDeductions: [
+        ...(entry?.deductions ?? []),
+        ...newLetterFines,
+        ...newLoanInstallments,
+        ...newMedicinePending,
+      ],
       existingAllowances: entry?.allowances ?? [],
     };
     const breakdown = await this.computeHourlyBreakdown(
@@ -1660,6 +1708,11 @@ export class PayrollService {
     for (const fine of newLetterFines) {
       await this.prisma.payrollDeduction.create({ data: {
         payrollEntryId: entry.id, reason: fine.reason, fineReason: fine.fineReason, amount: fine.amount, description: fine.description,
+      } });
+    }
+    for (const med of newMedicinePending) {
+      await this.prisma.payrollDeduction.create({ data: {
+        payrollEntryId: entry.id, reason: med.reason, amount: med.amount, description: med.description,
       } });
     }
     for (const loan of newLoanInstallments) {
@@ -2884,7 +2937,8 @@ export class PayrollService {
             d.reason === DeductionType.MEDICINE_PENDING ||
             d.reason === DeductionType.KITCHEN_PENDING ||
             d.reason === DeductionType.ELECTRICITY_BILL ||
-            d.reason === DeductionType.MOBILE_BILL,
+            d.reason === DeductionType.MOBILE_BILL ||
+            d.reason === DeductionType.AUDIT_DIFFERENCE,
         )
         .map((d) => d),
     );
@@ -2999,7 +3053,7 @@ export class PayrollService {
       health: pkg.healthDeduction || 0,
       providentFund: 0,
       tax: 0,
-      auditDifference: 0,
+      auditDifference: sumReason(DeductionType.AUDIT_DIFFERENCE),
       staffPendingMed: sumReason(DeductionType.MEDICINE_PENDING),
       kitchenPending: sumReason(DeductionType.KITCHEN_PENDING),
       electricityBill: sumReason(DeductionType.ELECTRICITY_BILL),

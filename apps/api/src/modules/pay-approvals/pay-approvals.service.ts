@@ -30,6 +30,14 @@ export class PayApprovalsService {
     const request = await this.requests.getPending(id);
     this.requests.assertCanReview(user, request.approverTarget);
     if (
+      (request.payload as Record<string, unknown>)?._needsNotification &&
+      !request.attachmentUrl
+    ) {
+      throw new BadRequestException(
+        'The signed notification is not attached yet. Finance must attach it before this change can be approved.',
+      );
+    }
+    if (
       !(await this.requests.claim(
         id,
         PayChangeStatus.APPROVED,
@@ -74,7 +82,11 @@ export class PayApprovalsService {
   }
 
   private async apply(request: PayChangeRequest, user: PayActor) {
-    const { _editedAt: _drop, ...payload } = request.payload as Record<string, any>;
+    const {
+      _editedAt: _drop,
+      _needsNotification: _flag,
+      ...payload
+    } = request.payload as Record<string, any>;
     switch (request.kind) {
       case PayChangeKind.SALARY_INCREMENT:
         payload.effectiveFrom = await this.openMonthIso(

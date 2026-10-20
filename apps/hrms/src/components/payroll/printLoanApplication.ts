@@ -26,11 +26,12 @@ export function printLoanApplication(opts: {
     ['Branch', opts.branch ?? '—'],
     ['Joining date', format(new Date(opts.joiningDate), 'dd MMM yyyy')],
     ['Service', `${opts.serviceMonths} months`],
-    ['Loan amount', pkr(loan.amount)],
+    ['Type', `${loan.kind === 'ADVANCE' ? 'Salary advance' : 'Loan'} · ${loan.purpose.charAt(0)}${loan.purpose.slice(1).toLowerCase()}`],
+    ['Amount', pkr(loan.amount)],
     ['Monthly installment', pkr(loan.monthlyInstallment)],
     ['Number of installments', String(months)],
     ['Deduction starts', format(new Date(loan.startMonth), 'MMMM yyyy')],
-    ['Reason', loan.reason],
+    ['Details', loan.reason],
   ]
     .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`)
     .join('')
@@ -44,10 +45,10 @@ table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #
 th{width:35%;background:#f2f2f2}.meta{display:flex;justify-content:space-between;margin-bottom:8px}
 .sig{display:grid;grid-template-columns:repeat(3,1fr);gap:28px 24px;margin-top:70px}
 .s{border-top:1px solid #000;padding-top:4px;text-align:center}${ORG_HEADER_CSS}</style></head><body>
-${orgHeaderHtml('Staff Loan Application')}
+${orgHeaderHtml(loan.kind === 'ADVANCE' ? 'Salary Advance Application' : 'Staff Loan Application')}
 <div class="meta"><span>Application no: ${esc(loan.id.slice(0, 8).toUpperCase())}</span><span>Date: ${format(new Date(loan.createdAt), 'dd MMM yyyy')}</span></div>
 <table>${rows}</table>
-<p>I request the above loan and agree that the monthly installment will be deducted from my salary from the month stated until the full amount is repaid.</p>
+<p>I request the above ${loan.kind === 'ADVANCE' ? 'salary advance' : 'loan'} and agree that the monthly installment will be deducted from my salary from the month stated until the full amount is repaid.</p>
 <div class="sig">${signs}</div>
 <script>window.onload=()=>window.print()</script></body></html>`)
   w.document.close()

@@ -9,7 +9,7 @@ import { DateInput } from '@/components/common/DateInput'
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
 import { PayComponentsSection } from '@/components/payroll/PayComponentsSection'
 import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
-import { isPendingApproval } from '@/api/endpoints/payApprovals'
+import { isPendingApproval, payApprovalsApi } from '@/api/endpoints/payApprovals'
 import {
   useCanEditPay,
   useNeedsPayApproval,
@@ -31,6 +31,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { DEFAULT_STIPEND_VALUES } from '@/lib/stipendUtils'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
@@ -159,6 +160,8 @@ export function EditPayrollDialog({
   const canEditPay = useCanEditPay()
   // Before Finance verifies, Finance saves directly; after it, changes go to the Founder.
   const verified = Boolean(packageVerifiedAt)
+  // Verified package: a Basic change or an increment needs the signed notification.
+  const [notificationFile, setNotificationFile] = useState<File>()
   const canVerify =
     useAuth().hasRole(['PAYROLL_OFFICER', 'SUPER_ADMIN']) &&
     !verified &&
@@ -215,7 +218,10 @@ export function EditPayrollDialog({
             reason: values.reason.trim(),
             approverTarget: verified ? ('FOUNDER' as EmployeeApproverTarget) : undefined,
           })
-          if (isPendingApproval(res)) sentTo = res.approverLabel
+          if (isPendingApproval(res)) {
+            sentTo = res.approverLabel
+            if (notificationFile) await payApprovalsApi.attach(res.request.id, notificationFile)
+          }
         } else {
           const res = await payrollApi.updateActiveStipend({
             approverTarget: verified ? ('FOUNDER' as EmployeeApproverTarget) : undefined,
@@ -231,7 +237,10 @@ export function EditPayrollDialog({
                 ? 'Correct package effective date (management order: from month day 1)'
                 : 'Correct current stipend package'),
           })
-          if (isPendingApproval(res)) sentTo = res.approverLabel
+          if (isPendingApproval(res)) {
+            sentTo = res.approverLabel
+            if (notificationFile) await payApprovalsApi.attach(res.request.id, notificationFile)
+          }
         }
       }
 
@@ -278,6 +287,12 @@ export function EditPayrollDialog({
   })
 
   const watchedEffectiveFrom = form.watch('effectiveFrom')
+  const watchedBasic = form.watch('basicStipend')
+  const notificationNeeded =
+    verified &&
+    needsApproval &&
+    latestStipend != null &&
+    (isIncrement || Number(watchedBasic) !== Number(latestStipend.basicStipend))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -491,13 +506,28 @@ export function EditPayrollDialog({
               verified ? (
                 <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
                   Verified by Finance on {packageVerifiedAt!.slice(0, 10)}.
-                  {needsApproval ? ' Any change is sent to the Founder for approval.' : ''}
+                  {needsApproval
+                    ? ' Basic, increments and allowances go to the Founder for approval; deductions apply directly.'
+                    : ''}
                 </p>
               ) : (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   Not verified yet: Save applies directly. After Save &amp; Verify, every change needs Founder approval.
                 </p>
               )
+            ) : null}
+
+            {notificationNeeded ? (
+              <div className="space-y-1 rounded-lg border border-red-200 bg-red-50 p-3 text-sm">
+                <Label htmlFor="pay-notification">Signed notification (required for a Basic change or increment)</Label>
+                <Input
+                  id="pay-notification"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.pdf"
+                  onChange={(e) => setNotificationFile(e.target.files?.[0])}
+                />
+                <p className="text-xs text-red-800">It goes to the Founder with the request.</p>
+              </div>
             ) : null}
 
             <DialogFooter>
@@ -511,7 +541,7 @@ export function EditPayrollDialog({
               <Button
                 type="submit"
                 className="bg-primary hover:bg-primary-dark"
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || (notificationNeeded && !notificationFile)}
               >
                 {mutation.isPending ? 'Saving...' : 'Save Changes'}
               </Button>

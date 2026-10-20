@@ -37,6 +37,7 @@ import { StipendReceiptsModule } from './modules/stipend-receipts/stipend-receip
 import { IncentivesModule } from './modules/incentives/incentives.module';
 import { AllowancesModule } from './modules/allowances/allowances.module';
 import { LoansModule } from './modules/loans/loans.module';
+import { MedicinePendingModule } from './modules/medicine-pending/medicine-pending.module';
 import { PayApprovalsModule } from './modules/pay-approvals/pay-approvals.module';
 import { AttendanceLockModule } from './modules/attendance-lock/attendance-lock.controller';
 import { DoctorPerformanceModule } from './modules/doctor-performance/doctor-performance.controller';
@@ -97,6 +98,7 @@ import { CareersModule } from './modules/careers/careers.module';
     IncentivesModule,
     AllowancesModule,
     LoansModule,
+    MedicinePendingModule,
     PayApprovalsModule,
     AttendanceLockModule,
     DoctorPerformanceModule,

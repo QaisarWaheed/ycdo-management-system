@@ -46,6 +46,7 @@ async function bootstrap() {
       '/uploads/letter-smoke',
       '/uploads/branch-reports',
       '/uploads/loan-notifications',
+      '/uploads/pay-change-notifications',
     ],
     (_req: unknown, res: { status: (code: number) => { end: () => void } }) =>
       res.status(404).end(),

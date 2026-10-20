@@ -68,4 +68,13 @@ describe('LoansService', () => {
     });
     expect(prisma.notification.create).toHaveBeenCalled();
   });
+
+  it('a salary advance needs no 6 months of service', async () => {
+    const { service, prisma } = setup(new Date());
+    await service.create({ ...dto, kind: 'ADVANCE' as never, purpose: 'MEDICAL' as never }, 'fin');
+    expect(prisma.employeeLoan.create.mock.calls[0][0].data).toMatchObject({
+      kind: 'ADVANCE',
+      purpose: 'MEDICAL',
+    });
+  });
 });

@@ -280,6 +280,7 @@ export function PayApprovalsPage() {
                     </Badge>
                   ) : null}
                   <div className="mt-1 font-medium">{r.summary}</div>
+                  <RequestNotification request={r} />
                   {r.reason ? <div className="text-xs text-muted-foreground">Reason: {r.reason}</div> : null}
                   {r.reviewNote ? (
                     <div className="text-xs text-muted-foreground">Note: {r.reviewNote}</div>
@@ -366,6 +367,7 @@ export function PayApprovalsPage() {
                         </Badge>
                       ) : null}
                       <div className="mt-1 font-medium">{r.summary}</div>
+                      <RequestNotification request={r} />
                       {r.reason ? (
                         <div className="text-xs text-muted-foreground">Reason: {r.reason}</div>
                       ) : null}
@@ -627,5 +629,63 @@ function BulkApproveDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Basic / increment requests carry the signed notification Finance attached. */
+function RequestNotification({ request }: { request: PayChangeRequest }) {
+  if (request.attachmentUrl) {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="mt-1 h-7"
+        onClick={async () => {
+          const blob = await payApprovalsApi.attachment(request.id)
+          window.open(URL.createObjectURL(blob), '_blank')
+        }}
+      >
+        View signed notification
+      </Button>
+    )
+  }
+  if (request.payload?._needsNotification) {
+    return <AttachNotification request={request} />
+  }
+  return null
+}
+
+function AttachNotification({ request }: { request: PayChangeRequest }) {
+  const queryClient = useQueryClient()
+  const canAttach = useAuth().hasRole(['PAYROLL_OFFICER', 'SUPER_ADMIN']) && request.status === 'PENDING'
+  const mutation = useMutation({
+    mutationFn: (file: File) => payApprovalsApi.attach(request.id, file),
+    onSuccess: () => {
+      toast({ title: 'Signed notification attached' })
+      queryClient.invalidateQueries({ queryKey: ['pay-approvals'] })
+    },
+    onError: () => toast({ title: 'Could not attach the file', variant: 'destructive' }),
+  })
+  return (
+    <div className="mt-1 space-y-1">
+      <div className="text-xs font-medium text-red-700">
+        Signed notification not attached yet. It cannot be approved until Finance attaches it.
+      </div>
+      {canAttach ? (
+        <label className="inline-flex cursor-pointer items-center rounded border border-border px-2 py-1 text-xs font-medium">
+          {mutation.isPending ? 'Uploading…' : 'Attach signed notification'}
+          <input
+            type="file"
+            accept=".jpg,.jpeg,.png,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) mutation.mutate(file)
+            }}
+          />
+        </label>
+      ) : null}
+    </div>
   )
 }

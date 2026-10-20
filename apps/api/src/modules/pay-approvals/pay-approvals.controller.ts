@@ -2,12 +2,22 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileResponse } from '../../common/employee-files.util';
+import { notificationUploadConfig } from '../../common/notification-upload.multer';
+import { resolveUploadPath, safeFileName } from '../documents/documents.service';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -202,6 +212,30 @@ export class PayApprovalsController {
     @CurrentUser() user: PayActor,
   ) {
     return this.requests.cancel(id, user, dto.reason);
+  }
+
+  /** Finance attaches the signed notification (Basic / increment of a verified package). */
+  @Post(':id/attachment')
+  @Roles(...SENDER_ROLES)
+  @UseInterceptors(FileInterceptor('file', notificationUploadConfig('pay-change-notifications')))
+  attach(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: PayActor,
+  ) {
+    return this.requests.attach(id, file, user);
+  }
+
+  @Get(':id/attachment')
+  @Roles(...SENDER_ROLES, ...DECIDE_ROLES, UserRole.IT_ADMIN)
+  async attachment(@Param('id', ParseUUIDPipe) id: string) {
+    const request = await this.requests.findOne(id);
+    if (!request.attachmentUrl) throw new NotFoundException('No notification attached');
+    const fullPath = resolveUploadPath(request.attachmentUrl);
+    return fileResponse(
+      fs.createReadStream(fullPath),
+      safeFileName(request.attachmentFileName ?? `notification${path.extname(fullPath)}`),
+    );
   }
 
   /** IT re-routes a pending request to another executive. */
