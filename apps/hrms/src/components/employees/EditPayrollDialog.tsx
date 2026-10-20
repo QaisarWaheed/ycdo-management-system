@@ -10,7 +10,6 @@ import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
 import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
 import { isPendingApproval } from '@/api/endpoints/payApprovals'
 import {
-  ApproverSelect,
   useCanEditPay,
   useNeedsPayApproval,
 } from '@/components/payroll/ApproverSelect'
@@ -33,6 +32,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { toast } from '@/hooks/use-toast'
 import { DEFAULT_STIPEND_VALUES } from '@/lib/stipendUtils'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { useAuth } from '@/hooks/useAuth'
 import type { StipendRecord } from '@/types'
 
 const stipendFieldSchema = z.number().min(0)
@@ -59,6 +60,7 @@ type EditPayrollDialogProps = {
   onOpenChange: (open: boolean) => void
   employeeId: string
   joiningDate: string
+  packageVerifiedAt?: string | null
   latestStipend?: StipendRecord
   onSuccess: () => void
 }
@@ -117,6 +119,7 @@ export function EditPayrollDialog({
   onOpenChange,
   employeeId,
   joiningDate,
+  packageVerifiedAt,
   latestStipend,
   onSuccess,
 }: EditPayrollDialogProps) {
@@ -153,10 +156,17 @@ export function EditPayrollDialog({
   const needsApproval = useNeedsPayApproval()
   // HR sets salary only when adding the employee; later changes are Finance's.
   const canEditPay = useCanEditPay()
-  const [approver, setApprover] = useState<EmployeeApproverTarget>()
+  // Before Finance verifies, Finance saves directly; after it, changes go to the Founder.
+  const verified = Boolean(packageVerifiedAt)
+  const canVerify =
+    useAuth().hasRole(['PAYROLL_OFFICER', 'SUPER_ADMIN']) &&
+    !verified &&
+    latestStipend != null &&
+    canEditPay
+  const [verifyValues, setVerifyValues] = useState<EditPayrollFormValues>()
   const mutation = useMutation({
     mutationFn: async (
-      values: EditPayrollFormValues & { isIncrement?: boolean },
+      values: EditPayrollFormValues & { isIncrement?: boolean; verify?: boolean },
     ): Promise<string | null> => {
       let sentTo: string | null = null
       const joiningChanged = values.joiningDate !== originalJoiningDate
@@ -168,7 +178,7 @@ export function EditPayrollDialog({
         values.effectiveFrom.trim() !== originalEffectiveFrom
       const stipendUpdate = amountsChanged || effectiveFromChanged
 
-      if (!joiningChanged && !stipendUpdate) {
+      if (!joiningChanged && !stipendUpdate && !values.verify) {
         throw new Error('No changes to save')
       }
 
@@ -201,12 +211,12 @@ export function EditPayrollDialog({
             ...packageValues,
             effectiveFrom: snapped,
             reason: values.reason.trim(),
-            approverTarget: approver,
+            approverTarget: verified ? ('FOUNDER' as EmployeeApproverTarget) : undefined,
           })
           if (isPendingApproval(res)) sentTo = res.approverLabel
         } else {
           const res = await payrollApi.updateActiveStipend({
-            approverTarget: approver,
+            approverTarget: verified ? ('FOUNDER' as EmployeeApproverTarget) : undefined,
             ...packageValues,
             ...(effectiveFromChanged
               ? { effectiveFrom: values.effectiveFrom!.trim() }
@@ -226,13 +236,20 @@ export function EditPayrollDialog({
           joiningDate: values.joiningDate,
         })
       }
+      if (values.verify) {
+        await payrollApi.verifyPackage(employeeId)
+        return 'VERIFIED'
+      }
       return sentTo
     },
     onSuccess: (sentTo) => {
       toast({
-        title: sentTo
-          ? `Pay increase sent to ${sentTo} for approval`
-          : 'Payroll information updated',
+        title:
+          sentTo === 'VERIFIED'
+            ? 'Package saved and verified. Any further change needs Founder approval.'
+            : sentTo
+              ? `Change sent to ${sentTo} for approval`
+              : 'Payroll information updated',
       })
       onSuccess()
       onOpenChange(false)
@@ -462,8 +479,17 @@ export function EditPayrollDialog({
               </p>
             )}
 
-            {needsApproval && latestStipend && canEditPay ? (
-              <ApproverSelect value={approver} onChange={setApprover} id="edit-payroll-approver" />
+            {latestStipend && canEditPay ? (
+              verified ? (
+                <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+                  Verified by Finance on {packageVerifiedAt!.slice(0, 10)}.
+                  {needsApproval ? ' Any change is sent to the Founder for approval.' : ''}
+                </p>
+              ) : (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  Not verified yet: Save applies directly. After Save &amp; Verify, every change needs Founder approval.
+                </p>
+              )
             ) : null}
 
             <DialogFooter>
@@ -481,7 +507,29 @@ export function EditPayrollDialog({
               >
                 {mutation.isPending ? 'Saving...' : 'Save Changes'}
               </Button>
+              {canVerify ? (
+                <Button
+                  type="button"
+                  className="bg-green-700 hover:bg-green-800"
+                  disabled={mutation.isPending}
+                  onClick={form.handleSubmit((values) => setVerifyValues(values))}
+                >
+                  Save &amp; Verify
+                </Button>
+              ) : null}
             </DialogFooter>
+            <ConfirmDialog
+              open={verifyValues != null}
+              title="Verify this salary package?"
+              description="After verification the package is locked. Any later change to this employee's salary will need Founder approval."
+              confirmLabel="Save & Verify"
+              loading={mutation.isPending}
+              onCancel={() => setVerifyValues(undefined)}
+              onConfirm={() => {
+                if (verifyValues) mutation.mutate({ ...verifyValues, isIncrement, verify: true })
+                setVerifyValues(undefined)
+              }}
+            />
           </form>
         </Form>
       </DialogContent>

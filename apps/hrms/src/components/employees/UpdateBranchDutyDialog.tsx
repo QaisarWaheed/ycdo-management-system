@@ -185,6 +185,7 @@ export function UpdateBranchDutyDialog({
               setDepartmentId('')
             }}
             placeholder="Search branch..."
+            disabled={!isSuperAdmin}
           />
 
           <SearchableSelect
@@ -198,7 +199,7 @@ export function UpdateBranchDutyDialog({
               }
             }}
             placeholder="Search department..."
-            disabled={!branchId}
+            disabled={!branchId || !isSuperAdmin}
             error={
               employee.currentDepartmentId == null && !departmentId
                 ? 'Department is required'
@@ -276,7 +277,7 @@ export function UpdateBranchDutyDialog({
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
             {isSuperAdmin
               ? 'Changing the branch will create a transfer record in employment history.'
-              : 'Branch / department changes go through the Transfer button (letter + HR Operations approval).'}
+              : 'Branch, department and designation changes go through the Transfer / Change Position button (letter + HR Operations approval).'}
           </p>
         </div>
 

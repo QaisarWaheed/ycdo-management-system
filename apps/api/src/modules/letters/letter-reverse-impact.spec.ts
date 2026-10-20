@@ -4,7 +4,11 @@ import { LettersService } from './letters.service';
 describe('LettersService.reverseImpact', () => {
   function make(monthCount: number, letterVars: Record<string, unknown>) {
     const prisma = {
-      letter: { findUnique: jest.fn().mockResolvedValue({ employeeId: 'e1', variables: letterVars }) },
+      letter: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ employeeId: 'e1', variables: letterVars }),
+      },
       disciplineEvent: {
         count: jest.fn(({ where }: { where: { incidentDate: unknown } }) =>
           Promise.resolve(where.incidentDate instanceof Date ? 1 : monthCount),
@@ -15,7 +19,10 @@ describe('LettersService.reverseImpact', () => {
     Object.assign(service, { prisma });
     return service;
   }
-  const mc = { disciplineCategory: 'MISSING_CHECKOUT', incidentDate: '2026-10-14' };
+  const mc = {
+    disciplineCategory: 'MISSING_CHECKOUT',
+    incidentDate: '2026-10-14',
+  };
 
   it('3 incidents: reversing one takes the deduction from 1 day to 0', async () => {
     await expect(make(3, mc).reverseImpact('l1')).resolves.toMatchObject({
@@ -35,6 +42,8 @@ describe('LettersService.reverseImpact', () => {
   });
 
   it('other letters have no impact info', async () => {
-    await expect(make(4, { incidentDate: '2026-10-14' }).reverseImpact('l1')).resolves.toBeNull();
+    await expect(
+      make(4, { incidentDate: '2026-10-14' }).reverseImpact('l1'),
+    ).resolves.toBeNull();
   });
 });

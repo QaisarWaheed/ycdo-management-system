@@ -262,6 +262,7 @@ type EmployeePayrollTabProps = {
   designation?: string | null
   branch?: string | null
   joiningDate: string
+  packageVerifiedAt?: string | null
   stipendRecords?: StipendRecord[]
   canEdit?: boolean
   onUpdated?: () => void
@@ -274,6 +275,7 @@ export function EmployeePayrollTab({
   designation,
   branch,
   joiningDate,
+  packageVerifiedAt,
   stipendRecords = [],
   canEdit = false,
   onUpdated,
@@ -461,6 +463,7 @@ export function EmployeePayrollTab({
           onOpenChange={setEditOpen}
           employeeId={employeeId}
           joiningDate={joiningDate}
+          packageVerifiedAt={packageVerifiedAt}
           latestStipend={latestStipend}
           onSuccess={() => onUpdated?.()}
         />

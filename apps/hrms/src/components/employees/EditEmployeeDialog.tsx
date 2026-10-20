@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import type { Control, FieldValues, UseFormSetValue } from 'react-hook-form'
 import { z } from 'zod'
 import { designationsApi } from '@/api/endpoints/designations'
+import { useAuth } from '@/hooks/useAuth'
 import { employeesApi } from '@/api/endpoints/employees'
 import { userAccessApi } from '@/api/endpoints/userAccess'
 import { CnicInput, isValidCnic } from '@/components/common/CnicInput'
@@ -189,6 +190,7 @@ export function EditEmployeeDialog({
   canEditCnic?: boolean
   canAssignRoles?: boolean
 }) {
+  const isSuperAdmin = useAuth().hasRole(['SUPER_ADMIN'])
   const form = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
     defaultValues: employeeToFormValues(employee),
@@ -567,6 +569,8 @@ export function EditEmployeeDialog({
                           value={field.value ?? ''}
                           onChange={field.onChange}
                           placeholder="Select designation"
+                          // Changing an existing designation needs HR Operations approval (Transfer / Change Position).
+                          disabled={!isSuperAdmin && employee.currentDesignation != null}
                           error={
                             form.formState.errors.currentDesignation?.message ||
                             (employee.currentDesignation == null &&

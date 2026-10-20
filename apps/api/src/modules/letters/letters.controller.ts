@@ -2,7 +2,10 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileResponse } from '../../common/employee-files.util';
-import { resolveUploadPath, safeFileName } from '../documents/documents.service';
+import {
+  resolveUploadPath,
+  safeFileName,
+} from '../documents/documents.service';
 import { signedScanMulterConfig } from './signed-scan.multer.config';
 import {
   Body,
@@ -24,7 +27,11 @@ import { Permission, UserRole } from '@prisma/client';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles, AlsoAllowPermission, RoutePermission } from '../auth/roles.decorator';
+import {
+  Roles,
+  AlsoAllowPermission,
+  RoutePermission,
+} from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import {
@@ -419,7 +426,7 @@ export class LettersController {
     UserRole.ADMIN_MANAGER,
     UserRole.ADMIN_OFFICER,
   )
-  async   findPending(
+  async findPending(
     @CurrentUser()
     user: {
       id: string;
@@ -476,11 +483,14 @@ export class LettersController {
   )
   async signedScan(@Param('id') id: string) {
     const letter = await this.lettersService.findOne(id);
-    if (!letter.signedScanUrl) throw new NotFoundException('No signed scan uploaded');
+    if (!letter.signedScanUrl)
+      throw new NotFoundException('No signed scan uploaded');
     const fullPath = resolveUploadPath(letter.signedScanUrl);
     return fileResponse(
       fs.createReadStream(fullPath),
-      safeFileName(letter.signedScanFileName ?? `signed${path.extname(fullPath)}`),
+      safeFileName(
+        letter.signedScanFileName ?? `signed${path.extname(fullPath)}`,
+      ),
     );
   }
 
@@ -496,8 +506,12 @@ export class LettersController {
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
   )
-  async getAppointmentPdf(@Param('employeeId') employeeId: string, @Res() res: Response) {
-    const { buffer, filename } = await this.lettersService.getAppointmentLetterPdf(employeeId);
+  async getAppointmentPdf(
+    @Param('employeeId') employeeId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } =
+      await this.lettersService.getAppointmentLetterPdf(employeeId);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${filename}"`,

@@ -155,7 +155,7 @@ export function TransferDialog({
       toast({
         title: isSuperAdmin
           ? 'Employee transferred successfully'
-          : 'Transfer request sent to HR Operations; draft Transfer letter created (send it from Letters)',
+          : 'Request sent to HR Operations for approval; draft letter created (send it from Letters)',
       })
       queryClient.invalidateQueries({ queryKey: ['employee', employeeId] })
       queryClient.invalidateQueries({ queryKey: ['employees'] })
@@ -175,7 +175,10 @@ export function TransferDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Transfer Employee</DialogTitle>
+          <DialogTitle>Transfer / Change Position</DialogTitle>
+          <p className="text-sm text-text-secondary">
+            Keep the same branch to change only the department or designation.
+          </p>
         </DialogHeader>
 
         <div className="grid gap-4">
@@ -288,7 +291,7 @@ export function TransferDialog({
             }
             onClick={() => mutation.mutate()}
           >
-            {mutation.isPending ? 'Transferring...' : 'Transfer'}
+            {mutation.isPending ? 'Saving...' : isSuperAdmin ? 'Save' : 'Send for approval'}
           </Button>
         </DialogFooter>
       </DialogContent>

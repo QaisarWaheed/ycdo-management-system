@@ -18,6 +18,7 @@ import {
   Body,
   Controller,
   Delete,
+  ParseUUIDPipe,
   ForbiddenException,
   Get,
   Param,
@@ -57,7 +58,7 @@ import {
 import { PayrollService } from './payroll.service';
 import { OvertimeReportService } from './overtime-report.service';
 import { EmployeeFinancialService } from './employee-financial.service';
-import { PayChangeKind } from '@prisma/client';
+import { EmployeeApproverTarget, PayChangeKind } from '@prisma/client';
 import {
   isPayExecutive,
   PayChangeRequestsService,
@@ -567,13 +568,29 @@ export class PayrollController {
     return result;
   }
 
-  /** A package change that raises pay, from a non-executive, becomes a request. */
+  /** Finance verifies the package; later changes from non-executives need the Founder. */
+  @Post('stipend/verify')
+  @Roles(UserRole.PAYROLL_OFFICER, UserRole.SUPER_ADMIN)
+  @StrictRoles()
+  verifyPackage(
+    @Body('employeeId', ParseUUIDPipe) employeeId: string,
+    @CurrentUser() user: PayActor,
+  ) {
+    return this.payChangeRequests.verifyPackage(employeeId, user);
+  }
+
+  /**
+   * Before Finance verifies the package, Finance saves directly. After it,
+   * a change with money effect from a non-executive goes to the Founder.
+   */
   private async packageApproval(
     kind: PayChangeKind,
     dto: SalaryIncrementDto | UpdateActiveStipendDto,
     user: PayActor,
   ) {
     if (isPayExecutive(user)) return null;
+    if (!(await this.payChangeRequests.isPackageVerified(dto.employeeId)))
+      return null;
     const { summary } = await this.payChangeRequests.describePackageChange(
       dto.employeeId,
       { ...dto },
@@ -588,7 +605,7 @@ export class PayrollController {
         payload: { ...dto },
         summary,
         reason: dto.reason,
-        approverTarget: dto.approverTarget,
+        approverTarget: EmployeeApproverTarget.FOUNDER,
       },
       user,
     );

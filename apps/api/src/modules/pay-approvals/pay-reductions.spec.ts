@@ -73,13 +73,18 @@ describe('Accounts cannot cut pay without approval', () => {
     expect(allowances.assign).toHaveBeenCalled();
   });
 
-  it('a package cut from Accounts is submitted; a no-money edit is not', async () => {
+  it('before verification Finance saves directly; after it a money change goes to the Founder', async () => {
     const describe = jest.fn();
     const submit = jest.fn().mockResolvedValue({ pendingApproval: true });
+    const isPackageVerified = jest.fn();
     const controller = Object.assign(
       Object.create(PayrollController.prototype),
       {
-        payChangeRequests: { describePackageChange: describe, submit },
+        payChangeRequests: {
+          describePackageChange: describe,
+          submit,
+          isPackageVerified,
+        },
       },
     ) as unknown as {
       packageApproval: (
@@ -88,24 +93,26 @@ describe('Accounts cannot cut pay without approval', () => {
         u: unknown,
       ) => Promise<unknown>;
     };
-    describe.mockResolvedValueOnce({
-      isIncrease: false,
-      summary: 'Basic 30,000 → 25,000',
-    });
+    const cut = { isIncrease: false, summary: 'Basic 30,000 → 25,000' };
+    const dto = { employeeId: 'e1', approverTarget: EmployeeApproverTarget.PRESIDENT };
+
+    isPackageVerified.mockResolvedValueOnce(false);
     await expect(
-      controller.packageApproval(
-        PayChangeKind.PACKAGE_EDIT,
-        { employeeId: 'e1' },
-        finance,
-      ),
+      controller.packageApproval(PayChangeKind.PACKAGE_EDIT, dto, finance),
+    ).resolves.toBeNull();
+
+    isPackageVerified.mockResolvedValue(true);
+    describe.mockResolvedValueOnce(cut);
+    await expect(
+      controller.packageApproval(PayChangeKind.PACKAGE_EDIT, dto, finance),
     ).resolves.toEqual({ pendingApproval: true });
+    expect(submit.mock.calls[0][0].approverTarget).toBe(
+      EmployeeApproverTarget.FOUNDER,
+    );
+
     describe.mockResolvedValueOnce({ isIncrease: false, summary: 'No change' });
     await expect(
-      controller.packageApproval(
-        PayChangeKind.PACKAGE_EDIT,
-        { employeeId: 'e1' },
-        finance,
-      ),
+      controller.packageApproval(PayChangeKind.PACKAGE_EDIT, dto, finance),
     ).resolves.toBeNull();
     expect(submit).toHaveBeenCalledTimes(1);
   });
@@ -139,5 +146,24 @@ describe('Accounts cannot cut pay without approval', () => {
     );
     await service.approve('r1', founder);
     expect(allowances.end).toHaveBeenCalledWith('a1', '2026-10', founder, undefined);
+  });
+
+  it('Finance verifies a package once; verifying again is refused', async () => {
+    const prisma = {
+      employee: {
+        findUnique: jest.fn().mockResolvedValue({ payPackageVerifiedAt: null }),
+        update: jest.fn(),
+      },
+      stipendRecord: { findFirst: jest.fn().mockResolvedValue({ id: 's1' }) },
+      auditLog: { create: jest.fn() },
+    };
+    const service = new PayChangeRequestsService(prisma as never);
+    await service.verifyPackage('e1', finance);
+    expect(prisma.employee.update).toHaveBeenCalledWith({
+      where: { id: 'e1' },
+      data: expect.objectContaining({ payPackageVerifiedById: finance.id }),
+    });
+    prisma.employee.findUnique.mockResolvedValue({ payPackageVerifiedAt: new Date() });
+    await expect(service.verifyPackage('e1', finance)).rejects.toThrow('already verified');
   });
 });

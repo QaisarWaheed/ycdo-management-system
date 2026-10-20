@@ -1749,7 +1749,7 @@ export function EmployeeProfilePage() {
                 className="w-full"
                 onClick={() => setTransferOpen(true)}
               >
-                Transfer
+                Transfer / Change Position
               </Button>
             )}
             {canEditBranchDuty && (
@@ -2337,6 +2337,7 @@ export function EmployeeProfilePage() {
             designation={employee.currentDesignation}
             branch={employee.currentBranch ? formatBranchLabel(employee.currentBranch) : null}
             joiningDate={employee.joiningDate}
+            packageVerifiedAt={employee.payPackageVerifiedAt}
             stipendRecords={(employee.stipendRecords ?? []) as StipendRecord[]}
             canEdit={canEditPayroll}
             onUpdated={() => {

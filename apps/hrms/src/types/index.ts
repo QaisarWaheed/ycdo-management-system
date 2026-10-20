@@ -295,6 +295,8 @@ export interface Employee {
   dutyTotalHours?: number | null
   /** Monthly paid leave allowance; null = unlimited. */
   monthlyAllowedLeaves?: number | null
+  /** Finance verified the pay package; later changes need Founder approval. */
+  payPackageVerifiedAt?: string | null
   employmentHistory?: EmploymentHistory[]
   stipendRecords?: StipendRecord[]
   documents?: EmployeeDocument[]

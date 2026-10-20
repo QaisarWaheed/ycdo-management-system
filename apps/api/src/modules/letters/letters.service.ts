@@ -1497,15 +1497,28 @@ export class LettersService implements OnModuleInit {
   }
 
   /** Req 13: scanned signed appointment form, attached while the letter is a draft. */
-  async uploadSignedScan(letterId: string, file: Express.Multer.File, actingUserId: string) {
-    if (!file) throw new BadRequestException('Choose the scanned signed form (JPG, PNG or PDF)');
-    const letter = await this.prisma.letter.findUnique({ where: { id: letterId } });
+  async uploadSignedScan(
+    letterId: string,
+    file: Express.Multer.File,
+    actingUserId: string,
+  ) {
+    if (!file)
+      throw new BadRequestException(
+        'Choose the scanned signed form (JPG, PNG or PDF)',
+      );
+    const letter = await this.prisma.letter.findUnique({
+      where: { id: letterId },
+    });
     if (!letter) throw new NotFoundException('Letter not found');
     if (letter.letterType !== LetterType.APPOINTMENT) {
-      throw new BadRequestException('A signed scan is only for appointment letters');
+      throw new BadRequestException(
+        'A signed scan is only for appointment letters',
+      );
     }
     if (letter.status !== LetterStatus.DRAFT) {
-      throw new BadRequestException('Attach the signed scan before sending for approval');
+      throw new BadRequestException(
+        'Attach the signed scan before sending for approval',
+      );
     }
     const updated = await this.prisma.letter.update({
       where: { id: letterId },
@@ -1515,7 +1528,11 @@ export class LettersService implements OnModuleInit {
         signedScanFileName: file.originalname,
         signedScanUploadedAt: new Date(),
       },
-      select: { id: true, signedScanFileName: true, signedScanUploadedAt: true },
+      select: {
+        id: true,
+        signedScanFileName: true,
+        signedScanUploadedAt: true,
+      },
     });
     await this.prisma.auditLog.create({
       data: {
@@ -2430,7 +2447,11 @@ export class LettersService implements OnModuleInit {
           letter.letterType === LetterType.FINE ||
           letter.letterType === LetterType.EXPLANATION_FINE
         ) {
-          const unwind = await this.tryUnwindFineDeduction(tx, letter, actingUserId);
+          const unwind = await this.tryUnwindFineDeduction(
+            tx,
+            letter,
+            actingUserId,
+          );
           fineUndone = unwind.undone;
           fineSkippedReason = unwind.skippedReason;
         }
@@ -2520,13 +2541,23 @@ export class LettersService implements OnModuleInit {
     if (!letter) throw new NotFoundException('Letter not found');
     const vars = (letter.variables ?? {}) as Record<string, unknown>;
     const incident =
-      typeof vars.incidentDate === 'string' ? vars.incidentDate.slice(0, 10) : null;
-    if (vars.disciplineCategory !== 'MISSING_CHECKOUT' || !incident) return null;
+      typeof vars.incidentDate === 'string'
+        ? vars.incidentDate.slice(0, 10)
+        : null;
+    if (vars.disciplineCategory !== 'MISSING_CHECKOUT' || !incident)
+      return null;
     const day = new Date(`${incident}T00:00:00.000Z`);
-    const monthStart = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 1));
+    const monthStart = new Date(
+      Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 1),
+    );
+    const monthEnd = new Date(
+      Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 1),
+    );
     // Same window as the attendance card: only incidents under the new rule.
-    const from = monthStart > MISSING_CHECKOUT_CYCLE_FROM ? monthStart : MISSING_CHECKOUT_CYCLE_FROM;
+    const from =
+      monthStart > MISSING_CHECKOUT_CYCLE_FROM
+        ? monthStart
+        : MISSING_CHECKOUT_CYCLE_FROM;
     const where = {
       employeeId: letter.employeeId,
       category: DisciplineCategory.MISSING_CHECKOUT,
@@ -2536,7 +2567,9 @@ export class LettersService implements OnModuleInit {
         where: { ...where, incidentDate: { gte: from, lt: monthEnd } },
       }),
       day >= from
-        ? this.prisma.disciplineEvent.count({ where: { ...where, incidentDate: day } })
+        ? this.prisma.disciplineEvent.count({
+            where: { ...where, incidentDate: day },
+          })
         : Promise.resolve(0),
     ]);
     const after = before - thisDay;
@@ -2627,8 +2660,12 @@ export class LettersService implements OnModuleInit {
     // salary is recalculated: Pending / Verified / Processed slips lose the
     // row; a Paid slip stays as paid and the amount is refunded on the next
     // open month. Every removed row stays in the audit log.
-    const editable = deductions.filter((d) => d.payrollEntry.status !== PayrollStatus.PAID);
-    const paid = deductions.filter((d) => d.payrollEntry.status === PayrollStatus.PAID);
+    const editable = deductions.filter(
+      (d) => d.payrollEntry.status !== PayrollStatus.PAID,
+    );
+    const paid = deductions.filter(
+      (d) => d.payrollEntry.status === PayrollStatus.PAID,
+    );
     // Own rows: every one. Legacy incident match: one row, as before.
     const remove = own.length ? editable : editable.slice(0, 1);
     const refund = own.length ? paid : remove.length ? [] : paid.slice(0, 1);
@@ -2687,7 +2724,10 @@ export class LettersService implements OnModuleInit {
       const after = paidEntry ? paidEntry.year * 12 + paidEntry.month : 0;
       const open = (
         await tx.payrollEntry.findMany({
-          where: { status: PayrollStatus.PENDING, stipendRecord: { employeeId: letter.employeeId } },
+          where: {
+            status: PayrollStatus.PENDING,
+            stipendRecord: { employeeId: letter.employeeId },
+          },
           orderBy: [{ year: 'asc' }, { month: 'asc' }],
         })
       ).find((e) => e.year * 12 + e.month > after);
@@ -2709,7 +2749,10 @@ export class LettersService implements OnModuleInit {
       });
       await tx.payrollEntry.update({
         where: { id: open.id },
-        data: { totalAllowances: { increment: amount }, netStipend: { increment: amount } },
+        data: {
+          totalAllowances: { increment: amount },
+          netStipend: { increment: amount },
+        },
       });
       if (actorId) {
         await tx.auditLog.create({
@@ -2735,7 +2778,10 @@ export class LettersService implements OnModuleInit {
     };
   }
 
-  private async notifyPayrollOfficers(tx: Prisma.TransactionClient, message: string) {
+  private async notifyPayrollOfficers(
+    tx: Prisma.TransactionClient,
+    message: string,
+  ) {
     const users = await tx.user.findMany({
       where: {
         isActive: true,
@@ -3045,8 +3091,11 @@ export class LettersService implements OnModuleInit {
       LetterStatus.PENDING_APPROVAL,
       LetterStatus.DRAFT,
     ];
-    const best = [...letters].sort((a, b) => rank.indexOf(a.status) - rank.indexOf(b.status))[0];
-    if (!best) throw new NotFoundException('No appointment letter for this employee');
+    const best = [...letters].sort(
+      (a, b) => rank.indexOf(a.status) - rank.indexOf(b.status),
+    )[0];
+    if (!best)
+      throw new NotFoundException('No appointment letter for this employee');
     return this.getPdf(best.id);
   }
 

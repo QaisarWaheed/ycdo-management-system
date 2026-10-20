@@ -257,6 +257,9 @@ model Employee {
   weeklyOffWeekdays         Int[]                     @default([])
   /// Monthly paid leave allowance. Null/omitted uses the runtime default of 2 days (not unlimited).
   monthlyAllowedLeaves      Int?
+  /// Finance verified the pay package; after this, package changes by non-executives need Founder approval.
+  payPackageVerifiedAt      DateTime?
+  payPackageVerifiedById    String?
   /// Pakistan calendar date: LATE/UA on this day or later count toward the next Near/Due cycle after a closed suspension inquiry reinstatement. Null = full current month.
   suspensionWatchBaselineOn DateTime?
   province                  String?

@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { EmployeeChangeKind, EmployeeChangeStatus, UserRole } from '@prisma/client';
+import { EmployeeChangeKind, EmployeeChangeStatus, LetterType, UserRole } from '@prisma/client';
 import { EmployeeChangeRequestService } from './employee-change-request.service';
 
 function setup(kind: EmployeeChangeKind) {
@@ -59,5 +59,46 @@ describe('Req 16 / 17 change requests', () => {
     const { service, employees } = setup(EmployeeChangeKind.TRANSFER);
     await service.decide('r1', false, 'no', OPS);
     expect(employees.transfer).not.toHaveBeenCalled();
+  });
+
+  it('same branch: department / designation change gets its own letter, not a transfer letter', async () => {
+    const prisma = {
+      employee: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'e1',
+          currentBranchId: 'b1',
+          currentDepartmentId: 'd1',
+          currentDesignation: 'Nurse',
+          currentBranch: { name: 'Hassan Abad' },
+          currentDepartment: { name: 'OPD' },
+        }),
+      },
+      branch: { findUnique: jest.fn().mockResolvedValue({ id: 'b1', name: 'Hassan Abad' }) },
+      department: { findUnique: jest.fn().mockResolvedValue({ id: 'd2', name: 'Emergency' }) },
+    };
+    const letters = { generate: jest.fn().mockResolvedValue({ letter: { id: 'l1' } }) };
+    const service = new EmployeeChangeRequestService(prisma as never, {} as never, letters as never);
+    jest.spyOn(service as never, 'assertNoOpen').mockResolvedValue(undefined as never);
+    const create = jest.spyOn(service as never, 'create').mockResolvedValue({} as never);
+    const dto = {
+      employeeId: 'e1',
+      currentBranchId: 'b1',
+      currentDepartmentId: 'd2',
+      currentDesignation: 'Charge Nurse',
+      changeReason: 'need',
+      effectiveDate: '2026-11-01',
+    };
+    await service.requestTransfer(dto, OPS);
+    expect(letters.generate.mock.calls[0][0]).toMatchObject({
+      letterType: LetterType.CUSTOM,
+      extraFields: { subject: 'Change of Department / Designation' },
+    });
+    expect(create.mock.calls[0][3]).toBe(
+      'Department / designation OPD / Nurse → Emergency / Charge Nurse from 2026-11-01',
+    );
+    prisma.department.findUnique.mockResolvedValue({ id: 'd1', name: 'OPD' });
+    await expect(
+      service.requestTransfer({ ...dto, currentDepartmentId: 'd1', currentDesignation: 'nurse' }, OPS),
+    ).rejects.toThrow('Nothing changes');
   });
 });

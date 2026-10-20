@@ -184,6 +184,13 @@ export const payrollApi = {
     },
   ) => api.patch<unknown, unknown>('/payroll/stipend', data),
 
+  /** Finance locks the package; later changes go to the Founder for approval. */
+  verifyPackage: (employeeId: string) =>
+    api.post<unknown, { employeeId: string; payPackageVerifiedAt: string }>(
+      '/payroll/stipend/verify',
+      { employeeId },
+    ),
+
   getOvertimePreview: (employeeId: string, month: number, year: number) =>
     api.get<unknown, OvertimePreview>(
       `/payroll/overtime-preview/${employeeId}`,

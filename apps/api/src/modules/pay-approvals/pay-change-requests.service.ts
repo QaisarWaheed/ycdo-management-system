@@ -152,6 +152,51 @@ export class PayChangeRequestsService {
     };
   }
 
+  async isPackageVerified(employeeId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { payPackageVerifiedAt: true },
+    });
+    return Boolean(employee?.payPackageVerifiedAt);
+  }
+
+  /** Finance locks the package: from now on non-executive changes go to the Founder. */
+  async verifyPackage(employeeId: string, user: PayActor) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { payPackageVerifiedAt: true },
+    });
+    if (!employee) throw new NotFoundException('Employee not found');
+    if (employee.payPackageVerifiedAt) {
+      throw new BadRequestException('This package is already verified');
+    }
+    const active = await this.prisma.stipendRecord.findFirst({
+      where: { employeeId, effectiveTo: null },
+      select: { id: true },
+    });
+    if (!active) {
+      throw new BadRequestException('No stipend package to verify');
+    }
+    const verifiedAt = new Date();
+    await this.prisma.employee.update({
+      where: { id: employeeId },
+      data: {
+        payPackageVerifiedAt: verifiedAt,
+        payPackageVerifiedById: user.id,
+      },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'PAY_PACKAGE_VERIFIED',
+        entity: 'Employee',
+        entityId: employeeId,
+        changes: { stipendRecordId: active.id },
+      },
+    });
+    return { employeeId, payPackageVerifiedAt: verifiedAt };
+  }
+
   /** After any package save: keep the copied November rows equal to the open package. */
   async afterPackageChange(employeeId: string) {
     await syncLegacyAllowanceRows(this.prisma, employeeId);
@@ -201,7 +246,13 @@ export class PayChangeRequestsService {
   /** "Incentive change: On Progress 1,500 (Sep 2026) -> (On Progress) 2,000 for Sep 2026". */
   async describeIncentiveChange(
     current: { reason: string; amount: unknown; month: number; year: number },
-    dto: { typeId?: string; reason?: string; amount: number; month: number; year: number },
+    dto: {
+      typeId?: string;
+      reason?: string;
+      amount: number;
+      month: number;
+      year: number;
+    },
   ) {
     const next = (await this.describeIncentive(dto)).replace(/^Incentive /, '');
     return `Incentive change: ${current.reason} ${pkr(Number(current.amount))} (${monthLabel(current.year, current.month)}) → ${next}`;
@@ -361,7 +412,12 @@ export class PayChangeRequestsService {
         rows.flatMap((r, i) => {
           const m = months[i];
           return m
-            ? [[`${r.employeeId}|${m.year}|${m.month}`, { employeeId: r.employeeId, ...m }] as const]
+            ? [
+                [
+                  `${r.employeeId}|${m.year}|${m.month}`,
+                  { employeeId: r.employeeId, ...m },
+                ] as const,
+              ]
             : [];
         }),
       ).values(),
@@ -385,7 +441,11 @@ export class PayChangeRequestsService {
               totalDeductions: true,
               netStipend: true,
               stipendRecord: {
-                select: { employeeId: true, basicStipend: true, effectiveTo: true },
+                select: {
+                  employeeId: true,
+                  basicStipend: true,
+                  effectiveTo: true,
+                },
               },
             },
           }),

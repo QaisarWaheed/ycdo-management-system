@@ -128,7 +128,7 @@ export class EmployeeChangeRequestService {
   async requestTransfer(dto: TransferRequestDto, actor: Actor) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
-      include: { currentBranch: true },
+      include: { currentBranch: true, currentDepartment: true },
     });
     if (!employee) throw new NotFoundException('Employee not found');
     const [toBranch, toDept] = await Promise.all([
@@ -152,22 +152,47 @@ export class EmployeeChangeRequestService {
       dto.dutyStartTime && dto.dutyEndTime
         ? `${formatDuty12h(dto.dutyStartTime)} - ${formatDuty12h(dto.dutyEndTime)}`
         : '';
+    // Same branch: a department / designation change, not a transfer.
+    const sameBranch = toBranch.id === employee.currentBranchId;
+    if (
+      sameBranch &&
+      toDept.id === employee.currentDepartmentId &&
+      dto.currentDesignation.trim().toLowerCase() ===
+        (employee.currentDesignation ?? '').trim().toLowerCase()
+    ) {
+      throw new BadRequestException(
+        'Nothing changes: pick a new branch, department or designation',
+      );
+    }
+    const fromPosition = `${employee.currentDepartment?.name ?? '—'} / ${employee.currentDesignation ?? '—'}`;
+    const toPosition = `${toDept.name} / ${dto.currentDesignation}`;
     const letter = await this.letters.generate(
-      {
-        employeeId: dto.employeeId,
-        letterType: LetterType.TRANSFER,
-        extraFields: {
-          fromPosting: employee.currentBranch?.name ?? '',
-          toPosting: `${toBranch.name} (${toDept.name})`,
-          targetDesignation: dto.currentDesignation,
-          effectiveDate: dto.effectiveDate.slice(0, 10),
-          timing,
-        },
-      },
+      sameBranch
+        ? {
+            employeeId: dto.employeeId,
+            letterType: LetterType.CUSTOM,
+            extraFields: {
+              subject: 'Change of Department / Designation',
+              letterBody: `Your department / designation is changed from ${fromPosition} to ${toPosition} at ${toBranch.name} with effect from ${dto.effectiveDate.slice(0, 10)}. Reason: ${dto.changeReason.trim()}`,
+            },
+          }
+        : {
+            employeeId: dto.employeeId,
+            letterType: LetterType.TRANSFER,
+            extraFields: {
+              fromPosting: employee.currentBranch?.name ?? '',
+              toPosting: `${toBranch.name} (${toDept.name})`,
+              targetDesignation: dto.currentDesignation,
+              effectiveDate: dto.effectiveDate.slice(0, 10),
+              timing,
+            },
+          },
       actor.id,
       actor.role,
     );
-    const summary = `Transfer ${employee.currentBranch?.name ?? '—'} → ${toBranch.name} / ${toDept.name} as ${dto.currentDesignation} from ${dto.effectiveDate.slice(0, 10)}`;
+    const summary = sameBranch
+      ? `Department / designation ${fromPosition} → ${toPosition} from ${dto.effectiveDate.slice(0, 10)}`
+      : `Transfer ${employee.currentBranch?.name ?? '—'} → ${toBranch.name} / ${toDept.name} as ${dto.currentDesignation} from ${dto.effectiveDate.slice(0, 10)}`;
     return this.create(
       dto.employeeId,
       EmployeeChangeKind.TRANSFER,
@@ -233,7 +258,7 @@ export class EmployeeChangeRequestService {
     if (!hasAnyRole(actor.roles, APPROVERS[req.kind])) {
       throw new ForbiddenException(
         req.kind === EmployeeChangeKind.TRANSFER
-          ? 'Only HR Operations can approve a transfer'
+          ? 'Only HR Operations can approve a transfer or department / designation change'
           : 'Only HR Operations can approve working hours',
       );
     }
