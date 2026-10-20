@@ -6,8 +6,6 @@ node_modules
 .pnp.js
 
 # Local env files
-.env
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -41,3 +39,4 @@ yarn-error.log*
 **/deploy.tar.gz
 *.tar.gz
 .worktrees
+config.bat

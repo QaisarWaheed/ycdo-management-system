@@ -635,8 +635,8 @@ export function EditEmployeeDialog({
                 )}
               </div>
               <p className="text-sm text-amber-700">
-                To change branch, department, or duty hours, use Edit Branch &
-                Duty.
+                To change duty hours, use Edit Branch &amp; Duty. To change
+                branch, department or designation, use Transfer / Change Position.
               </p>
               {canAssignRoles && employee.user && (
                 <div className="space-y-3 rounded-lg border border-border p-4">

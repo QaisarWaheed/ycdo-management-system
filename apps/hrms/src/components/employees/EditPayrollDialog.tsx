@@ -218,8 +218,10 @@ export function EditPayrollDialog({
           const res = await payrollApi.updateActiveStipend({
             approverTarget: verified ? ('FOUNDER' as EmployeeApproverTarget) : undefined,
             ...packageValues,
-            ...(effectiveFromChanged
-              ? { effectiveFrom: values.effectiveFrom!.trim() }
+            // A package starting in a later month needs its date sent even when unchanged.
+            ...(effectiveFromChanged ||
+            originalEffectiveFrom.slice(0, 7) > new Date().toISOString().slice(0, 7)
+              ? { effectiveFrom: values.effectiveFrom?.trim() || originalEffectiveFrom }
               : {}),
             reason:
               values.reason?.trim() ||

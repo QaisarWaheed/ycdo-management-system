@@ -123,6 +123,12 @@ export function TransferDialog({
   // Req 16: only Super Admin transfers directly; others send a request
   // (draft Transfer letter + HR Operations approval).
   const isSuperAdmin = useAuth().hasRole(['SUPER_ADMIN'])
+  // Send duty only when edited here, so an old prefilled timing never
+  // overwrites a separate working-hours change on approval.
+  const dutyChanged =
+    (dutyStartTime || '') !== (employee?.dutyStartTime ?? '') ||
+    (dutyEndTime || '') !== (employee?.dutyEndTime ?? '') ||
+    (dutyTotalHours === '' ? null : Number(dutyTotalHours)) !== (employee?.dutyTotalHours ?? null)
   const mutation = useMutation({
     mutationFn: () =>
       !isSuperAdmin
@@ -134,9 +140,9 @@ export function TransferDialog({
             changeType,
             changeReason,
             effectiveDate,
-            ...(dutyStartTime ? { dutyStartTime } : {}),
-            ...(dutyEndTime ? { dutyEndTime } : {}),
-            ...(dutyTotalHours !== '' ? { dutyTotalHours: Number(dutyTotalHours) } : {}),
+            ...(dutyChanged && dutyStartTime ? { dutyStartTime } : {}),
+            ...(dutyChanged && dutyEndTime ? { dutyEndTime } : {}),
+            ...(dutyChanged && dutyTotalHours !== '' ? { dutyTotalHours: Number(dutyTotalHours) } : {}),
           })
         : employeesApi.transfer(employeeId, {
         currentBranchId: branchId,
@@ -159,6 +165,7 @@ export function TransferDialog({
       })
       queryClient.invalidateQueries({ queryKey: ['employee', employeeId] })
       queryClient.invalidateQueries({ queryKey: ['employees'] })
+      queryClient.invalidateQueries({ queryKey: ['employee-change-requests'] })
       onOpenChange(false)
     },
     onError: (err: { response?: { data?: { message?: string | string[] } } }) => {
