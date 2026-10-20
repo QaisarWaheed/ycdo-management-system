@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { employeesApi } from '@/api/endpoints/employees'
@@ -165,6 +165,7 @@ export function EditPayrollDialog({
     latestStipend != null &&
     canEditPay
   const [verifyValues, setVerifyValues] = useState<EditPayrollFormValues>()
+  const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: async (
       values: EditPayrollFormValues & { isIncrement?: boolean; verify?: boolean },
@@ -254,6 +255,8 @@ export function EditPayrollDialog({
               ? `Change sent to ${sentTo} for approval`
               : 'Payroll information updated',
       })
+      // Joining date decides loan eligibility.
+      queryClient.invalidateQueries({ queryKey: ['loans', employeeId] })
       onSuccess()
       onOpenChange(false)
     },

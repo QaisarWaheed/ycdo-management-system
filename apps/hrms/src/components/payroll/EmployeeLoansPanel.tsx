@@ -174,16 +174,7 @@ export function EmployeeLoansPanel(props: {
         open={applyOpen}
         onOpenChange={setApplyOpen}
         employeeId={employeeId}
-        onCreated={(loan) => {
-          refresh()
-          print({
-            ...loan,
-            amount: Number(loan.amount),
-            monthlyInstallment: Number(loan.monthlyInstallment),
-            repaid: 0,
-            remaining: Number(loan.amount),
-          })
-        }}
+        onCreated={refresh}
       />
       {decide ? (
         <DecideLoanDialog {...decide} onClose={() => setDecide(undefined)} onDone={refresh} />
@@ -196,7 +187,7 @@ function ApplyLoanDialog(props: {
   open: boolean
   onOpenChange: (open: boolean) => void
   employeeId: string
-  onCreated: (loan: EmployeeLoan) => void
+  onCreated: () => void
 }) {
   const [amount, setAmount] = useState('')
   const [installment, setInstallment] = useState('')
@@ -213,13 +204,13 @@ function ApplyLoanDialog(props: {
         startMonth,
         reason: reason.trim(),
       }),
-    onSuccess: (loan) => {
-      toast({ title: 'Loan application created. Print it for the CEO / Founder.' })
+    onSuccess: () => {
+      toast({ title: 'Loan application created. Press Print on it for the CEO / Founder.' })
       props.onOpenChange(false)
       setAmount('')
       setInstallment('')
       setReason('')
-      props.onCreated(loan)
+      props.onCreated()
     },
     onError: (err: ApiError) =>
       toast({ title: 'Could not create the application', description: errorText(err), variant: 'destructive' }),
@@ -265,7 +256,7 @@ function ApplyLoanDialog(props: {
             Cancel
           </Button>
           <Button disabled={!valid || mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? 'Saving...' : 'Create & print'}
+            {mutation.isPending ? 'Saving...' : 'Create application'}
           </Button>
         </DialogFooter>
       </DialogContent>
