@@ -67,6 +67,18 @@ export const lettersApi = {
         message?: string
       }
     >(`/letters/${id}/reverse`, { reason }),
+  /** Missing-checkout letters: the month's deduction before / after reversing (null otherwise). */
+  reverseImpact: (id: string) =>
+    api.get<
+      unknown,
+      {
+        month: string
+        incidentsBefore: number
+        incidentsAfter: number
+        daysBefore: number
+        daysAfter: number
+      } | null
+    >(`/letters/${id}/reverse-impact`),
   getPdf: (id: string) =>
     api.get<unknown, Blob>(`/letters/${id}/pdf`, { responseType: 'blob' }),
   getWhatsAppShare: (id: string) =>

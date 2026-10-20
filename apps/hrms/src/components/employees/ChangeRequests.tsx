@@ -31,7 +31,7 @@ interface ChangeRequest {
 const KIND = { TRANSFER: 'Transfer', WORKING_HOURS: 'Working hours' }
 const APPROVER: Record<ChangeRequest['kind'], string[]> = {
   TRANSFER: ['HR_OPERATIONS_MANAGER', 'SUPER_ADMIN'],
-  WORKING_HOURS: ['CHAIRMAN', 'PRESIDENT', 'FOUNDER', 'SUPER_ADMIN'],
+  WORKING_HOURS: ['HR_OPERATIONS_MANAGER', 'SUPER_ADMIN'],
 }
 
 /**

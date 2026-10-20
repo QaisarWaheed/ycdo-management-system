@@ -49,15 +49,10 @@ export const CHANGE_REQUEST_HR_ROLES: UserRole[] = [
   UserRole.HR_OPERATIONS_MANAGER,
   UserRole.HR_EXECUTIVE,
 ];
-/** Req 16: HR Operations approves transfers. Req 17: executives approve working hours. */
+/** Req 16 / 17: HR Operations approves transfers and working-hours changes. */
 export const APPROVERS: Record<EmployeeChangeKind, UserRole[]> = {
   TRANSFER: [UserRole.HR_OPERATIONS_MANAGER, UserRole.SUPER_ADMIN],
-  WORKING_HOURS: [
-    UserRole.CHAIRMAN,
-    UserRole.PRESIDENT,
-    UserRole.FOUNDER,
-    UserRole.SUPER_ADMIN,
-  ],
+  WORKING_HOURS: [UserRole.HR_OPERATIONS_MANAGER, UserRole.SUPER_ADMIN],
 };
 
 type Actor = { id: string; role: UserRole; roles: UserRole[] };
@@ -92,8 +87,8 @@ class DecideDto {
 /**
  * Phase 3 Req 16 / 17: branch / department transfer and working-hours change
  * only through a request with a draft letter and a notification. Nothing on
- * the employee changes until approval (transfer: HR Operations; working
- * hours: Chairman / President / Founder). HR sends the letter from Letters as
+ * the employee changes until approval by HR Operations (transfer and
+ * working hours). HR sends the letter from Letters as
  * usual; IT can reverse it. Super Admin may still change data directly.
  */
 @Injectable()
@@ -239,7 +234,7 @@ export class EmployeeChangeRequestService {
       throw new ForbiddenException(
         req.kind === EmployeeChangeKind.TRANSFER
           ? 'Only HR Operations can approve a transfer'
-          : 'Only the Chairman, President or Founder can approve working hours',
+          : 'Only HR Operations can approve working hours',
       );
     }
     if (

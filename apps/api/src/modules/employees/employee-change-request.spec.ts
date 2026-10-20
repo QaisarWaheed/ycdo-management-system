@@ -43,15 +43,15 @@ describe('Req 16 / 17 change requests', () => {
     expect(employees.transfer).toHaveBeenCalledWith('e1', expect.objectContaining({ currentBranchId: 'b2' }));
   });
 
-  it('working hours need an executive; HR Operations is refused', async () => {
+  it('working hours are approved by HR Operations; executives are refused', async () => {
     const refused = setup(EmployeeChangeKind.WORKING_HOURS);
-    await expect(refused.service.decide('r1', true, undefined, OPS)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(refused.service.decide('r1', true, undefined, FOUNDER)).rejects.toBeInstanceOf(ForbiddenException);
     const ok = setup(EmployeeChangeKind.WORKING_HOURS);
-    await ok.service.decide('r1', true, undefined, FOUNDER);
+    await ok.service.decide('r1', true, undefined, OPS);
     expect(ok.employees.updateBranchDuty).toHaveBeenCalledWith(
       'e1',
       { dutyStartTime: '08:00', dutyEndTime: '16:00', dutyTotalHours: 8 },
-      'f',
+      'ops',
     );
   });
 

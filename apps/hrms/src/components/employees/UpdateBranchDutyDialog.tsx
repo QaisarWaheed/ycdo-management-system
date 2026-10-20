@@ -83,7 +83,7 @@ export function UpdateBranchDutyDialog({
   })
 
   // Req 16 / 17: only Super Admin changes branch / department / hours here;
-  // others send a working-hours request (draft letter + executive approval).
+  // others send a working-hours request (draft letter + HR Operations approval).
   const isSuperAdmin = useAuth().hasRole(['SUPER_ADMIN'])
   const [hoursEffective, setHoursEffective] = useState(new Date().toISOString().slice(0, 10))
   const [hoursReason, setHoursReason] = useState('')
@@ -261,7 +261,7 @@ export function UpdateBranchDutyDialog({
           {needsRequest ? (
             <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
               <p className="text-amber-800">
-                New working hours need a letter and executive approval. They apply only after approval.
+                New working hours need a letter and HR Operations approval. They apply only after approval.
               </p>
               <div className="space-y-1">
                 <Label htmlFor="hoursEffective">Effective from</Label>

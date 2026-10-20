@@ -1,3 +1,4 @@
+import { ReverseImpactNote } from '@/components/letters/ReverseImpactNote'
 import { SignedScanUploadButton } from '@/components/letters/SignedScan'
 import { PAGE_SIZE } from '@/constants/pagination'
 import { useEffect, useMemo, useState } from 'react'
@@ -1969,6 +1970,7 @@ export function LettersPage() {
               attendance (e.g. Present or On Leave); while it stays Uninformed Absent the deduction remains.
             </p>
           ) : null}
+          {reverseLetter ? <ReverseImpactNote letterId={reverseLetter.id} /> : null}
           <div className="space-y-2">
             <Label>Reason</Label>
             <Textarea

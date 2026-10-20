@@ -169,7 +169,12 @@ export function resolveDevicePunch(opts: {
   // ponytail: a clock set back looks like a delay and is saved early until
   // the reset is confirmed 10 min later; HR can fix those few punches.
   if (delayMs > MAX_DELAYED_PUNCH_AGE_MS) {
-    return { checkTime, verdict: 'stale', deviceTime, nextClock: withCandidate };
+    return {
+      checkTime,
+      verdict: 'stale',
+      deviceTime,
+      nextClock: withCandidate,
+    };
   }
   if (
     delayMs > 0 &&

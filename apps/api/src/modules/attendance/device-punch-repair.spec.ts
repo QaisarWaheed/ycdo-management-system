@@ -28,11 +28,16 @@ describe('repairDelayedDevicePunches', () => {
         findFirst: jest.fn().mockResolvedValue({
           id: 'log-63',
           checkIn: savedCheckIn,
-          employee: { fullName: 'Dr Ayesha Farooq', employeeCode: 'YCDO-2026-0132' },
+          employee: {
+            fullName: 'Dr Ayesha Farooq',
+            employeeCode: 'YCDO-2026-0132',
+          },
         }),
       },
     };
-    const service = Object.create(AttendanceService.prototype) as AttendanceService;
+    const service = Object.create(
+      AttendanceService.prototype,
+    ) as AttendanceService;
     Object.assign(service, { prisma });
     const update = jest
       .spyOn(service, 'updateAttendance')
@@ -62,7 +67,12 @@ describe('repairDelayedDevicePunches', () => {
   it('applies through the normal HR edit when asked', async () => {
     const { service, update } = makeService();
     const res = await service.repairDelayedDevicePunches(
-      { deviceId: 'masoom shah', date: '2026-10-19', offsetSec: -253, apply: true },
+      {
+        deviceId: 'masoom shah',
+        date: '2026-10-19',
+        offsetSec: -253,
+        apply: true,
+      },
       admin,
     );
     expect(update).toHaveBeenCalledWith(

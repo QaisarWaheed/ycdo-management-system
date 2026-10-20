@@ -849,7 +849,9 @@ export class AttendanceService {
             lte: ev.processedAt,
           },
         },
-        include: { employee: { select: { fullName: true, employeeCode: true } } },
+        include: {
+          employee: { select: { fullName: true, employeeCode: true } },
+        },
       });
       if (!log) continue;
       items.push({

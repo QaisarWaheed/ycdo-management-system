@@ -1,3 +1,4 @@
+import { ReverseImpactNote } from '@/components/letters/ReverseImpactNote'
 import { SignedScanUploadButton } from '@/components/letters/SignedScan'
 import { ChangeRequestsCard } from '@/components/employees/ChangeRequests'
 import { EmployeeFinancialTab } from '@/components/employees/EmployeeFinancialTab'
@@ -3311,6 +3312,7 @@ export function EmployeeProfilePage() {
               attendance (e.g. Present or On Leave); while it stays Uninformed Absent the deduction remains.
             </p>
           ) : null}
+          {reverseLetter ? <ReverseImpactNote letterId={reverseLetter.id} /> : null}
           <div className="space-y-2">
             <Label>Reason</Label>
             <Textarea

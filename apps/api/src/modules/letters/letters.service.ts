@@ -24,6 +24,7 @@ import {
   DeductionType,
   DisciplinaryStatus,
   DisciplinaryType,
+  DisciplineCategory,
   Gender,
   EmployeeStatus,
   LetterStatus,
@@ -44,6 +45,7 @@ import {
 import { hasAnyRole } from '../../common/user-roles.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toPakistanDateOnly } from '../attendance/attendance-late.util';
+import { MISSING_CHECKOUT_CYCLE_FROM } from '../attendance/missing-checkout-policy';
 import {
   transliterateName,
   translateBranch,
@@ -2502,6 +2504,49 @@ export class LettersService implements OnModuleInit {
         : fineUndone
           ? 'Letter reversed; pending fine undone'
           : 'Letter reversed',
+    };
+  }
+
+  /**
+   * What reversing a missing-checkout letter does to the money: the payroll
+   * cuts 1 day per 3 incidents in the month, so removing this one incident
+   * only helps when it crosses a multiple of 3. Null for other letters.
+   */
+  async reverseImpact(letterId: string) {
+    const letter = await this.prisma.letter.findUnique({
+      where: { id: letterId },
+      select: { employeeId: true, variables: true },
+    });
+    if (!letter) throw new NotFoundException('Letter not found');
+    const vars = (letter.variables ?? {}) as Record<string, unknown>;
+    const incident =
+      typeof vars.incidentDate === 'string' ? vars.incidentDate.slice(0, 10) : null;
+    if (vars.disciplineCategory !== 'MISSING_CHECKOUT' || !incident) return null;
+    const day = new Date(`${incident}T00:00:00.000Z`);
+    const monthStart = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 1));
+    // Same window as the attendance card: only incidents under the new rule.
+    const from = monthStart > MISSING_CHECKOUT_CYCLE_FROM ? monthStart : MISSING_CHECKOUT_CYCLE_FROM;
+    const where = {
+      employeeId: letter.employeeId,
+      category: DisciplineCategory.MISSING_CHECKOUT,
+    };
+    const [before, thisDay] = await Promise.all([
+      this.prisma.disciplineEvent.count({
+        where: { ...where, incidentDate: { gte: from, lt: monthEnd } },
+      }),
+      day >= from
+        ? this.prisma.disciplineEvent.count({ where: { ...where, incidentDate: day } })
+        : Promise.resolve(0),
+    ]);
+    const after = before - thisDay;
+    return {
+      category: 'MISSING_CHECKOUT' as const,
+      month: incident.slice(0, 7),
+      incidentsBefore: before,
+      incidentsAfter: after,
+      daysBefore: Math.floor(before / 3),
+      daysAfter: Math.floor(after / 3),
     };
   }
 

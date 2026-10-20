@@ -345,6 +345,13 @@ export class LettersController {
     );
   }
 
+  /** Missing-checkout letters: how the month's deduction changes if reversed. */
+  @Get(':id/reverse-impact')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
+  reverseImpact(@Param('id') id: string) {
+    return this.lettersService.reverseImpact(id);
+  }
+
   @Post(':id/reverse')
   @Roles(UserRole.SUPER_ADMIN, UserRole.IT_ADMIN)
   reverseLetter(
