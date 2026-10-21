@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import api from '@/api/axios'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmployeeSearchSelect } from '@/components/common/EmployeeSearchSelect'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,7 +37,11 @@ const errorText = (err: ApiError) => {
   return Array.isArray(msg) ? msg.join(', ') : String(msg ?? 'Error')
 }
 const pkr = (n: number) => `PKR ${Math.round(n).toLocaleString('en-PK')}`
-const today = () => new Date().toISOString().slice(0, 10)
+/** Local (Pakistan) date, not UTC: before 5 am PKT the UTC date is still yesterday. */
+const today = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 const thisMonth = () => today().slice(0, 7)
 
 /** Finance's daily Medicine Pending log; each entry comes off that month's salary. */
@@ -49,6 +54,7 @@ export function MedicinePendingPage() {
   const [amount, setAmount] = useState('')
   const [pendingDate, setPendingDate] = useState(today())
   const [search, setSearch] = useState('')
+  const [removing, setRemoving] = useState<MedicinePendingEntry>()
 
   const [y, m] = month.split('-').map(Number)
   const from = `${month}-01`
@@ -83,6 +89,7 @@ export function MedicinePendingPage() {
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/medicine-pending/${id}`),
     onSuccess: () => {
+      setRemoving(undefined)
       toast({ title: 'Entry removed and taken off the salary' })
       queryClient.invalidateQueries({ queryKey: ['medicine-pending'] })
     },
@@ -192,10 +199,7 @@ export function MedicinePendingPage() {
                           size="sm"
                           variant="ghost"
                           disabled={remove.isPending}
-                          onClick={() => {
-                            if (window.confirm('Remove this entry? It will be taken off the salary deduction.'))
-                              remove.mutate(r.id)
-                          }}
+                          onClick={() => setRemoving(r)}
                         >
                           Remove
                         </Button>
@@ -208,6 +212,20 @@ export function MedicinePendingPage() {
           </Table>
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={removing != null}
+        title="Remove this entry?"
+        description={
+          removing
+            ? `${removing.employee.fullName}, token ${removing.tokenNo}, ${pkr(removing.amount)}. It will be taken off the salary deduction.`
+            : ''
+        }
+        confirmLabel="Remove"
+        confirmVariant="destructive"
+        loading={remove.isPending}
+        onCancel={() => setRemoving(undefined)}
+        onConfirm={() => removing && remove.mutate(removing.id)}
+      />
     </div>
   )
 }
