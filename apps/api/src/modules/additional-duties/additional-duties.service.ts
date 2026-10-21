@@ -248,6 +248,37 @@ export class AdditionalDutiesService {
     return { id };
   }
 
+  /** Accounts closes a duty's monthly check without an allowance, giving the reason. */
+  async closeMonth(
+    dutyId: string,
+    dto: { year: number; month: number; reason: string },
+    userId: string,
+  ) {
+    const duty = await this.prisma.employeeAdditionalDuty.findUnique({ where: { id: dutyId } });
+    if (!duty) throw new NotFoundException('Additional duty not found');
+    const check = await this.prisma.additionalDutyMonthCheck.upsert({
+      where: { dutyId_year_month: { dutyId, year: dto.year, month: dto.month } },
+      create: { dutyId, year: dto.year, month: dto.month, reason: dto.reason.trim(), createdById: userId },
+      update: { reason: dto.reason.trim(), createdById: userId },
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'ADDITIONAL_DUTY_MONTH_CLOSED',
+        entity: 'EmployeeAdditionalDuty',
+        entityId: dutyId,
+        changes: {
+          employeeId: duty.employeeId,
+          title: duty.title,
+          year: dto.year,
+          month: dto.month,
+          reason: dto.reason.trim(),
+        },
+      },
+    });
+    return check;
+  }
+
   /** Duties held in the month with no allowance paying that month. */
   async missingAllowance(year: number, month: number) {
     const { start, end } = monthBounds(year, month);
@@ -279,7 +310,17 @@ export class AdditionalDutiesService {
         })
       : [];
     const byId = new Map(allowances.map((a) => [a.id, a]));
+    // Accounts closed these for the month with a reason.
+    const closed = new Set(
+      (
+        await this.prisma.additionalDutyMonthCheck.findMany({
+          where: { year, month, dutyId: { in: duties.map((d) => d.id) } },
+          select: { dutyId: true },
+        })
+      ).map((c) => c.dutyId),
+    );
     return duties
+      .filter((d) => !closed.has(d.id))
       .filter((d) =>
         dutyNeedsAllowance(
           d,

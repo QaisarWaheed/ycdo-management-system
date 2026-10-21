@@ -174,6 +174,28 @@ export class LoansService {
     return updated;
   }
 
+  /** Amend a running loan's monthly installment (future months only; taken ones stay). */
+  async amendInstallment(id: string, monthlyInstallment: number, note: string | undefined, userId: string) {
+    const loan = await this.findOne(id);
+    if (loan.status !== LoanStatus.APPROVED) {
+      throw new BadRequestException('Only an approved loan can be amended');
+    }
+    if (monthlyInstallment > Number(loan.amount)) {
+      throw new BadRequestException('Monthly installment cannot be more than the loan amount');
+    }
+    const updated = await this.prisma.employeeLoan.update({
+      where: { id },
+      data: { monthlyInstallment },
+    });
+    await this.audit(userId, 'LOAN_AMENDED', id, {
+      employeeId: loan.employeeId,
+      before: Number(loan.monthlyInstallment),
+      after: monthlyInstallment,
+      note: note ?? null,
+    });
+    return updated;
+  }
+
   async findOne(id: string) {
     const loan = await this.prisma.employeeLoan.findUnique({ where: { id } });
     if (!loan) throw new NotFoundException('Loan not found');

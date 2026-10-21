@@ -54,6 +54,9 @@ export const additionalDutiesApi = {
   linkAllowance: (id: string, allowanceId: string | null) =>
     api.patch<unknown, AdditionalDuty>(`/additional-duties/${id}/allowance`, { allowanceId }),
   delete: (id: string) => api.delete(`/additional-duties/${id}`),
+  /** Close the month's check: the allowance does not apply this month (reason required). */
+  closeMonth: (id: string, data: { month: number; year: number; reason: string }) =>
+    api.post(`/additional-duties/${id}/month-check`, data),
   missingAllowance: (month: number, year: number) =>
     api.get<unknown, DutyMissingAllowance[]>('/additional-duties/missing-allowance', {
       params: { month, year },

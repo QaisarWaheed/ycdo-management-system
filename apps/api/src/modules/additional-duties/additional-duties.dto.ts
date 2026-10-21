@@ -10,6 +10,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 export class CreateAdditionalDutyDto {
@@ -85,4 +86,11 @@ export class MissingAllowanceQueryDto {
   @Min(2000)
   @Max(2100)
   year: number;
+}
+
+export class CloseDutyMonthDto extends MissingAllowanceQueryDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason: string;
 }

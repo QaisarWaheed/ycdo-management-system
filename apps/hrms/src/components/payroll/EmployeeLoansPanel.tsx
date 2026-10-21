@@ -80,7 +80,7 @@ export function EmployeeLoansPanel(props: {
     queryFn: () => loansApi.forEmployee(employeeId),
   })
   const [applyOpen, setApplyOpen] = useState(false)
-  const [decide, setDecide] = useState<{ loan: EmployeeLoan; action: 'approve' | 'reject' | 'cancel' }>()
+  const [decide, setDecide] = useState<{ loan: EmployeeLoan; action: 'approve' | 'reject' | 'cancel' | 'amend' }>()
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['loans', employeeId] })
   const eligibility = data?.eligibility
 
@@ -161,6 +161,11 @@ export function EmployeeLoansPanel(props: {
                     {loan.notificationUrl ? (
                       <Button size="sm" variant="outline" onClick={() => viewNotification(loan)}>
                         Notification
+                      </Button>
+                    ) : null}
+                    {canManage && loan.status === 'APPROVED' && loan.remaining > 0 ? (
+                      <Button size="sm" variant="outline" onClick={() => setDecide({ loan, action: 'amend' })}>
+                        Amend
                       </Button>
                     ) : null}
                     {canManage && loan.status === 'PENDING' ? (
@@ -320,16 +325,19 @@ function ApplyLoanDialog(props: {
 
 function DecideLoanDialog(props: {
   loan: EmployeeLoan
-  action: 'approve' | 'reject' | 'cancel'
+  action: 'approve' | 'reject' | 'cancel' | 'amend'
   onClose: () => void
   onDone: () => void
 }) {
   const [file, setFile] = useState<File>()
+  const [installment, setInstallment] = useState(String(props.loan.monthlyInstallment))
   const [note, setNote] = useState('')
   const { loan, action } = props
   const mutation = useMutation({
     mutationFn: () =>
-      action === 'approve'
+      action === 'amend'
+        ? loansApi.amend(loan.id, Number(installment), note.trim() || undefined)
+        : action === 'approve'
         ? loansApi.approve(loan.id, file!, note.trim() || undefined)
         : action === 'reject'
           ? loansApi.reject(loan.id, note.trim() || undefined)
@@ -337,7 +345,9 @@ function DecideLoanDialog(props: {
     onSuccess: () => {
       toast({
         title:
-          action === 'approve'
+          action === 'amend'
+            ? 'Monthly installment changed for the coming months'
+            : action === 'approve'
             ? `Loan approved. Installments start ${format(new Date(loan.startMonth), 'MMMM yyyy')}.`
             : action === 'reject'
               ? 'Loan rejected'
@@ -349,7 +359,12 @@ function DecideLoanDialog(props: {
     onError: (err: ApiError) =>
       toast({ title: 'Could not save', description: errorText(err), variant: 'destructive' }),
   })
-  const title = { approve: 'Approve loan', reject: 'Reject loan', cancel: 'Cancel loan application' }[action]
+  const title = {
+    approve: 'Approve loan',
+    reject: 'Reject loan',
+    cancel: 'Cancel loan application',
+    amend: 'Amend monthly installment',
+  }[action]
   return (
     <Dialog open onOpenChange={(open) => !open && props.onClose()}>
       <DialogContent>
@@ -361,6 +376,21 @@ function DecideLoanDialog(props: {
             {pkr(loan.amount)} · {pkr(loan.monthlyInstallment)} per month from{' '}
             {format(new Date(loan.startMonth), 'MMMM yyyy')}
           </p>
+          {action === 'amend' ? (
+            <div className="space-y-1">
+              <Label htmlFor="loan-amend">New monthly installment (PKR)</Label>
+              <Input
+                id="loan-amend"
+                type="number"
+                min={1}
+                value={installment}
+                onChange={(e) => setInstallment(e.target.value)}
+              />
+              <p className="text-xs text-text-secondary">
+                {pkr(loan.remaining)} left. Months already taken stay as they are.
+              </p>
+            </div>
+          ) : null}
           {action === 'approve' ? (
             <div className="space-y-1">
               <Label htmlFor="loan-notification">Signed approval notification (photo or PDF)</Label>
@@ -385,8 +415,12 @@ function DecideLoanDialog(props: {
             Close
           </Button>
           <Button
-            variant={action === 'approve' ? 'default' : 'destructive'}
-            disabled={mutation.isPending || (action === 'approve' && !file)}
+            variant={action === 'approve' || action === 'amend' ? 'default' : 'destructive'}
+            disabled={
+              mutation.isPending ||
+              (action === 'approve' && !file) ||
+              (action === 'amend' && !(Number(installment) > 0))
+            }
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Saving...' : title}

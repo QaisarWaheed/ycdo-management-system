@@ -64,6 +64,11 @@ class CreateLoanDto {
   @IsString() @MinLength(3) @MaxLength(1000) reason: string;
 }
 
+class AmendLoanDto {
+  @Type(() => Number) @IsNumber() @IsPositive() monthlyInstallment: number;
+  @IsOptional() @IsString() @MaxLength(500) note?: string;
+}
+
 class DecisionDto {
   @IsOptional() @IsString() @MaxLength(500) note?: string;
 }
@@ -116,6 +121,17 @@ export class LoansController {
     @CurrentUser() user: { id: string },
   ) {
     return this.loans.decide(id, 'CANCELLED', dto.note, user.id);
+  }
+
+  /** Change the monthly installment of an approved loan. */
+  @Post(':id/amend')
+  @Roles(...LOAN_ROLES)
+  amend(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AmendLoanDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.loans.amendInstallment(id, dto.monthlyInstallment, dto.note, user.id);
   }
 
   @Get(':id/notification')

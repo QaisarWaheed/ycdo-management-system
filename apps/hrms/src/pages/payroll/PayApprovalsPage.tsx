@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -44,6 +45,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
+import { SalaryProfileDialog } from '@/components/payroll/SalaryProfileDialog'
 
 const approverLabel = (t: EmployeeApproverTarget) =>
   APPROVER_OPTIONS.find((o) => o.value === t)?.label ?? t
@@ -113,6 +115,7 @@ export function PayApprovalsPage() {
   // Finance sends the requests, so Finance may correct or withdraw them.
   const canAmend = hasRole(['PAYROLL_OFFICER', 'SUPER_ADMIN'])
   const [editRequest, setEditRequest] = useState<PayChangeRequest | null>(null)
+  const [profileFor, setProfileFor] = useState<string | null>(null)
   const [status, setStatus] = useState<PayChangeStatus>('PENDING')
   const [action, setAction] = useState<Action | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -148,7 +151,10 @@ export function PayApprovalsPage() {
           </Button>
         </>
       ) : null}
-      {status === 'PENDING' && hasRole(['SUPER_ADMIN']) && r.kind === 'INCENTIVE' ? (
+      <Button size="sm" variant="outline" onClick={() => setProfileFor(r.employeeId)}>
+        Salary details
+      </Button>
+      {status === 'PENDING' && (canAmend || canDecide) && r.kind === 'INCENTIVE' ? (
         <Button size="sm" variant="outline" onClick={() => setEditRequest(r)}>
           Edit
         </Button>
@@ -159,7 +165,7 @@ export function PayApprovalsPage() {
           variant="outline"
           onClick={() => setAction({ kind: 'cancel', request: r })}
         >
-          Cancel request
+          Delete request
         </Button>
       ) : null}
       {status === 'PENDING' && canForward ? (
@@ -408,6 +414,13 @@ export function PayApprovalsPage() {
         onOpenChange={(o) => !o && setEditRequest(null)}
         editRequest={editRequest}
       />
+      {profileFor ? (
+        <SalaryProfileDialog
+          employeeId={profileFor}
+          open
+          onOpenChange={(o) => !o && setProfileFor(null)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -417,12 +430,21 @@ function DecisionDialog({ action, onClose }: { action: Action; onClose: () => vo
   const { request, kind } = action
   const others = APPROVER_OPTIONS.filter((o) => o.value !== request.approverTarget)
   const [note, setNote] = useState('')
+  // Incentive requests: the suggested amount is filled in; the approver may change it.
+  const suggested = Number(request.payload?.amount) || 0
+  const [amount, setAmount] = useState(suggested ? String(suggested) : '')
   const [target, setTarget] = useState<EmployeeApproverTarget>(others[0].value)
 
   const mutation = useMutation({
     mutationFn: () =>
       kind === 'approve'
-        ? payApprovalsApi.approve(request.id, note.trim() || undefined)
+        ? payApprovalsApi.approve(
+            request.id,
+            note.trim() || undefined,
+            request.kind === 'INCENTIVE' && Number(amount) > 0 && Number(amount) !== suggested
+              ? Number(amount)
+              : undefined,
+          )
         : kind === 'reject'
           ? payApprovalsApi.reject(request.id, note.trim())
           : kind === 'cancel'
@@ -488,6 +510,19 @@ function DecisionDialog({ action, onClose }: { action: Action; onClose: () => vo
             <p className="rounded-md border border-red-200 bg-red-50 p-2 text-red-700">
               {request.blockedReason}
             </p>
+          ) : null}
+          {kind === 'approve' && request.kind === 'INCENTIVE' ? (
+            <div className="space-y-1">
+              <Label htmlFor="decision-amount">Amount (PKR)</Label>
+              <Input
+                id="decision-amount"
+                type="number"
+                min={1}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Suggested {suggested.toLocaleString('en-PK')}. Change it only if needed.</p>
+            </div>
           ) : null}
           {kind === 'approve' ? (
             <p className="text-muted-foreground">

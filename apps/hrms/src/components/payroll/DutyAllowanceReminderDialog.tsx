@@ -50,8 +50,21 @@ export function DutyAllowanceReminderDialog({
   const queryClient = useQueryClient()
   const canAdd = useCanEditPay()
   const [adding, setAdding] = useState<DutyMissingAllowance | null>(null)
-  // Duty id → 'linked' (allowance saved and linked) | 'pending' (sent for approval).
-  const [done, setDone] = useState<Record<string, 'linked' | 'pending'>>({})
+  // Duty id → 'linked' (allowance saved and linked) | 'pending' (sent for approval) | 'closed' (not applicable).
+  const [done, setDone] = useState<Record<string, 'linked' | 'pending' | 'closed'>>({})
+  const [closing, setClosing] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
+  const closeMonth = async (dutyId: string) => {
+    try {
+      await additionalDutiesApi.closeMonth(dutyId, { month, year, reason: reason.trim() })
+      setDone((d) => ({ ...d, [dutyId]: 'closed' }))
+      setClosing(null)
+      setReason('')
+      toast({ title: 'Closed for this month' })
+    } catch {
+      toast({ title: 'Could not save the reason', variant: 'destructive' })
+    }
+  }
   const monthValue = `${year}-${String(month).padStart(2, '0')}`
 
   return (
@@ -63,7 +76,8 @@ export function DutyAllowanceReminderDialog({
             <DialogDescription>
               These employees hold an additional duty in{' '}
               {format(new Date(year, month - 1), 'MMMM yyyy')} but no allowance pays it. Their
-              designation and salary are unchanged. Add an allowance now or continue generating.
+              designation and salary are unchanged. Add the allowance if the role is active this month,
+              or mark it Not applicable with the reason to close the check.
             </DialogDescription>
           </DialogHeader>
           <div className="overflow-x-auto">
@@ -99,10 +113,34 @@ export function DutyAllowanceReminderDialog({
                         <Badge>Allowance added</Badge>
                       ) : done[r.id] === 'pending' ? (
                         <Badge variant="secondary">Allowance pending approval</Badge>
+                      ) : done[r.id] === 'closed' ? (
+                        <Badge variant="outline">Not applicable this month</Badge>
+                      ) : closing === r.id ? (
+                        <div className="flex min-w-[220px] flex-col items-end gap-1">
+                          <input
+                            className="w-full rounded border border-border px-2 py-1 text-sm"
+                            placeholder="Reason, e.g. role not active this month"
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                          />
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => setClosing(null)}>
+                              Back
+                            </Button>
+                            <Button size="sm" disabled={reason.trim().length < 3} onClick={() => closeMonth(r.id)}>
+                              Close check
+                            </Button>
+                          </div>
+                        </div>
                       ) : canAdd ? (
-                        <Button size="sm" variant="outline" onClick={() => setAdding(r)}>
-                          Add allowance
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="outline" onClick={() => setAdding(r)}>
+                            Add allowance
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setClosing(r.id)}>
+                            Not applicable
+                          </Button>
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">Accounts adds it</span>
                       )}

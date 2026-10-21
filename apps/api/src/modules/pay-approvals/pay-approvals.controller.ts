@@ -65,6 +65,13 @@ class ApprovePayChangeDto {
   @IsOptional()
   @IsString()
   reviewNote?: string;
+
+  /** Incentive requests only: the amount the approver settles on. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @IsPositive()
+  amount?: number;
 }
 
 class RejectPayChangeDto {
@@ -174,11 +181,26 @@ export class PayApprovalsController {
 
   @Post(':id/approve')
   @Roles(...DECIDE_ROLES)
-  approve(
+  async approve(
     @Param('id') id: string,
     @Body() dto: ApprovePayChangeDto,
     @CurrentUser() user: PayActor,
   ) {
+    // The approver may change a suggested incentive amount while approving.
+    if (dto.amount != null) {
+      const request = await this.requests.findOne(id);
+      const p = (request.payload ?? {}) as Record<string, unknown>;
+      if (request.kind === 'INCENTIVE' && Number(p.amount) !== dto.amount) {
+        await this.requests.editIncentiveRequest(id, user, {
+          amount: dto.amount,
+          typeId: (p.typeId as string | undefined) ?? undefined,
+          reason: (p.reason as string | undefined) ?? undefined,
+          month: Number(p.month),
+          year: Number(p.year),
+          approverTarget: request.approverTarget,
+        });
+      }
+    }
     return this.approvals.approve(id, user, dto.reviewNote);
   }
 
@@ -192,8 +214,9 @@ export class PayApprovalsController {
     return this.requests.reject(id, user, dto.reviewNote);
   }
 
+  /** The sender (Finance) or the request's approver corrects a pending incentive request. */
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(...SENDER_ROLES, ...DECIDE_ROLES)
   @StrictRoles()
   edit(
     @Param('id') id: string,

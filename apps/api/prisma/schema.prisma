@@ -2320,3 +2320,17 @@ model MedicinePendingEntry {
   @@index([employeeId, pendingDate])
   @@index([pendingDate])
 }
+
+/// Monthly check of an additional duty: Accounts closed it without an
+/// allowance for that month, with the reason (e.g. role not active).
+model AdditionalDutyMonthCheck {
+  id          String   @id @default(uuid())
+  dutyId      String
+  year        Int
+  month       Int
+  reason      String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([dutyId, year, month])
+}

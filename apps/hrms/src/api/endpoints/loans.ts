@@ -50,6 +50,8 @@ export const loansApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  amend: (id: string, monthlyInstallment: number, note?: string) =>
+    api.post(`/loans/${id}/amend`, { monthlyInstallment, note }),
   reject: (id: string, note?: string) => api.post(`/loans/${id}/reject`, { note }),
   cancel: (id: string, note?: string) => api.post(`/loans/${id}/cancel`, { note }),
   notification: (id: string) =>

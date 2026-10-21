@@ -155,8 +155,8 @@ export const payApprovalsApi = {
   },
   attachment: (id: string) =>
     api.get<unknown, Blob>(`/pay-approvals/${id}/attachment`, { responseType: 'blob' }),
-  approve: (id: string, reviewNote?: string) =>
-    api.post(`/pay-approvals/${id}/approve`, { reviewNote }),
+  approve: (id: string, reviewNote?: string, amount?: number) =>
+    api.post(`/pay-approvals/${id}/approve`, { reviewNote, ...(amount ? { amount } : {}) }),
   reject: (id: string, reviewNote: string) =>
     api.post(`/pay-approvals/${id}/reject`, { reviewNote }),
   forward: (id: string, approverTarget: EmployeeApproverTarget, reason: string) =>

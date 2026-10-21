@@ -77,4 +77,19 @@ describe('LoansService', () => {
       purpose: 'MEDICAL',
     });
   });
+
+  it('an approved loan installment can be amended and is audited; a pending one cannot', async () => {
+    const { service, prisma } = setup(new Date('2025-01-01T00:00:00.000Z'));
+    await expect(service.amendInstallment('l1', 4000, undefined, 'fin')).rejects.toThrow('Only an approved loan');
+    prisma.employeeLoan.findUnique.mockResolvedValue({
+      id: 'l1',
+      employeeId: 'e1',
+      status: LoanStatus.APPROVED,
+      amount: 100000,
+      monthlyInstallment: 10000,
+    });
+    await service.amendInstallment('l1', 4000, 'hardship', 'fin');
+    expect(prisma.employeeLoan.update).toHaveBeenCalledWith({ where: { id: 'l1' }, data: { monthlyInstallment: 4000 } });
+    expect(prisma.auditLog.create.mock.calls[prisma.auditLog.create.mock.calls.length - 1][0].data.action).toBe('LOAN_AMENDED');
+  });
 });

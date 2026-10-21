@@ -117,6 +117,7 @@ describe('AdditionalDutiesService', () => {
         findMany: jest.fn(),
       },
       employeeAllowance: { findUnique: jest.fn(), findMany: jest.fn() },
+      additionalDutyMonthCheck: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: { create: jest.fn() },
       user: { findMany: jest.fn().mockResolvedValue([{ employeeId: 'acc' }]) },
       notification: { create: jest.fn() },
@@ -187,6 +188,22 @@ describe('AdditionalDutiesService', () => {
     await expect(service.linkAllowance('d1', 'a1', user)).rejects.toThrow(
       'not on this employee',
     );
+  });
+
+  it('a duty Accounts closed for the month with a reason is not listed again', async () => {
+    const { service, prisma } = build();
+    prisma.employeeAdditionalDuty.findMany.mockResolvedValue([
+      {
+        id: 'd9',
+        title: 'Incharge',
+        startDate: new Date('2026-10-01T00:00:00Z'),
+        endDate: null,
+        allowanceId: null,
+        employee: { id: 'e1', fullName: 'A' },
+      },
+    ]);
+    prisma.additionalDutyMonthCheck.findMany.mockResolvedValue([{ dutyId: 'd9' }]);
+    await expect(service.missingAllowance(2026, 10)).resolves.toEqual([]);
   });
 
   it('missingAllowance lists only duties the month does not pay', async () => {

@@ -460,6 +460,13 @@ export class PayrollController {
     res.send(buffer);
   }
 
+  /** One-page salary view for Finance and approvers (photo, package, attendance, performance). */
+  @Get('employee/:employeeId/salary-profile')
+  @Roles(...PAYROLL_READ_ROLES, UserRole.PAYROLL_OFFICER)
+  getSalaryProfile(@Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.employeeFinancial.salaryProfile(employeeId);
+  }
+
   /** Phase 2 Req 1: month-wise money, items with reasons and the full change trail. */
   @Get('employee/:employeeId/financial')
   @Roles(...PAYROLL_READ_ROLES, UserRole.PAYROLL_OFFICER)

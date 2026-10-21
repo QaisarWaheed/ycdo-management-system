@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { loadAttendanceCard } from '../attendance/attendance-card.util';
+import { INSTALLMENT_PREFIXES, installmentLoanId } from '../loans/loans.util';
 import { AllowanceType, DeductionType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { roundMoney } from './payroll-hours.util';
@@ -210,6 +212,150 @@ export class EmployeeFinancialService {
         PayrollEntry: entries.map((e) => e.id),
         PayrollDeduction: entries.flatMap((e) => e.deductions.map((d) => d.id)),
       }),
+    };
+  }
+
+  /**
+   * One page for Finance and approvers: who the employee is, the package,
+   * this month's attendance, discipline, doctor performance, the last three
+   * salaries and running loans, so no other screen needs opening.
+   */
+  async salaryProfile(employeeId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        fullName: true,
+        employeeCode: true,
+        photoUrl: true,
+        cnic: true,
+        phone: true,
+        currentDesignation: true,
+        status: true,
+        joiningDate: true,
+        dutyStartTime: true,
+        dutyEndTime: true,
+        payPackageVerifiedAt: true,
+        currentBranch: { select: { name: true } },
+        currentDepartment: { select: { name: true } },
+      },
+    });
+    if (!employee) throw new NotFoundException('Employee not found');
+    const now = new Date(Date.now() + 5 * 60 * 60 * 1000);
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    const monthStart = new Date(Date.UTC(year, month - 1, 1));
+    const prev = month === 1 ? { month: 12, year: year - 1 } : { month: month - 1, year };
+
+    const [active, allowances, prevIncentives, letters, doctor, loans, money] =
+      await Promise.all([
+        this.prisma.stipendRecord.findFirst({
+          where: { employeeId, effectiveTo: null },
+          orderBy: { effectiveFrom: 'desc' },
+        }),
+        this.prisma.employeeAllowance.findMany({
+          where: {
+            employeeId,
+            startMonth: { lte: monthStart },
+            OR: [{ endMonth: null }, { endMonth: { gte: monthStart } }],
+          },
+          include: { type: { select: { name: true } } },
+        }),
+        this.prisma.incentive.findMany({
+          where: { employeeId, month: prev.month, year: prev.year },
+          include: { type: { select: { name: true } } },
+        }),
+        this.prisma.letter.groupBy({
+          by: ['letterType'],
+          where: { employeeId, status: 'SENT' },
+          _count: { _all: true },
+        }),
+        this.prisma.doctorMonthlyPerformance.findMany({
+          where: { employeeId },
+          orderBy: [{ year: 'desc' }, { month: 'desc' }],
+          take: 3,
+        }),
+        this.prisma.employeeLoan.findMany({
+          where: { employeeId, status: 'APPROVED' },
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.summary(employeeId),
+      ]);
+
+    // Repaid so far per loan, from its installment rows.
+    const installments = loans.length
+      ? await this.prisma.payrollDeduction.findMany({
+          where: {
+            OR: INSTALLMENT_PREFIXES.map((p) => ({ description: { startsWith: p } })),
+            payrollEntry: { stipendRecord: { employeeId } },
+          },
+          select: { description: true, amount: true },
+        })
+      : [];
+    const repaid = new Map<string, number>();
+    for (const row of installments) {
+      const id = installmentLoanId(row.description);
+      if (id) repaid.set(id, (repaid.get(id) ?? 0) + Number(row.amount));
+    }
+
+    let attendance: Record<string, number> | null = null;
+    try {
+      const card = await loadAttendanceCard(this.prisma, employeeId, month, year);
+      attendance = {
+        present: card.present + (card.swapCovered ?? 0),
+        late: card.late,
+        absent: card.absent,
+        uninformedAbsent: card.uninformedAbsent,
+        onLeave: card.onLeave,
+        halfDay: card.halfDay,
+        missingCheckout: card.missingCheckout ?? 0,
+        earlyCheckout: card.earlyCheckout ?? 0,
+      };
+    } catch {
+      attendance = null; // A broken card must not hide the rest of the page.
+    }
+
+    return {
+      employee,
+      month: { month, year },
+      package: active
+        ? {
+            basicStipend: Number(active.basicStipend),
+            lumpsumTotal: active.lumpsumTotal != null ? Number(active.lumpsumTotal) : null,
+            effectiveFrom: active.effectiveFrom,
+            allowances: allowances.map((a) => ({ name: a.type.name, amount: Number(a.amount) })),
+          }
+        : null,
+      previousMonthIncentives: {
+        month: prev.month,
+        year: prev.year,
+        total: roundMoney(prevIncentives.reduce((s, i) => s + Number(i.amount), 0)),
+        items: prevIncentives.map((i) => ({
+          name: i.type?.name ?? 'Incentive',
+          amount: Number(i.amount),
+          reason: i.reason,
+        })),
+      },
+      attendance,
+      discipline: Object.fromEntries(letters.map((l) => [l.letterType, l._count._all])),
+      doctorPerformance: doctor.map((d) => ({
+        month: d.month,
+        year: d.year,
+        opdPatients: d.opdPatients,
+        indoorPatients: d.indoorPatients,
+        surgeries: d.surgeries,
+        labTests: d.labTests,
+        collection: Number(d.collection),
+        labCollection: Number(d.labCollection),
+      })),
+      loans: loans.map((l) => ({
+        id: l.id,
+        kind: l.kind,
+        amount: Number(l.amount),
+        monthlyInstallment: Number(l.monthlyInstallment),
+        remaining: Math.max(0, Number(l.amount) - (repaid.get(l.id) ?? 0)),
+      })),
+      lastMonths: money.months.slice(0, 3),
     };
   }
 

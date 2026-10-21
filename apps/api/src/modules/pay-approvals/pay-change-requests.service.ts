@@ -559,6 +559,8 @@ export class PayChangeRequestsService {
         'Only incentive requests can be edited; cancel this one and send a new request',
       );
     }
+    // The sender or the request's own approver (Super Admin always).
+    if (request.submittedById !== user.id) this.assertCanReview(user, request.approverTarget);
     const old = request.payload as Record<string, unknown>;
     const { approverTarget, ...values } = dto;
     const payload = {

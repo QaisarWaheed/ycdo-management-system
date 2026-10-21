@@ -10,6 +10,7 @@ import { format } from 'date-fns'
 import { Pencil, Printer } from 'lucide-react'
 import { EmployeeLoansPanel } from '@/components/payroll/EmployeeLoansPanel'
 import { SalaryAmendmentHistory } from '@/components/payroll/SalaryAmendmentHistory'
+import { SalaryProfileDialog } from '@/components/payroll/SalaryProfileDialog'
 import { incentivesApi } from '@/api/endpoints/incentives'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { EditPayrollDialog } from '@/components/employees/EditPayrollDialog'
@@ -283,6 +284,7 @@ export function EmployeePayrollTab({
 }: EmployeePayrollTabProps) {
   const queryClient = useQueryClient()
   const [editOpen, setEditOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [historyPage, setHistoryPage] = useState(0)
   const [viewEntry, setViewEntry] = useState<PayrollEntry | null>(null)
   const [deductionEntry, setDeductionEntry] = useState<PayrollEntry | null>(null)
@@ -336,6 +338,9 @@ export function EmployeePayrollTab({
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-lg">Current Stipend Record</CardTitle>
           <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setProfileOpen(true)}>
+            Salary details
+          </Button>
           {latestStipend ? (
             <Button
               variant="outline"
@@ -702,6 +707,9 @@ export function EmployeePayrollTab({
       </Card>
 
       <SalaryAmendmentHistory employeeId={employeeId} />
+      {profileOpen ? (
+        <SalaryProfileDialog employeeId={employeeId} open onOpenChange={setProfileOpen} />
+      ) : null}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -19,6 +20,7 @@ import {
   CreateAdditionalDutyDto,
   LinkDutyAllowanceDto,
   MissingAllowanceQueryDto,
+  CloseDutyMonthDto,
   UpdateAdditionalDutyDto,
 } from './additional-duties.dto';
 import { AdditionalDutiesService } from './additional-duties.service';
@@ -53,6 +55,17 @@ export class AdditionalDutiesController {
   @Roles(...DUTY_PAY_ROLES)
   missingAllowance(@Query() q: MissingAllowanceQueryDto) {
     return this.duties.missingAllowance(q.year, q.month);
+  }
+
+  /** Close this month's check: the allowance does not apply (reason required). */
+  @Post(':id/month-check')
+  @Roles(...DUTY_PAY_ROLES)
+  closeMonth(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CloseDutyMonthDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.duties.closeMonth(id, dto, user.id);
   }
 
   @Post()

@@ -2,6 +2,7 @@ import { AppointmentLetterButton } from '@/components/letters/AppointmentLetterB
 import { useQuery } from '@tanstack/react-query'
 import { Printer } from 'lucide-react'
 import { payrollApi } from '@/api/endpoints/payroll'
+import { PayslipComponents } from '@/components/payroll/PayslipComponents'
 import { PayslipDocument } from '@/components/payroll/PayslipDocument'
 import { Button } from '@/components/ui/button'
 import {
@@ -95,7 +96,10 @@ export function PayslipViewDialog({
         {isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
-          <PayslipDocument slip={slip} />
+          <>
+            <PayslipComponents entry={data} />
+            <PayslipDocument slip={slip} />
+          </>
         )}
       </DialogContent>
     </Dialog>

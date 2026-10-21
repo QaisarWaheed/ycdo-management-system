@@ -202,4 +202,29 @@ describe('Accounts cannot cut pay without approval', () => {
     prisma.employee.findUnique.mockResolvedValue({ payPackageVerifiedAt: new Date() });
     await expect(service.verifyPackage('e1', finance)).rejects.toThrow('already verified');
   });
+
+  it('only the sender or the request approver can edit a pending incentive request', async () => {
+    const prisma = {
+      payChangeRequest: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'r3',
+          kind: PayChangeKind.INCENTIVE,
+          employeeId: 'e1',
+          payload: { amount: 1000, month: 10, year: 2026 },
+          approverTarget: EmployeeApproverTarget.FOUNDER,
+          status: PayChangeStatus.PENDING,
+          submittedById: 'someone-else',
+        }),
+      },
+    };
+    const service = new PayChangeRequestsService(prisma as never);
+    await expect(
+      service.editIncentiveRequest('r3', finance, {
+        amount: 1500,
+        month: 10,
+        year: 2026,
+        approverTarget: EmployeeApproverTarget.FOUNDER,
+      }),
+    ).rejects.toThrow('Only the Founder can decide this request');
+  });
 });
