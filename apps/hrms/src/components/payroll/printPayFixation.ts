@@ -1,5 +1,5 @@
 import { format } from 'date-fns'
-import { ORG_HEADER_CSS, orgHeaderHtml } from '@/lib/orgHeader'
+import { ORG_DOC_CSS, ORG_HEADER_CSS, orgFooterHtml, orgHeaderHtml } from '@/lib/orgHeader'
 import type { EmployeeAllowance } from '@/api/endpoints/payApprovals'
 import type { StipendRecord } from '@/types'
 
@@ -59,7 +59,7 @@ export function printPayFixation(opts: {
 h2{text-align:center;margin:0 0 4px}h3{text-align:center;margin:0 0 24px;text-decoration:underline}
 table{border-collapse:collapse;width:100%;margin:12px 0}td{border:1px solid #999;padding:6px 8px}
 td.n{text-align:right}tr.t td{font-weight:bold;background:#f2f2f2}
-.sig{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:80px}${ORG_HEADER_CSS}
+.sig{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:80px}${ORG_HEADER_CSS}${ORG_DOC_CSS}
 .s{border-top:1px solid #000;padding-top:4px;text-align:center;font-weight:bold}</style></head><body>
 ${orgHeaderHtml('Pay Fixation')}
 <p>Date: ${format(new Date(), 'dd/MM/yyyy')}</p>
@@ -69,6 +69,7 @@ Designation: ${esc(opts.designation ?? '—')}<br>Branch: ${esc(opts.branch ?? '
 Deductions (late, absence, leave without pay, fines) apply as per SOP.</p>
 <table><tbody>${rows}<tr class="t"><td>Total monthly package</td><td class="n">${pkr(total)}</td></tr></tbody></table>
 <div class="sig">${signs}</div>
+${orgFooterHtml()}
 <script>window.onload=()=>window.print()</script></body></html>`)
   w.document.close()
   w.focus()

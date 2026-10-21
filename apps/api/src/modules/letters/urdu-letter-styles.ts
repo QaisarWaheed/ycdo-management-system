@@ -234,4 +234,38 @@ body {
   min-width: 80pt;
   border-bottom: 1px solid #000;
 }
+
+/* YCDO notification design (2026-10-22): navy letterhead, italic title over
+   a blue rule; the blue wave at the page foot comes from the PDF footer. */
+.letterhead-org, .letterhead-org .org-name { color: #1b2f7a; }
+.letterhead-org .office, .letterhead-org .loc { font-weight: 700; letter-spacing: 0.3pt; }
+.letter-nos, .letterhead-meta { font-family: 'Times New Roman', Times, Georgia, serif; }
+.notification-block {
+  border-bottom: 1.5pt solid #2f6fd0;
+  padding-bottom: 3pt;
+  margin-bottom: 6pt;
+}
+.notification-block .en-title { font-style: italic; font-size: 18pt; letter-spacing: 0.5pt; }
+.en-letter-shell {
+  border-bottom: 1.5pt solid #2f6fd0;
+  padding-bottom: 6pt;
+  margin-bottom: 12pt;
+}
+
+/* One page (2026-10-22): same font sizes, tighter line and paragraph spacing,
+   so warning / fine / suspension letters with their tables fit on one A4. */
+body { line-height: 1.85; }
+.body p { line-height: 1.85; margin: 0 0 5pt; }
+.violations li { line-height: 1.85; margin-bottom: 3pt; }
+.meta-block { line-height: 1.9; margin-bottom: 2pt; }
+.meta-block .row { margin: 0; }
+.salutation { margin: 2pt 0 3pt; }
+/* Table cells in Naskh (same size): Nastaliq rows need twice the height. */
+.attendance-table { line-height: 1.5; margin: 3pt 0; font-family: 'Noto Naskh Arabic', 'Noto Nastaliq Urdu', 'Segoe UI', Tahoma, Arial, sans-serif; }
+.attendance-table th, .attendance-table td { padding: 2pt 5pt; }
+.signature { margin-top: 6pt; }
+.bismillah { margin-bottom: 0; line-height: 1.6; }
+.letterhead-row { margin-bottom: 0; }
+.letter-nos { margin-top: 3pt; line-height: 1.35; }
+.notification-block { margin-top: 0; }
 `;

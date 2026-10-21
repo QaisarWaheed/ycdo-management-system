@@ -107,6 +107,15 @@ html[lang="ur"] .page > p[style*="margin-top:28pt"]::before {
   content: ""; display: block; width: 160pt; border-top: 1px solid #000; margin-bottom: 6pt;
 }`;
 
+/** The two-tone blue wave at the foot of every YCDO letter page. */
+export const LETTER_WAVE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 80" preserveAspectRatio="none" width="100%" height="100%"><path d="M0 62 C200 40 480 18 800 0 L800 80 L0 80 Z" fill="#5b9be6"/><path d="M0 70 C220 54 500 32 800 16 L800 80 L0 80 Z" fill="#1b3f9c"/><path d="M0 76 C240 64 520 44 800 30" stroke="#ffffff" stroke-width="2.5" fill="none" opacity="0.7"/></svg>`;
+const WAVE_HTML = `<div style="width:100%;height:11mm;line-height:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${LETTER_WAVE_SVG}</div>`;
+/** Chrome lays the footer out from the top of the bottom margin; fill it so the wave sits on the page edge. */
+const withWave = (content: string, height = FOOTER_MM) =>
+  `<div style="width:100%;height:${height}mm;margin:0;padding:0;display:flex;flex-direction:column;justify-content:flex-end;">${content}${WAVE_HTML}</div>`;
+const FOOTER_MM = 20;
+const SIGNATURE_FOOTER_MM = 27;
+
 const FOOTER_STYLE =
   'width:100%;font-size:10px;color:#333;font-family:Segoe UI,Arial,sans-serif;padding:0 16px 4px;';
 
@@ -114,34 +123,36 @@ const FOOTER_STYLE =
 export function buildPdfFooterTemplate(options: PdfOptions = {}): string {
   const sig = options.employeeSignature;
   if (!sig) {
-    return `<div style="${FOOTER_STYLE}"><div style="text-align:center;">${COMPUTER_GENERATED_NOTICE}</div></div>`;
+    return withWave(
+      `<div style="${FOOTER_STYLE}"><div style="text-align:center;">${COMPUTER_GENERATED_NOTICE}</div></div>`,
+    );
   }
 
   if (sig.urdu) {
     const urduLetterNo = sig.letterNo
       ? `<span>لیٹر نمبر: <span dir="ltr">${escapeHtml(sig.letterNo)}</span></span>`
       : '';
-    return `<div dir="rtl" style="${FOOTER_STYLE}font-family:'Noto Nastaliq Urdu','Jameel Noori Nastaleeq','Noto Naskh Arabic','Segoe UI',Arial,sans-serif;font-size:11px;">
+    return withWave(`<div dir="rtl" style="${FOOTER_STYLE}font-family:'Noto Nastaliq Urdu','Jameel Noori Nastaleeq','Noto Naskh Arabic','Segoe UI',Arial,sans-serif;font-size:11px;">
   <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;">
     <span>دستخط ملازم: <span style="display:inline-block;width:150px;border-bottom:1px solid #333;"></span></span>
     <span>نام: ${escapeHtml(sig.name)}</span>
     ${urduLetterNo}
     <span>صفحہ <span class="pageNumber"></span> از <span class="totalPages"></span></span>
   </div>
-</div>`;
+</div>`, SIGNATURE_FOOTER_MM);
   }
 
   const letterNo = sig.letterNo
     ? `<span>Letter No.: ${escapeHtml(sig.letterNo)}</span>`
     : '';
-  return `<div style="${FOOTER_STYLE}">
+  return withWave(`<div style="${FOOTER_STYLE}">
   <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;">
     <span>Employee Signature: <span style="display:inline-block;width:150px;border-bottom:1px solid #333;"></span></span>
     <span>Name: ${escapeHtml(sig.name)}</span>
     ${letterNo}
     <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
   </div>
-</div>`;
+</div>`, SIGNATURE_FOOTER_MM);
 }
 
 export async function generatePdf(
@@ -177,10 +188,11 @@ export async function generatePdf(
       headerTemplate: '<div></div>',
       footerTemplate: buildPdfFooterTemplate(pdfOptions),
       margin: {
-        top: '14mm',
+        // Bismillah sits close to the top edge so the letter stays on one page with the wave.
+        top: '10mm',
         right: '14mm',
-        // Taller footer when the employee signature line is printed.
-        bottom: options.employeeSignature ? '22mm' : '16mm',
+        // Room for the wave; taller when the employee signature line is printed.
+        bottom: `${options.employeeSignature ? SIGNATURE_FOOTER_MM : FOOTER_MM}mm`,
         left: '14mm',
       },
     });
@@ -209,6 +221,10 @@ export async function generateJpeg(htmlContent: string): Promise<Buffer> {
         body {
           padding: 14mm !important;
           box-sizing: border-box !important;
+        }
+        body::after {
+          content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 11mm;
+          background: url("data:image/svg+xml,${encodeURIComponent(LETTER_WAVE_SVG)}") no-repeat center / 100% 100%;
         }
       `,
     });

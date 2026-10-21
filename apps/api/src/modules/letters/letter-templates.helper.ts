@@ -350,6 +350,23 @@ body {
   color: #333;
   line-height: 1.35;
 }
+
+/* YCDO notification design (2026-10-22): navy letterhead, italic title over
+   a blue rule; the blue wave at the page foot comes from the PDF footer. */
+.letterhead-org, .letterhead-org .org-name { color: #1b2f7a; }
+.letterhead-org .office, .letterhead-org .loc { font-weight: 700; letter-spacing: 0.3pt; }
+.letter-nos, .letterhead-meta { font-family: 'Times New Roman', Times, Georgia, serif; }
+.notification-block {
+  border-bottom: 1.5pt solid #2f6fd0;
+  padding-bottom: 3pt;
+  margin-bottom: 6pt;
+}
+.notification-block .en-title { font-style: italic; font-size: 18pt; letter-spacing: 0.5pt; }
+.en-letter-shell {
+  border-bottom: 1.5pt solid #2f6fd0;
+  padding-bottom: 6pt;
+  margin-bottom: 12pt;
+}
 `;
 
 const YCDO_ENGLISH_LETTER_HEADER = `
