@@ -97,7 +97,7 @@ export function PayslipViewDialog({
           <Skeleton className="h-64 w-full" />
         ) : (
           <>
-            <PayslipComponents entry={data} />
+            <PayslipComponents entry={data} slip={slip} />
             <PayslipDocument slip={slip} />
           </>
         )}

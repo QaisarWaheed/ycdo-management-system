@@ -39,10 +39,14 @@ export class IncentivesController {
     private payChangeRequests: PayChangeRequestsService,
   ) {}
 
-  /** Only executives set incentives (Founder decision); Finance can view. */
+  /**
+   * Executives set incentives directly; Finance sends a request that an
+   * executive approves (decision 2026-10-21, replacing view-only for Finance).
+   */
   @Post()
   @StrictRoles()
   @Roles(
+    UserRole.PAYROLL_OFFICER,
     UserRole.PRESIDENT,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,
@@ -198,6 +202,7 @@ export class IncentivesController {
   @Patch(':id')
   @StrictRoles()
   @Roles(
+    UserRole.PAYROLL_OFFICER,
     UserRole.PRESIDENT,
     UserRole.FOUNDER,
     UserRole.CHAIRMAN,

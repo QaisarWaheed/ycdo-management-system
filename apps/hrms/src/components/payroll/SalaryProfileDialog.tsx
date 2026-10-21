@@ -70,7 +70,9 @@ interface SalaryProfile {
 const pkr = (n: number) => `PKR ${Math.round(n).toLocaleString('en-PK')}`
 const monthName = (m: number, y: number) =>
   new Date(Date.UTC(y, m - 1, 15)).toLocaleString('en-US', { month: 'short', year: 'numeric' })
-const words = (k: string) => k.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').toLowerCase()
+/** camelCase (missingCheckout) or ENUM_CASE (SHOW_CAUSE) key → plain words. */
+const words = (k: string) =>
+  (/^[A-Z_]+$/.test(k) ? k.replace(/_/g, ' ') : k.replace(/([A-Z])/g, ' $1')).toLowerCase().trim()
 
 function Box({ title, children }: { title: string; children: React.ReactNode }) {
   return (

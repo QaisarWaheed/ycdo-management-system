@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/useAuth'
 import { AddIncentiveDialog } from '@/pages/incentives/AddIncentiveDialog'
+import type { PayslipSlipData } from '@/lib/payslipSlip'
 import { DEDUCTION_TYPES, type PayrollEntry } from '@/types'
 
 type Kind = 'allowances' | 'deductions' | 'incentives'
@@ -39,8 +40,14 @@ const clean = (d?: string | null) =>
  * The payslip's Allowances, Deductions and Incentives, each opening the
  * month's detail: rows the system adds automatically and rows Finance adds by hand.
  */
-export function PayslipComponents({ entry }: { entry: PayrollEntry }) {
+export function PayslipComponents({ entry, slip }: { entry: PayrollEntry; slip?: PayslipSlipData }) {
   const [open, setOpen] = useState<Kind | null>(null)
+  // API slips carry every line the slip prints (attendance deductions included).
+  const sections = slip?.sections ?? []
+  const earningLines = sections.find((s) => s.key === 'earnings')?.lines ?? []
+  const slipDeductions = sections.filter((s) => s.key !== 'earnings').flatMap((s) => s.lines)
+  const slipIncentives = earningLines.filter((l) => /incentive/i.test(l.label))
+  const slipAllowances = earningLines.filter((l) => !/basic|incentive/i.test(l.label))
   const allowances = (entry.allowances ?? []).filter((a) => !(a.description ?? '').startsWith('Incentive'))
   const incentives = (entry.allowances ?? []).filter((a) => (a.description ?? '').startsWith('Incentive'))
   const deductions = entry.deductions ?? []
@@ -48,11 +55,14 @@ export function PayslipComponents({ entry }: { entry: PayrollEntry }) {
     ?.packageAllowanceLines ?? []
   const sum = (rows: Array<{ amount: number | string }>) => rows.reduce((s, r) => s + Number(r.amount), 0)
 
+  const useSlip = sections.length > 0
   const tiles: Array<{ kind: Kind; label: string; total: number }> = [
-    { kind: 'allowances', label: 'Allowances', total: sum(allowances) + sum(packageLines) },
-    { kind: 'deductions', label: 'Deductions', total: sum(deductions) },
-    { kind: 'incentives', label: 'Incentives', total: sum(incentives) },
+    { kind: 'allowances', label: 'Allowances', total: useSlip ? sum(slipAllowances) : sum(allowances) + sum(packageLines) },
+    { kind: 'deductions', label: 'Deductions', total: useSlip ? sum(slipDeductions) : sum(deductions) },
+    { kind: 'incentives', label: 'Incentives', total: useSlip ? sum(slipIncentives) : sum(incentives) },
   ]
+  const fromSlip = (lines: Array<{ label: string; amount: number; note?: string }>) =>
+    lines.map((l, i) => ({ id: `s${i}`, label: l.label, note: l.note ?? '', amount: l.amount }))
 
   return (
     <div className="no-print mb-3 grid grid-cols-3 gap-2">
@@ -73,7 +83,9 @@ export function PayslipComponents({ entry }: { entry: PayrollEntry }) {
           kind={open}
           entry={entry}
           rows={
-            open === 'deductions'
+            useSlip
+              ? fromSlip(open === 'deductions' ? slipDeductions : open === 'incentives' ? slipIncentives : slipAllowances)
+              : open === 'deductions'
               ? deductions.map((d) => ({ id: d.id, label: titleCase(d.reason), note: clean(d.description), amount: d.amount }))
               : open === 'incentives'
                 ? incentives.map((a) => ({ id: a.id, label: 'Incentive', note: clean(a.description?.replace(/^Incentive:?\s*/, '')), amount: a.amount }))
