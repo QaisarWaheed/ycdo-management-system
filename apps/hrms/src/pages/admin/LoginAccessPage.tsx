@@ -106,6 +106,7 @@ function ManageAccessDialog({
   const [managerScopes, setManagerScopes] = useState<SelectedScope[]>([])
   const [isActive, setIsActive] = useState(true)
   const [branchId, setBranchId] = useState('')
+  const [extraRoles, setExtraRoles] = useState<string[]>([])
 
   const { data: meta } = useQuery({
     queryKey: ['user-access-meta'],
@@ -135,6 +136,7 @@ function ManageAccessDialog({
     )
     setIsActive(user.isActive)
     setBranchId(user.branchId ?? '')
+    setExtraRoles(user.additionalRoles ?? [])
     const modes = {} as Record<AppPermission, PermissionMode>
     for (const p of user.permissions) {
       modes[p.permission] = p.granted ? 'grant' : 'deny'
@@ -167,6 +169,7 @@ function ManageAccessDialog({
         })),
         isActive,
         branchId: branchId || null,
+        additionalRoles: extraRoles,
         permissions,
       })
     },
@@ -286,6 +289,33 @@ function ManageAccessDialog({
                   </Select>
                 </div>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <Label className="text-base">Extra roles</Label>
+                <p className="text-xs text-text-secondary">
+                  This login also gets the pages and actions of every role ticked here, on top of{' '}
+                  {user.role.replace(/_/g, ' ')} (e.g. HR Operations who also does HR Executive work).
+                </p>
+              </div>
+              <div className="grid max-h-48 grid-cols-1 gap-1 overflow-y-auto rounded-md border border-border p-3 sm:grid-cols-2">
+                {(meta?.assignableRoles ?? [])
+                  .filter((r) => r !== user.role && r !== 'SUPER_ADMIN' && r !== 'EMPLOYEE')
+                  .map((r) => (
+                    <label key={r} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={extraRoles.includes(r)}
+                        disabled={saveMutation.isPending}
+                        onChange={(e) =>
+                          setExtraRoles((prev) => (e.target.checked ? [...prev, r] : prev.filter((x) => x !== r)))
+                        }
+                      />
+                      {r.replace(/_/g, ' ')}
+                    </label>
+                  ))}
+              </div>
             </div>
 
             <div className="space-y-3">

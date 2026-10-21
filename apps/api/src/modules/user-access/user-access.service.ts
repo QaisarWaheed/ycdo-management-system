@@ -352,7 +352,14 @@ export class UserAccessService {
     if (dto.role) {
       this.assertAssignableRole(dto.role, actingRole, user);
     }
-    // additionalRoles writes are ignored; existing grants remain active.
+    // Extra roles (e.g. HR Operations who also does HR Executive work): each must be
+    // assignable by the acting user; Super Admin can only be granted by a Super Admin.
+    for (const role of dto.additionalRoles ?? []) {
+      this.assertAssignableRole(role, actingRole, user);
+      if (role === UserRole.SUPER_ADMIN && actingRole !== UserRole.SUPER_ADMIN) {
+        throw new ForbiddenException('Only Super Admin can grant the Super Admin role');
+      }
+    }
 
     if (userId === actingUserId && dto.isActive === false) {
       throw new BadRequestException('You cannot disable your own account');
@@ -383,8 +390,16 @@ export class UserAccessService {
         });
       }
 
-      // If primary role changed, drop any duplicate additional grant for that role.
-      if (dto.role !== undefined) {
+      if (dto.additionalRoles !== undefined) {
+        // The list replaces the extra roles; the primary role is never also an extra one.
+        const extra = [...new Set(dto.additionalRoles)].filter((r) => r !== nextPrimary);
+        await tx.userAdditionalRole.deleteMany({ where: { userId, role: { notIn: extra } } });
+        await tx.userAdditionalRole.createMany({
+          data: extra.map((role) => ({ userId, role })),
+          skipDuplicates: true,
+        });
+      } else if (dto.role !== undefined) {
+        // If primary role changed, drop any duplicate additional grant for that role.
         await tx.userAdditionalRole.deleteMany({
           where: { userId, role: nextPrimary },
         });
@@ -424,6 +439,7 @@ export class UserAccessService {
           changes: {
             isActive: dto.isActive,
             role: dto.role,
+            additionalRoles: dto.additionalRoles,
             managerScopes: dto.managerScopes ?? null,
             branchId: dto.branchId,
             permissions: dto.permissions?.map((p) => ({
