@@ -8,15 +8,18 @@ const esc = (v: unknown) =>
 const pkr = (n: number) => `PKR ${Math.round(n).toLocaleString('en-PK')}`
 
 /**
- * Pay components on the letter: Basic, then the allowances running this
- * month (falls back to the old package fields when none are assigned).
+ * Pay components on the letter: Basic, then the allowances running in the
+ * month the letter takes effect: the package's start month, or this month for
+ * a package already running (falls back to the old package fields when none are assigned).
  */
 export function payFixationLines(
   stipend: StipendRecord,
   allowances: EmployeeAllowance[],
   today = new Date(),
 ) {
-  const month = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)).toISOString().slice(0, 10)
+  const thisMonth = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)).toISOString().slice(0, 10)
+  const effectMonth = `${String(stipend.effectiveFrom ?? '').slice(0, 7)}-01`
+  const month = effectMonth > thisMonth ? effectMonth : thisMonth
   const running = allowances.filter(
     (a) => a.startMonth.slice(0, 10) <= month && (!a.endMonth || a.endMonth.slice(0, 10) >= month),
   )
