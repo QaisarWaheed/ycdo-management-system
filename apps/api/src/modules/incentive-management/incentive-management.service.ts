@@ -16,6 +16,7 @@ import { AllowancesService } from '../allowances/allowances.service';
 import { isActiveInMonth } from '../allowances/package-allowances.util';
 import { buildSuspensionWatchlist } from '../attendance/suspension-watchlist';
 import { ActivityWindowsService } from '../activity-windows/activity-windows';
+import { onlyTeamIncharge, teamEmployeeWhere } from '../team/team.util';
 
 const IN_CHARGE_DEDUCTION = 'In-Charge loss / deduction';
 /** Req 20.4: the one "type" of In-Charge loss / deduction rows (kind DEDUCTION). */
@@ -25,6 +26,7 @@ export const SUGGEST_ROLES: UserRole[] = [
   UserRole.DEPARTMENT_HEAD,
   UserRole.PAYROLL_OFFICER,
   UserRole.SUPER_ADMIN,
+  UserRole.TEAM_INCHARGE,
 ];
 export const DECIDE_ROLES: UserRole[] = [
   UserRole.CHAIRMAN,
@@ -75,6 +77,10 @@ export class IncentiveManagementService {
     const onlyHead =
       actor.roles.includes(UserRole.DEPARTMENT_HEAD) &&
       !hasAnyRole(actor.roles, [...DECIDE_ROLES, UserRole.PAYROLL_OFFICER]);
+    // A Team In-charge suggests for the department + designation pairs IT gave the login.
+    if (onlyTeamIncharge(actor.roles)) {
+      return { AND: [where, await teamEmployeeWhere(this.prisma, actor.id)] };
+    }
     if (onlyHead) {
       const me = await this.prisma.user.findUnique({
         where: { id: actor.id },
@@ -195,7 +201,14 @@ export class IncentiveManagementService {
       };
     }
 
-    const issues = await this.performanceIssues(ids, q.year, q.month);
+    const [issues, progress] = await Promise.all([
+      this.performanceIssues(ids, q.year, q.month),
+      // The Team In-charge's monthly rating, shown to whoever decides the suggestion.
+      this.prisma.teamProgress.findMany({
+        where: { employeeId: { in: ids }, month: q.month, year: q.year },
+        select: { employeeId: true, rating: true, remarks: true },
+      }),
+    ]);
     const typeName = new Map<string, string>([
       ...incentiveTypes.map((t) => [`INCENTIVE|${t.id}`, t.name] as [string, string]),
       ...allowanceTypes.map((t) => [`ALLOWANCE|${t.id}`, t.name] as [string, string]),
@@ -214,6 +227,7 @@ export class IncentiveManagementService {
         branch: e.currentBranch?.name ?? null,
         department: e.currentDepartment?.name ?? null,
         issues: issues.get(e.id) ?? [],
+        progress: progress.find((p) => p.employeeId === e.id) ?? null,
       })),
       rows: [...rows.values()]
         .filter((r) => empById.has(r.employeeId))

@@ -34,12 +34,14 @@ export class AdditionalWorkingDaysController {
     UserRole.HR_EXECUTIVE,
     UserRole.ADMIN_OFFICER,
     UserRole.ADMIN_MANAGER,
+    // Suggests extra days for their own team; HR Operations approves as usual.
+    UserRole.TEAM_INCHARGE,
   )
   create(
     @Body() dto: CreateAdditionalWorkingDayDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: UserRole; roles?: UserRole[] },
   ) {
-    return this.service.create(dto, user.id);
+    return this.service.create(dto, user.id, user.roles?.length ? user.roles : [user.role]);
   }
 
   @Get('employee/:employeeId')

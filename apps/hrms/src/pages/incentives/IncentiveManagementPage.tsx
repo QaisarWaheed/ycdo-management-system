@@ -320,6 +320,11 @@ export function IncentiveManagementPage() {
                           {e.employeeCode} · {e.branch ?? '—'} · {e.department ?? '—'}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-1">
+                          {e.progress ? (
+                            <Badge variant="outline" className="border-blue-300 text-blue-800" title={e.progress.remarks ?? ''}>
+                              Team rating {e.progress.rating}/5{e.progress.remarks ? `: ${e.progress.remarks}` : ''}
+                            </Badge>
+                          ) : null}
                           {e.issues.map((i) => (
                             <Badge key={i} variant="outline" className="border-amber-300 text-amber-800">
                               {i}

@@ -61,7 +61,11 @@ const itTeamNavItems = [
   { to: '/admin/login-access', label: 'Login Access', icon: Shield },
   { to: '/admin/pending-approvals', label: 'Pending Approvals', icon: UserPlus },
   { to: '/admin/letter-templates', label: 'Letter Templates', icon: FileText },
+  { to: '/admin/team-assignments', label: 'Team Assignments', icon: Users },
 ]
+
+/** Team In-charge: rates the assigned departments / designations. */
+const myTeamNavItem = { to: '/my-team', label: 'My Team', icon: Users }
 
 const payApprovalsNavItem = {
   to: '/pay-approvals',
@@ -269,6 +273,8 @@ function navItemsForRole(role?: string) {
     return allNavItems.filter((item) => item.to === '/dashboard')
   }
 
+  if (role === 'TEAM_INCHARGE') return [myTeamNavItem]
+
   if (role === 'PROGRESS_OFFICER') {
     return allNavItems.filter((item) =>
       ['/dashboard', '/employees', '/letters', '/reports'].includes(item.to),
@@ -363,6 +369,8 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
   '/admin/roles': { roles: ['IT_ADMIN'] },
   '/admin/login-access': { roles: ['IT_ADMIN'] },
   '/admin/pending-approvals': { roles: ['IT_ADMIN', 'SUPER_ADMIN'] },
+  '/admin/team-assignments': { roles: ['IT_ADMIN', 'SUPER_ADMIN'] },
+  '/my-team': { roles: ['TEAM_INCHARGE'] },
   '/extra-time-approvals': { roles: ['HR_OPERATIONS_MANAGER', 'CHAIRMAN', 'SUPER_ADMIN'] },
   '/fine-audit': {
     roles: ['SUPER_ADMIN', 'IT_ADMIN', 'PAYROLL_OFFICER', 'HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_OPERATIONS_MANAGER'],

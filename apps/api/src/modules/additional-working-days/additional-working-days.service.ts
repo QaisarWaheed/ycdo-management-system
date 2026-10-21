@@ -10,6 +10,7 @@ import { hasAnyRole } from '../../common/user-roles.util';
 import { PayrollService } from '../payroll/payroll.service';
 import { assertEmployeeEligibleForRelieverAttendance } from '../attendance/attendance-eligibility.util';
 import { CreateAdditionalWorkingDayDto } from './additional-working-days.dto';
+import { onlyTeamIncharge, teamEmployeeWhere } from '../team/team.util';
 
 export const RELIEVER_AWD_NOTE = 'Reliever duty';
 
@@ -20,7 +21,12 @@ export class AdditionalWorkingDaysService {
     private payrollService: PayrollService,
   ) {}
 
-  async create(dto: CreateAdditionalWorkingDayDto, addedById: string) {
+  async create(dto: CreateAdditionalWorkingDayDto, addedById: string, roles: UserRole[] = []) {
+    if (onlyTeamIncharge(roles)) {
+      const team = await teamEmployeeWhere(this.prisma, addedById);
+      const inTeam = await this.prisma.employee.count({ where: { AND: [team, { id: dto.employeeId }] } });
+      if (!inTeam) throw new ForbiddenException('This employee is not in your team');
+    }
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
     });

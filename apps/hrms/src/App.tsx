@@ -36,6 +36,8 @@ import { MedicinePendingPage } from '@/pages/payroll/MedicinePendingPage'
 import { ExtraTimeApprovalsPage } from '@/pages/attendance/ExtraTimeApprovalsPage'
 import { SpecialLeavesPage } from '@/pages/leave/SpecialLeavesPage'
 import { IncentiveManagementPage } from '@/pages/incentives/IncentiveManagementPage'
+import { TeamAssignmentsPage } from '@/pages/admin/TeamAssignmentsPage'
+import { MyTeamPage } from '@/pages/team/MyTeamPage'
 import { FineAuditPage } from '@/pages/letters/FineAuditPage'
 import { PunchReviewsPage } from '@/pages/attendance/PunchReviewsPage'
 import { DoctorPerformancePage } from '@/pages/payroll/DoctorPerformancePage'
@@ -301,6 +303,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <FineAuditPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/team-assignments"
+        element={
+          <ProtectedRoute>
+            <TeamAssignmentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/my-team"
+        element={
+          <ProtectedRoute>
+            <MyTeamPage />
           </ProtectedRoute>
         }
       />

@@ -9,6 +9,7 @@ import { ActivityWindowsModule } from './modules/activity-windows/activity-windo
 import { IncentiveManagementModule } from './modules/incentive-management/incentive-management.module';
 import { AdditionalDutiesModule } from './modules/additional-duties/additional-duties.module';
 import { AdditionalWorkingDaysModule } from './modules/additional-working-days/additional-working-days.module';
+import { TeamModule } from './modules/team/team.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BiometricDevicesModule } from './modules/biometric-devices/biometric-devices.module';
@@ -94,6 +95,7 @@ import { CareersModule } from './modules/careers/careers.module';
     IncentiveManagementModule,
     ActivityWindowsModule,
     AdditionalWorkingDaysModule,
+    TeamModule,
     StipendReceiptsModule,
     IncentivesModule,
     AllowancesModule,

@@ -72,7 +72,8 @@ export function LoginPage() {
       return
     }
     login(accessToken, user)
-    navigate('/dashboard', { replace: true })
+    // A Team In-charge has only the My Team page.
+    navigate(user.role === 'TEAM_INCHARGE' ? '/my-team' : '/dashboard', { replace: true })
   }
 
   const onSubmit = async (data: LoginForm) => {

@@ -32,6 +32,8 @@ export interface Board {
     branch: string | null
     department: string | null
     issues: string[]
+    /** Team In-charge's rating for the month (1-5). */
+    progress?: { rating: number; remarks: string | null } | null
   }>
   rows: BoardRow[]
 }

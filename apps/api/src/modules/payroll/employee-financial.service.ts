@@ -28,7 +28,8 @@ const AREA: Record<string, string> = {
 
 type Changes = Record<string, unknown> | null;
 const pick = (c: Changes, keys: string[]) => {
-  for (const k of keys) if (c && c[k] !== undefined && c[k] !== null) return c[k];
+  for (const k of keys)
+    if (c && c[k] !== undefined && c[k] !== null) return c[k];
   return null;
 };
 
@@ -48,23 +49,27 @@ export class EmployeeFinancialService {
       include: { deductions: true, allowances: true },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     });
-    const [incentives, allowanceRows, stipendRecords, letters] = await Promise.all([
-      this.prisma.incentive.findMany({
-        where: { employeeId },
-        include: { type: { select: { name: true } } },
-        orderBy: [{ year: 'desc' }, { month: 'desc' }],
-      }),
-      this.prisma.employeeAllowance.findMany({
-        where: { employeeId },
-        include: { type: { select: { name: true } } },
-        orderBy: { startMonth: 'desc' },
-      }),
-      this.prisma.stipendRecord.findMany({ where: { employeeId }, select: { id: true } }),
-      this.prisma.letter.findMany({
-        where: { employeeId },
-        select: { generatedAt: true },
-      }),
-    ]);
+    const [incentives, allowanceRows, stipendRecords, letters] =
+      await Promise.all([
+        this.prisma.incentive.findMany({
+          where: { employeeId },
+          include: { type: { select: { name: true } } },
+          orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        }),
+        this.prisma.employeeAllowance.findMany({
+          where: { employeeId },
+          include: { type: { select: { name: true } } },
+          orderBy: { startMonth: 'desc' },
+        }),
+        this.prisma.stipendRecord.findMany({
+          where: { employeeId },
+          select: { id: true },
+        }),
+        this.prisma.letter.findMany({
+          where: { employeeId },
+          select: { generatedAt: true },
+        }),
+      ]);
 
     // Month rows (segments of the same month are added together).
     type Month = {
@@ -245,7 +250,8 @@ export class EmployeeFinancialService {
     const year = now.getUTCFullYear();
     const month = now.getUTCMonth() + 1;
     const monthStart = new Date(Date.UTC(year, month - 1, 1));
-    const prev = month === 1 ? { month: 12, year: year - 1 } : { month: month - 1, year };
+    const prev =
+      month === 1 ? { month: 12, year: year - 1 } : { month: month - 1, year };
 
     const [active, allowances, prevIncentives, letters, doctor, loans, money] =
       await Promise.all([
@@ -281,12 +287,23 @@ export class EmployeeFinancialService {
         }),
         this.summary(employeeId),
       ]);
+    // Team In-charge's monthly rating (last 3 months); test doubles may lack the table.
+    const teamProgress = this.prisma.teamProgress
+      ? await this.prisma.teamProgress.findMany({
+          where: { employeeId },
+          orderBy: [{ year: 'desc' }, { month: 'desc' }],
+          take: 3,
+          select: { month: true, year: true, rating: true, remarks: true },
+        })
+      : [];
 
     // Repaid so far per loan, from its installment rows.
     const installments = loans.length
       ? await this.prisma.payrollDeduction.findMany({
           where: {
-            OR: INSTALLMENT_PREFIXES.map((p) => ({ description: { startsWith: p } })),
+            OR: INSTALLMENT_PREFIXES.map((p) => ({
+              description: { startsWith: p },
+            })),
             payrollEntry: { stipendRecord: { employeeId } },
           },
           select: { description: true, amount: true },
@@ -300,7 +317,12 @@ export class EmployeeFinancialService {
 
     let attendance: Record<string, number> | null = null;
     try {
-      const card = await loadAttendanceCard(this.prisma, employeeId, month, year);
+      const card = await loadAttendanceCard(
+        this.prisma,
+        employeeId,
+        month,
+        year,
+      );
       attendance = {
         present: card.present + (card.swapCovered ?? 0),
         late: card.late,
@@ -321,15 +343,21 @@ export class EmployeeFinancialService {
       package: active
         ? {
             basicStipend: Number(active.basicStipend),
-            lumpsumTotal: active.lumpsumTotal != null ? Number(active.lumpsumTotal) : null,
+            lumpsumTotal:
+              active.lumpsumTotal != null ? Number(active.lumpsumTotal) : null,
             effectiveFrom: active.effectiveFrom,
-            allowances: allowances.map((a) => ({ name: a.type.name, amount: Number(a.amount) })),
+            allowances: allowances.map((a) => ({
+              name: a.type.name,
+              amount: Number(a.amount),
+            })),
           }
         : null,
       previousMonthIncentives: {
         month: prev.month,
         year: prev.year,
-        total: roundMoney(prevIncentives.reduce((s, i) => s + Number(i.amount), 0)),
+        total: roundMoney(
+          prevIncentives.reduce((s, i) => s + Number(i.amount), 0),
+        ),
         items: prevIncentives.map((i) => ({
           name: i.type?.name ?? 'Incentive',
           amount: Number(i.amount),
@@ -337,7 +365,9 @@ export class EmployeeFinancialService {
         })),
       },
       attendance,
-      discipline: Object.fromEntries(letters.map((l) => [l.letterType, l._count._all])),
+      discipline: Object.fromEntries(
+        letters.map((l) => [l.letterType, l._count._all]),
+      ),
       doctorPerformance: doctor.map((d) => ({
         month: d.month,
         year: d.year,
@@ -356,6 +386,7 @@ export class EmployeeFinancialService {
         remaining: Math.max(0, Number(l.amount) - (repaid.get(l.id) ?? 0)),
       })),
       lastMonths: money.months.slice(0, 3),
+      teamProgress,
     };
   }
 
@@ -396,8 +427,20 @@ export class EmployeeFinancialService {
           area: AREA[a.entity] ?? a.entity,
           entityId: a.entityId,
           action: a.action,
-          before: pick(c, ['before', 'previousSalary', 'previousBasicStipend', 'previous', 'from']),
-          after: pick(c, ['after', 'newBasicStipend', 'updated', 'to', 'amount']),
+          before: pick(c, [
+            'before',
+            'previousSalary',
+            'previousBasicStipend',
+            'previous',
+            'from',
+          ]),
+          after: pick(c, [
+            'after',
+            'newBasicStipend',
+            'updated',
+            'to',
+            'amount',
+          ]),
           reason: pick(c, ['reason', 'note', 'summary']) as string | null,
           details: c as Prisma.JsonValue,
         };

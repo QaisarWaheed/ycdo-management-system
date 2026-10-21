@@ -65,6 +65,7 @@ interface SalaryProfile {
     otherDeductions: number
     net: number
   }>
+  teamProgress?: Array<{ month: number; year: number; rating: number; remarks: string | null }>
 }
 
 const pkr = (n: number) => `PKR ${Math.round(n).toLocaleString('en-PK')}`
@@ -252,6 +253,19 @@ export function SalaryProfileDialog({
                   ))
                 ) : (
                   <p className="text-sm text-text-secondary">No records</p>
+                )}
+              </Box>
+              <Box title="Team In-charge rating">
+                {data.teamProgress?.length ? (
+                  data.teamProgress.map((t) => (
+                    <Row
+                      key={`${t.year}-${t.month}`}
+                      label={monthName(t.month, t.year)}
+                      value={`${t.rating}/5${t.remarks ? ` · ${t.remarks}` : ''}`}
+                    />
+                  ))
+                ) : (
+                  <p className="text-sm text-text-secondary">No rating</p>
                 )}
               </Box>
               <Box title="Loans & advances">
