@@ -21,6 +21,7 @@ interface StatusRow {
   fullName: string
   designation: string | null
   branch: string | null
+  status: string
   basicStipend: number | null
   lumpsumTotal: number | null
   state: State
@@ -53,6 +54,7 @@ const STATE_STYLE: Record<State, string> = {
   NO_PACKAGE: 'bg-red-100 text-red-800',
 }
 type Filter = State | 'ALL' | 'PENDING_APPROVAL'
+const words = (st: string) => st.charAt(0) + st.slice(1).toLowerCase().replace(/_/g, ' ')
 const pkr = (n: number | null) => (n == null ? '—' : `PKR ${Math.round(n).toLocaleString('en-PK')}`)
 
 /** Finance progress on setting and verifying every employee's salary package. */
@@ -64,23 +66,39 @@ export function SalarySetupStatusPage() {
   const [filter, setFilter] = useState<Filter>('ALL')
   const [search, setSearch] = useState('')
   const [branch, setBranch] = useState('')
+  const [status, setStatus] = useState('')
 
   const branches = useMemo(
     () => [...new Set((data?.rows ?? []).map((r) => r.branch).filter(Boolean) as string[])].sort(),
     [data],
   )
+  const statuses = useMemo(() => [...new Set((data?.rows ?? []).map((r) => r.status))].sort(), [data])
+  // Branch and employee status narrow the boxes too, so their counts match the list.
+  const scoped = useMemo(
+    () => (data?.rows ?? []).filter((r) => (!branch || r.branch === branch) && (!status || r.status === status)),
+    [data, branch, status],
+  )
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return (data?.rows ?? []).filter(
+    return scoped.filter(
       (r) =>
         (filter === 'ALL' ||
           (filter === 'PENDING_APPROVAL' ? r.pendingApproval : r.state === filter)) &&
-        (!branch || r.branch === branch) &&
         (!q || r.fullName.toLowerCase().includes(q) || r.employeeCode.toLowerCase().includes(q)),
     )
-  }, [data, filter, search, branch])
+  }, [scoped, filter, search])
 
-  const s = data?.summary
+  const count = (st: State) => scoped.filter((r) => r.state === st).length
+  const s = data
+    ? {
+        total: scoped.length,
+        verified: count('VERIFIED'),
+        updated: count('UPDATED'),
+        notStarted: count('NOT_STARTED'),
+        noPackage: count('NO_PACKAGE'),
+        pendingApproval: scoped.filter((r) => r.pendingApproval).length,
+      }
+    : undefined
   const done = s && s.total ? Math.round((s.verified / s.total) * 100) : 0
   const tiles: Array<{ key: Filter; label: string; value?: number; style: string }> = [
     { key: 'ALL', label: 'All staff', value: s?.total, style: 'border-border' },
@@ -139,6 +157,18 @@ export function SalarySetupStatusPage() {
             </option>
           ))}
         </select>
+        <select
+          className="rounded-md border border-border bg-white px-3 text-sm"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          <option value="">All statuses</option>
+          {statuses.map((st) => (
+            <option key={st} value={st}>
+              {words(st)}
+            </option>
+          ))}
+        </select>
         <span className="self-center text-sm text-text-secondary">{rows.length} shown</span>
       </div>
 
@@ -175,7 +205,7 @@ export function SalarySetupStatusPage() {
                       </Link>
                       <div className="text-xs text-text-secondary">
                         {r.employeeCode}
-                        {r.designation ? ` · ${r.designation}` : ''}
+                        {r.designation ? ` · ${r.designation}` : ''} · {words(r.status)}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">{r.branch ?? '—'}</TableCell>

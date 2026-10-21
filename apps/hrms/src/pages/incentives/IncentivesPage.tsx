@@ -1,4 +1,4 @@
-import { useCanSetIncentive } from '@/components/payroll/ApproverSelect'
+import { useCanEditPay, useCanSetIncentive } from '@/components/payroll/ApproverSelect'
 import { IncentiveCharts } from '@/components/payroll/IncentiveCharts'
 import { RecurringIncentivePlans } from '@/components/payroll/RecurringIncentivePlans'
 import { useAuth } from '@/hooks/useAuth'
@@ -62,8 +62,10 @@ export function IncentivesPage() {
     year: now.getFullYear(),
   })
   const [addOpen, setAddOpen] = useState(false)
-  // Only executives add, edit or delete incentives; Finance and HR view.
+  // Only executives edit or delete incentives.
   const canEditPay = useCanSetIncentive()
+  // Finance may add too: its incentives go to an executive for approval.
+  const canAdd = useCanEditPay()
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const [editItem, setEditItem] = useState<Incentive | null>(null)
@@ -122,7 +124,7 @@ export function IncentivesPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-text-primary">Incentives</h1>
-        {canEditPay ? (
+        {canAdd ? (
         <Button onClick={() => setAddOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Add Incentive

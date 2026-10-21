@@ -35,12 +35,15 @@ type StipendPackageFieldsProps<T extends FieldValues> = {
   control: Control<T>
   watch: (names: Path<T>[]) => unknown[]
   basicRequired?: boolean
+  /** Edit Payroll: only Basic; allowances and deductions are typed in the slip section. */
+  basicOnly?: boolean
 }
 
 export function StipendPackageFields<T extends FieldValues>({
   control,
   watch,
   basicRequired = true,
+  basicOnly = false,
 }: StipendPackageFieldsProps<T>) {
   const [
     basicStipend,
@@ -77,6 +80,38 @@ export function StipendPackageFields<T extends FieldValues>({
   })
 
   const allowancesLive = packageAllowancesLive()
+  if (basicOnly) {
+    // Old fixed package deductions keep their saved amounts; show them when not zero.
+    const oldDeductions = DEDUCTION_FIELDS.map(([name, label]) => [label, Number(watch([name as Path<T>])[0]) || 0] as const)
+      .filter(([, v]) => v > 0)
+    return (
+      <div className="space-y-3">
+        <FormField
+          control={control}
+          name={'basicStipend' as Path<T>}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                Basic Stipend<span className="text-destructive"> *</span>
+              </FormLabel>
+              <FormControl>
+                <PKRInput value={Number(field.value) || 0} onChange={field.onChange} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        {oldDeductions.length ? (
+          <p className="text-xs text-text-secondary">
+            Fixed package deductions still applied: {oldDeductions.map(([l, v]) => `${l} ${formatPKR(v)}`).join(', ')}.
+          </p>
+        ) : null}
+        <p className="text-sm">
+          Package lumpsum: <span className="font-semibold">{formatPKR(lumpsum)}</span>
+        </p>
+      </div>
+    )
+  }
   const earningFields = allowancesLive
     ? EARNING_FIELDS.filter(([name]) => name === 'basicStipend')
     : EARNING_FIELDS

@@ -95,7 +95,6 @@ import {
 import {
   ApproverSelect,
   useCanEditPay,
-  useCanSetIncentive,
   useNeedsPayApproval,
 } from '@/components/payroll/ApproverSelect'
 import { EmployeeAllowancesPanel } from '@/components/payroll/EmployeeAllowancesPanel'
@@ -967,7 +966,7 @@ function MonthlyPayrollTab() {
   const [incentiveEmployeeId, setIncentiveEmployeeId] = useState<string | null>(
     null,
   )
-  const canAddIncentive = useCanSetIncentive()
+  const canAddIncentive = useCanEditPay() // Finance's incentives go for approval
   const [confirmGenerate, setConfirmGenerate] = useState(false)
   // Reminder before generating: additional duties with no allowance this month.
   const [dutyReminder, setDutyReminder] = useState<DutyMissingAllowance[] | null>(null)

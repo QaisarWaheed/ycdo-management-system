@@ -7,7 +7,7 @@ import { employeesApi } from '@/api/endpoints/employees'
 import { payrollApi } from '@/api/endpoints/payroll'
 import { DateInput } from '@/components/common/DateInput'
 import { StipendPackageFields } from '@/components/payroll/StipendPackageFields'
-import { PayComponentsSection } from '@/components/payroll/PayComponentsSection'
+import { PaySlipEditor, usePaySlipDraft } from '@/components/payroll/PaySlipEditor'
 import type { EmployeeApproverTarget } from '@/api/endpoints/employeeOnboarding'
 import { isPendingApproval, payApprovalsApi } from '@/api/endpoints/payApprovals'
 import {
@@ -139,6 +139,8 @@ export function EditPayrollDialog({
     },
   })
 
+  const slip = usePaySlipDraft(employeeId, form)
+
   useEffect(() => {
     if (!open) return
 
@@ -183,7 +185,7 @@ export function EditPayrollDialog({
         values.effectiveFrom.trim() !== originalEffectiveFrom
       const stipendUpdate = amountsChanged || effectiveFromChanged
 
-      if (!joiningChanged && !stipendUpdate && !values.verify) {
+      if (!joiningChanged && !stipendUpdate && !slip.changed && !values.verify) {
         throw new Error('No changes to save')
       }
 
@@ -242,6 +244,12 @@ export function EditPayrollDialog({
             if (notificationFile) await payApprovalsApi.attach(res.request.id, notificationFile)
           }
         }
+      }
+
+      // Allowances, incentives and deductions typed in the slip section.
+      if (slip.changed) {
+        const res = await slip.apply()
+        if (res.pending) sentTo = res.approverLabel
       }
 
       if (joiningChanged) {
@@ -338,8 +346,8 @@ export function EditPayrollDialog({
                   raise saved mid-month, change &quot;Package starts on&quot;
                   to the 1st without ticking increment.
                 </p>
-                <StipendPackageFields control={form.control} watch={form.watch} />
-                <PayComponentsSection employeeId={employeeId} />
+                <StipendPackageFields control={form.control} watch={form.watch} basicOnly />
+                <PaySlipEditor draft={slip} />
 
                 <label className="flex items-start gap-2 text-sm">
                   <input

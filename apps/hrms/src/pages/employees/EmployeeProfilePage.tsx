@@ -3,7 +3,7 @@ import { ReverseImpactNote } from '@/components/letters/ReverseImpactNote'
 import { SignedScanUploadButton } from '@/components/letters/SignedScan'
 import { ChangeRequestsCard } from '@/components/employees/ChangeRequests'
 import { EmployeeFinancialTab } from '@/components/employees/EmployeeFinancialTab'
-import { useCanSetIncentive } from '@/components/payroll/ApproverSelect'
+import { useCanEditPay } from '@/components/payroll/ApproverSelect'
 import { selectCurrentStipend } from '@/lib/stipendUtils'
 import { Fragment, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -979,7 +979,7 @@ export function EmployeeProfilePage() {
   })
 
   // Only executives add incentives (Founder decision).
-  const canAddIncentive = useCanSetIncentive()
+  const canAddIncentive = useCanEditPay() // Finance's incentives go for approval
 
   const canEditAdditionalWorkingDays = hasRole([
     ...HR_JOB_ROLES,
