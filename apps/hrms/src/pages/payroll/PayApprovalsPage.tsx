@@ -677,8 +677,11 @@ function RequestNotification({ request }: { request: PayChangeRequest }) {
         variant="outline"
         className="mt-1 h-7"
         onClick={async () => {
-          const blob = await payApprovalsApi.attachment(request.id)
-          window.open(URL.createObjectURL(blob), '_blank')
+          // Open the tab inside the click so pop-up blockers allow it.
+          const tab = window.open('', '_blank')
+          const url = URL.createObjectURL(await payApprovalsApi.attachment(request.id))
+          if (tab) tab.location.href = url
+          else window.open(url, '_blank')
         }}
       >
         View signed notification

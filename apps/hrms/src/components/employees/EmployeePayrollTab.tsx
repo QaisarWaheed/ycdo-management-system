@@ -346,11 +346,22 @@ export function EmployeePayrollTab({
               variant="outline"
               size="sm"
               onClick={async () => {
-                const allowances = await queryClient.fetchQuery({
-                  queryKey: ['employee-allowances', employeeId],
-                  queryFn: () => allowancesApi.listForEmployee(employeeId),
-                })
-                printPayFixation({ employeeName, employeeCode, designation, branch, stipend: latestStipend, allowances })
+                // Open the window inside the click: after an await the browser blocks it as a popup.
+                const win = window.open('', '_blank')
+                if (!win) {
+                  toast({ title: 'Allow pop-ups for this site to print the Pay Fixation', variant: 'destructive' })
+                  return
+                }
+                try {
+                  const allowances = await queryClient.fetchQuery({
+                    queryKey: ['employee-allowances', employeeId],
+                    queryFn: () => allowancesApi.listForEmployee(employeeId),
+                  })
+                  printPayFixation({ employeeName, employeeCode, designation, branch, stipend: latestStipend, allowances, win })
+                } catch {
+                  win.close()
+                  toast({ title: 'Could not load allowances for the Pay Fixation', variant: 'destructive' })
+                }
               }}
             >
               <Printer className="mr-2 h-4 w-4" />

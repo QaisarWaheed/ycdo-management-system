@@ -47,10 +47,12 @@ export function printPayFixation(opts: {
   branch?: string | null
   stipend: StipendRecord
   allowances: EmployeeAllowance[]
+  /** A window the caller opened during the click (popup blockers allow only that). */
+  win?: Window
 }) {
   const lines = payFixationLines(opts.stipend, opts.allowances)
   const total = lines.reduce((s, l) => s + l.amount, 0)
-  const w = window.open('', '_blank')
+  const w = opts.win ?? window.open('', '_blank')
   if (!w) return
   const rows = lines.map((l) => `<tr><td>${esc(l.label)}</td><td class="n">${pkr(l.amount)}</td></tr>`).join('')
   // Verification order: Finance prepares, the Founder signs last.

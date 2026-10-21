@@ -88,8 +88,11 @@ export function EmployeeLoansPanel(props: {
     printLoanApplication({ ...props, loan, serviceMonths: eligibility?.serviceMonths ?? 0 })
 
   const viewNotification = async (loan: EmployeeLoan) => {
-    const blob = await loansApi.notification(loan.id)
-    window.open(URL.createObjectURL(blob), '_blank')
+    // Open the tab inside the click so pop-up blockers allow it.
+    const tab = window.open('', '_blank')
+    const url = URL.createObjectURL(await loansApi.notification(loan.id))
+    if (tab) tab.location.href = url
+    else window.open(url, '_blank')
   }
 
   return (
