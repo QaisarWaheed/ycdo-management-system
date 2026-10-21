@@ -22,7 +22,7 @@ const pairKey = (p: { departmentId: string; designation: string }) => `${p.depar
  */
 export function TeamAssignmentsPage() {
   const queryClient = useQueryClient()
-  const { data, isLoading } = useQuery({ queryKey: ['team-assignments'], queryFn: teamApi.options })
+  const { data, isLoading, isError } = useQuery({ queryKey: ['team-assignments'], queryFn: teamApi.options })
   const [loginId, setLoginId] = useState('')
   const [newLogin, setNewLogin] = useState(false)
   const [email, setEmail] = useState('')
@@ -89,6 +89,11 @@ export function TeamAssignmentsPage() {
           Give departments and designations to a Team In-charge login. That login sees those employees in every branch,
           rates them each month and suggests incentives and extra days.
         </p>
+        {isError ? (
+          <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-sm text-red-800">
+            Could not load. Only IT Admin and Super Admin can manage team assignments.
+          </p>
+        ) : null}
       </div>
 
       <Card>

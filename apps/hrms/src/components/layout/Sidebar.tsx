@@ -426,8 +426,14 @@ function useSidebarNavItems() {
   }
 
   const role = user?.role
-  const roleNavItems = navItemsForRole(role)
-  let items = roleNavItems
+  let items = navItemsForRole(role)
+  // Extra roles from Login Access (e.g. HR Operations who is also HR Executive)
+  // add their menu items after the primary role's.
+  for (const extra of (user?.roles ?? []).filter((r) => r !== role)) {
+    for (const item of navItemsForRole(extra)) {
+      if (!items.some((existing) => existing.to === item.to)) items = [...items, item]
+    }
+  }
   if (!FIXED_MENU_ROLES.includes(user?.role ?? '')) {
     const employeeIndex = items.findIndex((item) => item.to === '/employees')
     const insertionIndex =

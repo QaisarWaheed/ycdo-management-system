@@ -61,7 +61,9 @@ export default function App() {
   const previousUserId = useRef<string | null>(user?.id ?? null)
   useEffect(() => {
     const nextUserId = user?.id ?? null
-    if (previousUserId.current !== nextUserId) queryClient.clear()
+    // login() and logout() already clear the cache. Clearing again right after
+    // login drops the first page's in-flight queries, leaving it on "Loading…".
+    if (previousUserId.current && nextUserId && previousUserId.current !== nextUserId) queryClient.clear()
     previousUserId.current = nextUserId
   }, [queryClient, user?.id])
 
