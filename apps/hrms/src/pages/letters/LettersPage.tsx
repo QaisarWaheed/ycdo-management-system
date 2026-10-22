@@ -1086,7 +1086,8 @@ export function LettersPage() {
     'CHAIRMAN',
   ])
   const [searchParams, setSearchParams] = useSearchParams()
-  const section = parseLetterSection(searchParams.get('section'))
+  // Disciplinary, enquiries, watchlist and failed sends are HR's; a Team In-charge has letters only.
+  const section = teamOnly ? 'letters' : parseLetterSection(searchParams.get('section'))
   const [tab, setTab] = useState<'draft' | 'sent' | 'reversed' | 'pending'>(
     'draft',
   )
@@ -1364,7 +1365,7 @@ export function LettersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-muted/40 p-1">
+      <div className={`flex flex-wrap gap-1 rounded-lg border border-border bg-muted/40 p-1 ${teamOnly ? 'hidden' : ''}`}>
         {(
           [
             ['letters', 'Letters'],
