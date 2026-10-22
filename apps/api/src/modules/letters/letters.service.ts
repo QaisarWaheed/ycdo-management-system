@@ -43,6 +43,7 @@ import {
   uploadPdfToCloudinary,
 } from '../../config/cloudinary.config';
 import { hasAnyRole } from '../../common/user-roles.util';
+import { onlyTeamIncharge } from '../team/team.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toPakistanDateOnly } from '../attendance/attendance-late.util';
 import { MISSING_CHECKOUT_CYCLE_FROM } from '../attendance/missing-checkout-policy';
@@ -167,6 +168,8 @@ function letterIssuedAuditAction(letterType: LetterType): string {
 const OWN_LETTERS_ONLY_ROLES: UserRole[] = [
   UserRole.PAYROLL_OFFICER,
   UserRole.PROGRESS_OFFICER,
+  // Drafts letters for its team; HR reviews and sends them.
+  UserRole.TEAM_INCHARGE,
 ];
 
 type LetterActor = { id: string; role: UserRole; roles?: UserRole[] };
@@ -541,6 +544,10 @@ export class LettersService implements OnModuleInit {
       Permission.LETTERS_GENERATE,
       dto.employeeId,
     );
+    // These two are sent the moment they are made; a Team In-charge only drafts.
+    if (actingRole === UserRole.TEAM_INCHARGE && IMMEDIATE_SEND_LETTER_TYPES.includes(dto.letterType)) {
+      throw new ForbiddenException('This letter is sent at once; HR issues it');
+    }
 
     if (isSystemGeneratedLetterType(dto.letterType)) {
       throw new BadRequestException(
@@ -1552,6 +1559,9 @@ export class LettersService implements OnModuleInit {
     actingRole: UserRole,
     actingRoles?: UserRole[],
   ) {
+    if (onlyTeamIncharge(actingRoles?.length ? actingRoles : [actingRole])) {
+      throw new ForbiddenException('A Team In-charge drafts letters; HR sends them');
+    }
     const letter = await this.findOne(letterId);
     this.assertOwnLetterAccess(letter, letterId, {
       id: actingUserId,
@@ -1792,6 +1802,9 @@ export class LettersService implements OnModuleInit {
   ) {
     const letter = await this.findOne(letterId);
     if (!opts?.skipAccessCheck) {
+      if (onlyTeamIncharge(opts?.actingRoles?.length ? opts.actingRoles : [actingRole])) {
+        throw new ForbiddenException('A Team In-charge drafts letters; HR sends them');
+      }
       this.assertOwnLetterAccess(letter, letterId, {
         id: actingUserId,
         role: actingRole,

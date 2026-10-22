@@ -678,6 +678,8 @@ export function EmployeeProfilePage() {
   const { id: routeId } = useParams<{ id: string }>()
   const id = routeId?.trim() ?? ''
   const { user, hasPermission, hasRole } = useAuth()
+  // A Team In-charge sees its team's Overview and Letters only (other data is not its to see).
+  const teamOnly = user?.role === 'TEAM_INCHARGE'
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -752,25 +754,25 @@ export function EmployeeProfilePage() {
   const { data: faceSyncStats } = useQuery({
     queryKey: ['face-sync', 'stats', id],
     queryFn: () => faceSyncApi.getStats(id),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
 
   const { data: attendanceSummary, isLoading: loadingSummary } = useQuery({
     queryKey: ['attendance', 'summary', id, month, year],
     queryFn: () => attendanceApi.getSummary(id, month, year),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
 
   const { data: workingHours, isLoading: loadingWorkingHours } = useQuery({
     queryKey: ['working-hours', id],
     queryFn: () => employeesApi.getWorkingHours(id),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
 
   const { data: attendanceLogs = [], isLoading: loadingLogs } = useQuery({
     queryKey: ['attendance', 'logs', id, month, year],
     queryFn: () => attendanceApi.getAll({ employeeId: id, month, year }),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
 
   type AttendanceLogRow = AttendanceLog & { isMissing?: boolean }
@@ -890,7 +892,7 @@ export function EmployeeProfilePage() {
   const { data: payrollHistory = [] } = useQuery({
     queryKey: ['payroll-history', id],
     queryFn: () => payrollApi.getHistory(id),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
   const monthPayroll = useMemo(() => {
     return (payrollHistory as PayrollEntry[]).filter(
@@ -926,13 +928,13 @@ export function EmployeeProfilePage() {
   const { data: leaves = [], isLoading: loadingLeaves } = useQuery({
     queryKey: ['leave', id],
     queryFn: () => leaveApi.getAll({ employeeId: id }),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
 
   const { data: leaveBalance } = useQuery({
     queryKey: ['leave-balance', id, year],
     queryFn: () => leaveApi.getBalance(id, year),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
 
   const { data: letters = [], isLoading: loadingLetters } = useQuery({
@@ -953,14 +955,14 @@ export function EmployeeProfilePage() {
   const { data: disciplinary = [], isLoading: loadingDisciplinary } = useQuery({
     queryKey: ['disciplinary', id],
     queryFn: () => disciplinaryApi.getAll({ employeeId: id }),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
 
   const { data: qualifications = [], isLoading: loadingQualifications } =
     useQuery({
       queryKey: ['qualifications', id],
       queryFn: () => qualificationsApi.getByEmployee(id),
-      enabled: !!id,
+      enabled: !!id && !teamOnly,
     })
 
   const {
@@ -969,13 +971,13 @@ export function EmployeeProfilePage() {
   } = useQuery({
     queryKey: ['previous-employment', id],
     queryFn: () => previousEmploymentApi.getByEmployee(id),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
 
   const { data: incentives = [], isLoading: loadingIncentives } = useQuery({
     queryKey: ['incentives', id],
     queryFn: () => incentivesApi.getByEmployee(id),
-    enabled: !!id,
+    enabled: !!id && !teamOnly,
   })
 
   // Only executives add incentives (Founder decision).
@@ -1769,19 +1771,25 @@ export function EmployeeProfilePage() {
       <Tabs value={profileTab} onValueChange={setProfileTab} className="min-w-0">
         <TabsList className="flex h-auto flex-wrap gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="attendance">Attendance</TabsTrigger>
-          <TabsTrigger value="payroll">Payroll</TabsTrigger>
-          {canViewFinancial ? <TabsTrigger value="financial">Financial</TabsTrigger> : null}
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-          <TabsTrigger value="leave">Leave</TabsTrigger>
-          <TabsTrigger value="letters">Letters</TabsTrigger>
-          <TabsTrigger value="disciplinary">Disciplinary</TabsTrigger>
-          <TabsTrigger value="qualifications">Qualifications</TabsTrigger>
-          <TabsTrigger value="previous-employment">Previous Employment</TabsTrigger>
-          <TabsTrigger value="incentives">Incentives</TabsTrigger>
-          <TabsTrigger value="additional-working-days">
-            Additional working days
-          </TabsTrigger>
+          {teamOnly ? (
+            <TabsTrigger value="letters">Letters</TabsTrigger>
+          ) : (
+            <>
+              <TabsTrigger value="attendance">Attendance</TabsTrigger>
+              <TabsTrigger value="payroll">Payroll</TabsTrigger>
+              {canViewFinancial ? <TabsTrigger value="financial">Financial</TabsTrigger> : null}
+              <TabsTrigger value="documents">Documents</TabsTrigger>
+              <TabsTrigger value="leave">Leave</TabsTrigger>
+              <TabsTrigger value="letters">Letters</TabsTrigger>
+              <TabsTrigger value="disciplinary">Disciplinary</TabsTrigger>
+              <TabsTrigger value="qualifications">Qualifications</TabsTrigger>
+              <TabsTrigger value="previous-employment">Previous Employment</TabsTrigger>
+              <TabsTrigger value="incentives">Incentives</TabsTrigger>
+              <TabsTrigger value="additional-working-days">
+                Additional working days
+              </TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">

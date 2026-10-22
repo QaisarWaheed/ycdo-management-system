@@ -82,13 +82,15 @@ export class IncentiveManagementController {
   }
 
   @Post('apply')
-  @Roles(...DECIDE_ROLES)
+  // Finance may decide deduction suggestions; the service enforces it.
+  @Roles(...DECIDE_ROLES, UserRole.PAYROLL_OFFICER)
   apply(@Body() dto: ApplyDto, @CurrentUser() user: JwtUser) {
     return this.service.apply(actor(user), dto);
   }
 
   @Post('reject')
-  @Roles(...DECIDE_ROLES)
+  // Finance may decide deduction suggestions; the service enforces it.
+  @Roles(...DECIDE_ROLES, UserRole.PAYROLL_OFFICER)
   reject(@Body() dto: RejectDto, @CurrentUser() user: JwtUser) {
     return this.service.reject(actor(user), dto);
   }

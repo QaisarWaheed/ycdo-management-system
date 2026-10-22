@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { additionalWorkingDaysApi } from '@/api/endpoints/additionalWorkingDays'
-import { incentiveManagementApi } from '@/api/endpoints/incentiveManagement'
+import { DEDUCTION_TYPE_ID, incentiveManagementApi } from '@/api/endpoints/incentiveManagement'
 import { teamApi, type MyTeam, type MyTeamEmployee } from '@/api/endpoints/team'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -78,6 +78,8 @@ function MemberCard({ e, team, month, year }: { e: MyTeamEmployee; team: MyTeam;
   const [typeId, setTypeId] = useState(team.incentiveTypes[0]?.id ?? '')
   const [amount, setAmount] = useState('')
   const [incentiveNote, setIncentiveNote] = useState('')
+  const [cut, setCut] = useState('')
+  const [cutNote, setCutNote] = useState('')
   const [day, setDay] = useState('')
   const [dayNote, setDayNote] = useState('')
   const first = `${year}-${String(month).padStart(2, '0')}-01`
@@ -107,6 +109,25 @@ function MemberCard({ e, team, month, year }: { e: MyTeamEmployee; team: MyTeam;
       toast({ title: 'Incentive suggestion sent for approval' })
       setAmount('')
       setIncentiveNote('')
+      refresh()
+    },
+    onError: (err: ApiError) => toast({ title: 'Could not send', description: errorText(err), variant: 'destructive' }),
+  })
+  const deduction = useMutation({
+    mutationFn: () =>
+      incentiveManagementApi.suggest({
+        employeeId: e.id,
+        kind: 'DEDUCTION',
+        typeId: DEDUCTION_TYPE_ID,
+        month,
+        year,
+        amount: Number(cut),
+        note: cutNote.trim(),
+      }),
+    onSuccess: () => {
+      toast({ title: 'Deduction suggestion sent to Finance' })
+      setCut('')
+      setCutNote('')
       refresh()
     },
     onError: (err: ApiError) => toast({ title: 'Could not send', description: errorText(err), variant: 'destructive' }),
@@ -143,7 +164,7 @@ function MemberCard({ e, team, month, year }: { e: MyTeamEmployee; team: MyTeam;
           </div>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="space-y-2 rounded-lg border border-border p-3">
             <p className="text-sm font-medium">Monthly rating</p>
             <select
@@ -194,9 +215,35 @@ function MemberCard({ e, team, month, year }: { e: MyTeamEmployee; team: MyTeam;
             <Button size="sm" disabled={!typeId || !(Number(amount) > 0) || suggest.isPending} onClick={() => suggest.mutate()}>
               {suggest.isPending ? 'Sending...' : 'Send suggestion'}
             </Button>
-            {e.suggestions.map((s, i) => (
+            {e.suggestions.filter((s) => s.kind === 'INCENTIVE').map((s, i) => (
               <p key={i} className="text-xs text-text-secondary">
                 {s.type} {pkr(s.amount)} — {STATUS[s.status] ?? s.status}
+                {s.approvedAmount != null && s.approvedAmount !== s.amount ? ` at ${pkr(s.approvedAmount)}` : ''}
+              </p>
+            ))}
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <p className="text-sm font-medium">Suggest deduction</p>
+            <Input
+              type="number"
+              min={1}
+              placeholder="PKR"
+              aria-label="Deduction amount"
+              value={cut}
+              onChange={(ev) => setCut(ev.target.value)}
+            />
+            <Input placeholder="Reason (required)" value={cutNote} onChange={(ev) => setCutNote(ev.target.value)} />
+            <Button
+              size="sm"
+              disabled={!(Number(cut) > 0) || cutNote.trim().length < 3 || deduction.isPending}
+              onClick={() => deduction.mutate()}
+            >
+              {deduction.isPending ? 'Sending...' : 'Send to Finance'}
+            </Button>
+            {e.suggestions.filter((s) => s.kind === 'DEDUCTION').map((s, i) => (
+              <p key={i} className="text-xs text-text-secondary">
+                {pkr(s.amount)} — {STATUS[s.status] ?? s.status}
                 {s.approvedAmount != null && s.approvedAmount !== s.amount ? ` at ${pkr(s.approvedAmount)}` : ''}
               </p>
             ))}

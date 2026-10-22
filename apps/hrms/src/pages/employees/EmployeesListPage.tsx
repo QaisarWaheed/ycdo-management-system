@@ -91,6 +91,8 @@ export function EmployeesListPage() {
   const { data: stats } = useQuery({
     queryKey: ['employees', 'stats'],
     queryFn: () => employeesApi.getStats(),
+    // Organisation-wide counts; a Team In-charge sees only its team.
+    enabled: user?.role !== 'TEAM_INCHARGE',
   })
 
   const unassignedCount = stats?.unassigned ?? 0

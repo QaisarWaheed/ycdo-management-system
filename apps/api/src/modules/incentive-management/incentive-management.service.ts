@@ -340,7 +340,15 @@ export class IncentiveManagementService {
       items: Array<{ employeeId: string; kind: PaySuggestionKind; typeId: string; amount: number; note?: string }>;
     },
   ) {
-    if (!hasAnyRole(actor.roles, DECIDE_ROLES)) throw new ForbiddenException('Only executives can approve');
+    // Finance approves deductions (decision 2026-10-22); incentives and allowances stay with executives.
+    if (!hasAnyRole(actor.roles, DECIDE_ROLES)) {
+      const financeDeductionsOnly =
+        hasAnyRole(actor.roles, [UserRole.PAYROLL_OFFICER]) &&
+        dto.items.every((i) => i.kind === PaySuggestionKind.DEDUCTION);
+      if (!financeDeductionsOnly) {
+        throw new ForbiddenException('Finance approves deductions only; incentives and allowances go to an executive');
+      }
+    }
     const applied: string[] = [];
     const failed: Array<{ employeeId: string; typeId: string; reason: string }> = [];
     for (const item of dto.items) {
@@ -387,7 +395,16 @@ export class IncentiveManagementService {
   }
 
   async reject(actor: Actor, dto: { suggestionIds: string[]; note?: string }) {
-    if (!hasAnyRole(actor.roles, DECIDE_ROLES)) throw new ForbiddenException('Only executives can reject');
+    const executive = hasAnyRole(actor.roles, DECIDE_ROLES);
+    if (!executive && !hasAnyRole(actor.roles, [UserRole.PAYROLL_OFFICER])) {
+      throw new ForbiddenException('Only executives can reject');
+    }
+    if (!executive) {
+      const others = await this.prisma.incentiveSuggestion.count({
+        where: { id: { in: dto.suggestionIds }, kind: { not: PaySuggestionKind.DEDUCTION } },
+      });
+      if (others) throw new ForbiddenException('Finance rejects deduction suggestions only');
+    }
     const r = await this.prisma.incentiveSuggestion.updateMany({
       where: { id: { in: dto.suggestionIds }, status: PaySuggestionStatus.PENDING },
       data: {

@@ -273,7 +273,10 @@ function navItemsForRole(role?: string) {
     return allNavItems.filter((item) => item.to === '/dashboard')
   }
 
-  if (role === 'TEAM_INCHARGE') return [myTeamNavItem]
+  // Team In-charge: its team only (the API narrows Employees and Letters to it).
+  if (role === 'TEAM_INCHARGE') {
+    return [myTeamNavItem, ...allNavItems.filter((item) => ['/employees', '/letters'].includes(item.to))]
+  }
 
   if (role === 'PROGRESS_OFFICER') {
     return allNavItems.filter((item) =>
@@ -407,7 +410,7 @@ const SECTION_ACCESS: Record<string, { permission?: string; roles?: string[] }> 
 }
 
 /** Roles whose menu is exactly their curated list (no Biometric IDs / Rule Book). */
-const FIXED_MENU_ROLES = ['PAYROLL_OFFICER', 'PROGRESS_OFFICER', 'PROJECT_COORDINATOR']
+const FIXED_MENU_ROLES = ['PAYROLL_OFFICER', 'PROGRESS_OFFICER', 'PROJECT_COORDINATOR', 'TEAM_INCHARGE']
 
 function useSidebarNavItems() {
   const { user, hasRole, hasPermission } = useAuth()
@@ -467,7 +470,7 @@ function useSidebarNavItems() {
     items = [...items, ...granted].sort((a, b) => rank(a.to) - rank(b.to))
   }
 
-  if (role !== 'EMPLOYEE') items = [...items, payrollWorkflowNavItem]
+  if (role !== 'EMPLOYEE' && role !== 'TEAM_INCHARGE') items = [...items, payrollWorkflowNavItem]
   return items.filter((item) => canOpen(item.to))
 }
 

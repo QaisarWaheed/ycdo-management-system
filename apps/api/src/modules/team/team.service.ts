@@ -142,8 +142,8 @@ export class TeamService {
     const [progress, suggestions, days] = await Promise.all([
       this.prisma.teamProgress.findMany({ where: { employeeId: { in: ids }, month, year } }),
       this.prisma.incentiveSuggestion.findMany({
-        where: { employeeId: { in: ids }, month, year, kind: PaySuggestionKind.INCENTIVE },
-        select: { employeeId: true, typeId: true, suggestedAmount: true, status: true, approvedAmount: true },
+        where: { employeeId: { in: ids }, month, year, kind: { in: [PaySuggestionKind.INCENTIVE, PaySuggestionKind.DEDUCTION] } },
+        select: { employeeId: true, kind: true, typeId: true, suggestedAmount: true, status: true, approvedAmount: true },
       }),
       this.prisma.additionalWorkingDay.findMany({
         where: { employeeId: { in: ids }, date: { gte: from, lt: to } },
@@ -171,7 +171,8 @@ export class TeamService {
           suggestions: suggestions
             .filter((s) => s.employeeId === e.id)
             .map((s) => ({
-              type: typeName.get(s.typeId) ?? 'Incentive',
+              kind: s.kind,
+              type: s.kind === PaySuggestionKind.DEDUCTION ? 'Deduction' : (typeName.get(s.typeId) ?? 'Incentive'),
               amount: Number(s.suggestedAmount),
               status: s.status,
               approvedAmount: s.approvedAmount == null ? null : Number(s.approvedAmount),

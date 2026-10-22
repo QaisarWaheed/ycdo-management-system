@@ -36,6 +36,8 @@ export function IncentiveManagementPage() {
   const { hasRole } = useAuth()
   const isExecutive = hasRole(['CHAIRMAN', 'PRESIDENT', 'FOUNDER', 'SUPER_ADMIN'])
   const canSuggest = hasRole(['DEPARTMENT_HEAD', 'PAYROLL_OFFICER', 'SUPER_ADMIN'])
+  // Finance approves deduction suggestions (e.g. from Team In-charges); incentives stay with executives.
+  const financeDecidesDeductions = !isExecutive && hasRole(['PAYROLL_OFFICER'])
   const queryClient = useQueryClient()
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -155,6 +157,29 @@ export function IncentiveManagementPage() {
     },
     onError: (err: ApiError) => toast({ title: 'Reject failed', description: errText(err), variant: 'destructive' }),
   })
+  const decideDeduction = useMutation({
+    mutationFn: async ({ row, approve }: { row: BoardRow; approve: boolean }): Promise<void> => {
+      if (!approve) {
+        await incentiveManagementApi.reject([row.suggestion!.id])
+        return
+      }
+      const res = await incentiveManagementApi.apply({
+        month,
+        year,
+        items: [{ employeeId: row.employeeId, kind: row.kind, typeId: row.typeId, amount: row.suggestion!.amount }],
+      })
+      // e.g. no salary for that month yet, or the salary is already verified.
+      if (res.failed.length) throw new Error(res.failed.map((f) => f.reason).join('; '))
+    },
+    onSuccess: (_res, { approve }) => {
+      toast({ title: approve ? 'Deduction approved and added to the salary' : 'Deduction suggestion rejected' })
+      refresh()
+      queryClient.invalidateQueries({ queryKey: ['payroll'] })
+    },
+    onError: (err: ApiError & Error) =>
+      toast({ title: 'Could not decide', description: err.response ? errText(err) : err.message, variant: 'destructive' }),
+  })
+  const pendingDeductions = allRows.filter((r) => r.kind === 'DEDUCTION' && r.suggestion?.status === 'PENDING')
   const saveSuggestions = useMutation({
     mutationFn: async () => {
       const edited = allRows.filter((r) => amounts[rowKey(r)] !== undefined)
@@ -262,6 +287,44 @@ export function IncentiveManagementPage() {
         </select>
         <Input className="h-9 w-56" placeholder="Search name or code" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
+
+      {financeDecidesDeductions && pendingDeductions.length ? (
+        <Card>
+          <CardContent className="space-y-2 p-4">
+            <p className="font-medium">Deduction suggestions to approve ({pendingDeductions.length})</p>
+            {pendingDeductions.map((r) => {
+              const e = empById.get(r.employeeId)
+              return (
+                <div key={rowKey(r)} className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-sm">
+                  <div>
+                    <span className="font-medium">{e?.fullName}</span>{' '}
+                    <span className="text-text-secondary">({e?.employeeCode})</span> — PKR{' '}
+                    {Math.round(r.suggestion!.amount).toLocaleString('en-PK')}
+                    {r.suggestion!.note ? <span className="text-text-secondary"> · {r.suggestion!.note}</span> : null}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      disabled={decideDeduction.isPending}
+                      onClick={() => decideDeduction.mutate({ row: r, approve: true })}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={decideDeduction.isPending}
+                      onClick={() => decideDeduction.mutate({ row: r, approve: false })}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {actionBar}
 

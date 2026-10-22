@@ -1075,7 +1075,9 @@ function parseLetterSection(value: string | null): LetterSection {
 
 export function LettersPage() {
   const queryClient = useQueryClient()
-  const { hasRole } = useAuth()
+  const { hasRole, user } = useAuth()
+  // A Team In-charge drafts letters for its team; HR reviews and sends them.
+  const teamOnly = user?.role === 'TEAM_INCHARGE'
   const canReverse = hasRole(['SUPER_ADMIN', 'IT_ADMIN'])
   const canApproveAppointment = hasRole([
     'SUPER_ADMIN',
@@ -1409,6 +1411,11 @@ export function LettersPage() {
 
       {section === 'letters' ? (
         <div className="space-y-6">
+      {teamOnly ? (
+        <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+          Letters you make stay as drafts. HR reviews them and sends them to the employee.
+        </p>
+      ) : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-text-primary">
           Letter Management
@@ -1686,7 +1693,7 @@ export function LettersPage() {
                                   Return for Changes
                                 </DropdownMenuItem>
                               )}
-                            {canSendDraftLetter(letter) && (
+                            {!teamOnly && canSendDraftLetter(letter) && (
                               <DropdownMenuItem
                                 onClick={() => {
                                   if (canIssueApprovedSuspension(letter)) {

@@ -19,6 +19,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles, RoutePermission } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { onlyTeamIncharge } from '../team/team.util';
 import {
   ActiveShiftQueryDto,
   ChangeStatusDto,
@@ -167,7 +168,11 @@ export class EmployeesController {
     UserRole.PRESIDENT,
     UserRole.IT_ADMIN,
   )
-  getStats() {
+  getStats(@CurrentUser() user: { role: UserRole; roles?: UserRole[] }) {
+    // Organisation-wide counts are not for a Team In-charge.
+    if (onlyTeamIncharge(user.roles?.length ? user.roles : [user.role])) {
+      throw new ForbiddenException('Not available for a Team In-charge');
+    }
     return this.employeesService.getStats();
   }
 

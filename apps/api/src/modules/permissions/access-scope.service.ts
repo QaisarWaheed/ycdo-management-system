@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Permission, Prisma, ProjectType, UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { onlyTeamIncharge, teamEmployeeWhere } from '../team/team.util';
 import { isHospitalAssignableDepartment } from '../../common/org-structure';
 import { buildEffectiveRoles } from '../../common/user-roles.util';
 import { roleDefaultAllows, rolesDefaultAllow } from './permissions.constants';
@@ -260,6 +261,10 @@ export class AccessScopeService {
     if (context.isGlobal) return existingWhere;
 
     const roles = context.roles.length ? context.roles : [role];
+    // A Team In-charge sees only the department + designation pairs IT gave it.
+    if (onlyTeamIncharge(roles)) {
+      return { AND: [existingWhere, await teamEmployeeWhere(this.prisma, userId)] };
+    }
     const hasOrgWideStaffRole = roles.some((r) => r !== UserRole.EMPLOYEE);
 
     if (hasOrgWideStaffRole) {
@@ -335,6 +340,17 @@ export class AccessScopeService {
     });
     if (override?.granted === false) {
       throw new ForbiddenException('Permission denied');
+    }
+
+    // A Team In-charge needs the permission and the employee in its team.
+    if (onlyTeamIncharge(roles)) {
+      if (!(override?.granted === true || rolesDefaultAllow(roles, permission))) {
+        throw new ForbiddenException('Permission denied');
+      }
+      const team = await teamEmployeeWhere(this.prisma, userId);
+      const inTeam = await this.prisma.employee.count({ where: { AND: [team, { id: employeeId }] } });
+      if (!inTeam) throw new ForbiddenException('This employee is not in your team');
+      return;
     }
 
     if (override?.granted === true || rolesDefaultAllow(roles, permission)) {

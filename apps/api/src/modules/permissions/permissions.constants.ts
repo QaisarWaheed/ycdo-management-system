@@ -91,6 +91,8 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
     UserRole.FOUNDER,
     UserRole.PRESIDENT,
     UserRole.IT_ADMIN,
+    // Narrowed to the team by AccessScopeService.
+    UserRole.TEAM_INCHARGE,
   ],
   EMPLOYEES_CREATE: [
     UserRole.HR_MANAGER,
@@ -130,6 +132,8 @@ export const ROLE_PERMISSION_DEFAULTS: Partial<
     UserRole.IT_ADMIN,
     UserRole.PAYROLL_OFFICER,
     UserRole.PROGRESS_OFFICER,
+    // Drafts for its own team only; HR sends them.
+    UserRole.TEAM_INCHARGE,
   ],
   INCENTIVES_VIEW: [
     UserRole.HR_MANAGER,

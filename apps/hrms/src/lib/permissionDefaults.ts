@@ -44,6 +44,7 @@ const ROLE_PERMISSION_FALLBACK: Record<string, string[]> = {
     'FOUNDER',
     'PRESIDENT',
     'IT_ADMIN',
+    'TEAM_INCHARGE',
   ],
   EMPLOYEES_CREATE: ['HR_MANAGER', 'HR_ADMIN_MANAGER', 'HR_OPERATIONS_MANAGER'],
   EMPLOYEES_EDIT: [
@@ -71,6 +72,7 @@ const ROLE_PERMISSION_FALLBACK: Record<string, string[]> = {
     'IT_ADMIN',
     'PAYROLL_OFFICER',
     'PROGRESS_OFFICER',
+    'TEAM_INCHARGE',
   ],
   INCENTIVES_VIEW: [
     'HR_MANAGER',

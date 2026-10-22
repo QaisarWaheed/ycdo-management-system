@@ -22,7 +22,13 @@ export interface MyTeamEmployee {
   branch: string | null
   department: string | null
   progress: { rating: number; remarks: string | null } | null
-  suggestions: Array<{ type: string; amount: number; status: string; approvedAmount: number | null }>
+  suggestions: Array<{
+    kind: 'INCENTIVE' | 'DEDUCTION'
+    type: string
+    amount: number
+    status: string
+    approvedAmount: number | null
+  }>
   extraDays: Array<{ id: string; date: string; status: string; note: string | null }>
 }
 

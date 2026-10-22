@@ -84,6 +84,7 @@ import {
 } from './status-effective.util';
 import { AccessScopeService } from '../permissions/access-scope.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { onlyTeamIncharge } from '../team/team.util';
 import { buildEmployeesWorkbook } from './employees-export.util';
 import {
   resolveUploadPath,
@@ -902,6 +903,15 @@ export class EmployeesService {
         ? context.roles
         : [actingUser.role as UserRole];
       const isOwner = employee.user?.id === actingUser.id;
+      // A Team In-charge opens only its own team's profiles.
+      if (!isOwner && onlyTeamIncharge(roles)) {
+        await this.accessScopeService.assertEmployeeAccess(
+          actingUser.id,
+          actingUser.role as UserRole,
+          Permission.EMPLOYEES_VIEW,
+          employee.id,
+        );
+      }
       const hasOrgWideStaffRole = roles.some((r) => r !== UserRole.EMPLOYEE);
       if (
         !context.isGlobal &&
