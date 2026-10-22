@@ -233,10 +233,29 @@ function extractEvent(req) {
   }
 
   if (req.body && typeof req.body === "object" && Object.keys(req.body).length) {
+    // Some models send the event JSON as a multipart *text* field under another
+    // name (e.g. "AccessControllerEvent"), not as event_log or a JSON file.
+    for (const [key, value] of Object.entries(req.body)) {
+      if (typeof value !== "string") continue;
+      const parsed = parseJsonSafe(value);
+      if (!parsed || typeof parsed !== "object") continue;
+      if (parsed.AccessControllerEvent || parsed.accessControllerEvent) return parsed;
+      if (/accesscontrollerevent/i.test(key)) return { ...req.body, AccessControllerEvent: parsed };
+    }
     return req.body;
   }
 
   return null;
+}
+
+/** Field names only (no values): shows what a model sends when no employee number is found. */
+const seenNoEmployeeShapes = new Set();
+function logNoEmployeeShape(deviceId, event, ace) {
+  const shape = `${deviceId}|${Object.keys(event || {}).sort().join(",")}|${Object.keys(ace || {}).sort().join(",")}`;
+  // Each shape once per run (heartbeats repeat every 30 s); capped so it cannot grow.
+  if (seenNoEmployeeShapes.has(shape) || seenNoEmployeeShapes.size >= 200) return;
+  seenNoEmployeeShapes.add(shape);
+  log("info", "Event without employee number: field names", { deviceId, eventKeys: Object.keys(event || {}).sort(), aceKeys: Object.keys(ace || {}).sort() });
 }
 
 const STATUS_MAP = new Map([
@@ -275,11 +294,14 @@ function eventDeviceId(event, ace) {
 }
 
 function normalizeEvent(event, device, sourceIp, receivedAt) {
-  const ace = event?.AccessControllerEvent || event?.accessControllerEvent || null;
+  let ace = event?.AccessControllerEvent || event?.accessControllerEvent || null;
+  // A model that sends AccessControllerEvent as a JSON string.
+  if (typeof ace === "string") ace = parseJsonSafe(ace);
   if (!ace) return { skip: true, reason: "NO_ACCESS_CONTROLLER_EVENT" };
 
   const employeeNo = ace.employeeNoString ?? ace.employeeNo ?? null;
   if (employeeNo == null || String(employeeNo).trim() === "") {
+    logNoEmployeeShape(device?.hrmsDeviceId, event, ace);
     return { skip: true, reason: "NO_EMPLOYEE_NO" };
   }
 
