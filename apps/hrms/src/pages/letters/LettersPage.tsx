@@ -1516,6 +1516,7 @@ export function LettersPage() {
                   <TableHead>Employee Status</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Generated</TableHead>
+                  <TableHead>Created by</TableHead>
                   <TableHead>Printed</TableHead>
                   <TableHead>Replies</TableHead>
                   <TableHead>Acknowledgement</TableHead>
@@ -1526,7 +1527,7 @@ export function LettersPage() {
                 {isLoading ? (
                   [...Array(5)].map((_, i) => (
                     <TableRow key={i}>
-                      {[...Array(9)].map((__, j) => (
+                      {[...Array(10)].map((__, j) => (
                         <TableCell key={j}>
                           <Skeleton className="h-5 w-full" />
                         </TableCell>
@@ -1536,7 +1537,7 @@ export function LettersPage() {
                 ) : paginated.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className="h-32 text-center text-text-secondary"
                     >
                       No letters found
@@ -1605,6 +1606,22 @@ export function LettersPage() {
                         {format(
                           new Date(letter.generatedAt),
                           'dd/MM/yyyy HH:mm',
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {letter.createdBy ? (
+                          <div>
+                            <div>{letter.createdBy.employee?.fullName ?? letter.createdBy.email}</div>
+                            {letter.createdBy.role === 'TEAM_INCHARGE' ? (
+                              <Badge variant="outline" className="mt-1 border-blue-300 text-blue-800">
+                                Team In-charge
+                              </Badge>
+                            ) : (
+                              <div className="text-xs text-text-secondary">{letter.createdBy.role.replace(/_/g, ' ').toLowerCase()}</div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-text-secondary">System</span>
                         )}
                       </TableCell>
                       <TableCell>

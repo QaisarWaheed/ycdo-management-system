@@ -2873,6 +2873,10 @@ export class LettersService implements OnModuleInit {
       select: { id: true, repliedAt: true },
     },
     suspensionRequest: SUSPENSION_REQUEST_ON_LETTER,
+    // "Created by" column: who drafted it (e.g. a Team In-charge); none = system letter.
+    createdBy: {
+      select: { email: true, role: true, employee: { select: { fullName: true } } },
+    },
   } satisfies Prisma.LetterInclude;
 
   /** HRMS list: one page at a time (there are ~15k letters). */

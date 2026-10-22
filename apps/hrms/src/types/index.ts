@@ -443,6 +443,8 @@ export interface EmployeeDocument {
 
 export interface Letter {
   id: string
+  /** Who drafted it (e.g. a Team In-charge); null for system letters. */
+  createdBy?: { email: string; role: string; employee?: { fullName: string } | null } | null
   employeeId?: string
   letterType: string
   status?: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'SENT' | 'REVERSED'
