@@ -23,21 +23,29 @@ export function TimeInput12Hour({
   disabled,
   className,
 }: TimeInput12HourProps) {
-  const parsed = value ? from24Hour(value) : { hour: 12, minute: 0, period: 'AM' as const }
-  const [hour, setHour] = useState(parsed.hour)
-  const [minute, setMinute] = useState(parsed.minute)
-  const [period, setPeriod] = useState<'AM' | 'PM'>(parsed.period)
+  // No value = empty boxes. Showing a default 12:00 AM looked like a real time,
+  // and any touch then saved midnight as the check-in.
+  const parsed = value ? from24Hour(value) : null
+  const [hour, setHour] = useState<number | null>(parsed?.hour ?? null)
+  const [minute, setMinute] = useState<number | null>(parsed?.minute ?? null)
+  const [period, setPeriod] = useState<'AM' | 'PM'>(parsed?.period ?? 'AM')
 
   useEffect(() => {
-    if (!value) return
+    if (!value) {
+      setHour(null)
+      setMinute(null)
+      return
+    }
     const next = from24Hour(value)
     setHour(next.hour)
     setMinute(next.minute)
     setPeriod(next.period)
   }, [value])
 
-  const emit = (h: number, m: number, p: 'AM' | 'PM') => {
-    onChange(to24Hour(h, m, p))
+  // Nothing is sent until an hour is entered.
+  const emit = (h: number | null, m: number | null, p: 'AM' | 'PM') => {
+    if (h === null) return
+    onChange(to24Hour(h, m ?? 0, p))
   }
 
   return (
@@ -49,8 +57,9 @@ export function TimeInput12Hour({
         placeholder="HH"
         className="w-14 px-2"
         disabled={disabled}
-        value={hour}
+        value={hour ?? ''}
         onChange={(e) => {
+          if (e.target.value === '') return
           const h = Math.min(12, Math.max(1, Number(e.target.value) || 1))
           setHour(h)
           emit(h, minute, period)
@@ -64,7 +73,7 @@ export function TimeInput12Hour({
         placeholder="MM"
         className="w-14 px-2"
         disabled={disabled}
-        value={minute}
+        value={minute ?? ''}
         onChange={(e) => {
           const m = Math.min(59, Math.max(0, Number(e.target.value) || 0))
           setMinute(m)

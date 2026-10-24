@@ -31,7 +31,7 @@ import {
   enumValueToLabel,
   labelToEnumValue,
 } from '@/lib/searchableSelectOptions'
-import { formatDateTimeTime, toPakistanTime24 } from '@/lib/timeFormat'
+import { formatDateTimeTime, to12Hour, toPakistanTime24 } from '@/lib/timeFormat'
 import { attendanceLockMessage, canHrCorrectAttendance } from '@/lib/attendanceEligibility'
 import {
   displayCheckInSource,
@@ -272,6 +272,17 @@ export function UpdateAttendanceDialog({
                 )}
               </div>
               <TimeInput12Hour value={checkIn} onChange={setCheckIn} />
+              {!checkIn && dutyStartTime && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => setCheckIn(dutyStartTime)}
+                >
+                  Use duty start ({to12Hour(dutyStartTime)})
+                </Button>
+              )}
               {log && (
                 <p className="text-xs text-text-secondary">
                   Check-in source: {displayCheckInSource(log)} · Check-out
