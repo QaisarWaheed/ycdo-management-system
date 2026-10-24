@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -13,7 +14,21 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { LetterStatus, UserRole } from '@prisma/client';
+import {
+  AttendanceLogType,
+  AttendanceSource,
+  DisciplineCategory,
+  LetterStatus,
+  UserRole,
+} from '@prisma/client';
+import { MISSING_CHECKOUT_AUTO_NOTE } from '../attendance/missing-checkout-policy';
+
+/** Same as attendance.service's private helper: drop the scheduler's auto-checkout marker. */
+const stripMissingCheckoutMarker = (note: string | null | undefined) =>
+  (note ?? '')
+    .split(' | ')
+    .filter((part) => part.trim() !== MISSING_CHECKOUT_AUTO_NOTE)
+    .join(' | ');
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -51,6 +66,10 @@ export class BulkReverseDto {
   rules: BulkReverseRule[];
   /** Max letters reversed per call; call again until remaining is 0. */
   @IsOptional() @IsInt() @Min(1) @Max(300) limit?: number;
+  /** 'attendance' = clear the auto missing-checkout marker on attendance rows instead of reversing letters. */
+  @IsOptional() @IsIn(['letters', 'attendance']) target?:
+    | 'letters'
+    | 'attendance';
 }
 
 export type Candidate = {
@@ -146,7 +165,119 @@ export class BulkReverseService {
       );
   }
 
+  /** Attendance rows still carrying the scheduler's auto missing-checkout marker. */
+  async attendanceCandidates(rules: BulkReverseRule[]) {
+    const rows = await this.prisma.attendanceLog.findMany({
+      where: {
+        type: AttendanceLogType.REGULAR,
+        note: { contains: MISSING_CHECKOUT_AUTO_NOTE },
+      },
+      select: {
+        id: true,
+        date: true,
+        note: true,
+        employeeId: true,
+        employee: {
+          select: {
+            employeeCode: true,
+            fullName: true,
+            currentBranch: { select: { name: true } },
+          },
+        },
+      },
+    });
+    return rows
+      .map((r) => ({
+        id: r.id,
+        note: r.note,
+        letterNo: null,
+        letterType: 'ATTENDANCE',
+        employeeId: r.employeeId,
+        employeeCode: r.employee.employeeCode,
+        employeeName: r.employee.fullName.replace(/\s+/g, ' ').trim(),
+        branch: r.employee.currentBranch?.name ?? null,
+        incidentDate: r.date.toISOString().slice(0, 10),
+      }))
+      .filter((c) => rules.some((r) => matchesRule(c, r)));
+  }
+
+  /** Relief on the attendance itself so a later re-run cannot re-create the missed checkout. */
+  private async runAttendance(dto: BulkReverseDto, userId: string) {
+    const all = await this.attendanceCandidates(dto.rules);
+    const byBranch: Record<string, number> = {};
+    for (const c of all)
+      byBranch[c.branch ?? '-'] = (byBranch[c.branch ?? '-'] ?? 0) + 1;
+    if (dto.dryRun)
+      return { dryRun: true, total: all.length, byBranch, rows: all };
+
+    const batch = all.slice(0, dto.limit ?? 100);
+    const months = new Map<string, { employeeId: string; date: Date }>();
+    const failed: Array<{ id: string; error: string }> = [];
+    let updated = 0;
+    for (const c of batch) {
+      const day = new Date(`${c.incidentDate}T00:00:00.000Z`);
+      const note = [
+        stripMissingCheckoutMarker(c.note),
+        `Missing checkout relief: ${dto.reason}`,
+      ]
+        .filter((p) => p.trim())
+        .join(' | ');
+      try {
+        await this.prisma.$transaction([
+          this.prisma.attendanceLog.update({
+            where: { id: c.id },
+            data: { note, checkOutSource: AttendanceSource.MANUAL },
+          }),
+          this.prisma.disciplineEvent.deleteMany({
+            where: {
+              employeeId: c.employeeId,
+              category: DisciplineCategory.MISSING_CHECKOUT,
+              incidentDate: day,
+            },
+          }),
+          this.prisma.auditLog.create({
+            data: {
+              userId,
+              action: 'ATTENDANCE_UPDATED',
+              entity: 'AttendanceLog',
+              entityId: c.id,
+              changes: {
+                previous: { note: c.note },
+                updated: { note, checkOutSource: 'MANUAL' },
+                reason: dto.reason,
+              },
+            },
+          }),
+        ]);
+        updated++;
+        months.set(`${c.employeeId}|${c.incidentDate.slice(0, 7)}`, {
+          employeeId: c.employeeId,
+          date: day,
+        });
+      } catch (e) {
+        failed.push({
+          id: c.id,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+    for (const m of months.values()) {
+      await this.payroll.recomputePendingPayrollForAttendanceDate(
+        m.employeeId,
+        m.date,
+      );
+    }
+    return {
+      dryRun: false,
+      updated,
+      failed,
+      payrollRecomputed: months.size,
+      remaining: all.length - updated,
+    };
+  }
+
   async run(dto: BulkReverseDto, userId: string) {
+    if (dto.target === 'attendance') return this.runAttendance(dto, userId);
     const all = await this.candidates(dto.rules);
     const byBranch: Record<string, Record<string, number>> = {};
     for (const c of all) {
