@@ -10,6 +10,7 @@ import { IncentiveManagementModule } from './modules/incentive-management/incent
 import { AdditionalDutiesModule } from './modules/additional-duties/additional-duties.module';
 import { AdditionalWorkingDaysModule } from './modules/additional-working-days/additional-working-days.module';
 import { TeamModule } from './modules/team/team.module';
+import { InboxModule } from './modules/inbox/inbox.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BiometricDevicesModule } from './modules/biometric-devices/biometric-devices.module';
@@ -96,6 +97,7 @@ import { CareersModule } from './modules/careers/careers.module';
     ActivityWindowsModule,
     AdditionalWorkingDaysModule,
     TeamModule,
+    InboxModule,
     StipendReceiptsModule,
     IncentivesModule,
     AllowancesModule,

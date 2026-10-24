@@ -207,7 +207,7 @@ function ProfileDeductionDialog({
           </div>
           <div className="space-y-1">
             <Label>
-              What is it for? <span className="text-destructive">*</span> (printed on the payslip)
+              What is it for? <span className="text-destructive">*</span> (printed on the stipend slip)
             </Label>
             <Textarea value={addDescription} onChange={(e) => setAddDescription(e.target.value)} />
           </div>

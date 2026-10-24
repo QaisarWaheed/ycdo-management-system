@@ -460,7 +460,7 @@ export function buildPayslipSections(input: {
   );
 
   return [
-    { key: 'earnings', title: 'Pay & Allowances', lines: earningLines },
+    { key: 'earnings', title: 'Stipend & Allowances', lines: earningLines },
     { key: 'attendance', title: 'Attendance Deductions', lines: collect(attendance) },
     { key: 'discipline', title: 'Discipline Fines', lines: collect(discipline, false) },
     { key: 'other', title: 'Other Deductions', lines: collect(other) },

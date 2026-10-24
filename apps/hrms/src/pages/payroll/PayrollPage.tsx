@@ -421,7 +421,7 @@ function AddDeductionForm({
       </div>
       <div className="space-y-1">
         <Label htmlFor="deduction-description">
-          What is it for? <span className="text-destructive">*</span> (printed on the payslip)
+          What is it for? <span className="text-destructive">*</span> (printed on the stipend slip)
         </Label>
         <Textarea
           id="deduction-description"
@@ -524,7 +524,7 @@ function AddAllowanceForm({
       </div>
       <div className="space-y-2">
         <Label>
-          What is it for? <span className="text-destructive">*</span> (printed on the payslip)
+          What is it for? <span className="text-destructive">*</span> (printed on the stipend slip)
         </Label>
         <Input
           value={description}
@@ -803,7 +803,7 @@ function PayrollDetailDialog({
               Allowances
             </TabsTrigger>
             <TabsTrigger value="payslip" className="flex-1 sm:flex-none">
-              Payslip
+              Stipend Slip
             </TabsTrigger>
             <TabsTrigger value="history" className="flex-1 sm:flex-none">
               History
@@ -1096,7 +1096,7 @@ function MonthlyPayrollTab() {
     },
     onError: (err) =>
       toast({
-        title: 'Could not load payslips',
+        title: 'Could not load stipend slips',
         description: getApiErrorMessage(err, 'Please try again'),
         variant: 'destructive',
       }),
@@ -1509,14 +1509,14 @@ function MonthlyPayrollTab() {
             variant="outline"
             disabled={filteredEntries.length === 0 || payslipsMutation.isPending}
             onClick={() => payslipsMutation.mutate()}
-            title={selectedPrintIds.size > 0 ? `Print ${selectedPrintIds.size} selected payslips` : 'Print payslips of all visible employees (2 per A4 page)'}
+            title={selectedPrintIds.size > 0 ? `Print ${selectedPrintIds.size} selected stipend slips` : 'Print stipend slips of all visible employees (2 per A4 page)'}
           >
             <Printer className="mr-2 h-4 w-4" />
             {payslipsMutation.isPending
-              ? `Preparing payslips...`
+              ? `Preparing stipend slips...`
               : selectedPrintIds.size > 0
               ? `Print ${selectedPrintIds.size} Selected (2 per page)`
-              : 'Print Payslips (2 per page)'}
+              : 'Print Stipend Slips (2 per page)'}
           </Button>
           {printSlips && printSlips.length > 0 && (
             <PayslipPrintSheet
@@ -3158,7 +3158,7 @@ function NonActivePayslipsTab() {
     },
     onError: (err) =>
       toast({
-        title: 'Could not load payslips',
+        title: 'Could not load stipend slips',
         description: getApiErrorMessage(err, 'Please try again'),
         variant: 'destructive',
       }),
@@ -3184,7 +3184,7 @@ function NonActivePayslipsTab() {
             <Printer className="mr-2 h-4 w-4" />
             {printMutation.isPending
               ? 'Preparing…'
-              : `Print all payslips (${nonActiveEntries.length})`}
+              : `Print all stipend slips (${nonActiveEntries.length})`}
           </Button>
         </CardContent>
       </Card>
@@ -3198,7 +3198,7 @@ function NonActivePayslipsTab() {
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Net stipend</TableHead>
                 <TableHead>Payroll</TableHead>
-                <TableHead className="text-right">Payslip</TableHead>
+                <TableHead className="text-right">Stipend Slip</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -3267,7 +3267,7 @@ function NonActivePayslipsTab() {
           onDone={clearPrintSlips}
           summary={{
             month: format(new Date(monthYear.year, monthYear.month - 1), 'MMMM yyyy'),
-            scope: 'Non-active payslips',
+            scope: 'Non-active stipend slips',
           }}
         />
       )}
@@ -3287,7 +3287,7 @@ export function PayrollPage() {
           <TabsTrigger value="increment">Stipend Increment</TabsTrigger>
           <TabsTrigger value="summary">Summary</TabsTrigger>
           <TabsTrigger value="receipts">Salary Reviews</TabsTrigger>
-          <TabsTrigger value="non-active">Non-active Payslips</TabsTrigger>
+          <TabsTrigger value="non-active">Non-active Stipend Slips</TabsTrigger>
           <TabsTrigger value="reports">Reports</TabsTrigger>
           <TabsTrigger value="types">Allowance &amp; Incentive Types</TabsTrigger>
         </TabsList>

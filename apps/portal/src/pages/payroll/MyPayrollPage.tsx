@@ -165,7 +165,7 @@ function PayslipDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[min(90dvh,90vh)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader className="no-print">
-          <DialogTitle>Payslip</DialogTitle>
+          <DialogTitle>Stipend Slip</DialogTitle>
         </DialogHeader>
 
         <div className="no-print mb-4 flex justify-end">
@@ -551,7 +551,7 @@ export function MyPayrollPage() {
       <div>
         <h1 className="text-2xl font-bold text-text-primary">My Payroll</h1>
         <p className="text-sm text-text-secondary">
-          View your stipend, receipts, incentives and download payslips
+          View your stipend, receipts, incentives and download stipend slips
         </p>
       </div>
 

@@ -86,8 +86,8 @@ export class AddDeductionDto {
 
   /** Shown on the payslip next to the amount (what it is for). */
   @IsString()
-  @IsNotEmpty({ message: 'Write what this is for — it is printed on the payslip' })
-  @MinLength(3, { message: 'Write what this is for — it is printed on the payslip' })
+  @IsNotEmpty({ message: 'Write what this is for — it is printed on the stipend slip' })
+  @MinLength(3, { message: 'Write what this is for — it is printed on the stipend slip' })
   description: string;
 
   /** Only for FINE: the discipline cause (mobile on duty, uniform, ...). */
@@ -108,8 +108,8 @@ export class DeductionItemDto {
 
   /** Shown on the payslip next to the amount (what it is for). */
   @IsString()
-  @IsNotEmpty({ message: 'Write what this is for — it is printed on the payslip' })
-  @MinLength(3, { message: 'Write what this is for — it is printed on the payslip' })
+  @IsNotEmpty({ message: 'Write what this is for — it is printed on the stipend slip' })
+  @MinLength(3, { message: 'Write what this is for — it is printed on the stipend slip' })
   description: string;
 
   /** Only for FINE: the discipline cause (mobile on duty, uniform, ...). */
@@ -158,8 +158,8 @@ export class AddAllowanceDto {
 
   /** Shown on the payslip next to the amount (what it is for). */
   @IsString()
-  @IsNotEmpty({ message: 'Write what this is for — it is printed on the payslip' })
-  @MinLength(3, { message: 'Write what this is for — it is printed on the payslip' })
+  @IsNotEmpty({ message: 'Write what this is for — it is printed on the stipend slip' })
+  @MinLength(3, { message: 'Write what this is for — it is printed on the stipend slip' })
   description: string;
 
   @IsOptional()
