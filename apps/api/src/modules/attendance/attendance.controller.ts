@@ -15,7 +15,11 @@ import { ConfigService } from '@nestjs/config';
 import { Permission, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { Roles, AlsoAllowPermission, StrictRoles } from '../auth/roles.decorator';
+import {
+  Roles,
+  AlsoAllowPermission,
+  StrictRoles,
+} from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import {
   ApplyPunchReviewDto,
@@ -74,10 +78,7 @@ export class AttendanceController {
    * another, and the old endpoint keeps working for branches that don't.
    */
   @Post('raw-scan')
-  rawScan(
-    @Headers('x-device-key') deviceKey: string,
-    @Body() dto: RawScanDto,
-  ) {
+  rawScan(@Headers('x-device-key') deviceKey: string, @Body() dto: RawScanDto) {
     const expectedKey = this.configService.get<string>('BIOMETRIC_DEVICE_KEY');
     if (!deviceKey || deviceKey !== expectedKey) {
       throw new UnauthorizedException('Invalid device key');
@@ -334,10 +335,7 @@ export class AttendanceController {
     @Query('year') year: string,
     @CurrentUser() user: { role: UserRole; employeeId?: string | null },
   ) {
-    if (
-      user.role === UserRole.EMPLOYEE &&
-      user.employeeId !== employeeId
-    ) {
+    if (user.role === UserRole.EMPLOYEE && user.employeeId !== employeeId) {
       throw new ForbiddenException('Access denied');
     }
     return this.attendanceService.getRelieverSessions(
@@ -352,6 +350,7 @@ export class AttendanceController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(
     UserRole.SUPER_ADMIN,
+    UserRole.IT_ADMIN,
     UserRole.HR_MANAGER,
     UserRole.HR_ADMIN_MANAGER,
     UserRole.HR_OPERATIONS_MANAGER,
@@ -365,10 +364,7 @@ export class AttendanceController {
     @Query('year') year: string,
     @CurrentUser() user: { role: UserRole; employeeId?: string | null },
   ) {
-    if (
-      user.role === UserRole.EMPLOYEE &&
-      user.employeeId !== employeeId
-    ) {
+    if (user.role === UserRole.EMPLOYEE && user.employeeId !== employeeId) {
       throw new ForbiddenException('Access denied');
     }
     return this.attendanceService.getEmployeeSummary(
@@ -511,8 +507,9 @@ export class AttendanceController {
     const effectiveRoles = user.roles?.length ? user.roles : [user.role];
     const isPortalOnly =
       effectiveRoles.length === 1 && effectiveRoles[0] === UserRole.EMPLOYEE;
-    const hasManagerScopes =
-      await this.accessScopeService.userHasManagerScopes(user.id);
+    const hasManagerScopes = await this.accessScopeService.userHasManagerScopes(
+      user.id,
+    );
 
     if (isPortalOnly && !hasManagerScopes) {
       if (!user.employeeId) {
@@ -538,11 +535,7 @@ export class AttendanceController {
 
   @Post('import')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.HR_MANAGER,
-    UserRole.HR_ADMIN_MANAGER,
-  )
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_ADMIN_MANAGER)
   importRecord(
     @Body() dto: ImportAttendanceDto,
     @CurrentUser() user: { id: string },

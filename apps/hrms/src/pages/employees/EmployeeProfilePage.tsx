@@ -757,7 +757,11 @@ export function EmployeeProfilePage() {
     enabled: !!id && !teamOnly,
   })
 
-  const { data: attendanceSummary, isLoading: loadingSummary } = useQuery({
+  const {
+    data: attendanceSummary,
+    isLoading: loadingSummary,
+    isError: summaryFailed,
+  } = useQuery({
     queryKey: ['attendance', 'summary', id, month, year],
     queryFn: () => attendanceApi.getSummary(id, month, year),
     enabled: !!id && !teamOnly,
@@ -2106,6 +2110,11 @@ export function EmployeeProfilePage() {
                 <Skeleton key={i} className="h-20" />
               ))}
             </div>
+          ) : summaryFailed ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              The month summary could not be loaded for this login (no access or a server error). The log below is
+              still correct; the totals are not zero.
+            </p>
           ) : (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
               {[
