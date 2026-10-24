@@ -4,9 +4,9 @@ export type InboxTab = 'todo' | 'sent' | 'done'
 
 export interface InboxItem {
   key: string
-  type: 'EXTRA_DAY' | 'OVERTIME'
+  type: 'EXTRA_DAY' | 'OVERTIME' | 'TRANSFER' | 'WORKING_HOURS'
   id: string
-  kind: 'day' | 'overtime'
+  kind: 'day' | 'overtime' | 'change'
   employee: { id: string; name: string; code: string; branch: string | null }
   date: string
   minutes: number | null
@@ -22,4 +22,7 @@ export interface InboxItem {
 export const inboxApi = {
   list: (tab: InboxTab) => api.get<unknown, { tab: InboxTab; items: InboxItem[] }>('/inbox', { params: { tab } }),
   count: () => api.get<unknown, { todo: number }>('/inbox/count'),
+  /** Transfer / working-hours requests use their own approve / reject endpoints. */
+  decideChange: (id: string, approve: boolean, note?: string) =>
+    api.post(`/employee-change-requests/${id}/${approve ? 'approve' : 'reject'}`, { note }),
 }

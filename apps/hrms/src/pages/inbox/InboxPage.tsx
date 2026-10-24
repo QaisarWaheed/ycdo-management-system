@@ -19,7 +19,12 @@ const TABS: Array<{ value: InboxTab; label: string; hint: string }> = [
   { value: 'sent', label: 'Sent by me', hint: 'What you entered and where it is now (last 90 days)' },
   { value: 'done', label: 'Decided by me', hint: 'What you approved or rejected, and what happened next' },
 ]
-const TYPE_LABEL: Record<InboxItem['type'], string> = { EXTRA_DAY: 'Extra day', OVERTIME: 'Overtime' }
+const TYPE_LABEL: Record<InboxItem['type'], string> = {
+  EXTRA_DAY: 'Extra day',
+  OVERTIME: 'Overtime',
+  TRANSFER: 'Transfer',
+  WORKING_HOURS: 'Duty hours',
+}
 const STEP_STYLE: Record<string, string> = {
   PENDING: 'bg-amber-100 text-amber-800',
   ESCALATED: 'bg-blue-100 text-blue-800',
@@ -46,8 +51,9 @@ export function InboxPage() {
       <div>
         <h1 className="text-2xl font-semibold">Inbox</h1>
         <p className="text-sm text-text-secondary">
-          Everything that needs you, everything you sent and where it is now, with its full trail. Extra days and
-          overtime are here now; pay requests, leaves, transfers, letters and loans will join step by step.
+          Everything that needs you, everything you sent and where it is now, with its full trail. Extra days,
+          overtime, transfers and duty-hour changes are here now; pay requests, leaves, letters and loans will join
+          step by step.
         </p>
       </div>
 
@@ -76,6 +82,8 @@ export function InboxPage() {
           <option value="">All types</option>
           <option value="EXTRA_DAY">Extra day</option>
           <option value="OVERTIME">Overtime</option>
+          <option value="TRANSFER">Transfer</option>
+          <option value="WORKING_HOURS">Duty hours</option>
         </select>
         <Input className="max-w-xs" placeholder="Search name or code" value={search} onChange={(e) => setSearch(e.target.value)} />
         <span className="text-sm text-text-secondary">{data ? `${items.length} item(s)` : ''}</span>
@@ -104,14 +112,17 @@ function InboxRow({ item: i }: { item: InboxItem }) {
   const [note, setNote] = useState('')
   const decide = useMutation({
     mutationFn: (approve: boolean) =>
-      approve
-        ? extraTimeApi.approve(i.kind, i.id, note.trim() || undefined)
-        : extraTimeApi.reject(i.kind, i.id, note.trim() || undefined),
+      i.kind === 'change'
+        ? inboxApi.decideChange(i.id, approve, note.trim() || undefined)
+        : approve
+          ? extraTimeApi.approve(i.kind, i.id, note.trim() || undefined)
+          : extraTimeApi.reject(i.kind, i.id, note.trim() || undefined),
     onSuccess: (_r, approve) => {
       toast({ title: approve ? 'Approved' : 'Rejected' })
       queryClient.invalidateQueries({ queryKey: ['inbox'] })
       queryClient.invalidateQueries({ queryKey: ['inbox-count'] })
       queryClient.invalidateQueries({ queryKey: ['extra-time-pending'] })
+      queryClient.invalidateQueries({ queryKey: ['employee-change-requests'] })
     },
     onError: (err: ApiError) => toast({ title: 'Could not save', description: errorText(err), variant: 'destructive' }),
   })
