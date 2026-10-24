@@ -31,8 +31,8 @@ export class CreateIncentiveDto {
   @IsUUID()
   typeId?: string;
 
-  /** What it is for; printed on the payslip. */
-  /** Extra note; optional when a type is chosen (the type is printed on the payslip). */
+  /** What it is for; printed on the stipend slip. */
+  /** Extra note; optional when a type is chosen (the type is printed on the stipend slip). */
   @IsOptional()
   @IsString()
   @MaxLength(1000)
@@ -134,7 +134,7 @@ export class UpdateIncentiveDto {
   @IsUUID()
   typeId?: string;
 
-  /** Extra note; optional when a type is chosen (the type is printed on the payslip). */
+  /** Extra note; optional when a type is chosen (the type is printed on the stipend slip). */
   @IsOptional()
   @IsString()
   @MaxLength(1000)

@@ -266,7 +266,7 @@ export function AddIncentivesForm({
         ) : null}
       </div>
       <p className="text-xs text-text-secondary">
-        {payPeriodText({ year, month, day: startDay }, periodEnd)} The payslip shows only the
+        {payPeriodText({ year, month, day: startDay }, periodEnd)} The stipend slip shows only the
         incentive and amount, never the duration.
       </p>
 
@@ -356,7 +356,7 @@ export function AddIncentivesForm({
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="incentive-note">Note (optional, printed on the payslip next to the type)</Label>
+        <Label htmlFor="incentive-note">Note (optional, printed on the stipend slip next to the type)</Label>
         <Textarea
           id="incentive-note"
           rows={2}

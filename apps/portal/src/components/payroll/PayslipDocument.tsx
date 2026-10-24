@@ -137,7 +137,7 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
             <thead>
               <tr className="bg-black/5">
                 <th className="border border-black/30 px-2 py-1 text-left text-xs font-semibold">
-                  Pay &amp; Allowances
+                  Stipend &amp; Allowances
                 </th>
                 <th className="border border-black/30 px-2 py-1 text-right text-xs font-semibold">
                   Amount
@@ -217,7 +217,7 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
                     )),
                   ])}
                 <MoneyRow label="Deduction" amount={deductionsTotal} bold />
-                <MoneyRow label="Net Pay" amount={netPay} bold />
+                <MoneyRow label="Net Stipend" amount={netPay} bold />
               </tbody>
             ) : (
             <tbody>
@@ -253,7 +253,7 @@ export function PayslipDocument({ slip }: { slip: PayslipSlipData }) {
               <MoneyRow label="Tax" amount={slip.deductions.tax ?? 0} />
               <MoneyRow label="Other" amount={slip.deductions.other ?? 0} />
               <MoneyRow label="Deduction" amount={deductionsTotal} bold />
-              <MoneyRow label="Net Pay" amount={netPay} bold />
+              <MoneyRow label="Net Stipend" amount={netPay} bold />
             </tbody>
             )}
           </table>

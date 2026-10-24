@@ -193,7 +193,7 @@ export function PayslipDocument({
         >
           <thead>
             <tr style={{ background: '#FFFF00', fontWeight: 'bold' }}>
-              <th className={cell('text-left w-[26%]')}>Pay &amp; Allowances</th>
+              <th className={cell('text-left w-[26%]')}>Stipend &amp; Allowances</th>
               <th className={cell('text-right w-[12%]')}>Amount</th>
               <th className={cell('text-left w-[20%]')}>Deduction</th>
               <th className={cell('text-right w-[12%]')}>Amount</th>
@@ -238,7 +238,7 @@ export function PayslipDocument({
               <td className={cell('text-right tabular-nums')}>{fmt(earningsTotal)}</td>
               <td className={cell()}>Deduction</td>
               <td className={cell('text-right tabular-nums')}>{fmt(deductionsTotal)}</td>
-              <td className={cell()}>Net Pay&nbsp;&nbsp;&nbsp;{fmt(netPay)}</td>
+              <td className={cell()}>Net Stipend&nbsp;&nbsp;&nbsp;{fmt(netPay)}</td>
             </tr>
           </tfoot>
         </table>
@@ -416,7 +416,7 @@ function SectionedPayslip({ slip, compact }: { slip: PayslipSlipData; compact: b
         <div className="mt-[4px] grid flex-1 grid-cols-2 gap-3">
           <div>
             <div className="mb-[2px] font-bold" style={band}>
-              Pay &amp; Allowances
+              Stipend &amp; Allowances
             </div>
             {earnings.map((l, i) => (
               <Line key={`e${i}`} {...l} />
@@ -442,7 +442,7 @@ function SectionedPayslip({ slip, compact }: { slip: PayslipSlipData; compact: b
 
         <div className="mt-[4px] grid grid-cols-3 items-center border-2 border-black text-center font-bold">
           <div className="border-r-2 border-black py-[2px]">
-            <div style={{ fontSize: f.note }}>Gross Pay</div>
+            <div style={{ fontSize: f.note }}>Gross Stipend</div>
             <div className="tabular-nums">{pkr(earningsTotal)}</div>
           </div>
           <div className="border-r-2 border-black py-[2px]">
@@ -450,7 +450,7 @@ function SectionedPayslip({ slip, compact }: { slip: PayslipSlipData; compact: b
             <div className="tabular-nums">{pkr(deductionsTotal)}</div>
           </div>
           <div className="py-[2px]" style={{ background: '#FFFF00' }}>
-            <div style={{ fontSize: f.note }}>NET PAY</div>
+            <div style={{ fontSize: f.note }}>NET STIPEND</div>
             <div className="tabular-nums" style={{ fontSize: f.net }}>
               PKR {pkr(netPay)}
             </div>

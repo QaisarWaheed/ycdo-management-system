@@ -48,7 +48,7 @@ const schema = z.object({
   year: z.number().min(2020),
   amount: z.number().positive('Amount must be greater than 0'),
   typeId: z.string().min(1, 'Choose an incentive type'),
-  // Optional: the type is printed on the payslip; the note goes beside it.
+  // Optional: the type is printed on the stipend slip; the note goes beside it.
   reason: z.string().trim().max(1000, 'Reason must be 1000 characters or less'),
 })
 
@@ -366,7 +366,7 @@ export function AddIncentiveDialog({
               name="reason"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Note (optional, printed on the payslip next to the type)</FormLabel>
+                  <FormLabel>Note (optional, printed on the stipend slip next to the type)</FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Describe the reason for this incentive..."

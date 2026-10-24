@@ -38,6 +38,7 @@ import { SpecialLeavesPage } from '@/pages/leave/SpecialLeavesPage'
 import { IncentiveManagementPage } from '@/pages/incentives/IncentiveManagementPage'
 import { TeamAssignmentsPage } from '@/pages/admin/TeamAssignmentsPage'
 import { MyTeamPage } from '@/pages/team/MyTeamPage'
+import { InboxPage } from '@/pages/inbox/InboxPage'
 import { FineAuditPage } from '@/pages/letters/FineAuditPage'
 import { PunchReviewsPage } from '@/pages/attendance/PunchReviewsPage'
 import { DoctorPerformancePage } from '@/pages/payroll/DoctorPerformancePage'
@@ -313,6 +314,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <TeamAssignmentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/inbox"
+        element={
+          <ProtectedRoute>
+            <InboxPage />
           </ProtectedRoute>
         }
       />

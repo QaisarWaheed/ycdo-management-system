@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import { inboxApi } from '@/api/endpoints/inbox'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart3,
@@ -17,6 +18,7 @@ import {
   Gift,
   ClockAlert,
   History,
+  Inbox,
   LayoutDashboard,
   LogOut,
   MapPin,
@@ -416,6 +418,12 @@ function useSidebarNavItems() {
   const { user, hasRole, hasPermission } = useAuth()
   const overrides = user?.permissionOverrides ?? {}
   const isSuperAdmin = hasRole(['SUPER_ADMIN'])
+  const { data: inboxCount } = useQuery({
+    queryKey: ['inbox-count'],
+    queryFn: inboxApi.count,
+    enabled: !!user && user.role !== 'EMPLOYEE',
+    refetchInterval: 60_000,
+  })
 
   const canOpen = (to: string) => {
     if (isSuperAdmin) return true
@@ -471,6 +479,13 @@ function useSidebarNavItems() {
   }
 
   if (role !== 'EMPLOYEE' && role !== 'TEAM_INCHARGE') items = [...items, payrollWorkflowNavItem]
+  // One Inbox for every staff login, right after Dashboard, with how many items wait for it.
+  if (role !== 'EMPLOYEE') {
+    const n = inboxCount?.todo ?? 0
+    const inbox = { to: '/inbox', label: n ? `Inbox (${n})` : 'Inbox', icon: Inbox }
+    const at = items.findIndex((item) => item.to === '/dashboard') + 1
+    items = [...items.slice(0, at), inbox, ...items.slice(at)]
+  }
   return items.filter((item) => canOpen(item.to))
 }
 

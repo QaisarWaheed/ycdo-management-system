@@ -165,7 +165,7 @@ function EmployeePortalDashboard() {
   const quickActions = [
     { to: '/leave', label: 'Apply Leave', icon: Palmtree },
     { to: '/attendance', label: 'My Attendance', icon: Clock },
-    { to: '/payroll', label: 'View Payslips', icon: Receipt },
+    { to: '/payroll', label: 'View Stipend Slips', icon: Receipt },
     { to: '/advance-loan', label: 'Advance & Loan', icon: Wallet },
     { to: '/letters', label: 'My Letters', icon: FileText },
   ]

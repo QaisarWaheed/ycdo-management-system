@@ -3305,7 +3305,7 @@ export class PayrollService {
     ws.getCell('G7').value = 'Presence';
     ws.getCell('H7').value = slip.presence;
 
-    ws.getCell('A8').value = 'Pay & Allowances';
+    ws.getCell('A8').value = 'Stipend & Allowances';
     ws.getCell('D8').value = 'Amount';
     ws.getCell('E8').value = 'Deduction';
     ws.getCell('G8').value = 'Amount';
@@ -3353,7 +3353,7 @@ export class PayrollService {
     ws.getCell(`D${totalRow}`).value = money(slip.earningsTotal);
     ws.getCell(`E${totalRow}`).value = 'Deduction';
     ws.getCell(`G${totalRow}`).value = money(slip.deductionsTotal);
-    ws.getCell(`H${totalRow}`).value = 'Net Pay';
+    ws.getCell(`H${totalRow}`).value = 'Net Stipend';
     ws.getCell(`J${totalRow}`).value = money(slip.netPay);
 
     const noteRow = totalRow + 1;

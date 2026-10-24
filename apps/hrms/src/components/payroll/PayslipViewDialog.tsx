@@ -82,7 +82,7 @@ export function PayslipViewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[min(90dvh,90vh)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader className="no-print">
-          <DialogTitle>Payslip</DialogTitle>
+          <DialogTitle>Stipend Slip</DialogTitle>
         </DialogHeader>
 
         <div className="no-print mb-4 flex justify-end">
